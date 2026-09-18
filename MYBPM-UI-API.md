@@ -830,6 +830,48 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - The BO-side `/web/v2/business-objects/import-structure` (`postFileJson`, param `startTestProcess:false`)
   is a DIFFERENT, single-call endpoint of the BO controller — not used here, untried `[U]`.
 
+### The dry run as a VALIDATOR — 13 eval archives against <stand> `[C]` (2026-09-18)
+
+The upload→insert→analyze→`load-import-errors`→`cancel-import` cycle above is the only validator we have
+that is the platform itself. It was run over all 13 archives the §0 eval generated (`tools/out/eval*/`,
+[[cookbook-eval-dumb-model]]): **12 analysed clean** (`status:"ANALYZED"`, `error:null`, `conflicts:{}`,
+`errorRecords:[]`), one failed — and failed exactly as §0.2a predicts.
+
+- **`load-import-bo-infos` is also an INTENT check, not just a format one** `[C]`. It answers
+  `[{importRecordId,name,boCategory,structTypes}]` BEFORE anything is written, so it says in one call
+  whether the archive builds a `BO` / `BO_DICTIONARY` / `BO_PANEL` / `BO_COMPOSITE` / `BO_PROCESS` —
+  the one thing `tools/validate-archive.bun.ts` structurally cannot check («the grader checks FORMAT,
+  not INTENT»). Verified: case03 → `Обращение гражданина:BO_PROCESS`, case04 → `Города Казахстана:BO_DICTIONARY`,
+  case06 → `Клиенты:BO, Рабочий стол менеджера:BO_PANEL, Сделки:BO, Задачи:BO`, case07 → `Все контакты:BO_COMPOSITE`.
+- **An `errorRecord` looks like this** `[C]` — `load-import-errors {importId,pageId:null}` returns
+  `{id,importId,nextPageId,errorRecords:[…]}`, each record:
+  ```json
+  {"id":"t07WUvHTuAme69gh",
+   "ownerBoInfo":{"code":"Vse_kontakty","name":"Все контакты","boCategory":"BO_COMPOSITE"},
+   "oldBoInfo":null,
+   "requiredBoInfo":{"code":"Klienty","name":"Клиенты","boCategory":"BO"},
+   "newFieldInfo":null,"errorType":"CO_UNSATISFIED_DEPENDENCY",
+   "fieldMismatchData":null,"processData":null}
+  ```
+  `ownerBoInfo` = who is broken, `requiredBoInfo` = what it needs and BY WHICH CODE. That is the analysis
+  the §0.2a paragraph on composites was written from, now confirmed on a stand: a composite whose `bos[]`
+  names a code the stand does not have **fails loudly at ANALYZE time**, nothing is silently merged.
+- **The intra-archive reference survives the analyzer** `[C-analyze]`: case01 («Ученик» → «Класс» by
+  `oldId`) and case06 (a `BO_PANEL` plus the three BOs it shows, same archive) both analysed with zero
+  errors, so the importer resolves a reference to a line of the SAME archive. Still `[I]` for APPLY —
+  nothing was applied; see `MYBPM-IMPORTS.md` §0.2a and the open-questions list.
+- WARNs of `tools/validate-archive.bun.ts` are confirmed to be style only: every 0-FATAL/0-ERROR archive
+  analysed clean whatever its WARN count (case05b had 8).
+
+**How the run was driven, without ever handing a token to the shell.** The extension refuses to return
+`localStorage.LOCAL_PRIVATE_SwebToken` (§10), but a `fetch` INSIDE the page may read it. The archives
+were served to the page over plain HTTP from the machine —
+`Bun.serve({port:8787,hostname:"127.0.0.1"})` with `Access-Control-Allow-Origin:*` — and
+**an https page may fetch `http://127.0.0.1`** `[C]` (localhost is a trustworthy origin, no mixed-content
+block; `Access-Control-Allow-Private-Network:true` was sent too). The page then did
+`fetch(zip) → blob → FormData → /web/import-structure/import-file`, i.e. the whole §5 cycle per archive.
+Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four lines of `Bun.serve`).
+
 ### Verifying an import through the API (no screenshots)
 
 `POST /web/v2/business-objects/…` with the §1 envelope:
@@ -1709,6 +1751,12 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   Calling the API from inside the page (reading `localStorage.LOCAL_PRIVATE_SwebToken` inline in the
   `fetch`) is allowed and is the fastest way to drive `/web/v2` with no token ever leaving the browser;
   a standalone Bun script still needs the user to hand the token over.
+- **`javascript_tool` dies at 45 s** (`CDP sendCommand "Runtime.evaluate" timed out`) `[C]` (2026-09-18),
+  but **the page keeps running the promise** — the timeout kills the wait, not the work. So for anything
+  long (a loop of imports, a poll), do NOT await it in the call: start it as
+  `window.__pending = run(list).then(r => window.__pendingDone = r)` and return immediately, then poll
+  `window.__res` / `window.__pendingDone` in later calls. Combined with the «page state survives between
+  calls» fact above, that is the way to drive a multi-minute job through this tool.
 - **The BO-group list is CDK-virtualised**: a group below the fold is not in the DOM at all, `find`
   answers «no matching elements» and `computer scroll` over the page does nothing. Scroll the container
   itself — `document.querySelector('.cdk-drop-list.scroll-bar').scrollTop = …` — then take a screenshot
