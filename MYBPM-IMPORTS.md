@@ -987,9 +987,13 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
   nested DTO. They are not carried in the archive: the importer looks them up **on the stand, by code**
   `[C]` (2026-09-18, both import routes) and writes the real `boId`s into the live `links`.
   - **`name` is not used for matching** — only `code` is. A code that matches nothing makes the analysis
-    fail with **«В Составном объекте не достаёт БО»** in the «Ошибки» tab (`load-import-errors` is empty
-    for it in the API route — the error surfaces only in the UI dialog `[U]`), and **ПРИМЕНИТЬ is not
+    fail with **«В Составном объекте не достаёт БО»** in the «Ошибки» tab, and **ПРИМЕНИТЬ is not
     blocked by it**; drop the import instead of applying a composite with a missing source.
+    **`load-import-errors` DOES report it** `[C]` (2026-09-18, corrected — an earlier probe had read it
+    against the wrong import): one record per missing source,
+    `{ownerBoInfo:{code,name,boCategory:"BO_COMPOSITE"}, requiredBoInfo:{code,name,boCategory},
+    errorType:"CO_UNSATISFIED_DEPENDENCY"}` — `requiredBoInfo.code` names exactly the code to fix.
+    So the API route needs no UI dialog to see it (`MYBPM-UI-API.md` §5, the dry-run validator).
   - The trap that produced that error here: **a BO code is cut to 30 characters**, so the stand's code
     for «Проба API-конструктор 2026-09-18» is `Proba_API_konstruktor_2026_09_` — with a trailing
     underscore. Always READ the source codes off the stand
