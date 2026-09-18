@@ -31,3 +31,14 @@ Prompt wrapper (same for every case, RU):
 | 12 | Реестр договоров | SIGNATURE, IFRAME, CAPTCHA, CURRENT_DATE widgets, FILE_UPLOAD single |
 
 Not covered yet (next rounds): Part II Block IDE scripts (§0S) and Part III record xlsx (§0X).
+
+## Rounds
+
+- **Round 1** (2026-09-18) — all 12 cases against the original §0. Snapshot `tools/out/eval-2026-09-18/`.
+- **Round 2** — all 12 against the eight §0 repairs. Snapshot `tools/out/eval2-2026-09-18/`.
+- **Round 3** — cases 03/05/06/07/11 against the four round-2 repairs. Snapshot `tools/out/eval3-2026-09-18/`.
+
+Grade a run directory with `bun tools/grade-eval.bun.ts` (edit the `RUN` / `R1` constants in it to point
+at the run and the snapshot to diff against). Read the archives by hand as well: the validator checks
+FORMAT, not INTENT, and every round so far has had at least one case that scored clean while building
+the wrong kind of object.
