@@ -65,8 +65,11 @@ data-2026-09-18T10-43-21-715/metadata.mybpm   ← literally: objectCount-2
 
 Rules, all `[C]`:
 
-- The folder name is `data-<timestamp>`; the timestamp is free-form (`YYYY-MM-DDTHH-MM-SS-mmm` is what
-  real exports use). The **folder must exist** — the two members cannot sit at the zip root.
+- The folder name is `data-<timestamp>`: the four characters **`data-` are a literal prefix and part of
+  the name** — `data-2026-09-18T10-43-21-715/`, not `2026-09-18T10-43-21-715/`. Drop the prefix and the
+  import fails. The timestamp after it is free-form (`YYYY-MM-DDTHH-MM-SS-mmm` is what real exports use;
+  any value is fine — it is not read). The **folder must exist**: the two members cannot sit at the zip
+  root.
 - The member names `0000001.mybpm` and `metadata.mybpm` are fixed.
 - `metadata.mybpm` contains the single ASCII string `objectCount-<N>` where **N = the number of lines**
   in `0000001.mybpm`. No trailing newline, no JSON, no quotes. Get N wrong and the import fails.
@@ -133,11 +136,19 @@ the table's last row applies only when the target is NOT in this archive.
 
 **A панель cannot be built at all without stand ids — say that, build nothing else.** Every
 `dynamicFields` entry of a `BO_PANEL` is a `type: "BO"` registry widget and each one needs the
-`oldRefBoId` of a BO that already exists on the stand (0.9, §5a). If those ids were not supplied and the
-registries are not created by this same archive (rule above), there is nothing left to degrade — a panel
-without registries is an empty panel. STOP, deliver no archive, and report which ids you need. In
-particular **do NOT re-read «панель с реестрами X, Y, Z» as «создай бизнес-объекты X, Y, Z»**: that ships
-a different KIND of object than the one asked for, and nothing in the file marks it as a substitution.
+`oldRefBoId` of a BO that already exists on the stand (0.9, §5a). If those ids were not supplied there is
+nothing left to degrade — a panel without registries is an empty panel. STOP, deliver no archive, and
+report which ids you need.
+
+**The intra-archive rule above is NOT a way out of this**, and this is the trap that has been walked into
+twice. «Панель с реестрами Сделки, Клиенты, Задачи» says those objects EXIST; inventing three BOs with
+those names so the panel has something to point at is worse than shipping nothing, because import MERGES
+BY CODE — your invented `Klienty` silently edits the customer's real «Клиенты». You may put a registry's
+BO in the same archive **only when the user explicitly asked for that BO to be created too**. Otherwise:
+- **do NOT re-read «панель с реестрами X, Y, Z» as «создай бизнес-объекты X, Y, Z»** — that ships a
+  different KIND of object than the one asked for;
+- **and do not ship both** — a panel plus three freshly invented registries is the same substitution with
+  the panel added on top.
 
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
 reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
@@ -463,6 +474,10 @@ re-capitalise the first letter if the original was uppercase; latin letters and 
 х h   ц c   ч ch  ш sh  щ sch ъ —   ы y   ь —   э e   ю yu  я ya
 ```
 
+**Transliterate the label — never TRANSLATE it and never rename it.** `Название` → `Nazvanie`, not
+`Naimenovanie` (that is the transliteration of a different word) and not `Name`. A code is the label's
+letters mapped one by one; if a code cannot be read back to the label, it is wrong.
+
 **Transliterate the WHOLE label, every word of it.** The code is not the first word and not an
 abbreviation: «Тема обращения» → `Tema_obrascheniya`, «Дата подачи заявления» → `Data_podachi_zayavleniya`,
 «ФИО заявителя» → `FIO_zayavitelya`. The only thing that may shorten a code is the 30-character cut, and
@@ -520,6 +535,11 @@ All four are still the SAME two lines of 0.3 + 0.4; only `category` and a few ke
 | Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
 | Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code, read off the stand**; every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
 | Бизнес-процесс | `BO_PROCESS` | a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself |
+
+**`dictionaryFields` is the literal `["CODE","LABEL"]`, in capitals** — it is an enum, not a list of
+field codes. The two system fields it refers to have the LOWERCASE codes `code` and `label`. Both
+spellings appear, and they are not interchangeable: capitals in `dictionaryFields`, lowercase as the keys
+of `dynamicFields`.
 
 A dictionary's two system fields — the template of 0.5 with these values, at `y: 0` and `y: 4`,
 `cols: 15`, `rows: 4`, `isSystem: true`:

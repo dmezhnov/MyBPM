@@ -420,7 +420,9 @@ for (const bo of bos) {
     }
     const hasStatus = Object.keys(df).some(k => k === "PROCESS_STATUS") ||
       Object.values<any>(df).some(f => f.boRefStruct?.boInfo?.code === "PROCESS_STATUS");
-    if (!hasStatus) add("ERROR", "5c", `${tag}: the importer does NOT create PROCESS_STATUS — the archive must ship that field itself`);
+    // §0.9: shipping the process WITHOUT PROCESS_STATUS is the prescribed answer when the
+    // stand's «Статус процесса» id was not supplied — so this is a WARN, not an ERROR.
+    if (!hasStatus) add("WARN", "5c/0.9", `${tag}: no PROCESS_STATUS — legal only if the stand's «Статус процесса» id was unavailable, and it must be said out loud`);
   }
 }
 
