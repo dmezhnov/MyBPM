@@ -37,8 +37,11 @@ Not covered yet (next rounds): Part II Block IDE scripts (§0S) and Part III rec
 - **Round 1** (2026-09-18) — all 12 cases against the original §0. Snapshot `tools/out/eval-2026-09-18/`.
 - **Round 2** — all 12 against the eight §0 repairs. Snapshot `tools/out/eval2-2026-09-18/`.
 - **Round 3** — cases 03/05/06/07/11 against the four round-2 repairs. Snapshot `tools/out/eval3-2026-09-18/`.
+- **Round 4** — cases 05/07/11 against the three round-3 repairs (composite never degrades to a plain BO,
+  `dictionaryFields` on every BO, the `STATIC_TEXT` heading rule promoted to 0.10/0.11).
+  Snapshot `tools/out/eval4-2026-09-18/`.
 
-Grade a run directory with `bun tools/grade-eval.bun.ts` (edit the `RUN` / `R1` constants in it to point
-at the run and the snapshot to diff against). Read the archives by hand as well: the validator checks
+Grade a run directory with `bun tools/grade-eval.bun.ts <runDir> [snapshotDir] [05,07,11]`. Read the
+archives by hand as well: the validator checks
 FORMAT, not INTENT, and every round so far has had at least one case that scored clean while building
 the wrong kind of object.

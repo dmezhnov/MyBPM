@@ -134,6 +134,17 @@ own archive creates the target, you already know its id: you minted it. Write
 that same line, and put the referenced BO on an EARLIER line than the one pointing at it. The degrade of
 the table's last row applies only when the target is NOT in this archive.
 
+**A составной объект needs CODES ONLY — it is NEVER degraded into a plain BO** `[C]` (§5b). This is
+the mirror image of the panel, and it has been got wrong the same way: `bos: [{code, name, boCategory}]`
+carries **no id at all**, the importer looks the sources up on the stand BY CODE, so «Клиенты и
+Поставщики are not on my list of stand ids» is not a reason to degrade anything — there was no id to ask
+for. Ask for the source **codes** (they are cut to 30 chars on the stand and are not always what you
+would transliterate, §5b); if the user declines, ship the composite with your own transliterated codes
+and say in one line that each `bos[].code` must be checked against the stand. A wrong code is the one
+case that is NOT silent: the analysis says «В Составном объекте не достаёт БО», the user sees it and
+drops the import. Building a `BO` instead of the `BO_COMPOSITE` that was asked for, on the other hand,
+is silent AND merges by code into whatever it hits.
+
 **A панель cannot be built at all without stand ids — say that, build nothing else.** Every
 `dynamicFields` entry of a `BO_PANEL` is a `type: "BO"` registry widget and each one needs the
 `oldRefBoId` of a BO that already exists on the stand (0.9, §5a). If those ids were not supplied there is
@@ -531,10 +542,15 @@ All four are still the SAME two lines of 0.3 + 0.4; only `category` and a few ke
 | Kind | `category` | What changes |
 |---|---|---|
 | Бизнес-объект | `BO` | nothing — the template as is |
-| Справочник | `BO_DICTIONARY` | `"dictionaryFields": ["CODE","LABEL"]`, and `dynamicFields` **starts** with the two system fields below; extra fields may follow |
+| Справочник | `BO_DICTIONARY` | the value of `dictionaryFields` **changes** to `["CODE","LABEL"]` (the key itself is on every BO, see below), and `dynamicFields` **starts** with the two system fields below; extra fields may follow |
 | Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
-| Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code, read off the stand**; every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
+| Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code, read off the stand — no id exists here, so this kind is never degraded to a plain `BO`** (0.2a); every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
 | Бизнес-процесс | `BO_PROCESS` | a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself |
+
+**`dictionaryFields` is a key of EVERY BO, not a dictionary-only key.** The template of 0.4 already
+carries `"dictionaryFields": []` and it stays there on a plain BO, a panel, a composite and a process.
+The row above CHANGES its value, it does not ADD the key — deleting it from a non-dictionary is rule 6
+of 0.10 all over again: import merges, a missing key keeps whatever the stand already had.
 
 **`dictionaryFields` is the literal `["CODE","LABEL"]`, in capitals** — it is an enum, not a list of
 field codes. The two system fields it refers to have the LOWERCASE codes `code` and `label`. Both
@@ -582,7 +598,11 @@ resolve like this:
 10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **wipes `orgUnitIds`**, i.e. it
     erases group rights set by hand on the stand (§7, §8).
 11. Records (instance data) do NOT go into this archive — they are an xlsx, **Part III** of this document.
-12. A field goes into the map that matches its ARCHETYPE: an ordinary field into `dynamicFields`, a
+12. A `STATIC_TEXT` heading must not repeat any field label of the same BO (0.5). «Контакты» as a
+    heading над полем «Контакты» breaks the Excel import of records (Part III, §19): the header row is
+    matched against ALL fields including the headings, and the column becomes ambiguous. Name the
+    heading for the SECTION («Контактные данные»), not for the field under it.
+13. A field goes into the map that matches its ARCHETYPE: an ordinary field into `dynamicFields`, a
     «системное поле» into `nativeFields` (0.5a), a widget into `signatures` / `buttons` / `iframes` /
     `captcha` / `currentDates` / `currentUser` (0.5b). Putting a widget or a native type into
     `dynamicFields` is not a valid archive.
@@ -607,7 +627,11 @@ resolve like this:
 - [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
       an EARLIER line of this same archive (0.2a).
 - [ ] No id literal was copied out of this document — the sample's ids are <company-a>'s (0.2a).
+- [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.10 rule 12).
+- [ ] `dictionaryFields` is present on EVERY BO line — `[]` everywhere, `["CODE","LABEL"]` on a
+      dictionary (0.9).
 - [ ] Nothing was quietly built INSTEAD of what was asked: no panel turned into a set of plain BOs, no
+      составной объект turned into a plain BO because «the ids are unknown» (it takes codes, 0.2a), no
       `PROCESS_STATUS` faked as a local dropdown (0.2a, 0.9).
 
 ### 0.12 Building and delivering
