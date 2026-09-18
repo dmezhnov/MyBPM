@@ -63,6 +63,11 @@ const FIELD_KEYS = ["code", "newId", "archetype", "kind", "boRefStruct", "label"
   "gridPosition", "removeType", "gantTableLocations", "boFieldCodes", "linkedCoSettings",
   "questionnaires", "progressSteps", "params"];
 
+// §5b — a BO_COMPOSITE has no form: the verified sample carries none of these three keys
+// on its dynamicFields, and an archive generated without them imports fine.
+const COMPOSITE_ABSENT_KEYS = new Set(["gridPosition", "tableColOrderIndex", "removeType"]);
+const EMPTY_SET = new Set<string>();
+
 // §0.6 transliteration table
 const TRANSLIT: Record<string, string> = {
   а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "yi",
@@ -225,7 +230,10 @@ for (const bo of bos) {
     if ("oldId" in f && !("newId" in f)) add("ERROR", "0.7", `${ft}: field carries oldId; fields use newId`);
     if (f.archetype !== "DYNAMIC") add("ERROR", "0.5", `${ft}: archetype "${f.archetype}", a dynamicFields entry is DYNAMIC`);
 
-    for (const k of FIELD_KEYS) if (!(k in f)) add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
+    // §5b: a composite has no form, so its fields legitimately carry no layout keys
+    const skipKeys = bo.category === "BO_COMPOSITE" ? COMPOSITE_ABSENT_KEYS : EMPTY_SET;
+    for (const k of FIELD_KEYS) if (!(k in f) && !skipKeys.has(k))
+      add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
