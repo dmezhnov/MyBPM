@@ -115,6 +115,30 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` fed `FROM_BO` — the **dictionary CODE** | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 
+**Every id literal printed in this section is <company-a>'s, not yours** `[C]`. Copying one out of an
+example IS inventing an id — 0.2a forbids it exactly the same way, and it fails in the same silent manner.
+Two different kinds of literal appear below: `3H84o9iM@G4jaOL3`, `ca3w3BgmzJGmWO7q`, `WbX5Wa8gcabbVbF1`,
+`qmEhH4GnZvawC3R4` are archive-internal ids of the sample — mint your OWN by 0.7 instead of reusing them;
+`I1fVTkYPTSg7X8b8` (<company-a>'s `Person`), `@feclOAWUnwXFQ8c` (a <company-a> composite) and `Q0zI~z9Ra2R7Q3yd`
+(<company-a>'s «Статус процесса») are **real ids on the <company-a> stand** and appear here only to show the
+SHAPE. Paste one into an `oldRefBoId` for any other stand and you ship a dangling reference that imports
+«successfully» and breaks at runtime.
+
+**A BO defined on ANOTHER LINE OF THE SAME ARCHIVE is not stand data — reference it, do not degrade it**
+`[I]` (deduced from the `oldId` → real-id rule of 0.7 and §8; not yet re-checked on a stand). When your
+own archive creates the target, you already know its id: you minted it. Write
+`"oldRefBoId": "<that BO's own oldId>"` plus `boRefStruct.boInfo = {code, name, boCategory}` copied from
+that same line, and put the referenced BO on an EARLIER line than the one pointing at it. The degrade of
+the table's last row applies only when the target is NOT in this archive.
+
+**A панель cannot be built at all without stand ids — say that, build nothing else.** Every
+`dynamicFields` entry of a `BO_PANEL` is a `type: "BO"` registry widget and each one needs the
+`oldRefBoId` of a BO that already exists on the stand (0.9, §5a). If those ids were not supplied and the
+registries are not created by this same archive (rule above), there is nothing left to degrade — a panel
+without registries is an empty panel. STOP, deliver no archive, and report which ids you need. In
+particular **do NOT re-read «панель с реестрами X, Y, Z» as «создай бизнес-объекты X, Y, Z»**: that ships
+a different KIND of object than the one asked for, and nothing in the file marks it as a substitution.
+
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
 reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
 shipped unless the user asked for one (§0.10 rule 10 — it wipes `orgUnitIds`).
@@ -134,6 +158,7 @@ constructor's BO list, and the id sits in the URL `…/business-objects/editing/
   matches groups by name, and when nothing matches it **renames an existing group** instead of creating
   one — that is a real defect that destroys the customer's group list (§8). Never ship a group name you
   have not seen on the stand.
+- The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
 - `kind` is always `MANUAL`; `orderIndex` may stay `1110000`.
@@ -151,7 +176,7 @@ everything after it on that line — the shipped line must be pure minified JSON
 ```text
 {
   "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
-  "oldId": "WbX5Wa8gcabbVbF1",              ← id of the BO (0.7); becomes its real id on the stand
+  "oldId": "WbX5Wa8gcabbVbF1",              ← id of the BO — MINT YOUR OWN (0.7); becomes its real id on the stand
   "code": "Cookbook_demo",                  ← latin code of the BO, ≤ 30 chars (0.6)
   "category": "BO",                         ← BO | BO_DICTIONARY | BO_PANEL | BO_COMPOSITE | BO_PROCESS (0.9)
   "kind": "GENERAL",
@@ -200,7 +225,7 @@ everything after it on that line — the shipped line must be pure minified JSON
 ```text
 {
   "code": "Naimenovanie",                  ← the field code; must equal the key in dynamicFields
-  "newId": "qmEhH4GnZvawC3R4",             ← id of the field (0.7), unique inside the archive
+  "newId": "qmEhH4GnZvawC3R4",             ← id of the field — MINT YOUR OWN (0.7), unique inside the archive
   "archetype": "DYNAMIC",
   "kind": "GENERAL",
   "boRefStruct": {"fieldRefs": {}},
@@ -241,7 +266,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "type": "INPUT_TEXT",                    ← the field type, table below
   "groupingInfo": {},
   "fieldTabs": {},
-  "tableColOrderIndex": 0,                 ← 0,1,2… in form order (registry column order)
+  "tableColOrderIndex": 0,                 ← the field's POSITION: 0 for the 1st field, 1 for the 2nd, 2 for the 3rd … — NOT 0 on every field
   "gridPosition": {"x": 0, "y": 0, "cols": 15, "rows": 4},   ← layout, rule 0.8
   "removeType": "STRIKETHROUGH",
   "gantTableLocations": {},
@@ -253,6 +278,12 @@ everything after it on that line — the shipped line must be pure minified JSON
 }
 ```
 
+**`tableColOrderIndex` is a counter, not a constant.** The literal `0` in the template belongs to the
+FIRST field only: the second field carries `1`, the third `2`, and so on, in the order the entries sit in
+`dynamicFields` — that order is the registry's column order. Leaving `0` on every field leaves the column
+order undefined. The counter runs over `dynamicFields` alone; system fields (0.5a) and widgets (0.5b) do
+not carry the key and do not advance it.
+
 **To make a field required or unique, write `true` in `isRequired` / `isUnique`. To turn something off,
 write `false` — never delete the key** (§8: a dropped key keeps the stand's old value).
 `isRequired` and `isReadonly` must never both be `true` — such a record cannot be saved (the constructor
@@ -262,6 +293,11 @@ refused with «Обязательные поля не заполнены», a du
 поле». A UI-built BO ALSO carries `tableColToShow: true` on every required/unique field (the constructor
 sets it automatically) — copy that if the archive should reproduce a stand-built registry.
 A `DROPDOWN_SINGLE` additionally needs `fieldOptionsStruct` (§5) — a dictionary by CODE, or a local list.
+
+**The ONE documented exception to «never drop a key» is the composite.** A `BO_COMPOSITE` has no form, so
+its fields carry no `gridPosition`, no `tableColOrderIndex` and no `removeType` (0.9, §5b) — an archive
+built without exactly those three is verified to import `[C]`. Nowhere else may a key of this template be
+absent.
 
 Types you may put in `"type"` — this is the WHOLE palette of «Элементы страницы», 23 types, verified
 type by type on <company-a> 2026-09-18 (`[C]`: each one was created through the constructor API, exported,
@@ -306,12 +342,34 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
   `"viewType": "TABLE"` (or `SINGLE`), `"isHeightDynamic": true`, and
   `"boRefStruct": {"boInfo": {"code": "<target code>", "name": "<target name>", "boCategory": "BO"}, "fieldRefs": {}}`.
   The target must already exist on the stand and **its id and code must be read off the stand**, never
-  guessed (§5b).
+  guessed — unless this same archive creates it, in which case its `oldId` IS the id (0.2a).
 - `CO` — the same, with `"boCategory": "BO_COMPOSITE"` and the composite's id (which itself often starts
   with «@», e.g. `@feclOAWUnwXFQ8c` — parse such a spec from the right).
-- `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` — `fieldOptionsStruct`, either `optionSource: "FROM_BO"` with a
-  `dictionaryBoInfo` naming the dictionary BY CODE, or `optionSource: "FROM_FIELD"` with the local list
-  (§5 has both shapes in full).
+- `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` — one extra key, `fieldOptionsStruct`, in exactly one of the
+  two shapes below. Copy the literal; §5 explains them.
+
+  A LOCAL list («Задать вручную») — **`options` is an OBJECT keyed by the option's own code, never an
+  ARRAY**, and every entry wraps its payload in `fieldOption`:
+
+  ```text
+  "fieldOptionsStruct": {"optionSource": "FROM_FIELD", "dictionaryOptionSetting": {}, "options": {
+     "Novyyi":   {"fieldOption": {"code": "Novyyi",   "label": "Новый",    "orderIndex": 0,     "color": null, "hiddenInKanban": false}, "newOptionId": "<16 chars>"},
+     "V_rabote": {"fieldOption": {"code": "V_rabote", "label": "В работе", "orderIndex": 10000, "color": null, "hiddenInKanban": false}, "newOptionId": "<16 chars>"}}}
+  ```
+
+  The map key repeats `fieldOption.code`, the code is the option's label transliterated by 0.6, and
+  **`fieldOption.label` is a PLAIN STRING** — not `{"rus": …}`, the one label in the whole file that is
+  not a language map. `orderIndex` steps 0, 10000, 20000…; `newOptionId` is a fresh id by 0.7.
+
+  A DICTIONARY — named BY CODE, so it needs no stand id; this is the one cross-object reference 0.2a
+  does not block:
+
+  ```text
+  "fieldOptionsStruct": {"optionSource": "FROM_BO", "options": {}, "dictionaryOptionSetting": {},
+     "dictionaryBoInfo": {"code": "Dolzh", "name": "Должность", "boCategory": "BO_DICTIONARY"}}
+  ```
+
+  `options` stays EMPTY here — the rows live in the dictionary and the form reads them at runtime.
 - `QUESTIONNAIRE` — columns and rows share ONE map, told apart by `isColumn`, keyed by the option's code:
   `"questionnaires": {"Kolonka_1": {"questionnaireDto": {"label":"Колонка 1","isColumn":true,"orderIndex":0,"code":"Kolonka_1"}, "newId":"<16 chars>"}, "Stroka_1": {…"isColumn":false…}}`
 - `PROGRESS_BAR` — `"progressSteps"` is keyed by the step's own **id**, not by its code:
@@ -405,6 +463,11 @@ re-capitalise the first letter if the original was uppercase; latin letters and 
 х h   ц c   ч ch  ш sh  щ sch ъ —   ы y   ь —   э e   ю yu  я ya
 ```
 
+**Transliterate the WHOLE label, every word of it.** The code is not the first word and not an
+abbreviation: «Тема обращения» → `Tema_obrascheniya`, «Дата подачи заявления» → `Data_podachi_zayavleniya`,
+«ФИО заявителя» → `FIO_zayavitelya`. The only thing that may shorten a code is the 30-character cut, and
+it cuts from the right.
+
 **`й` is `yi`, not `y`** `[C]` (2026-09-18, corrected after a generated archive collided with the
 stand's own codes): «Текстовый блок» → `Tekstovyyi_blok`, «Загрузка файла» → `Zagruzka_fayila`,
 «Единичный выбор» → `Edinichnyyi_vybor`, «Текст статический» → `Tekst_staticheskiyi`.
@@ -419,7 +482,8 @@ read the codes off a fresh export instead of transliterating (§3).
 ### 0.7 Ids
 
 Every `oldId` / `newId` is a **16-character** string over the alphabet
-`A-Z a-z 0-9 @ ~` (e.g. `WbX5Wa8gcabbVbF1`, `3H84o9iM@G4jaOL3`, `Q0zI~z9Ra2R7Q3yd`).
+`A-Z a-z 0-9 @ ~` (e.g. `WbX5Wa8gcabbVbF1`, `3H84o9iM@G4jaOL3`, `Q0zI~z9Ra2R7Q3yd`). **Those three are
+<company-a>'s — they show the shape, they are not values to copy** (0.2a).
 
 - **Derive them deterministically from a seed** — e.g. take sha256 of `"bo." + <code>` and map the first
   16 bytes onto the alphabet. Reason: the stand keeps the archive's `oldId` as the BO's REAL id, so a
@@ -453,7 +517,7 @@ All four are still the SAME two lines of 0.3 + 0.4; only `category` and a few ke
 |---|---|---|
 | Бизнес-объект | `BO` | nothing — the template as is |
 | Справочник | `BO_DICTIONARY` | `"dictionaryFields": ["CODE","LABEL"]`, and `dynamicFields` **starts** with the two system fields below; extra fields may follow |
-| Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ |
+| Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
 | Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code, read off the stand**; every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
 | Бизнес-процесс | `BO_PROCESS` | a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself |
 
@@ -467,6 +531,20 @@ A dictionary's two system fields — the template of 0.5 with these values, at `
 
 Dictionary row codes are **case-sensitive** (`MRP` ≠ `mrp`).
 
+**A process and the `PROCESS_STATUS` id.** The importer does not create the status field, so the archive
+must ship it (§5c) — but that field is a `type: "BO"` reference to the stand's «Статус процесса»
+dictionary and needs its `oldRefBoId`, which 0.2a forbids inventing. The two rules do not collide; they
+resolve like this:
+
+- the id was supplied → ship `PROCESS_STATUS` exactly as §5c prints it;
+- the id was NOT supplied → **ship the process WITHOUT `PROCESS_STATUS`** and say so in one line. The
+  archive imports and the process works as a diagram `[C]` (every probe was built that way); the status
+  field is then added in the constructor, or the id is read off the stand with `load-bo-dictionary-list`
+  (0.2a) and the archive re-shipped.
+- **Never substitute a local dropdown «Статус» for it** — that is an ordinary field with a similar name,
+  nothing on the stand treats it as the process status, and the archive looks complete while it is not.
+  And never paste <company-a>'s `Q0zI~z9Ra2R7Q3yd`.
+
 ### 0.10 Hard rules — violating any one of these breaks the import
 
 1. **One** `BoGroupStructDto`, its `name` copied verbatim from a group that exists on the stand.
@@ -475,7 +553,9 @@ Dictionary row codes are **case-sensitive** (`MRP` ≠ `mrp`).
 4. Every line carries its `"@class"` with the full package
    `kz.greetgo.mybpm.reg.structure.model.dto.<DtoName>`.
 5. `dynamicFields` is an object keyed by field code, and the key equals the field's `code`.
-6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand.
+6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
+   only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
+   `BO_COMPOSITE`, which has no form (0.9, §5b).
 7. Codes ≤ 30 characters, latin, from the table in 0.6.
 8. Ids are 16 chars over `A-Za-z0-9@~`, deterministic, and the three equalities of 0.7 hold.
 9. `isRequired` + `isReadonly` both true = an unsaveable record.
@@ -499,8 +579,16 @@ Dictionary row codes are **case-sensitive** (`MRP` ≠ `mrp`).
 - [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
       `code`; no widget or native type hides in `dynamicFields`.
 - [ ] The `y` of each field == previous `y` + previous `rows`.
+- [ ] `tableColOrderIndex` runs 0, 1, 2… down `dynamicFields` — not `0` on every field (0.5).
+- [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
+      `fieldOption`, its `label` a plain string (0.5).
+- [ ] Every code is the WHOLE label transliterated, not its first word (0.6).
 - [ ] The group name exists on the target stand — confirmed by the user, not assumed (0.2a).
-- [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand (0.2a).
+- [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
+      an EARLIER line of this same archive (0.2a).
+- [ ] No id literal was copied out of this document — the sample's ids are <company-a>'s (0.2a).
+- [ ] Nothing was quietly built INSTEAD of what was asked: no panel turned into a set of plain BOs, no
+      `PROCESS_STATUS` faked as a local dropdown (0.2a, 0.9).
 
 ### 0.12 Building and delivering
 
@@ -537,6 +625,10 @@ bun tools/make-probe-archive.bun.ts --code Proba_vseh_tipov --name "Проба �
 `CHECKLIST`, steps for `PROGRESS_BAR`, tabs for `TAB_GROUP`, the HTML itself for `STATIC_TEXT`, and
 «колонки, then rows prefixed with `^`» for `QUESTIONNAIRE`. `!multiple` / `!camera` are the
 `FILE_UPLOAD` settings. `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`.
+
+`I1fVTkYPTSg7X8b8` and `@feclOAWUnwXFQ8c` in that command are **ids ON THE <company-a> STAND** — `Person` and
+one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
+archive aimed at another stand (0.2a).
 
 If you must build the zip yourself and have no zip library, STORED entries are enough; in Python:
 
