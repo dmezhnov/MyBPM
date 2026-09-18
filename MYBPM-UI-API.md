@@ -863,6 +863,21 @@ that is the platform itself. It was run over all 13 archives the §0 eval genera
 - WARNs of `tools/validate-archive.bun.ts` are confirmed to be style only: every 0-FATAL/0-ERROR archive
   analysed clean whatever its WARN count (case05b had 8).
 
+**Follow-up probe — «а если положить эти БО в тот же архив?»** `[C]` (2026-09-18). Yes, and it is the
+right way to ship a composite: case07's `BO_COMPOSITE` plus two plain BOs with the codes it names
+(`Klienty`, `Postavshchiki`) in ONE archive analyses `ANALYZED`, 0 errors — `load-import-bo-infos` lists
+all three. Line order is irrelevant (the composite placed BEFORE its sources analyses the same).
+Archives: `tools/out/probe-co-inarchive-2026-09-18.mybpm.zip`, `…/probe-co-order-…`.
+
+The first version of that probe found a **new failure mode**: the sources were in the archive but their
+field codes (`Familiya`/`Imya`/`Telefon`) did not cover what the composite's `boFieldCodes` asked for
+(`Naimenovanie`/`Telefon`/`Email`), and the import came back **`status:"INTERNAL_ERROR"`** with a Java
+stack trace in `load-import-data.error` — `Optional.orElseThrow` in
+`StructureImportAnalyzer.fieldCodeToId` ← `analyzeFieldStructs` ← `analyzeCoStruct`. So a missing FIELD
+code crashes the analyzer, while a missing BO code is reported politely as `CO_UNSATISFIED_DEPENDENCY`.
+`INTERNAL_ERROR` from an import is therefore worth reading as «a reference inside the archive does not
+resolve», not «the stand is broken». Details in `MYBPM-IMPORTS.md`, the `bos[]` bullet.
+
 **How the run was driven, without ever handing a token to the shell.** The extension refuses to return
 `localStorage.LOCAL_PRIVATE_SwebToken` (§10), but a `fetch` INSIDE the page may read it. The archives
 were served to the page over plain HTTP from the machine —
