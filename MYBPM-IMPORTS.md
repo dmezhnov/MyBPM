@@ -138,9 +138,17 @@ the table's last row applies only when the target is NOT in this archive.
 the mirror image of the panel, and it has been got wrong the same way: `bos: [{code, name, boCategory}]`
 carries **no id at all**, the importer looks the sources up on the stand BY CODE, so «Клиенты и
 Поставщики are not on my list of stand ids» is not a reason to degrade anything — there was no id to ask
-for. Ask for the source **codes** (they are cut to 30 chars on the stand and are not always what you
-would transliterate, §5b); if the user declines, ship the composite with your own transliterated codes
-and say in one line that each `bos[].code` must be checked against the stand. A wrong code is the one
+for.
+
+**Decide first WHERE the sources are.** If you are building them yourself — the usual case for a generic
+task like «клиенты и поставщики в одном списке» — **put the source BOs into the SAME archive** and there
+is nothing to ask at all: the importer resolves `bos[].code` against the lines of the archive just as
+happily as against the stand `[C]` (2026-09-18, dry run on <company-a>; the order of the lines does not
+matter — the composite may come before its sources). A self-contained composite archive is the answer,
+not a degrade. Only when the sources ALREADY live on the stand do you need their codes: ask for them
+(they are cut to 30 chars on the stand and are not always what you would transliterate, §5b); if the
+user declines, ship the composite with your own transliterated codes and say in one line that each
+`bos[].code` must be checked against the stand. A wrong code is the one
 case that is NOT silent: the analysis says «В Составном объекте не достаёт БО», the user sees it and
 drops the import. Building a `BO` instead of the `BO_COMPOSITE` that was asked for, on the other hand,
 is silent AND merges by code into whatever it hits.
@@ -561,7 +569,7 @@ All four are still the SAME two lines of 0.3 + 0.4; only `category` and a few ke
 | Бизнес-объект | `BO` | nothing — the template as is |
 | Справочник | `BO_DICTIONARY` | the value of `dictionaryFields` **changes** to `["CODE","LABEL"]` (the key itself is on every BO, see below), and `dynamicFields` **starts** with the two system fields below; extra fields may follow |
 | Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
-| Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code, read off the stand — no id exists here, so this kind is never degraded to a plain `BO`** (0.2a); every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
+| Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code — no id exists here, so this kind is never degraded to a plain `BO`** (0.2a). The code is resolved against the lines of THIS archive first and otherwise on the stand, so the sources may travel in the same archive, in any order (§5b). Every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) — **every `fieldCode` must exist in that source BO or the import dies with `INTERNAL_ERROR`** (§5b) — and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
 | Бизнес-процесс | `BO_PROCESS` | a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself |
 
 **`dictionaryFields` is a key of EVERY BO, not a dictionary-only key.** The template of 0.4 already
@@ -643,6 +651,9 @@ resolve like this:
 - [ ] The group name exists on the target stand — confirmed by the user, not assumed (0.2a).
 - [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
       an EARLIER line of this same archive (0.2a).
+- [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
+      gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
+      a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
 - [ ] No id literal was copied out of this document — the sample's ids are <company-a>'s (0.2a).
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.10 rule 12).
 - [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
@@ -984,8 +995,18 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
 `AccessStructDto`.
 
 - **`bos: [{code, name, boCategory}]`** — the source BOs, referenced **by CODE only**, no id and no
-  nested DTO. They are not carried in the archive: the importer looks them up **on the stand, by code**
-  `[C]` (2026-09-18, both import routes) and writes the real `boId`s into the live `links`.
+  nested DTO. The importer looks them up **by code — first among the lines of the archive itself, and
+  otherwise on the stand** `[C]` (2026-09-18, both import routes; the in-archive case proved by a dry run
+  on <company-a>) — and writes the real `boId`s into the live `links`. So a composite and the BOs it joins
+  can travel in ONE archive, in any line order (composite first also analyses clean).
+- **A `boFieldCodes.fieldCode` that no source BO has CRASHES the analyzer** `[C]` (2026-09-18). Not a
+  readable error — the import goes `status: "INTERNAL_ERROR"` and `load-import-data.error` carries a Java
+  stack trace: `Optional.orElseThrow` in `StructureImportAnalyzer.fieldCodeToId` ← `analyzeFieldStructs`
+  ← `analyzeCoStruct`. Found by feeding a composite that wanted `Naimenovanie` / `Telefon` / `Email` two
+  in-archive sources whose fields were `Familiya` / `Imya` / `Telefon`; with the codes made to match, the
+  same archive analysed `ANALYZED`, 0 errors. **Every `fieldCode` of every `boFieldCodes` entry must
+  exist in that source BO** — check it before shipping, the platform will not tell you which one is
+  missing. Presumably the same crash when the source is on the stand and the code is wrong `[I]`.
   - **`name` is not used for matching** — only `code` is. A code that matches nothing makes the analysis
     fail with **«В Составном объекте не достаёт БО»** in the «Ошибки» tab, and **ПРИМЕНИТЬ is not
     blocked by it**; drop the import instead of applying a composite with a missing source.
