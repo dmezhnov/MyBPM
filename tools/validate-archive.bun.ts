@@ -332,11 +332,13 @@ for (const bo of bos) {
     idx++;
   }
 
-  // STATIC_TEXT heading must not repeat a field label (§0.5)
+  // STATIC_TEXT heading must not repeat ANOTHER field's label (§0.5, §0.10 rule 12).
+  // Its OWN label normally equals the heading — that is what a real export looks like, not a defect.
   for (const [, f] of entries) {
     if (f.type === "STATIC_TEXT") {
       const text = String(f.staticValue?.rus ?? "").replace(/<[^>]*>/g, "").trim();
-      if (text && labels.has(text)) add("WARN", "0.5", `${tag}: STATIC_TEXT heading "${text}" repeats a field label — breaks Excel import`);
+      const clash = entries.some(([, g]) => g !== f && String(g.label?.rus ?? "").trim() === text);
+      if (text && clash) add("WARN", "0.5", `${tag}: STATIC_TEXT heading "${text}" repeats ANOTHER field's label — breaks Excel import`);
     }
   }
 

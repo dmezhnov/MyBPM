@@ -161,6 +161,14 @@ BO in the same archive **only when the user explicitly asked for that BO to be c
 - **and do not ship both** — a panel plus three freshly invented registries is the same substitution with
   the panel added on top.
 
+**0.2a covers those three inputs and NOTHING else.** It is not a general licence to replace whatever you
+feel unsure about with something simpler. Everything else in this document is buildable from the document
+alone: tabs (`TAB_GROUP`), a progress scale (`PROGRESS_BAR`), a questionnaire, a local dropdown, a
+multi-file upload need no stand data at all — building section headings «instead of» tabs because
+«the tab structure was not supplied» is the same substitution as the panel and the composite above, and
+it is the third time it has happened. If the document tells you how to build the thing asked for, build
+it; 0.2a applies only when a **stand id or a stand code** is what is missing.
+
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
 reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
 shipped unless the user asked for one (§0.10 rule 10 — it wipes `orgUnitIds`).
@@ -303,8 +311,17 @@ everything after it on that line — the shipped line must be pure minified JSON
 **`tableColOrderIndex` is a counter, not a constant.** The literal `0` in the template belongs to the
 FIRST field only: the second field carries `1`, the third `2`, and so on, in the order the entries sit in
 `dynamicFields` — that order is the registry's column order. Leaving `0` on every field leaves the column
-order undefined. The counter runs over `dynamicFields` alone; system fields (0.5a) and widgets (0.5b) do
-not carry the key and do not advance it.
+order undefined. The counter runs over **every entry of `dynamicFields`, with no exceptions**; the things
+that do not carry the key and do not advance it live in OTHER maps — the system fields of 0.5a
+(`nativeFields`) and the six widget maps of 0.5b.
+
+**«Widget» in this document means ONLY a member of the six maps of 0.5b** — `SIGNATURE`, `BUTTON`,
+`IFRAME`, `CAPTCHA`, `CURRENT_DATE`, `CURRENT_USER`. The palette's «Виджеты» section is a different
+thing and is not a guide to the archive: `TAB_GROUP` and `PROGRESS_BAR` stand there, and they are
+ORDINARY `dynamicFields` entries. So `STATIC_TEXT`, `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`,
+`FILE_UPLOAD`, `CHECKLIST`, `GEO_POINT` all sit in `dynamicFields`, all carry the full template of this
+section, and all take their turn in the `tableColOrderIndex` counter. Anything in `dynamicFields`
+without the key is rule 6 of 0.10 — the key is not optional for «non-input» fields.
 
 **To make a field required or unique, write `true` in `isRequired` / `isUnique`. To turn something off,
 write `false` — never delete the key** (§8: a dropped key keeps the stand's old value).
@@ -628,11 +645,14 @@ resolve like this:
       an EARLIER line of this same archive (0.2a).
 - [ ] No id literal was copied out of this document — the sample's ids are <company-a>'s (0.2a).
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.10 rule 12).
+- [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
+      `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`, `FILE_UPLOAD` (0.5; only a `BO_COMPOSITE` is exempt).
 - [ ] `dictionaryFields` is present on EVERY BO line — `[]` everywhere, `["CODE","LABEL"]` on a
       dictionary (0.9).
 - [ ] Nothing was quietly built INSTEAD of what was asked: no panel turned into a set of plain BOs, no
       составной объект turned into a plain BO because «the ids are unknown» (it takes codes, 0.2a), no
-      `PROCESS_STATUS` faked as a local dropdown (0.2a, 0.9).
+      `TAB_GROUP` replaced by `STATIC_TEXT` headings, no `PROCESS_STATUS` faked as a local dropdown
+      (0.2a, 0.9). Only a missing stand id or stand code ever justifies a degrade.
 
 ### 0.12 Building and delivering
 
