@@ -1792,6 +1792,29 @@ itself makes. An empty BO never errors (ES has nothing to sort), which is why ev
 green: `ATyioDPdsxhmVDBO` (the archive twin of the field-settings probe) is «green» only because it holds
 no records.
 
+**COUNTER-EXAMPLE — the rule above is TOO BROAD** `[C]` (2026-09-19, the user's own repro): «Бизнес
+объект №6977», built by hand in the constructor that same day with one «Текстовое поле» and one record,
+shows its row normally — «1 из 1», no toasts. So **«every BO created by this version» is wrong as stated**.
+
+The one difference between it and all four failing cases is the VALUE in the sorted text field:
+
+| case | value in the failing/sorted text field | result |
+|---|---|---|
+| «Канбан из архива 2026-09-19» | «Карточка из архива» | `EsException` |
+| «Проба настройки полей 2026-09-18» | «A-100» (field «Табельный номер») | `EsException` |
+| «Проба UI 2026-09-18» | «Запись UI-БО 2026-09-19» | `EsException` |
+| «Бизнес объект №6977» (user) | **`111`** | **OK** |
+
+**Leading hypothesis `[I]`, NOT yet tested**: the mapping of `fields.INPUT_TEXT#<id>.sortValue` is
+inferred DYNAMICALLY from the first document indexed — a digits-only value lands in a numeric (sortable)
+mapping, anything with letters lands in `text` and is unsortable. That would also mean the trigger is the
+first record's CONTENT, not the creation route and not the age of the BO. It does not yet explain why the
+long-standing BOs sort real text fine (an older index template with an explicit `keyword`? their index
+version is unknown — only failing calls reveal an index name, and theirs never fail).
+
+**The test that settles it** (two fresh BOs, one `INPUT_TEXT` field each, one record each): first value
+`111` in one, first value `привет` in the other. If only the second breaks, the rule is about the value.
+
 **What it looks like on screen** `[C]` (registry of `OpmGDzaQRUT27jky`, 2026-09-19): the table draws its
 headers and then only «Загрузить ещё» — no rows — while the counter top-right still says «из 1», and two
 red toasts «Ошибка / ErrorResponse: {"error":{"phase":"query","failed_shards"… fields are not optimised
@@ -2082,13 +2105,15 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     export anyway, you silently get whatever the basket held from the previous session. §5.
 42. **A «Чек лист» loses its items in an archive** `[C]` (2026-09-18) — the export writes no
     `fieldOptionsStruct` for `CHECKLIST` and the import brings none. §5i.
-43. **Any BO created on this stand today cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>)
-    — the Elasticsearch mapping of a new index makes `INPUT_TEXT#<id>.sortValue` a `text` field, so every
-    call that leaves `ordering: null` (which is what the stand's own client sends) answers `EsException`
-    «Text fields are not optimised …». It hits the registry AND the kanban, and it hits **all three
-    creation routes alike — archive, constructor API and constructor UI** — while no old BO on the stand
-    has it. Send an explicit `ordering`. Do NOT spend another session looking for it in the archive
-    format, in the constructor or in the kanban — §7.
+43. **A newly created BO often cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>) — the
+    Elasticsearch mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so every call that leaves
+    `ordering: null` (which is what the stand's own client sends) answers `EsException` «Text fields are
+    not optimised …». It hits the registry AND the kanban, and it hits **all three creation routes alike
+    — archive, constructor API and constructor UI**, while no long-standing BO on the stand has it.
+    **But it is NOT every new BO**: a user-built probe of the same day whose only record held `111`
+    sorts fine, so the trigger is narrower than «new BO» — see the counter-example table and the
+    first-value hypothesis in §7. Send an explicit `ordering`. Do NOT look for the cause in the archive
+    format, in the constructor or in the kanban — all three behave identically.
 44. **The record controller is `v2/business-object-instance`, not the `v1/…` the bundle shows** `[C]`
     (2026-09-19) — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a Spring
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
