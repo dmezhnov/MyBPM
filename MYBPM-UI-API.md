@@ -1799,8 +1799,10 @@ for operations that require per-document field data…» pile up in the corner w
 in the UI hints at sorting, which is why this reads as «канбан/реестр сломан» rather than «ES mapping».
 
 **Reproducing it by hand, no API** (≈2 minutes): `/business-objects/editing` → hover a BO-group row →
-⋮ → «Добавить бизнес-объект» → name it → drag **«Текст»** from the palette onto the canvas, label it →
-**СОХРАНИТЬ**. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group → click the BO
+⋮ → «Добавить бизнес-объект» → name it → drag **«Текстовое поле»** (`INPUT_TEXT`) from the palette onto
+the canvas, label it → **СОХРАНИТЬ**. **Not «Текст»** — that one is `STATIC_TEXT`, a static HTML section
+heading that stores no value, and **not «Текстовый блок»** (`TEXTAREA`, untested here); the ES error
+names `INPUT_TEXT` explicitly. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group → click the BO
 → its registry → **«Добавить»** → fill the text field → save. The registry comes back empty with the
 toasts above. **Before that first record the same screen is clean** — ES has nothing to sort — so a
 0-record BO never shows it. There is no workaround inside the UI: the only columns are the BO's own text
