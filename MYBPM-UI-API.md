@@ -1669,6 +1669,38 @@ Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`) and `export
 {exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` is how an export gets the
 `ID` column that makes a re-import idempotent (§«Merge / idempotency»).
 
+### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+
+The old blocker «the «Добавить» button reacts to no synthetic click, and the record API is draft-based
+and was never reverse-engineered» is closed. Controller **`v2/business-object-instance`** (the client's
+own `v1/...` prefix is a 404 on the live stand — the same trap as `ensure-index`), four calls:
+
+| # | call | params | body |
+|---|---|---|---|
+| 1 | `create-draft` | `{}` | `{}` → a bare `"<draftId>"` string |
+| 2 | `v2/create-boi` | `{draftId, boId}` | `{}` → a bare `"<boiId>"` string |
+| 3 | `v2/save-boi-value` | `{}` | the DTO below → `[]` |
+| 4 | `apply-and-remove-draft` | `{draftId, boProcessId:null, isAutoSave:false}` | `{}` → empty 200 |
+
+The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, isDev)` +
+`addValue(fieldId, value, saveType)`):
+
+```json
+{"draftId":…, "boId":…, "boInstanceId":…, "newIsDev":false, "setNewIsDev":false,
+ "values":[{"fieldId":…, "value":"…", "saveType":null}]}
+```
+
+- `addValueId(fieldId, valueId)` is the reference/dropdown variant: `value:""` plus `valueId`.
+- Related in the same controller: `copy-bo-instance {boId,boiId}`, `delete-bo-instance
+  {businessObjectId, boInstanceIds}`, `archive-bo-instance`, `restore-bo-instance`,
+  `is-field-value-unique {boId,boiId,fieldId,value}`, `load-boi-id-by-unique-field
+  {boId,fieldCode,fieldValue}` (body, not params), `v2/load-boi-values`.
+- The *form* controllers are a different, mobile-ish family and were the wrong door:
+  `v2/instance-form-create-draft/create-draft` demands a `boiId` (it is the EDIT draft),
+  `…/create-draft-with-boi` wants a real minted `draftId` and a `BoiState`
+  (`ALL|ARCHIVED|REMOVED|OFFLINE|DEV`), and `v2/instance-form/validate-apply-remove-draft` is its apply.
+  Use the four calls above instead.
+
 ### Files and templates
 
 - A registry export is named `<BO name>+YYYY-MM-DD+HH_MM+(ALMT).xlsx` (spaces become `+`) and doubles as
@@ -1746,11 +1778,19 @@ Please use a keyword field instead. … set fielddata=true on
 
 The test above was run and it answers the question: **a BO built in the CONSTRUCTOR fails identically.**
 
-- `yxTzPaWhONPNxk5j` «Проба настройки полей 2026-09-18» was created through the constructor API (§5h) and
-  holds one record. `load-bo-instance-bracket-table` with `ordering: null` dies with the same
-  `EsException` / «Text fields are not optimised …» on index `v1_3_boi18_cb14f33da5a138d3cdc64e63`; with
-  an explicit `ordering` it returns its record. The imported kanban BO `fsV2MG@eJqXHw90r` behaves exactly
-  the same on its own index `v1_3_boi18_7ec576306f9e26a5c7c3dd2b`.
+**All THREE creation routes are equally broken** — the route a BO was born by makes no difference:
+
+| BO | born by | index | `ordering: null` | explicit `DYNAMIC` text sort | explicit `CREATED_AT` |
+|---|---|---|---|---|---|
+| `fsV2MG@eJqXHw90r` «Канбан из архива 2026-09-19» | **archive** | `v1_3_boi18_7ec576306f9e26a5c7c3dd2b` | `EsException` | — | OK, 1 |
+| `yxTzPaWhONPNxk5j` «Проба настройки полей 2026-09-18» | **constructor API** (§5h) | `v1_3_boi18_cb14f33da5a138d3cdc64e63` | `EsException` | `EsException` | OK, 1 |
+| `OpmGDzaQRUT27jky` «Проба UI 2026-09-18» | **constructor UI**, by hand (§5b) | `v1_3_boi18_3a99860f36904544f6ee3932` | `EsException` | `EsException` | OK, 1 |
+
+The UI row was the user's own question («а если через UI?») and it needed a record, which the BO did not
+have — it was created through the record API of §6a below, i.e. through exactly the calls the UI form
+itself makes. An empty BO never errors (ES has nothing to sort), which is why every 0-record probe looks
+green: `ATyioDPdsxhmVDBO` (the archive twin of the field-settings probe) is «green» only because it holds
+no records.
 - **The whole tenant was swept**: all 145 BOs/dictionaries of <COMPANY_A> were called with `ordering: null`.
   95 of them hold records; **not one long-standing BO fails**. The only two failures are our two probes
   that have a record — one imported, one built in the constructor. (Three more probes answer
@@ -1758,6 +1798,8 @@ The test above was run and it answers the question: **a BO built in the CONSTRUC
 - It is not the *default* sort either, it is the text field itself: an **explicit**
   `ordering {archetype:"DYNAMIC", fieldId:<an INPUT_TEXT field>, state:"ASC"}` returns rows on the old
   BOs («Пользователи» 122, «Журнал» 12) and raises the same ES error on the new one.
+- The record-creation route is not a factor either: the UI probe's record was written by the client's own
+  draft cycle, and it lands in the same broken mapping.
 - So the suspect is the **Elasticsearch mapping of every index created by this platform version**:
   `fields.INPUT_TEXT#<fieldId>.sortValue` comes out `text` (no `keyword` sub-field, no `fielddata`),
   while the indexes of the older BOs sort happily. The archive, the constructor and the kanban have
@@ -2025,9 +2067,14 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 43. **Any BO created on this stand today cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>)
     — the Elasticsearch mapping of a new index makes `INPUT_TEXT#<id>.sortValue` a `text` field, so every
     call that leaves `ordering: null` (which is what the stand's own client sends) answers `EsException`
-    «Text fields are not optimised …». It hits the registry AND the kanban, it hits the constructor route
-    exactly as hard as the archive route, and no old BO on the stand has it. Send an explicit `ordering`.
-    Do NOT spend another session looking for it in the archive format or in the kanban — §7.
+    «Text fields are not optimised …». It hits the registry AND the kanban, and it hits **all three
+    creation routes alike — archive, constructor API and constructor UI** — while no old BO on the stand
+    has it. Send an explicit `ordering`. Do NOT spend another session looking for it in the archive
+    format, in the constructor or in the kanban — §7.
+44. **The record controller is `v2/business-object-instance`, not the `v1/…` the bundle shows** `[C]`
+    (2026-09-19) — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a Spring
+    `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
+    `ensure-index`. Whenever a bundle-read controller 404s, retry the same path under `v2`. §6a.
 
 ## 12. Open questions
 
@@ -2048,8 +2095,10 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   nobody has opened either (old question 20).
 
 - **The ES mapping defect of §7**: whether it is every newly created INDEX or every newly created FIELD
-  (the test is in §7 — a fresh `INPUT_TEXT` field on a long-standing BO), and whether the platform vendor
-  confirms it as a backend regression. Nothing on the client side can repair it.
+  (the test is in §7 — a fresh `INPUT_TEXT` field on a long-standing BO, now doable end to end since §6a
+  can write the record; it needs the user's permission because it writes into a BO that is not ours), and
+  whether the platform vendor confirms it as a backend regression. Nothing on the client side repairs it.
+  The creation ROUTE is no longer a candidate — archive, constructor API and constructor UI all fail.
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — 2026-09-18, see trap 42.
 - What `save-button-field-ids` / a signature's `fieldCodes`, `printFormCodes` actually bind (the button's
