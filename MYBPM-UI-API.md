@@ -1822,10 +1822,18 @@ in the UI hints at sorting, which is why this reads as «канбан/реест
 ⋮ → «Добавить бизнес-объект» → name it → drag **«Текстовое поле»** (`INPUT_TEXT`) from the palette onto
 the canvas, label it → **СОХРАНИТЬ**. **Not «Текст»** — that one is `STATIC_TEXT`, a static HTML section
 heading that stores no value, and **not «Текстовый блок»** (`TEXTAREA`, untested here); the ES error
-names `INPUT_TEXT` explicitly. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group → click the BO
-→ its registry → **«Добавить»** → fill the text field → save. The registry comes back empty with the
-toasts above. **Before that first record the same screen is clean** — ES has nothing to sort — so a
-0-record BO never shows it. There is no workaround inside the UI: the only columns are the BO's own text
+names `INPUT_TEXT` explicitly. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group
+→ click the BO → its registry → **«Добавить»** → fill the text field → save.
+
+**The step everyone misses — it is the SECOND visit that fails** `[C]` (2026-09-19, the user's own words:
+«Когда создаешь БО а затем её инстанцию, ошибки нет. Но если затем второй раз переходишь в этот же
+регистр, то появляются ошибки»). Right after saving, the registry shows the new row and «1 из 1» and
+looks perfectly healthy. **Leave the screen and open the registry again (or F5)** — only then the table
+comes back empty with the toasts. Both of us drew wrong conclusions from that first screen before
+noticing it. `[I]` on the mechanism: most likely the BO's ES index does not exist yet at the first visit
+(nothing to sort, nothing to fail), and the broken mapping is created when the first record is indexed.
+**Before that first record the same screen is clean** — ES has nothing to sort — so a 0-record BO never
+shows it. There is no workaround inside the UI: the only columns are the BO's own text
 fields, and sorting by one of those is exactly what fails (an explicit `CREATED_AT` ordering, which does
 work, is not reachable from the screen; `save-bo-table-sort` to `CREATED_AT` does not change the default
 sort either).
@@ -2110,8 +2118,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     it. Send an explicit `ordering`. Do NOT look for the cause in the archive format, in the constructor,
     in the kanban, or in the VALUE stored (digits and letters fail alike) — §7.
 45. **A registry screen seen right after saving the first record proves nothing** `[C]` (2026-09-19) —
-    it shows the just-saved row and «1 из 1» even when re-opening the same screen fails with four error
-    toasts. Re-open or F5 before calling a BO healthy. This cost a full round of wrong conclusions.
+    it shows the just-saved row and «1 из 1»; the SECOND visit to the same registry is the one that fails
+    with the error toasts (confirmed independently by the user). Re-open or F5 before calling a BO
+    healthy. This cost a full round of wrong conclusions on both sides. §7.
 44. **The record controller is `v2/business-object-instance`, not the `v1/…` the bundle shows** `[C]`
     (2026-09-19) — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a Spring
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
