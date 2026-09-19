@@ -1792,28 +1792,25 @@ itself makes. An empty BO never errors (ES has nothing to sort), which is why ev
 green: `ATyioDPdsxhmVDBO` (the archive twin of the field-settings probe) is «green» only because it holds
 no records.
 
-**COUNTER-EXAMPLE — the rule above is TOO BROAD** `[C]` (2026-09-19, the user's own repro): «Бизнес
-объект №6977», built by hand in the constructor that same day with one «Текстовое поле» and one record,
-shows its row normally — «1 из 1», no toasts. So **«every BO created by this version» is wrong as stated**.
+**The 2026-09-19 counter-example, and why it was not one** `[C]`. The user built «Бизнес объект №6977»
+(record `111`) and «Бизнес объект №6978» (record `привет`) by hand in the constructor and both registries
+showed their row, «1 из 1», no errors — which looked like a refutation, and first suggested that the value
+decided the mapping (digits sortable, letters not). **Both readings are wrong.** Reopened later, №6978
+(`4pMYDZFS5gN57xai`, index `v1_3_boi18_e293180d9152e60379ef16a2`) fails exactly like every other new BO —
+verified three ways: the direct `/business-objects/viewing-list/bo/<boId>/list-view` URL, the same screen
+reached by CLICKING through Бизнес → group → BO (identical URL, four error toasts), and the API with the
+body the client itself sends. So the value hypothesis is dead and the route hypothesis stays dead.
 
-The one difference between it and all four failing cases is the VALUE in the sorted text field:
+**A screen that renders right after the record was saved is not evidence** `[I]` — the freshly created row
+is on screen while the failing query is not what put it there. Re-open the registry (or F5) before
+concluding that a BO is healthy.
 
-| case | value in the failing/sorted text field | result |
-|---|---|---|
-| «Канбан из архива 2026-09-19» | «Карточка из архива» | `EsException` |
-| «Проба настройки полей 2026-09-18» | «A-100» (field «Табельный номер») | `EsException` |
-| «Проба UI 2026-09-18» | «Запись UI-БО 2026-09-19» | `EsException` |
-| «Бизнес объект №6977» (user) | **`111`** | **OK** |
-
-**Leading hypothesis `[I]`, NOT yet tested**: the mapping of `fields.INPUT_TEXT#<id>.sortValue` is
-inferred DYNAMICALLY from the first document indexed — a digits-only value lands in a numeric (sortable)
-mapping, anything with letters lands in `text` and is unsortable. That would also mean the trigger is the
-first record's CONTENT, not the creation route and not the age of the BO. It does not yet explain why the
-long-standing BOs sort real text fine (an older index template with an explicit `keyword`? their index
-version is unknown — only failing calls reveal an index name, and theirs never fail).
-
-**The test that settles it** (two fresh BOs, one `INPUT_TEXT` field each, one record each): first value
-`111` in one, first value `привет` in the other. If only the second breaks, the rule is about the value.
+**The exact body the registry sends** `[C]` (XHR patch on the live page — the Angular client uses XHR,
+trap 30): `paging` is **`{limit:20, offset:0}`**, not `{page,size}`, and `ordering` is
+**`{archetype:null, fieldId:null, state:"UNSET"}`**, not `null`. Both shapes fail identically on a new BO
+and both succeed on an old one, so nothing above depends on which was used; the client's own shape is the
+one to reproduce. On failure the client keeps paging (`offset` 20, 40, 60…) and each page raises its own
+toast — that is why the errors arrive in threes and fours.
 
 **What it looks like on screen** `[C]` (registry of `OpmGDzaQRUT27jky`, 2026-09-19): the table draws its
 headers and then only «Загрузить ещё» — no rows — while the counter top-right still says «из 1», and two
@@ -2105,15 +2102,16 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     export anyway, you silently get whatever the basket held from the previous session. §5.
 42. **A «Чек лист» loses its items in an archive** `[C]` (2026-09-18) — the export writes no
     `fieldOptionsStruct` for `CHECKLIST` and the import brings none. §5i.
-43. **A newly created BO often cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>) — the
-    Elasticsearch mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so every call that leaves
-    `ordering: null` (which is what the stand's own client sends) answers `EsException` «Text fields are
-    not optimised …». It hits the registry AND the kanban, and it hits **all three creation routes alike
-    — archive, constructor API and constructor UI**, while no long-standing BO on the stand has it.
-    **But it is NOT every new BO**: a user-built probe of the same day whose only record held `111`
-    sorts fine, so the trigger is narrower than «new BO» — see the counter-example table and the
-    first-value hypothesis in §7. Send an explicit `ordering`. Do NOT look for the cause in the archive
-    format, in the constructor or in the kanban — all three behave identically.
+43. **A newly created BO cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>) — the
+    Elasticsearch mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so the registry's own query
+    answers `EsException` «Text fields are not optimised …». It hits the registry AND the kanban, and it
+    hits **all four probes across all three creation routes — archive, constructor API, constructor UI**
+    (two of them built by the user himself), while none of the 95 record-holding long-standing BOs has
+    it. Send an explicit `ordering`. Do NOT look for the cause in the archive format, in the constructor,
+    in the kanban, or in the VALUE stored (digits and letters fail alike) — §7.
+45. **A registry screen seen right after saving the first record proves nothing** `[C]` (2026-09-19) —
+    it shows the just-saved row and «1 из 1» even when re-opening the same screen fails with four error
+    toasts. Re-open or F5 before calling a BO healthy. This cost a full round of wrong conclusions.
 44. **The record controller is `v2/business-object-instance`, not the `v1/…` the bundle shows** `[C]`
     (2026-09-19) — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a Spring
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
