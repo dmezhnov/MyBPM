@@ -16,6 +16,10 @@ Excel, export). Sections 1–12 are the evidence behind it and the material for 
 enough to drive a stand. Its counterparts for files are `MYBPM-IMPORTS.md` §0 (archives), §0S (Block
 IDE scripts) and §0X (records in xlsx) — the four cookbooks are independent, read the one you need.
 
+**The <company-a> tenant answers `companyCode: "<COMPANY_A>"`** `[C]` (2026-09-19, `GET /web/v2/auth/load-auth-info`
+→ `{companyId:"nNV9BhZPBdn6qtjk", companyCode:"<COMPANY_A>", …}`) — the same company everything below calls
+«<company-a>», with its 14 BO groups and the probe group «Бизнес-объект». Do not take it for a third stand.
+
 **Evidence base.** MyBPM v4.24: <company-a> stand <stand> `S4.24.25.632/C4.24.25.264` (BO constructor,
 structure import, 2026-09-18), <company-c> stand `4.24.25.614` (API, menus, rights, kanban, Excel links,
 2026-09-15/16) and <company-b> `4.24.25.570/.614` (Excel record import for Scoring, 2026-08-28 .. 09-04).
@@ -413,6 +417,34 @@ imported field/tab id equals the archive's `newId`. That is how a generated arch
 are stitched together. A BO created in the constructor gets a platform id instead — ids are 16 characters
 over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do not "clean" them.
 
+#### R4a — EXPORT a BO's structure through the API `[C]` (2026-09-19)
+
+The reverse of an import, and the only way to read the real serialization of something built by hand
+(that is how `kanbanCardTemplates` was finally decoded). Controller **`struct`** — a basket the stand
+keeps per user, then one download:
+
+| # | call | params / body | note |
+|---|---|---|---|
+| 1 | `struct/count-bo-export-records` | `{}` / `{}` | how many BOs are in the basket now |
+| 2 | `struct/load-bo-export-records` | `{offset,limit}` | the basket: `{boId, boName, boCategory, hasScript, isStructureExport, isAccessRightsExport, isScriptsExport}` |
+| 3 | `struct/save-bo-export-records` | **body** = an ARRAY of those records | adds to the basket |
+| 4 | `v2/process-indicator/pre-create-process` | `{}` | → processId |
+| 5 | `struct/export-company-structure` | params `{processId}`, body `{}` | the response body IS the `.mybpm.zip` |
+| 6 | `struct/remove-bo-export-records` / `struct/clear-export-records` | as 3 / `{}` | put the basket back as you found it |
+
+- **Read the basket first and restore it afterwards** — it is the user's own selection on the
+  «Импорт/Экспорт» screen, not scratch space.
+- `struct/save-bo-export-records` and `…/remove-bo-export-records` answered **HTTP 400 «Failed to read
+  request»** to a hand-built call whose body was byte-identical to the client's `[U]` — cause unknown.
+  The way round it is the UI: `/settings?settingsOpenPageUrl=import_export&formType=export`, the ⊕ next
+  to «Бизнес-объекты (N)» opens a checkbox popover (closing it saves), the row's delete icon removes one
+  (it opens a confirm whose buttons are `.confirm-button-block .ok-btn`). Steps 4–6 work over the API.
+- Getting the bytes OUT of the browser: fetch the zip inside the page and POST the `arrayBuffer` to a
+  local `Bun.serve` — the same 127.0.0.1 bridge the import dry run used (§5).
+- Also present but not needed for this: `v2/business-objects/export-structure` /
+  `export-structure-to-file` with `{settings: {type: "BO_STRUCTURE"|"COMPANY_STRUCTURE"|"ALL",
+  exportKindList}}`, and `struct/load-bo-dependencies` (what the «Зависимости» panel shows).
+
 #### R5 — Access rights on a BO
 
 Controller `v2/business-objects`. Do this AFTER an archive import, because an archive that carries access
@@ -553,7 +585,7 @@ dropped (trap 13).
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
 type, widget and system field** · §6 Excel records: the routes (the FILE FORMAT is
-`MYBPM-IMPORTS.md` Part III) · §7 kanban (broken) · §8 the HTML
+`MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown.
 
@@ -676,8 +708,8 @@ All verified on the <company-c> stand by building 5 menu groups + 36 items via t
 - `delete-menu-item {menuItemId}`; `load-nav-items {parentId}` → the children with their ids.
 - The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it (100000, 200000, …).
 - `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages`; the view order is the `*Index` values
-  (1-based). Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId` (§7 — kanban is
-  broken for imported BOs).
+  (1-based). Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId`. These switch the
+  COLUMNS on; the CARD lives on the BO and must come from the archive (§7).
 - Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"phosphor:<name>"}` (empty 200). **Valid
   names are exactly the 1048 `"phosphor:*"` strings in lazy chunk `956.*.js` — check against it**:
   `seal-check`, `ranking`, `toolbox`, `gavel` do NOT exist. Built-in items inside «Системные» use system
@@ -919,6 +951,8 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
   row there does NOT remove it. The trash icon asks «Удаление элемента — Удаление элемента `<имя БО>`»
   with ДА / НЕТ; ДА only drops it from the basket — **the BO itself is untouched** (verified: the BO was
   still in the constructor afterwards). The other per-row icon is a collapse chevron.
+- **The whole screen has an API** — basket + download, see §0U R4a. Only the two basket WRITES resisted a
+  hand-built call; everything else, «Выгрузить» included, is three plain calls.
 
 ### Checking the result of a structure import
 
@@ -1653,28 +1687,64 @@ SINGLE↔TABLE defect, merge/idempotency, the destructive unknowns and the impor
 `MYBPM-IMPORTS.md` **Part III** (§0X is a self-contained cookbook «build me a file for this BO», §19 the
 evidence). This document keeps the transport: the routes above, the registry kebab and the templates.
 
-## 7. Kanban — broken for imported BOs
+## 7. Kanban — SOLVED: the card template belongs in the archive `[C]` (2026-09-19, <stand>/<COMPANY_A>)
 
-Outcome: the user concluded «канбан сломан на платформе» and cancelled the feature. **Do not spend long on
-it again.**
+The old verdict «канбан сломан на платформе» was wrong. A kanban is two independent pieces, and the
+missing one was never the menu item:
 
-- Symptom: a menu item with kanban enabled (`boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`,
-  `kanbanFieldId`) → the kanban view errors with «cardTemplate is null».
-- Imported BOs carry `kanbanCardTemplates:{}`; a BO built by hand with a kanban has entries. A template
-  item looks like `{type:"KanbanCardFieldDynamic", coKanbanFieldId:null, kanbanFieldId:"D-<fieldId>", label,
-  cardOrderIndex, fieldKind:"DYNAMIC", isNotExistInBo:false, dynamicFieldType}`.
-- API `v2/kanban/*` (params `{boId, fieldId}`, lazy chunk 9839):
-  `save-kanban-card-template` body `{header, content, footer, *DelFieldIds}` — an EMPTY body returns 200 and
-  does nothing; a NON-EMPTY `header` creates/merges a template (items are added; removal only via
-  `*DelFieldIds = "D-<fieldId>"`). `load-kanban-card-template` then returns it, **but
-  `load-kanban-template` / `load-kanban-templates` still NPE «cardTemplate is null»**
-  (`BoDto.toKanbanCardTemplate`) → the view reads a different store (`BoDto.kanbanCardTemplates`) than the
-  save writes. Not solved.
-- Others: `load-kanban-fields {boId}` (fields usable as columns — dropdowns),
-  `load-kanban-card-fields {boId, fieldId}` (works after a save), `move-kanban-card`,
-  `load-bracket-kanban-cards`. A minimal `save-business-object-portion` re-save changed nothing.
-- Never tried: saving the kanban field in the constructor UI and sniffing the payload; putting
-  `kanbanCardTemplates` into the structure archive (risky — an archive with access DTOs wipes group rights).
+1. **Columns** — per MENU ITEM: `boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId`
+   (§4). This part always worked.
+2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO carried `{}`,
+   so `BoDto.toKanbanCardTemplate` NPE-d and the view showed «cardTemplate is null». **Ship the template
+   inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
+   dropdown's CODE, the card fields by CODE with `locationType` + `archetype`.
+
+Verified end to end: archive with `kanbanCardTemplates` → `apply-import` → `load-kanban-template` returns
+a `cardTemplate`, `load-kanban-card-template` returns header/content/footer, the board renders its three
+columns, a record saved from the board lands in the right column, and `load-bracket-kanban-cards` returns
+the card with its values.
+
+- Why the old API route was a dead end: `save-kanban-card-template` (body `{header, content, footer,
+  *DelFieldIds}`, `*DelFieldIds = "D-<fieldId>"`; an EMPTY body returns 200 and does nothing) writes a
+  store that `load-kanban-template` does NOT read. There is **no API that fills `kanbanCardTemplates`** —
+  the constructor UI and the archive are the only writers. `save-business-object-portion` does not carry
+  the key either (a full-DTO re-save changed nothing, twice).
+- Runtime shape of a template item (what the kanban endpoints return, ids not codes):
+  `{type:"KanbanCardFieldDynamic"|"KanbanCardFieldNative", coKanbanFieldId:null,
+  kanbanFieldId:"D-<fieldId>"|"N-<NATIVE_TYPE>", label, cardOrderIndex, fieldKind:"DYNAMIC"|"NATIVE",
+  isNotExistInBo:false, dynamicFieldType|nativeFieldType}`.
+- The rest of `v2/kanban/*` (params `{boId, fieldId}`, lazy chunk 9839): `load-kanban-fields {boId}` →
+  the dropdowns usable as columns; `load-kanban-card-fields {boId, fieldId}`; `move-kanban-card`;
+  `load-bracket-kanban-cards` (body `{boId, dynamicFilters, nativeFilters, brackets, search, paging,
+  ordering, state, kanbanFieldOptionId, kanbanFieldId}`).
+
+### The defect that is still in the way — ES cannot sort an imported BO's text field `[C]`
+
+With the template in place the board draws its columns and counts the records («Количество 1 из 1»), but
+the CARDS stay invisible. `load-bracket-kanban-cards` — which the client always sends with
+`ordering: {archetype:null, fieldId:null, state:"UNSET"}` — answers with an Elasticsearch error:
+
+```
+illegal_argument_exception: Text fields are not optimised for … sorting …
+Please use a keyword field instead. … set fielddata=true on
+[fields.INPUT_TEXT#<fieldId>.sortValue]            index v1_3_boi18_<hash>
+```
+
+- **It is not a kanban bug**: the plain registry of the same BO
+  (`v2/business-object-instance/load-bo-instance-bracket-table`, `ordering: null`) fails identically.
+- **Pass an explicit `ordering`** (e.g. `{archetype:"NATIVE", fieldId:"CREATED_AT", state:"DESC"}`) and
+  the very same call returns the cards in full. So the data and the template are fine; only the server's
+  default sort is.
+- Long-standing BOs of the same stand («Компании», 535 records) sort by their `INPUT_TEXT` fields without
+  a murmur, so the mapping of an imported BO's index is the suspect: the archive import seems not to
+  register the new field in Elasticsearch the way the constructor does `[I]`.
+- Tried and did NOT help: `v1/business-object-instance/ensure-index {boId}` (404 — the live route is
+  `v2/business-object-instance/ensure-index`, which answers 200 and changes nothing), a full-DTO
+  `save-business-object-portion` re-save, and `v2/business-objects/save-bo-table-sort {boId, fieldId,
+  order}` (it DOES set `sortFieldId`, read back — the failing sort is a different one).
+- Not yet done, the test that would settle it: a BO built in the CONSTRUCTOR with an `INPUT_TEXT` field
+  **and at least one record**, sorted by that field. An empty BO never errors (ES has nothing to sort),
+  which is why every 0-record probe looks green.
 
 ## 8. HTML fields and «Текст» sections — what the sanitizer accepts
 
@@ -1826,7 +1896,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 5. A bracket's own filters are ignored when it has sub-brackets; sibling combination uses the EARLIER
    sibling's `connectionType`.
 6. Only `"phosphor:*"` names present in chunk `956.*.js` are valid icons.
-7. Kanban is broken for imported BOs — save writes a different store than the view reads.
+7. A kanban needs `kanbanCardTemplates` ON THE BO, and only the archive (or the constructor UI) can
+   write it — `save-kanban-card-template` fills a store the view never reads (§7).
 8. Excel: every cell must be `inlineStr`; a numeric cell turned `103` into «103.0» and broke a lookup.
 9. Excel headers must have frozen rows or a double bottom border in column A, else the whole file is
    rejected.
