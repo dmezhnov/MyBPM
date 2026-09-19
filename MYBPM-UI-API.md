@@ -1718,7 +1718,7 @@ the card with its values.
   `load-bracket-kanban-cards` (body `{boId, dynamicFilters, nativeFilters, brackets, search, paging,
   ordering, state, kanbanFieldOptionId, kanbanFieldId}`).
 
-### The defect that is still in the way — ES cannot sort an imported BO's text field `[C]`
+### The defect that is still in the way — ES cannot sort a NEW BO's text field `[C]`
 
 With the template in place the board draws its columns and counts the records («Количество 1 из 1»), but
 the CARDS stay invisible. `load-bracket-kanban-cards` — which the client always sends with
@@ -1735,16 +1735,46 @@ Please use a keyword field instead. … set fielddata=true on
 - **Pass an explicit `ordering`** (e.g. `{archetype:"NATIVE", fieldId:"CREATED_AT", state:"DESC"}`) and
   the very same call returns the cards in full. So the data and the template are fine; only the server's
   default sort is.
-- Long-standing BOs of the same stand («Компании», 535 records) sort by their `INPUT_TEXT` fields without
-  a murmur, so the mapping of an imported BO's index is the suspect: the archive import seems not to
-  register the new field in Elasticsearch the way the constructor does `[I]`.
+- Long-standing BOs of the same stand sort by their `INPUT_TEXT` fields without a murmur, so the mapping
+  of the NEW index is the suspect — and the sweep below shows the constructor route is no better than the
+  import.
 - Tried and did NOT help: `v1/business-object-instance/ensure-index {boId}` (404 — the live route is
   `v2/business-object-instance/ensure-index`, which answers 200 and changes nothing), a full-DTO
   `save-business-object-portion` re-save, and `v2/business-objects/save-bo-table-sort {boId, fieldId,
   order}` (it DOES set `sortFieldId`, read back — the failing sort is a different one).
-- Not yet done, the test that would settle it: a BO built in the CONSTRUCTOR with an `INPUT_TEXT` field
-  **and at least one record**, sorted by that field. An empty BO never errors (ES has nothing to sort),
-  which is why every 0-record probe looks green.
+### The defect is NOT the import — it is every NEW BO on this stand `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+
+The test above was run and it answers the question: **a BO built in the CONSTRUCTOR fails identically.**
+
+- `yxTzPaWhONPNxk5j` «Проба настройки полей 2026-09-18» was created through the constructor API (§5h) and
+  holds one record. `load-bo-instance-bracket-table` with `ordering: null` dies with the same
+  `EsException` / «Text fields are not optimised …» on index `v1_3_boi18_cb14f33da5a138d3cdc64e63`; with
+  an explicit `ordering` it returns its record. The imported kanban BO `fsV2MG@eJqXHw90r` behaves exactly
+  the same on its own index `v1_3_boi18_7ec576306f9e26a5c7c3dd2b`.
+- **The whole tenant was swept**: all 145 BOs/dictionaries of <COMPANY_A> were called with `ordering: null`.
+  95 of them hold records; **not one long-standing BO fails**. The only two failures are our two probes
+  that have a record — one imported, one built in the constructor. (Three more probes answer
+  `AccessDenied` — rights we narrowed earlier, unrelated.)
+- It is not the *default* sort either, it is the text field itself: an **explicit**
+  `ordering {archetype:"DYNAMIC", fieldId:<an INPUT_TEXT field>, state:"ASC"}` returns rows on the old
+  BOs («Пользователи» 122, «Журнал» 12) and raises the same ES error on the new one.
+- So the suspect is the **Elasticsearch mapping of every index created by this platform version**:
+  `fields.INPUT_TEXT#<fieldId>.sortValue` comes out `text` (no `keyword` sub-field, no `fielddata`),
+  while the indexes of the older BOs sort happily. The archive, the constructor and the kanban have
+  nothing to do with it — **this is a backend/infra defect for the platform vendor** `[I]` (the mapping
+  itself cannot be read from the client).
+- **There is no client-side fix**: `ensure-index` is the only index endpoint in the whole bundle
+  (`grep` over all 201 lazy chunks) and it changes nothing. A full-DTO re-save and `save-bo-table-sort`
+  do not help either — `save-bo-table-sort {fieldId:"CREATED_AT"}` sets `sortFieldId`, yet the default
+  sort of `fsV2MG@eJqXHw90r` still goes to «Наименование» (`SO3965wW79K1GwK9`); on a BO with
+  `sortFieldId: null` the server picked the UNIQUE field `mW46OCU@MBjBvwX~`, not the first one.
+- **What to do meanwhile**: always send an explicit `ordering` (`{archetype:"NATIVE",
+  fieldId:"CREATED_AT", state:"DESC"}` works everywhere). The stand's own client sends `ordering: null`,
+  so the registry and the kanban of a freshly created BO stay broken in the UI until the mapping is fixed.
+- **The test that would separate «new index» from «new field»** — NOT run, it writes into someone else's
+  BO: add a fresh `INPUT_TEXT` field to a long-standing BO, fill it in one record and sort by it. Sorting
+  fine ⇒ the index template of the old indexes is healthy and only newly created indexes are broken;
+  failing ⇒ any field created now is broken, wherever it lands.
 
 ## 8. HTML fields and «Текст» sections — what the sanitizer accepts
 
@@ -1992,6 +2022,12 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     export anyway, you silently get whatever the basket held from the previous session. §5.
 42. **A «Чек лист» loses its items in an archive** `[C]` (2026-09-18) — the export writes no
     `fieldOptionsStruct` for `CHECKLIST` and the import brings none. §5i.
+43. **Any BO created on this stand today cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+    — the Elasticsearch mapping of a new index makes `INPUT_TEXT#<id>.sortValue` a `text` field, so every
+    call that leaves `ordering: null` (which is what the stand's own client sends) answers `EsException`
+    «Text fields are not optimised …». It hits the registry AND the kanban, it hits the constructor route
+    exactly as hard as the archive route, and no old BO on the stand has it. Send an explicit `ordering`.
+    Do NOT spend another session looking for it in the archive format or in the kanban — §7.
 
 ## 12. Open questions
 
@@ -2011,6 +2047,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - What «Браузер скриптов» (`v2/script-browser`) and «Глобальные методы» actually look like on screen —
   nobody has opened either (old question 20).
 
+- **The ES mapping defect of §7**: whether it is every newly created INDEX or every newly created FIELD
+  (the test is in §7 — a fresh `INPUT_TEXT` field on a long-standing BO), and whether the platform vendor
+  confirms it as a backend regression. Nothing on the client side can repair it.
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — 2026-09-18, see trap 42.
 - What `save-button-field-ids` / a signature's `fieldCodes`, `printFormCodes` actually bind (the button's
