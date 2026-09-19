@@ -21,6 +21,11 @@
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
  *   --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово"    — «Задать вручную» (FROM_FIELD)
  *
+ * A KANBAN needs a card template ON THE BO, or the view dies with «cardTemplate is null»:
+ *   --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"
+ * («Статус» is the dropdown whose options become the columns; the names are field labels, or a
+ * NATIVE type that `--native` has already added.)
+ *
  * A PANEL is an ordinary BoStructDto with `category: "BO_PANEL"` whose fields are NESTED OBJECTS:
  *   --category BO_PANEL --field "Мои пробы:BO@OpmGDzaQRUT27jky@Proba_UI_2026_09_18"
  * (`BO@<boId на стенде>@<код БО>` → `type: "BO"`, `oldRefBoId`, `boRefStruct.boInfo.code`.)
@@ -178,6 +183,36 @@ function coFieldFlags(): { label: string; type: string; links: { boCode: string;
       return { boCode: l.slice(0, dot), fieldCode: l.slice(dot + 1) };
     });
     out.push({ label: head.slice(0, at), type: head.slice(at + 1), links });
+  }
+  return out;
+}
+
+/**
+ * `--kanban "<Метка выпадающего списка>:HEADER=<Метка>[,…];CONTENT=…;FOOTER=…"`, repeatable — the CARD
+ * TEMPLATE of a kanban whose COLUMNS are that dropdown's options. Without it an imported BO carries
+ * `kanbanCardTemplates: {}` and the kanban view dies with «cardTemplate is null» (MYBPM-UI-API.md §7):
+ * the menu item's `isKanbanEnabled` alone is not enough, the template lives on the BO.
+ * A name that is a known NATIVE type (CREATED_BY, …) goes onto the card as `archetype: "NATIVE"`;
+ * everything else is a dynamic field and is matched by label (or by code, if the label is already one).
+ */
+function kanbanFlags(): { column: string; locations: Record<string, string[]> }[] {
+  const out: { column: string; locations: Record<string, string[]> }[] = [];
+  for (let i = 0; i < Bun.argv.length; i++) {
+    if (Bun.argv[i] !== "--kanban") continue;
+    const raw = Bun.argv[i + 1] ?? "";
+    const at = raw.indexOf(":");
+    if (at < 1) throw new Error(`--kanban expects "Метка:HEADER=…;CONTENT=…", got ${JSON.stringify(raw)}`);
+    const locations: Record<string, string[]> = {};
+    for (const part of raw.slice(at + 1).split(";").filter(Boolean)) {
+      const eq = part.indexOf("=");
+      if (eq < 1) throw new Error(`--kanban location expects "HEADER=Метка,…", got ${JSON.stringify(part)}`);
+      const loc = part.slice(0, eq).trim().toUpperCase();
+      if (!["HEADER", "CONTENT", "FOOTER"].includes(loc)) {
+        throw new Error(`--kanban location must be HEADER|CONTENT|FOOTER, got ${JSON.stringify(loc)}`);
+      }
+      locations[loc] = part.slice(eq + 1).split(",").map(s => s.trim()).filter(Boolean);
+    }
+    out.push({ column: raw.slice(0, at), locations });
   }
   return out;
 }
@@ -448,6 +483,7 @@ const sources = sourceFlags();
 const coFields = coFieldFlags();
 const natives = nativeFlags();
 const widgets = widgetFlags();
+const kanbans = kanbanFlags();
 
 if (isComposite && (sources.length === 0 || coFields.length === 0)) {
   throw new Error("--category BO_COMPOSITE needs at least one --source and one --co-field");
@@ -635,6 +671,35 @@ for (const w of widgets) {
   };
 }
 
+/**
+ * KANBAN CARD TEMPLATES. In the archive the map is keyed by the CODE of the dropdown field whose options
+ * become the columns, and each entry is `{kanbanFields: {<code>: {cardOrderIndex, locationType, archetype}}}`
+ * — codes, never ids, exactly like the rest of a `BoStructDto` (shape taken from a stand export of a BO
+ * whose kanban works, 2026-09-19). `archetype` repeats the field's own archetype: DYNAMIC for a field of
+ * `dynamicFields`, NATIVE for one of `nativeFields`.
+ */
+const kanbanCardTemplates: Record<string, { kanbanFields: Record<string, object> }> = {};
+for (const k of kanbans) {
+  const columnCode = dynamicFields[k.column] ? k.column : codeOf(k.column);
+  const column: any = dynamicFields[columnCode];
+  if (!column) throw new Error(`--kanban column «${k.column}» is not a field of this BO`);
+  if (!String(column.type).startsWith("DROPDOWN")) {
+    throw new Error(`--kanban column «${k.column}» is ${column.type}; the columns come from a dropdown`);
+  }
+  const kanbanFields: Record<string, object> = {};
+  for (const [locationType, names] of Object.entries(k.locations)) {
+    let cardOrderIndex = 0;
+    for (const name of names) {
+      const isNative = NATIVE_DEFS[name] !== undefined;
+      const code = isNative ? name : (dynamicFields[name] ? name : codeOf(name));
+      if (isNative && !nativeFields[code]) throw new Error(`--kanban names «${name}», add it with --native ${name}`);
+      if (!isNative && !dynamicFields[code]) throw new Error(`--kanban names «${name}», which is not a field of this BO`);
+      kanbanFields[code] = { cardOrderIndex: cardOrderIndex++, locationType, archetype: isNative ? "NATIVE" : "DYNAMIC" };
+    }
+  }
+  kanbanCardTemplates[columnCode] = { kanbanFields };
+}
+
 lines.push({
   "@class": `${PKG}.BoStructDto`,
   oldId: id(`bo.${BO_CODE}`),
@@ -660,7 +725,7 @@ lines.push({
   isGroupingEnabled: false,
   isCodeReadonly: false,
   chosenAccessRight: false,
-  kanbanCardTemplates: {},
+  kanbanCardTemplates,
   timelineTemplates: {},
   calendarCardTemplates: {
     header: {},

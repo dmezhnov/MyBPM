@@ -237,7 +237,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "isGroupingEnabled": false,
   "isCodeReadonly": false,
   "chosenAccessRight": false,
-  "kanbanCardTemplates": {},
+  "kanbanCardTemplates": {},                ← leave empty UNLESS the BO needs a kanban — then 0.5c
   "timelineTemplates": {},
   "calendarCardTemplates": {"header":{},"content":{},"footer":{},"headerDelFieldCodes":{},"contentFieldCodes":{},"footerDelFieldCodes":{}},
   "signatures": {},
@@ -496,6 +496,43 @@ Heights: 4 rows for a button and the CURRENT_* widgets, 6 for `SIGNATURE` / `CAP
 8 for `IFRAME`. A widget's code and url survive an import and can be read back through the widget's own
 controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may be placed **once** per BO;
 `BUTTON`, `IFRAME` and `CAPTCHA` may repeat.
+
+### 0.5c Kanban — the card template travels in the archive `[C]` (2026-09-19, <stand>)
+
+A kanban is TWO things and the archive carries only one of them:
+
+- the **columns**, switched on per MENU ITEM (`boPages.isKanbanEnabled` + `kanbanFieldId`) — not in the
+  archive, set it through `v2/menu-item` after the import (`MYBPM-UI-API.md` §4);
+- the **card template**, which lives ON THE BO in `kanbanCardTemplates`. **Ship it, or the kanban view
+  dies with «cardTemplate is null»** — that is the whole of the old «kanban is broken for imported BOs».
+
+```text
+"kanbanCardTemplates": {
+  "Status": {                          ← CODE of the DROPDOWN whose options become the columns
+    "kanbanFields": {
+      "Naimenovanie": {"cardOrderIndex": 0, "locationType": "HEADER",  "archetype": "DYNAMIC"},
+      "Ispolnitel":   {"cardOrderIndex": 0, "locationType": "CONTENT", "archetype": "DYNAMIC"},
+      "CREATED_BY":   {"cardOrderIndex": 1, "locationType": "CONTENT", "archetype": "NATIVE"},
+      "Kommentariyi": {"cardOrderIndex": 0, "locationType": "FOOTER",  "archetype": "DYNAMIC"}
+    }
+  }
+}
+```
+
+- The outer key is the code of a `DROPDOWN_*` field of THIS BO; one entry per field you want to offer as
+  a kanban (a BO may carry several — a stand export showed two).
+- The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
+  `archetype: "DYNAMIC"`, or a key of `nativeFields` (the native type itself) with `archetype: "NATIVE"`.
+  Ids never appear here, exactly like everywhere else in a `BoStructDto`.
+- `locationType` is `HEADER` | `CONTENT` | `FOOTER`; `cardOrderIndex` orders the fields inside one
+  location and is a plain int (a stand export had 15 and 18 in one template, 0 everywhere in another).
+- `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
+  writes exactly this.
+
+Verified end to end on <stand> (<COMPANY_A>): archive → apply → `v2/kanban/load-kanban-template` returns a
+`cardTemplate` instead of NPE-ing, the board renders its three columns, and `load-bracket-kanban-cards`
+returns the card with its header/content/footer values. **But the cards do not appear in the UI yet** —
+a second, unrelated defect of imported BOs blocks the default sort (`MYBPM-UI-API.md` §7).
 
 ### 0.6 Codes: label → code
 
@@ -1298,8 +1335,8 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
 - Getting group ids for an archive: set probe rights on one BO with a DIFFERENT group per action
   (view/edit/delete/archive/export), export the structure, map ids by action (worked first try); or call
   `load-org-unit-record-list`. Archive ids are `G-<id>`, API ids have no prefix.
-- BOs created via import carry `kanbanCardTemplates:{}`; a BO built by hand with a kanban has entries —
-  and kanban is broken for imported BOs (`MYBPM-UI-API.md`).
+- BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — and an empty one is
+  exactly why «kanban does not work for imported BOs». Fill it: §0.5c, `MYBPM-UI-API.md` §7.
 
 ### BO groups on import — open defect `[C] symptom, [U] cause`
 
