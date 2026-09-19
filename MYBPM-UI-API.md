@@ -1791,6 +1791,22 @@ have — it was created through the record API of §6a below, i.e. through exact
 itself makes. An empty BO never errors (ES has nothing to sort), which is why every 0-record probe looks
 green: `ATyioDPdsxhmVDBO` (the archive twin of the field-settings probe) is «green» only because it holds
 no records.
+
+**What it looks like on screen** `[C]` (registry of `OpmGDzaQRUT27jky`, 2026-09-19): the table draws its
+headers and then only «Загрузить ещё» — no rows — while the counter top-right still says «из 1», and two
+red toasts «Ошибка / ErrorResponse: {"error":{"phase":"query","failed_shards"… fields are not optimised
+for operations that require per-document field data…» pile up in the corner with a `trace-id`. Nothing
+in the UI hints at sorting, which is why this reads as «канбан/реестр сломан» rather than «ES mapping».
+
+**Reproducing it by hand, no API** (≈2 minutes): `/business-objects/editing` → hover a BO-group row →
+⋮ → «Добавить бизнес-объект» → name it → drag **«Текст»** from the palette onto the canvas, label it →
+**СОХРАНИТЬ**. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group → click the BO
+→ its registry → **«Добавить»** → fill the text field → save. The registry comes back empty with the
+toasts above. **Before that first record the same screen is clean** — ES has nothing to sort — so a
+0-record BO never shows it. There is no workaround inside the UI: the only columns are the BO's own text
+fields, and sorting by one of those is exactly what fails (an explicit `CREATED_AT` ordering, which does
+work, is not reachable from the screen; `save-bo-table-sort` to `CREATED_AT` does not change the default
+sort either).
 - **The whole tenant was swept**: all 145 BOs/dictionaries of <COMPANY_A> were called with `ordering: null`.
   95 of them hold records; **not one long-standing BO fails**. The only two failures are our two probes
   that have a record — one imported, one built in the constructor. (Three more probes answer
