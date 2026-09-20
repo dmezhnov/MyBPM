@@ -52,7 +52,8 @@ const flagAll = (name: string): string[] => {
 };
 const has = (name: string) => argv.includes(`--${name}`);
 
-const stand = flag("stand") ?? "<stand>";
+const stand = flag("stand");
+if (!stand) throw new Error("--stand <host> is required: the stand host is never implied");
 const tokenFile = flag("token-file");
 const token = (tokenFile ? (await Bun.file(tokenFile).text()).trim() : undefined)
   ?? flag("token") ?? Bun.env.MYBPM_TOKEN;
