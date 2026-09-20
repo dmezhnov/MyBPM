@@ -1833,10 +1833,11 @@ comes back empty with the toasts. Both of us drew wrong conclusions from that fi
 noticing it. `[I]` on the mechanism: most likely the BO's ES index does not exist yet at the first visit
 (nothing to sort, nothing to fail), and the broken mapping is created when the first record is indexed.
 **Before that first record the same screen is clean** — ES has nothing to sort — so a 0-record BO never
-shows it. There is no workaround inside the UI: the only columns are the BO's own text
-fields, and sorting by one of those is exactly what fails (an explicit `CREATED_AT` ordering, which does
-work, is not reachable from the screen; `save-bo-table-sort` to `CREATED_AT` does not change the default
-sort either).
+shows it. ~~There is no workaround inside the UI~~ — **corrected 2026-09-19**: take every STRING field out
+of the registry columns (`tableColToShow: false`) and the screen works, because the default sort then
+lands on a numeric/boolean/native field (see «The workaround that DOES exist» below). An explicit
+`CREATED_AT` ordering also works but is not reachable from the screen, and `save-bo-table-sort` to
+`CREATED_AT` does not change the default sort either.
 - **The whole tenant was swept**: all 145 BOs/dictionaries of <COMPANY_A> were called with `ordering: null`.
   95 of them hold records; **not one long-standing BO fails**. The only two failures are our two probes
   that have a record — one imported, one built in the constructor. (Three more probes answer
@@ -1856,13 +1857,162 @@ sort either).
   do not help either — `save-bo-table-sort {fieldId:"CREATED_AT"}` sets `sortFieldId`, yet the default
   sort of `fsV2MG@eJqXHw90r` still goes to «Наименование» (`SO3965wW79K1GwK9`); on a BO with
   `sortFieldId: null` the server picked the UNIQUE field `mW46OCU@MBjBvwX~`, not the first one.
+  **Re-confirmed 2026-09-19 with a DYNAMIC numeric target**: `sortFieldId` is written and ignored — the
+  registry still trips over the first string column. Only `tableColToShow` changes the outcome.
 - **What to do meanwhile**: always send an explicit `ordering` (`{archetype:"NATIVE",
   fieldId:"CREATED_AT", state:"DESC"}` works everywhere). The stand's own client sends `ordering: null`,
   so the registry and the kanban of a freshly created BO stay broken in the UI until the mapping is fixed.
-- **The test that would separate «new index» from «new field»** — NOT run, it writes into someone else's
-  BO: add a fresh `INPUT_TEXT` field to a long-standing BO, fill it in one record and sort by it. Sorting
-  fine ⇒ the index template of the old indexes is healthy and only newly created indexes are broken;
-  failing ⇒ any field created now is broken, wherever it lands.
+### The defect is the INDEX, not the FIELD — the old-BO experiment `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+
+The test above was run on **«Офисы» `QXMI@1Xx6K~rV9zw`** (group «Расположение», a plain `BO`, 3 fields,
+7 records, chosen because its own `INPUT_TEXT` «Адрес» sorts fine — a long-standing, healthy index):
+
+1. baseline — `ordering: null`, the client's `UNSET` shape and an explicit `DYNAMIC` sort by «Адрес» all
+   return 7 rows;
+2. one fresh `INPUT_TEXT` field added TODAY through the constructor API (§5b R1) — `BjL@8oMMKjhLXDW8`
+   «Проба сортировки 2026-09-19»;
+3. two throwaway records carrying LETTERS in it (`яблоко`, `арбуз`);
+4. sorted by that brand-new field.
+
+**It sorts.** `ASC` → `арбуз | яблоко | ∅×7`, `DESC` → `яблоко | арбуз | ∅×7` (empty values last in both
+directions), `ordering: null` and the client's `UNSET` shape return all 9 rows, and a re-read 60 s later
+— the trap-45 discipline, twice — stays clean. The control run in the same session with the same token
+still fails: `4pMYDZFS5gN57xai` and `OpmGDzaQRUT27jky` answer `EsException` on the same call.
+
+**Verdict: the broken mapping is born with the INDEX, not with the field.** An index created by this
+platform version is broken whatever you put in it; an index created earlier swallows a field created
+today and sorts by it correctly. Consequences:
+
+- Adding fields to existing BOs is safe — the vendor defect does not spread to them.
+- The vendor ticket is about **index creation** (the template/mapping used when a BO's index is first
+  built), not about field mapping. Everything a new BO gets is doomed; nothing an old BO gets is.
+- Cleaned up in the same session: both records deleted, the field deleted, and the BO DTO diffed against
+  the baseline snapshot — **identical**, 7 records, default sort healthy.
+
+### The workaround that DOES exist — keep strings out of the registry columns `[C]` (2026-09-19)
+
+Answering «баг проявляется, если в реестре есть колонка строкового типа?» — yes for the SYMPTOM, no for
+the cause, and the difference is a usable workaround. On the fresh probe `bbaYv1ik~KT53OfT` («Проба типов
+сортировки 2026-09-19», constructor, 8 field types, one record):
+
+| registry columns | `ordering: null` / client `UNSET` | explicit sort by a string field |
+|---|---|---|
+| all 8 fields (strings included) | `EsException` | fails |
+| only `INPUT_NUMBER` + `CHECKBOX` + `DATE` | **OK, rows come back** | still fails (even for a field that is NOT a column) |
+
+- So the server's default sort picks a field **from the registry columns**: no string among them, no error,
+  and the registry (and by the same query the kanban) works on a broken index.
+- The mapping itself is still broken for every string field of that index — an explicit
+  `DYNAMIC` sort by a non-column `INPUT_TEXT` fails exactly as before. The columns only decide whether the
+  screen's own query steps on it.
+- The change is a one-key `editedFields` patch (`tableColToShow`) and is reversible: switching the string
+  columns back on makes the registry fail again. **This — removing the columns — is the only mitigation
+  that holds**; merely reordering them leaves the failing sort one header-click away (2026-09-20). **This corrects §7's earlier «there is no workaround
+  inside the UI»** — there is one, at the price of a registry without text columns.
+- The `AccessDenied` trap on the way: a BO with **no** registry columns at all answers
+  `AccessDenied` «У Вас недостаточно прав на поля, которые выведены в реестр» even though every field has
+  `accessForAll: true`. That is what the three «rights we narrowed earlier» probes of 2026-09-19 really
+  were — not rights, an empty column set. Trap 48.
+
+### What the registry actually sorts by — the FIRST column `[C]` (2026-09-20)
+
+The user's second screenshot of «Бизнес объект №6983» — the text field now holds `tr`, both columns are in
+the registry, the sort arrow sits on «Дата и время», no error — pinned the last piece down.
+
+- On the stand that BO answers OK to `ordering: null`, to the client's `UNSET` and to an explicit sort by
+  the date, and **`EsException` to an explicit sort by that same text field with `tr` in it**. The mapping
+  is broken; the screen is simply not sorting by it.
+- Why the date and not the text: **the default sort follows the FIRST registry column**
+  (`tableColOrderIndex`), not `sortFieldId`. Verified on the probe `bbaYv1ik~KT53OfT`: with all 8 columns
+  kept and `INPUT_NUMBER` moved to position 0 the registry returns rows; move `INPUT_TEXT` back to 0 and
+  it fails again. (The one exception seen earlier: a BO with a UNIQUE field — the server picked the unique
+  one, not the first `[I]`.)
+- That also explains why `save-bo-table-sort` «did not help» in both attempts — it writes `sortFieldId`,
+  which this query does not use.
+- **Column ORDER only fixes the FIRST render, it is not a workaround** `[C]` (corrected 2026-09-20 by the
+  user): clicking a column header sorts by that column — the client sends exactly the
+  `ordering {archetype:"DYNAMIC", fieldId:<that field>, state:"ASC"|"DESC"}` that fails — so a text column
+  left in the registry breaks the moment anyone clicks it (and clicking again for the other direction
+  fails too). Reordering only decides whether the screen is broken *on arrival*. №6983 is in that state:
+  healthy until its «Текстовое поле» header is clicked.
+- **The only reliable UI-side mitigation is to keep filled string fields OUT of the registry columns**
+  (`tableColToShow: false`) — then the failing sort is unreachable from the screen. Everything else is
+  cosmetic, and nothing repairs the mapping itself.
+
+### The precise trigger — a string field that HAS a value `[C]` (2026-09-20)
+
+The user's counter-screenshot («Бизнес объект №6983» `OSJitWM1zwdDRVIU`, group «Тест», 2 records, columns
+«Дата и время» + «Текстовое поле», no error on screen) resolves the last ambiguity. Read off the stand:
+both records carry `null` in the text field, and **everything** works there — `ordering: null`, the
+client's `UNSET`, an explicit `FULL_DATE` sort and an explicit sort by that very `INPUT_TEXT`.
+
+So the broken mapping is not created with the field, it is created **when the first string VALUE of that
+field is indexed**. The three conditions, each verified separately:
+
+1. the index was created by the current platform version (old indexes never fail — 112 BOs, 198 string
+   fields, 0 failures);
+2. at least one record holds a value in that string field — a field left empty everywhere sorts fine
+   (№6983 above; the value-less `DROPDOWN_SINGLE` «Статус» of `yxTzPaWhONPNxk5j` behaves the same);
+3. and the screen shows it only when the registry's default sort lands on such a field, i.e. when it is
+   a column — while the API trips over it even when it is not (see the column section above).
+
+That is also why every 0-record BO looks green, and why the same BO turns red after the first record with
+text in it.
+
+### «Просто выбрать другое поле сортировки» does NOT work `[C]` (2026-09-19)
+
+The obvious alternative to hiding the column — leave the string column in place and point the BO's default
+sort at a healthy field — was tried on the same probe and fails:
+
+- `v2/business-objects/save-bo-table-sort` **takes its arguments in the PARAMS half** (`{boId, fieldId,
+  order}`); sent in the body it answers 200, writes nothing and `sortFieldId` stays `null` — the same
+  half-of-the-envelope trap as `delete-bo-instance` (trap 46).
+- With params it really does write: `sortFieldId` became the `INPUT_NUMBER` field, read back from
+  `load-business-object-by-id`. **The registry still fails**, and the error still names the first string
+  column — `fields.INPUT_TEXT#2AUXHu3d7E8GsEdH.sortValue`. Passing `fieldId: null` clears it again.
+- So `sortFieldId` is not what the registry query sorts by; the server picks a string column regardless.
+  The only lever that works from the outside is **which fields are columns** (`tableColToShow`).
+
+### Every string field of every old BO sorts — the full sweep `[C]` (2026-09-19)
+
+To close «а в старых БО с любым набором полей не проявляется?» the sweep was repeated per FIELD, not per
+BO: every BO of the tenant, every `INPUT_TEXT` / `TEXTAREA` / `INPUT_EMAIL` / `INPUT_PHONE` /
+`DROPDOWN_SINGLE` of it, each with an explicit `DYNAMIC` `ASC` ordering. **112 record-holding BOs,
+198 string fields, 0 failures** (55 empty BOs skipped — nothing to sort, 1 `AccessDenied`). Our own new
+probes were excluded and every one of them fails. The split «old index healthy / new index broken» is
+therefore not a sampling artefact of the default sort.
+
+### It is the whole index, and not only `INPUT_TEXT` `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+
+Follow-up to the user's question «баг только на тестовом поле, на другом его нет?» — no, it is every
+field of a broken index whose `sortValue` actually holds a string. Sorting each field of the three
+broken BOs separately:
+
+| BO | fails | sorts |
+|---|---|---|
+| `fsV2MG@eJqXHw90r` «Канбан из архива» | all THREE `INPUT_TEXT` (Наименование, Исполнитель, Комментарий) + the `DROPDOWN_SINGLE` «Статус» | `BO` reference «Автор» (`CREATED_BY`), `NATIVE CREATED_AT` |
+| `yxTzPaWhONPNxk5j` «Проба настройки полей» | both `INPUT_TEXT` + the `DROPDOWN_SINGLE` «Должность» (`optionSource: FROM_BO`) | the `DROPDOWN_SINGLE` «Статус» (`FROM_FIELD`, no value in the record), `CREATED_AT` |
+| `4pMYDZFS5gN57xai` «Бизнес объект №6978» | its single `INPUT_TEXT` | `CREATED_AT` |
+
+- The error always names the field you asked for — `fields.INPUT_TEXT#Fr0AVxK63ZRfWWRH.sortValue`,
+  `fields.DROPDOWN_SINGLE#Hh9hePZW9ipg~Aeb.sortValue` — so **`DROPDOWN_SINGLE` is hit too**; the earlier
+  «`INPUT_TEXT` only» wording was just an artefact of the probes having one text field each.
+- What still sorts on a broken index is what carries no indexed string: a field with no value in any
+  record, a `BO` reference, and the `NATIVE` dates `[I]`.
+- The same field kinds on a long-standing BO («Встречи» `2h@BQkSol3XFZ7fw`, 23 records) all sort:
+  `INPUT_TEXT`, `DROPDOWN_SINGLE`, `TEXTAREA` — the split is the INDEX, never the field kind.
+- Side note: `NATIVE UPDATED_AT` is **not** a valid ordering field — `IllegalArgumentException: No enum
+  constant …` on old and new BOs alike. `CREATED_AT` is the safe one.
+
+Two by-products of the experiment `[C]`:
+
+- **`delete-bo-instance` takes `boInstanceIds` in the PARAMS half.** Sent in the body
+  (`params {businessObjectId}`, `body {boInstanceIds}`) it answers 200 and deletes nothing; with both in
+  params it answers `true` and the rows disappear. Trap 46.
+- **A field that is not a registry column is invisible in `load-bo-instance-bracket-table`** — the row
+  `values[]` carry only the `tableColToShow` fields, so you cannot read back what you wrote into a plain
+  field there. Flipping `tableColToShow: true` (a one-key `editedFields` patch) makes both the column and
+  the full-text `search` find it `[I]` — before the flip `search:"яблоко"` returned 0 hits, after it 1.
 
 ## 8. HTML fields and «Текст» sections — what the sanitizer accepts
 
@@ -2116,11 +2266,26 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     hits **all four probes across all three creation routes — archive, constructor API, constructor UI**
     (two of them built by the user himself), while none of the 95 record-holding long-standing BOs has
     it. Send an explicit `ordering`. Do NOT look for the cause in the archive format, in the constructor,
-    in the kanban, or in the VALUE stored (digits and letters fail alike) — §7.
+    in the kanban, or in the VALUE stored (digits and letters fail alike) — §7. **It is the INDEX, not
+    the field** `[C]` (2026-09-19): a field created today inside a long-standing BO («Офисы») sorts
+    perfectly, so adding fields to existing BOs is safe and the vendor ticket is about index creation.
+    And inside a broken index it is **not only `INPUT_TEXT`** — every field holding an indexed string
+    fails, `DROPDOWN_SINGLE` included; only value-less fields, `BO` references and `CREATED_AT` survive.
 45. **A registry screen seen right after saving the first record proves nothing** `[C]` (2026-09-19) —
     it shows the just-saved row and «1 из 1»; the SECOND visit to the same registry is the one that fails
     with the error toasts (confirmed independently by the user). Re-open or F5 before calling a BO
     healthy. This cost a full round of wrong conclusions on both sides. §7.
+46. **`delete-bo-instance` wants `boInstanceIds` in the PARAMS half** `[C]` (2026-09-19) — with the ids
+    in the body the call answers 200 and deletes nothing (the rows are still there on the next read);
+    `params {businessObjectId, boInstanceIds}` answers `true` and removes them. The same shape trap as
+    §0U.2's «which half does this value belong in» — verify a delete by re-reading, never by the status.
+48. **A registry with NO columns answers `AccessDenied`, not an empty table** `[C]` (2026-09-19) — «У Вас
+    недостаточно прав на поля, которые выведены в реестр» on a BO whose every field has
+    `accessForAll: true`. Check `tableColToShow` before believing a rights problem. §7.
+47. **A field that is not a registry column cannot be read back from the registry** `[C]` (2026-09-19) —
+    `load-bo-instance-bracket-table` puts only `tableColToShow` fields into a row's `values[]`, and the
+    full-text `search` does not find their values either `[I]`. Flip `tableColToShow: true` with a
+    one-key `editedFields` patch when you need to verify what a write actually stored.
 44. **The record controller is `v2/business-object-instance`, not the `v1/…` the bundle shows** `[C]`
     (2026-09-19) — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a Spring
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
@@ -2144,11 +2309,10 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - What «Браузер скриптов» (`v2/script-browser`) and «Глобальные методы» actually look like on screen —
   nobody has opened either (old question 20).
 
-- **The ES mapping defect of §7**: whether it is every newly created INDEX or every newly created FIELD
-  (the test is in §7 — a fresh `INPUT_TEXT` field on a long-standing BO, now doable end to end since §6a
-  can write the record; it needs the user's permission because it writes into a BO that is not ours), and
-  whether the platform vendor confirms it as a backend regression. Nothing on the client side repairs it.
-  The creation ROUTE is no longer a candidate — archive, constructor API and constructor UI all fail.
+- **The ES mapping defect of §7** — the index/field question is ANSWERED (2026-09-19, «Офисы»: it is the
+  INDEX; a field added today to an old BO sorts fine). What is still open: whether the platform vendor
+  confirms it as a backend regression, and what exactly changed in the index template. Nothing on the
+  client side repairs it, and the creation ROUTE was ruled out earlier.
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — 2026-09-18, see trap 42.
 - What `save-button-field-ids` / a signature's `fieldCodes`, `printFormCodes` actually bind (the button's
