@@ -15,7 +15,7 @@
  * Usage:
  *   bun tools/add-bo-scripts.bun.ts <in.mybpm.zip> <out.mybpm.zip> \
  *     --bo-code Proba_skript_arhiv_20260918 --bo-name "Проба скрипт архивом 2026-09-18" \
- *     --from <project>/MyBPM-export-<company-b>-…zip \
+ *     --from <some-export>.mybpm.zip \
  *     --def s1BJw7CmFKAU2Cty:onOpen --def "DlQXUgrNRYPh@IQv:field:Kod" --rename-act code=Kod
  */
 import { createHash } from "node:crypto"; // sha256 keeps the generated ids reproducible; Bun.hash is not a digest

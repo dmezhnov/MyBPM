@@ -17,7 +17,7 @@
  * Pass it in $MYBPM_TOKEN or in a file via --token-file.
  *
  * Usage:
- *   bun tools/api-import-structure.bun.ts <archive.mybpm.zip> [--stand https://<stand>]
+ *   bun tools/api-import-structure.bun.ts <archive.mybpm.zip> --stand https://<stand>
  *        [--token-file PATH] [--apply] [--cancel] [--description "текст"] [--import-id ID]
  */
 
@@ -34,7 +34,8 @@ if (!archive) {
   process.exit(2);
 }
 
-const stand = opt("stand", "https://<stand>")!;
+const stand = opt("stand", "")!;
+if (!stand) throw new Error("--stand https://<host> is required: an archive never carries the host");
 const tokenFile = opt("token-file");
 const token = (tokenFile ? await Bun.file(tokenFile).text() : Bun.env.MYBPM_TOKEN ?? "").trim().replace(/^"|"$/g, "");
 if (!token) {
