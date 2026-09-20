@@ -22,26 +22,35 @@ Each carries complete literal templates, the naming/id rules, a hard-rules list 
 opens with the stand data you must ASK for (§0.2a / §0X.3) instead of guessing. The numbered sections
 behind each cookbook are the evidence and the material for non-trivial cases.
 
-**Evidence base.** MyBPM v4.24, builds `4.24.25.570` (tenant <company-b>) and `4.24.25.614` (<company-c>
-stand); facts collected 2026-08-27 .. 2026-09-16 from real exports, stand imports and IDE copies.
+**Placeholders.** This document describes the PLATFORM, not one installation of it, so every host and
+company name is replaced by a placeholder: `<stand>` is the host of a MyBPM stand (an archive never
+carries it — the user is the only source, §0.2a), `<company-a>` … `<company-d>` are the companies
+(tenants) the facts were collected on. Where a fact depends on WHICH installation it came from, the
+origin mark carries the date and the platform build instead of a name. Ids, codes and names of the
+objects in the examples come from those stands and are examples ONLY — §0.2a says why none of them may
+be copied into an archive of your own.
+
+**Evidence base.** MyBPM v4.24, builds `4.24.25.570`, `4.24.25.614` and `S4.24.25.632/C4.24.25.264`;
+facts collected 2026-08-27 .. 2026-09-19 from real exports, stand imports and IDE copies.
 **Status markers** used throughout: `[C]` confirmed on a stand or in a real export, `[I]` inferred from
 structure/behaviour but never isolated, `[U]` unverified — do not build on it without checking.
 Everything retracted has been dropped; the mistakes worth not repeating live in *Traps and defects*.
 
-**Reference material**
-- Richest export: `<project>/MyBPM-export-<company-b>-v4.24.25.614-2026-09-15T16-55-04.mybpm.zip`
-  (STATIC_TEXT, `isHeightDynamic`, `gridLayoutPosition`, `AccessStructDto`); older `.570` ones beside it;
-  <company-a> exports in `~/Downloads` (the 05-29 one has no `AccessStructDto`); <company-c> stand exports in
-  `<company-c>/Со стенда/`.
-- In-house generator `~/programming/devhub/mybpm-core/cli/generate-mybpm-export.bun.ts`
-  (FULL_DATE / FILE_UPLOAD shapes); type enum `ApiFormFieldType` in `the platform server sources`.
-- Importer source: only an **old 2022 jar** exists — local docker `mybpm-api`,
-  `/app/project/mybpm.register-<tenant>-0.0.20.jar`, decompile with CFR; structure import class
+**Reference material** (what the facts below were read off — get the equivalents from your own stand)
+- The richest source is a FULL export of a large company on build `.614`: it is the only one here that
+  carries `STATIC_TEXT`, `isHeightDynamic`, `gridLayoutPosition` and `AccessStructDto` at once. Older
+  `.570` exports of the same company and one-off exports of the other companies fill in the variants —
+  and one export from 2026-05 has no `AccessStructDto` at all, so its absence is not a defect.
+- The canonical list of field types is the enum `ApiFormFieldType` in the platform's server sources
+  (not public); §0.5a below is that list as confirmed on stands, type by type.
+- Importer source: only an **old 2022 jar** exists — the `mybpm-api` docker image carries
+  `/app/project/mybpm.register-<tenant>-0.0.20.jar` (the slug in the name is the deployment's, not
+  yours), decompile with CFR; structure import class
   `…register.impl.reports.structure.StructureMovement`. That build has no BO groups at all and its
   behaviour differs from v4.24 in at least one confirmed place (see *Instance-side note* below).
   **v4.24 sources are not available — a dead end, do not re-open it.**
-- Records: the stand's own template/export is the only valid starting point (Part III); the <company-b>
-  Scoring files and the <company-c> stand exports beside them are the worked examples.
+- Records: the stand's own template/export is the only valid starting point (Part III); the worked
+  examples are the record files of the same companies.
 
 ---
 
@@ -86,7 +95,7 @@ Rules, all `[C]`:
 0. **Ask for the stand data of 0.2a** — group name, taken BO codes, ids/codes of referenced objects.
    Do not start building before the user has answered, or has told you to build without them.
 1. **Collect the input**: the display name of the BO, its fields (label + UI type), and the name of the
-   BO group **that already exists on the target stand** (on <company-a> <stand> use `Бизнес-объект`).
+   BO group **that already exists on the target stand** (ask the user for it — §0.2a; on the reference stand it was `Бизнес-объект`).
 2. **Decide the codes.** The BO code and every field code are latin, derived from the label with the
    transliteration table in 0.6. Cut to 30 characters. These are the ONLY values you invent.
 3. **Mint the ids** by the rule in 0.7 — one for the group, one for the BO, one per field.
@@ -118,12 +127,12 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` fed `FROM_BO` — the **dictionary CODE** | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 
-**Every id literal printed in this section is <company-a>'s, not yours** `[C]`. Copying one out of an
+**Every id literal printed in this section is `<company-a>`'s, not yours** `[C]`. Copying one out of an
 example IS inventing an id — 0.2a forbids it exactly the same way, and it fails in the same silent manner.
 Two different kinds of literal appear below: `3H84o9iM@G4jaOL3`, `ca3w3BgmzJGmWO7q`, `WbX5Wa8gcabbVbF1`,
 `qmEhH4GnZvawC3R4` are archive-internal ids of the sample — mint your OWN by 0.7 instead of reusing them;
-`I1fVTkYPTSg7X8b8` (<company-a>'s `Person`), `@feclOAWUnwXFQ8c` (a <company-a> composite) and `Q0zI~z9Ra2R7Q3yd`
-(<company-a>'s «Статус процесса») are **real ids on the <company-a> stand** and appear here only to show the
+`I1fVTkYPTSg7X8b8` (`<company-a>`'s `Person`), `@feclOAWUnwXFQ8c` (a `<company-a>` composite) and `Q0zI~z9Ra2R7Q3yd`
+(`<company-a>`'s «Статус процесса») are **real ids on the `<company-a>` stand** and appear here only to show the
 SHAPE. Paste one into an `oldRefBoId` for any other stand and you ship a dangling reference that imports
 «successfully» and breaks at runtime.
 
@@ -143,7 +152,7 @@ for.
 **Decide first WHERE the sources are.** If you are building them yourself — the usual case for a generic
 task like «клиенты и поставщики в одном списке» — **put the source BOs into the SAME archive** and there
 is nothing to ask at all: the importer resolves `bos[].code` against the lines of the archive just as
-happily as against the stand `[C]` (2026-09-18, dry run on <company-a>; the order of the lines does not
+happily as against the stand `[C]` (2026-09-18, dry run on `<company-a>`; the order of the lines does not
 matter — the composite may come before its sources). A self-contained composite archive is the answer,
 not a degrade. Only when the sources ALREADY live on the stand do you need their codes: ask for them
 (they are cut to 30 chars on the stand and are not always what you would transliterate, §5b); if the
@@ -347,7 +356,7 @@ built without exactly those three is verified to import `[C]`. Nowhere else may 
 absent.
 
 Types you may put in `"type"` — this is the WHOLE palette of «Элементы страницы», 23 types, verified
-type by type on <company-a> 2026-09-18 (`[C]`: each one was created through the constructor API, exported,
+type by type on `<company-a>` 2026-09-18 (`[C]`: each one was created through the constructor API, exported,
 re-generated by `make-probe-archive` and imported back). Four more types exist and are reached
 differently: `BO` / `CO` (dragged out of «Вложенные объекты»), `TAB_GROUP` / `PROGRESS_BAR` (they sit in
 the «Виджеты» section of the palette but are ordinary `dynamicFields` entries).
@@ -497,7 +506,7 @@ Heights: 4 rows for a button and the CURRENT_* widgets, 6 for `SIGNATURE` / `CAP
 controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may be placed **once** per BO;
 `BUTTON`, `IFRAME` and `CAPTCHA` may repeat.
 
-### 0.5c Kanban — the card template travels in the archive `[C]` (2026-09-19, <stand>)
+### 0.5c Kanban — the card template travels in the archive `[C]` (2026-09-19, `<stand>`)
 
 A kanban is TWO things and the archive carries only one of them:
 
@@ -529,7 +538,7 @@ A kanban is TWO things and the archive carries only one of them:
 - `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
   writes exactly this.
 
-Verified end to end on <stand> (<COMPANY_A>): archive → apply → `v2/kanban/load-kanban-template` returns a
+Verified end to end on `<stand>` (`<COMPANY_A>`): archive → apply → `v2/kanban/load-kanban-template` returns a
 `cardTemplate` instead of NPE-ing, the board renders its three columns, and `load-bracket-kanban-cards`
 returns the card with its header/content/footer values. **But the cards do not appear in the UI yet** —
 a second, unrelated defect of imported BOs blocks the default sort (`MYBPM-UI-API.md` §7).
@@ -571,7 +580,7 @@ read the codes off a fresh export instead of transliterating (§3).
 
 Every `oldId` / `newId` is a **16-character** string over the alphabet
 `A-Z a-z 0-9 @ ~` (e.g. `WbX5Wa8gcabbVbF1`, `3H84o9iM@G4jaOL3`, `Q0zI~z9Ra2R7Q3yd`). **Those three are
-<company-a>'s — they show the shape, they are not values to copy** (0.2a).
+`<company-a>`'s — they show the shape, they are not values to copy** (0.2a).
 
 - **Derive them deterministically from a seed** — e.g. take sha256 of `"bo." + <code>` and map the first
   16 bytes onto the alphabet. Reason: the stand keeps the archive's `oldId` as the BO's REAL id, so a
@@ -641,7 +650,7 @@ resolve like this:
   (0.2a) and the archive re-shipped.
 - **Never substitute a local dropdown «Статус» for it** — that is an ordinary field with a similar name,
   nothing on the stand treats it as the process status, and the archive looks complete while it is not.
-  And never paste <company-a>'s `Q0zI~z9Ra2R7Q3yd`.
+  And never paste `<company-a>`'s `Q0zI~z9Ra2R7Q3yd`.
 
 ### 0.10 Hard rules — violating any one of these breaks the import
 
@@ -691,7 +700,7 @@ resolve like this:
 - [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
       gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
       a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
-- [ ] No id literal was copied out of this document — the sample's ids are <company-a>'s (0.2a).
+- [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.10 rule 12).
 - [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
       `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`, `FILE_UPLOAD` (0.5; only a `BO_COMPOSITE` is exempt).
@@ -738,7 +747,7 @@ bun tools/make-probe-archive.bun.ts --code Proba_vseh_tipov --name "Проба �
 «колонки, then rows prefixed with `^`» for `QUESTIONNAIRE`. `!multiple` / `!camera` are the
 `FILE_UPLOAD` settings. `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`.
 
-`I1fVTkYPTSg7X8b8` and `@feclOAWUnwXFQ8c` in that command are **ids ON THE <company-a> STAND** — `Person` and
+`I1fVTkYPTSg7X8b8` and `@feclOAWUnwXFQ8c` in that command are **ids ON THE `<company-a>` STAND** — `Person` and
 one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
 archive aimed at another stand (0.2a).
 
@@ -775,17 +784,17 @@ does not block applying, and `load-import-errors` can come back empty while the 
   = 3 lines + its `AccessStructDto` if any. `[C]`
 - `CompanyMetadataStructDto` carries the company ids `personBoId`, `departmentBoId`, `personGroupBoId`
   (different per company — read them from a stand export). It has **no** stand host/URL, so record the
-  stand URL in project memory. Copying another company's CompanyMetadata ids (<company-b> → <company-c>)
+  stand URL in project memory. Copying another company's CompanyMetadata ids (`<company-b>` → `<company-c>`)
   imported fine. `[C]`
-- **`CompanyMetadataStructDto` is OPTIONAL** `[C]` (<company-a> <stand>, 2026-09-18): a hand-made **2-line**
+- **`CompanyMetadataStructDto` is OPTIONAL** `[C]` (2026-09-18, `S4.24.25.632`): a hand-made **2-line**
   archive (`BoGroupStructDto` + `BoStructDto`, `objectCount-2`, no access DTO) was analysed with an empty
   error list and applied — the BO was created with both fields. Ship the line only when the archive
   actually references Person/Department/PersonGroup.
-- **Group `oldId`/`newId` are generated at EXPORT time, not stable ids** `[C]`: the same <company-a> group
+- **Group `oldId`/`newId` are generated at EXPORT time, not stable ids** `[C]`: the same `<company-a>` group
   «Тест» carries `ICHLTlIHbLLBzxoI`, `wNARkY1IRHHtHbv9`, `fKsRKOK@JrbB@UM6`, `LEl3hxwYMOiuY7Fa` in four
   exports; «Матрицы» changed between builds too. So `boGroupOldId` only ties the lines of ONE archive
   together, and the importer cannot be matching groups by it — see §8.
-- **The stand keeps the archive's `oldId` as the BO's real id** `[C]` (<company-a> 2026-09-18: the generated
+- **The stand keeps the archive's `oldId` as the BO's real id** `[C]` (`<company-a>` 2026-09-18: the generated
   `oldId: "Zyvu00@DV5VPL69g"` appeared verbatim in the registry URL; confirmed a second time on the
   API-imported BO `Proba_API_20260918`, whose `oldId "d9OrTqCb7O97FFY4"` came back from
   `v2/business-objects/load-bo-id-by-code`). Deterministic ids therefore address the same BO on every
@@ -800,7 +809,7 @@ does not block applying, and `load-import-errors` can come back empty while the 
 
 ## 2. What an export actually contains
 
-- **Only the objects selected at export time.** A one-BO export holds that BO alone; 17 <company-b>
+- **Only the objects selected at export time.** A one-BO export holds that BO alone; 17 `<company-b>`
   archives contained no `Model`/`Model_step`; one held only the 21 dictionaries. A tool scanning a folder
   of exports must pick the newest archive that actually contains the wanted BO. `[C]`
 - **Structure as of export time only.** After renaming/adding/deleting fields take a fresh export: a
@@ -827,7 +836,7 @@ Besides the BO lines an export may carry, per BO, a `BoScriptVersionsStructDto` 
 `AccessStructDto` (§7) and `ExportStructInstanceDto` record lines (§5, §5c).
 
 An export also starts with a `CompanyMetadataStructDto` line — `{personBoId, departmentBoId,
-personGroupBoId}` — which on <company-a> is `I1fVTkYPTSg7X8b8` / `4cQAePlhkxrCGMW6` / `O5d@0F1zrMUmpkUt`
+personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQAePlhkxrCGMW6` / `O5d@0F1zrMUmpkUt`
 `[C]` (2026-09-18; the ids in older exports of this stand differ, so read them off a fresh export).
 
 ## 3. `BoStructDto` and `dynamicFields`
@@ -964,7 +973,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   fields on a tab carry `tabCodePath{tabGroupCode, tabCode}`. `boTabs` can stay `{}` while tabs exist `[C]`.
   Fields outside tabs coexist with a tab group in the same BO. Tab order = `fieldTabs` order; the first
   tab is the default. A tab group whose only tab is a service tab can sit UNDER the ordinary fields
-  (<company-b> does this with its `system` tab) instead of opening the form.
+  (`<company-b>` does this with its `system` tab) instead of opening the form.
 - **Record window**: `BoStructDto.gridLayoutPosition` `{x,y,w,h,id:"0"}` is the record WINDOW on a
   ~16-column SCREEN grid, not the form; `null` for dictionaries. All four occurrences ever seen:
   `{x:1,w:15,h:21}`, `{x:1,w:15,h:18}` (top-level BOs), `{x:3,w:11,h:18}` / `{x:3,w:10,h:28}` (BOs opened
@@ -976,9 +985,9 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 
 - `category: BO_DICTIONARY`, `dictionaryFields: ["CODE","LABEL"]`, system fields `code` (`INPUT_TEXT`,
   `isSystem`, `isUnique`) and `label` (`INPUT_TEXT_LANG`).
-- A dictionary MAY carry extra fields (<company-b> `Tax_base`: `lower_limit`, `fixed_amount`, `rate`,
+- A dictionary MAY carry extra fields (`<company-b>` `Tax_base`: `lower_limit`, `fixed_amount`, `rate`,
   `starting_price`); 15 of 21 keep the plain code/label shape.
-- **A hand-built dictionary archive imports cleanly** `[C]` (2026-09-18, <company-a>): the three keys above
+- **A hand-built dictionary archive imports cleanly** `[C]` (2026-09-18, `<company-a>`): the three keys above
   plus ordinary `dynamicFields` are enough, `nativeFields` stays `{}`, and the stand rebuilds exactly the
   dictionary the constructor would (`isDictionary: true`, `code`/`label` at `y: 0` / `y: 4`). The system
   fields carry `isSystem: true` and their `label` map holds all four languages —
@@ -991,7 +1000,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   `DEFAULT_VALUE{boCode, fieldCode:code}`. The `boId` inside `compositeId`/`oldRefBoId` differs from
   `BoStructDto.oldId` in real exports — normal.
 - **A «Выпадающий список» carries `fieldOptionsStruct`** `[C]` (2026-09-18: shapes read off a real
-  <company-b> export AND round-tripped — a hand-built archive with both kinds imported into <company-a> and
+  `<company-b>` export AND round-tripped — a hand-built archive with both kinds imported into `<company-a>` and
   came back from the stand exactly as sent). Two kinds:
   - fed by a DICTIONARY — `{"optionSource":"FROM_BO","options":{},"dictionaryBoInfo":{"code":"Dolzh",
     "name":"Должность","boCategory":"BO_DICTIONARY"},"dictionaryOptionSetting":{}}`. **The dictionary is
@@ -1009,7 +1018,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   `tools/make-probe-archive.bun.ts` emits both: `--field "Должность:DROPDOWN_SINGLE@Dolzh@Должность"` /
   `--field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово"`.
 
-## 5a. Panels (панели) `[C]` (2026-09-18, <company-a>)
+## 5a. Panels (панели) `[C]` (2026-09-18, `<company-a>`)
 
 - `category: "BO_PANEL"`, everything else the shape of a plain BO — no panel-specific key anywhere in
   `BoStructDto` (`dictionaryFields: []`, `nativeFields: []`, `boTabs: []`, `bos: []`).
@@ -1018,7 +1027,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   `isKindAddForSelect: true`, `isHeightDynamic: true`, `isReadonly: true`, `gridPosition.rows: 6`+.
   A hand-built archive with just those keys imports and the stand resolves `oldRefBoId` to a live BO
   (`tools/make-probe-archive.bun.ts --category BO_PANEL --field "Метка:BO@<boId>@<boCode>"`).
-- What a REAL panel adds on top (<company-a> «Главная», `Glavnaya`): `boRefStruct.fieldRefs` — one entry per
+- What a REAL panel adds on top (`<company-a>` «Главная», `Glavnaya`): `boRefStruct.fieldRefs` — one entry per
   field of the target BO with `toShow` / `orderIndex` / `gridPosition`, i.e. the widget's column layout —
   and `bracketFilter` (`{boCode, fieldCode, brackets{…}}`), which is what turns a registry into «Мои
   встречи»: `nativeFilters{type:"CREATED_BY", isCurrentUser:true}` OR a `dynamicFilters` entry on a
@@ -1034,7 +1043,7 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
 - **`bos: [{code, name, boCategory}]`** — the source BOs, referenced **by CODE only**, no id and no
   nested DTO. The importer looks them up **by code — first among the lines of the archive itself, and
   otherwise on the stand** `[C]` (2026-09-18, both import routes; the in-archive case proved by a dry run
-  on <company-a>) — and writes the real `boId`s into the live `links`. So a composite and the BOs it joins
+  on `<company-a>`) — and writes the real `boId`s into the live `links`. So a composite and the BOs it joins
   can travel in ONE archive, in any line order (composite first also analyses clean).
 - **A `boFieldCodes.fieldCode` that no source BO has CRASHES the analyzer** `[C]` (2026-09-18). Not a
   readable error — the import goes `status: "INTERNAL_ERROR"` and `load-import-data.error` carries a Java
@@ -1069,15 +1078,15 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
   `--source "<код БО>:<Имя>[:<категория>]"` (repeatable) and
   `--co-field "Метка:TYPE=<boCode>.<fieldCode>[+<boCode>.<fieldCode>…]"` (repeatable) — one link makes a
   «простой атрибут», two or more a «составной». It refuses a `--co-field` naming a BO no `--source`
-  declares. Both routes verified end to end on <company-a> (`MYBPM-UI-API.md` §5e).
+  declares. Both routes verified end to end on `<company-a>` (`MYBPM-UI-API.md` §5e).
 - The import dialog labels the node **«Составной объект/<имя>»** and lists the attributes under
   «Добавленные поля» like any other BO; `load-import-bo-infos` returns `boCategory: "BO_COMPOSITE"`.
 
-## 5c. Business processes (бизнес-процессы) `[C]` (2026-09-18, sample `MyBPM-export-<company-a>-v4.24.25.430-2026-03-22T17-05-29.mybpm.zip`, both import routes on <company-a>)
+## 5c. Business processes (бизнес-процессы) `[C]` (2026-09-18, sample `MyBPM-export-<company-a>-v4.24.25.430-2026-03-22T17-05-29.mybpm.zip`, both import routes on `<company-a>`)
 
 A business process is **two lines in the archive**: an ordinary `BoStructDto` with
 `category: "BO_PROCESS"`, plus a **`BoProcessVersionsStructDto` whose `oldId` is the BO's own `oldId`** —
-that field is the only link between them. The <company-a> sample carries 7 objects:
+that field is the only link between them. The `<company-a>` sample carries 7 objects:
 `CompanyMetadataStructDto`, `BoGroupStructDto`, `ScriptDefStructDto`, `BoProcessVersionsStructDto`,
 `BoStructDto`, and two `ExportStructInstanceDto` (records, see below).
 
@@ -1108,7 +1117,7 @@ that field is the only link between them. The <company-a> sample carries 7 objec
   system field `PROCESS_STATUS` («Статус процесса», `type: "BO"`, `isSystem`, `isCodeReadonly`,
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
   процесса", boCategory: "BO_DICTIONARY"}`, `fieldRefs.label.toShow`, `oldRefBoId` = the stand's
-  «Статус процесса» dictionary — <company-a> `Q0zI~z9Ra2R7Q3yd`) — an archive must ship that field itself.
+  «Статус процесса» dictionary — `<company-a>` `Q0zI~z9Ra2R7Q3yd`) — an archive must ship that field itself.
 - The two `ExportStructInstanceDto` in the sample are RECORDS, not structure: one row of the
   `PROCESS_STATUS` dictionary (`CREATED` / «Только что создан»), and a `Coordinate` instance whose
   `sources: [{sourceType: "PROCESS", processInstanceSource: {boCode, isWork}}]` ties it to the process.
@@ -1116,7 +1125,7 @@ that field is the only link between them. The <company-a> sample carries 7 objec
 - **Generator**: `tools/make-probe-archive.bun.ts --category BO_PROCESS` emits both lines; it always puts
   an `Enter` at (100,100) and chains `--process-figure "<Type>[@x,y]"` (repeatable, default a single
   `Exit@440,104`) after it with `main → main` arrows, and `--process-status <refBoId>` adds the
-  `PROCESS_STATUS` field in the export's own shape. Both routes verified on <company-a>
+  `PROCESS_STATUS` field in the export's own shape. Both routes verified on `<company-a>`
   (`MYBPM-UI-API.md` §5f); the import dialog labels the node **«Бизнес-процесс/<имя>»** and
   `load-import-bo-infos` returns `boCategory: "BO_PROCESS"`.
 
@@ -1203,13 +1212,13 @@ BlockIf / BlockExit`, `ExprValue / ExprOp / ExprAct / ExprCall`. Numbers are dou
 take the def whose `compositeId` ends with the wanted script id, swap `@class` back to `type`, wrap it in
 the envelope of §0S.3 with `startBlockIds` = the entry point — and it is a normal Part II fragment.
 
-### The reverse works too: an archive CREATES scripts on import `[C]` (2026-09-18, <company-a>)
+### The reverse works too: an archive CREATES scripts on import `[C]` (2026-09-18, `<company-a>`)
 
 Probe: «Проба скрипт архивом 2026-09-18» (`Proba_skript_arhiv_20260918`, stand id `ZR1XPYi5C3zqho@w`,
 fields `Naimenovanie` / `Kod`), a 6-line archive — `CompanyMetadataStructDto` + `BoGroupStructDto` +
 `BoStructDto` + `BoScriptVersionsStructDto` + 2 × `ScriptDefStructDto` — built by
 `tools/make-probe-archive.bun.ts` and post-processed by `tools/add-bo-scripts.bun.ts`, applied through
-`tools/api-import-structure.bun.ts`. The two bodies were LIFTED VERBATIM out of the <company-b> export
+`tools/api-import-structure.bun.ts`. The two bodies were LIFTED VERBATIM out of the `<company-b>` export
 (`s1BJw7CmFKAU2Cty` = ТОЧКА ВХОДА → ВЫЙТИ, `DlQXUgrNRYPh@IQv` = the 8-block field validator). **The
 clipboard is no longer the only write channel** (§14 is about the IDE, not about the platform).
 
@@ -1262,7 +1271,7 @@ choose a body that calls none.
 
 - Type `BO`, `viewType` SINGLE / TABLE / MULTIPLE, `oldRefBoId`, `boRefStruct{boInfo, fieldRefs,
   linkedFieldCode}`. A two-way link is a SINGLE↔TABLE pair joined by `linkedFieldCode`.
-- **`oldRefBoId` ≠ the target's `oldId` is NORMAL** (every reference in <company-b> mismatches) — not a bug.
+- **`oldRefBoId` ≠ the target's `oldId` is NORMAL** (every reference in `<company-b>` mismatches) — not a bug.
 - **M:N (TABLE↔TABLE)** has never been seen in any export; how to express it is unknown `[U]`.
 - `fieldRefs` = the reference's display config («Выбрать поля для отображения»):
   `{fieldCode: {toShow, orderIndex, gridPosition}}`. In real exports the gridPositions are a flattened
@@ -1271,7 +1280,7 @@ choose a body that calls none.
   sub-columns**.
 - How the stand serializes a hand-made linked pair: the SINGLE side lists the linked field in `fieldRefs`
   as `{"gridPosition":{…}}` with no `toShow` and `tableColToShow:false`; the TABLE side does **not** list
-  the linked field and has `isKindAddForSelect:false`. <company-b>'s SINGLE side additionally carries
+  the linked field and has `isKindAddForSelect:false`. `<company-b>`'s SINGLE side additionally carries
   `isReadonly:true, chosenAccessRight:true`. A generated pair differing in exactly these points behaves
   identically on import — proven irrelevant to the Excel link defect. `[C]`
 - A hand-made plain TABLE reference (no `linkedFieldCode`) exports with `fieldRefs` of only the toShow fields.
@@ -1301,10 +1310,10 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   `fromFields{<personFieldCode>: same flags}`, `participants`.
 - Field rules: `fieldAccessStructMap[fieldCode]` (only `view` + `edit` are meaningful per field).
   Tab rules: `fieldAccessStructMap["Vkladki"].tabAccessStructMap[tabCode].view`.
-- Semantics, read off <company-b> rather than documented `[I]`: `denyAll:false` = «всем»;
+- Semantics, read off `<company-b>` rather than documented `[I]`: `denyAll:false` = «всем»;
   `denyAll:true` + empty `orgUnitIds` + all-false `authorsField` = «никому»; `denyAll:true` + ids and/or
   `author:true` = «только этим». The struct's **top-level** `denyAll` is a "custom rights are set" flag,
-  not a global deny (every <company-b> BO has it true while its actions stay open).
+  not a global deny (every `<company-b>` BO has it true while its actions stay open).
 - `chosenAccessRight:true` marks fields/tabs with individual rights; tabs imported with `false` were still
   hidden → probably a UI-only flag `[I]`.
 - `participants` and `authorsField.fieldCodes` were never seen filled — semantics unknown `[U]`.
@@ -1340,7 +1349,7 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
 
 ### BO groups on import — open defect `[C] symptom, [U] cause`
 
-Symptom (<company-c>, 2026-09-16): an archive with 2 groups («Цели и задачи» + 6 BOs, «Справочники» + 11
+Symptom (`<company-c>`, 2026-09-16): an archive with 2 groups («Цели и задачи» + 6 BOs, «Справочники» + 11
 dictionaries, every `boGroupOldId` correct) put **all** BOs into «Справочники» on the stand.
 
 - Every real stand export contains exactly ONE `BoGroupStructDto`; multi-group archives are untested
@@ -1353,11 +1362,11 @@ dictionaries, every `boGroupOldId` correct) put **all** BOs into «Справо�
   it) instead of creating groups by `oldId`, and with several groups only the last one applies. Why the
   probe BOs were not created is unknown (candidate: they had no `AccessStructDto`).
 - **Practical risk: any import may RENAME an existing BO group** — hand-arranged groups can be lost.
-- **Does NOT fire for a single group whose `name` equals an existing stand group** `[C]` (<company-a>,
+- **Does NOT fire for a single group whose `name` equals an existing stand group** `[C]` (`<company-a>`,
   2026-09-18): a 1-group/1-BO archive naming the group «Бизнес-объект» (the group already on the stand)
   created the BO **inside that group**, and the two BOs already there kept their group and its name.
   This is the safe recipe for a probe import: **one** `BoGroupStructDto`, its `name` copied verbatim from
-  an existing stand group. Checked afterwards in the constructor (`MYBPM-UI-API.md` §5): all 14 <company-a>
+  an existing stand group. Checked afterwards in the constructor (`MYBPM-UI-API.md` §5): all 14 `<company-a>`
   groups kept their names. Combined with the `oldId` instability above, the working hypothesis is now that
   the importer matches groups **by name** and falls back to renaming when no name matches `[I]`.
 - To resume: collect the import result messages, the current list of groups, and a fresh stand export.
@@ -1764,10 +1773,9 @@ Run all of it — the IDE will not tell you about any of these:
    this check must report exactly the method's parameter ids as out of scope and nothing else.
 5. **Unique names**: no two `varName` / `elementVarName` alike within the method.
 6. **Ids are 16 characters** — `branches` and `more` keys too.
-7. Ready-made checker (it encodes 1–6, in Russian):
-   `python3 "<project>/block-ide-v5/генератор/check.py" <file.json>` → `проблем 0`. Beside it:
-   `strip_hat.py` (0S.12), `canon.py` + `live_cmp.py` (id-free comparison of your file with the copy the
-   user sends back), `sim.py` (the Scoring formula simulator). Reuse them instead of writing new ones.
+7. Rules 1–6 are mechanical — encode them once in a checker of your own and run it on every file
+   before you deliver it (§0S.13 lists the checkers already written for one project; ask the user
+   whether that project's folder is at hand before writing a new one).
 
 ### 0S.12 Delivering the file
 
@@ -2063,12 +2071,12 @@ enumerated (§15).
 
 ### Tooling that already exists
 
-Under `~/programming/MyBPM/<project>/block-ide-v5/генератор/` (written for that project, reusable):
-`strip_hat.py` (drop the method hat, re-point `startBlockIds`), `check.py` (scope / dangling-reference /
-duplicate-variable / reachability checker), `canon.py` + `live_cmp.py` (canonical id-free comparison of a
-generated fragment against a live copy), `sim.py` (the formula simulator), `gen5.py` (the script generator
-of the Scoring engine); `canon-compare.bun.ts` sits one level up in `<project>/`. Reuse them before writing
-a new checker — every rule in this section is already encoded in one of them.
+These live in a PROJECT repository, not beside this document — ask the user whether that folder is at
+hand before you write a checker from scratch: `strip_hat.py` (drop the method hat, re-point
+`startBlockIds`), `check.py` (scope / dangling-reference / duplicate-variable / reachability checker),
+`canon.py` + `live_cmp.py` (canonical id-free comparison of a generated fragment against a live copy),
+`sim.py` (a formula simulator), `gen5.py` (a script generator built on this section), `canon-compare.bun.ts`.
+Every rule in this section is already encoded in one of them.
 
 ### Paste size — no limit found
 

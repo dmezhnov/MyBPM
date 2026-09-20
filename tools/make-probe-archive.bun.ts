@@ -50,14 +50,18 @@ const outDir = Bun.argv.includes("--out")
   ? Bun.argv[Bun.argv.indexOf("--out") + 1]
   : `${import.meta.dir}/out`;
 
-/** <company-a> company ids, from MyBPM-export-<company-a>-v4.24.25.470-2026-05-29T10-29-24.mybpm.zip */
+/**
+ * Company ids lifted from ONE stand export (2026-05, build 4.24.25.470) — they exist only to give
+ * `CompanyMetadataStructDto` a well-formed shape. That line is OPTIONAL (MYBPM-IMPORTS.md §1); if your
+ * stand needs it, take the ids from your own export instead of these.
+ */
 const COMPANY_METADATA = {
   personBoId: "kuauBPHguuPrPIzq",
   departmentBoId: "b@hLtBKNqBseRbj9",
   personGroupBoId: "ARXWYNE8Kl8O6GZe",
 };
 
-const GROUP_NAME = "Бизнес-объект"; // must match the group already on the <company-a> stand
+const GROUP_NAME = "Бизнес-объект"; // must match a group that ALREADY exists on the target stand
 
 /** `--code X` / `--name Y` override the defaults; ids are derived from the code, so a new code = a new BO. */
 function flag(name: string, fallback: string): string {
@@ -267,7 +271,7 @@ function field(o: {
   /**
    * A DROPDOWN_SINGLE's «Отобразить значения». `dictionary` = «Справочник» (the dictionary is named by
    * CODE and the stand resolves it on import); `options` = «Задать вручную», the local list. Shapes read
-   * off a real <company-b> export (`Model_step.condition`, `Request.gender`).
+   * off a real export (`Model_step.condition`, `Request.gender`).
    */
   dictionary?: { code: string; name: string };
   options?: string[];
@@ -555,7 +559,7 @@ if (isComposite) {
 
 /**
  * `--process-status <refBoId>` adds the process's own system field `PROCESS_STATUS` — the BO-reference
- * to the stand's built-in dictionary «Статус процесса» (<company-a>: `Q0zI~z9Ra2R7Q3yd`). The constructor
+ * to the stand's built-in dictionary «Статус процесса» (its id is per-stand — read it off your own). The constructor
  * creates this field by itself; the IMPORTER does not `[C]` (2026-09-18), so an archive that wants a
  * process shaped like an exported one has to ship it. Its shape is copied verbatim off a real export —
  * `viewType: "SINGLE"`, `isSystem`/`isCodeReadonly`/`isRequired`, no `removeType`, no `tableColOrderIndex`.
@@ -893,7 +897,7 @@ const localStamp = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
   .replace(/[:]/g, "-")
   .slice(0, 19);
 const suffix = withMetadata ? "-meta" : "-nometa";
-const outPath = `${outDir}/MyBPM-export-<company-a>-v4.24.25.614-${localStamp}${suffix}.mybpm.zip`;
+const outPath = `${outDir}/MyBPM-export-probe-${localStamp}${suffix}.mybpm.zip`;
 
 await Bun.write(outPath, archive);
 console.log(`${outPath}\n  lines: ${lines.length} (${lines.map((l) => (l as any)["@class"].split(".").pop()).join(", ")})\n  inner: ${dataDir}/`);

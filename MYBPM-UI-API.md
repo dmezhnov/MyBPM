@@ -16,13 +16,22 @@ Excel, export). Sections 1–12 are the evidence behind it and the material for 
 enough to drive a stand. Its counterparts for files are `MYBPM-IMPORTS.md` §0 (archives), §0S (Block
 IDE scripts) and §0X (records in xlsx) — the four cookbooks are independent, read the one you need.
 
-**The <company-a> tenant answers `companyCode: "<COMPANY_A>"`** `[C]` (2026-09-19, `GET /web/v2/auth/load-auth-info`
-→ `{companyId:"nNV9BhZPBdn6qtjk", companyCode:"<COMPANY_A>", …}`) — the same company everything below calls
-«<company-a>», with its 14 BO groups and the probe group «Бизнес-объект». Do not take it for a third stand.
+**Placeholders.** This document describes the PLATFORM, not one installation of it, so every host and
+company name is replaced by a placeholder: `<stand>` is the host of a MyBPM stand (an archive never
+carries it — the user is the only source, §0U.1), `<company-a>` … `<company-d>` are the companies
+(tenants) the facts were collected on, and `<COMPANY_A>` is the `companyCode` of `<company-a>`.
+`<company-a>` and `<company-c>` live on the same `<stand>`. Where a fact depends on WHICH installation
+it came from, the origin mark carries the date and the platform build instead of a name.
 
-**Evidence base.** MyBPM v4.24: <company-a> stand <stand> `S4.24.25.632/C4.24.25.264` (BO constructor,
-structure import, 2026-09-18), <company-c> stand `4.24.25.614` (API, menus, rights, kanban, Excel links,
-2026-09-15/16) and <company-b> `4.24.25.570/.614` (Excel record import for Scoring, 2026-08-28 .. 09-04).
+**A tenant's display name and its `companyCode` are different strings** `[C]` (2026-09-19,
+`GET /web/v2/auth/load-auth-info` → `{companyId:"…", companyCode:"<COMPANY_A>", …}`): the company this
+document calls `<company-a>`, with its 14 BO groups and the probe group «Бизнес-объект», answers a code
+that looks nothing like its name. Do not take that code for a second company.
+
+**Evidence base.** MyBPM v4.24, four companies across two stands: build `S4.24.25.632/C4.24.25.264`
+(BO constructor, structure import, records, kanban, 2026-09-18/19), build `4.24.25.614` (API, menus,
+rights, kanban, Excel links, 2026-09-15/16) and builds `4.24.25.570/.614` (Excel record import,
+2026-08-28 .. 09-04).
 **Status markers**: `[C]` confirmed on a stand, `[I]` inferred, `[U]` unverified.
 
 ---
@@ -54,7 +63,7 @@ Ask the user for these, one request at a time, and wait for the answer:
 
 1. **The stand URL** — e.g. `https://<stand>`. Everything below is `POST <stand>/web/…`.
    An archive or an export never carries the host; the user is the only source.
-2. **The company (tenant)** — one host serves several: `<stand>` serves both <company-c> and <company-a>.
+2. **The company (tenant)** — one host serves several: `<stand>` serves both `<company-c>` and `<company-a>`.
    The tenant is selected by the credentials/token, not by a header or a parameter, but you need its name
    to talk about it and to know which sidebar you are looking at. **Never assume a screen or a BO group
    exists because another company on the same host has it.**
@@ -88,7 +97,7 @@ Content-Type: application/json
   Use it as the header for every later call.
 - Wrong credentials answer **HTTP 200** with
   `{"message":"Не верен пользователь и/или пароль","errorType":"IllegalLoginOrPassword",…}` `[C]`
-  (2026-09-18, probed on <stand> with a nonexistent user). So a failed login looks exactly like any other
+  (2026-09-18, probed on `<stand>` with a nonexistent user). So a failed login looks exactly like any other
   error (§0U.2) — check `errorType`, never the HTTP status.
 - `POST /web/v2/auth/load-token` (empty params and body) returns the token of the CURRENT session, and
   `GET /web/v2/auth/load-auth-info` describes who you are. `GET /web/v2/auth/logout` ends the session.
@@ -699,7 +708,7 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
 
 ## 4. Sidebar menu — controller `v2/menu-item`
 
-All verified on the <company-c> stand by building 5 menu groups + 36 items via the API. `[C]`
+All verified on the `<company-c>` stand by building 5 menu groups + 36 items via the API. `[C]`
 
 - `create-menu-item` body = the item itself:
   `{id, type: GROUP|BO, displayName, displayNameMap{RUS}, boId, iconName, orderIndex, isPanel:false,
@@ -750,10 +759,10 @@ All verified on the <company-c> stand by building 5 menu groups + 36 items via t
 ## 5. Structure archive (`.mybpm.zip`) — import (UI and API) and export
 
 What the archive CONTAINS and what import DOES → `MYBPM-IMPORTS.md` §1-8. This section is only the UI
-route to upload/download one. Evidence: <stand> company **<company-a>**, 2026-09-18, v4.24.25.614. `[C]`
+route to upload/download one. Evidence: `<stand>` company **`<company-a>`**, 2026-09-18, v4.24.25.614. `[C]`
 
-**One domain hosts several companies (tenants).** `<stand>` serves <company-c> AND <company-a> (and `<COMPANY_A>`
-appears in <company-a>'s import log). The sidebar content differs completely per company — do not assume a
+**One domain hosts several companies (tenants).** `<stand>` serves `<company-c>` AND `<company-a>` (and `<COMPANY_A>`
+appears in `<company-a>`'s import log). The sidebar content differs completely per company — do not assume a
 screen exists just because another company on the same host has it.
 
 ### Route
@@ -764,7 +773,7 @@ Sidebar group **«Системные»** (a collapsed menu GROUP, first item, cl
 - Direct URLs (work, no clicking needed): `/settings?settingsOpenPageUrl=import_export&formType=import`
   and `…&formType=export`. **Clicking the Импорт/Экспорт tab labels did nothing — navigate by URL.** `[C]`
 - **«Бизнес», «Компания», «Настройки», «Аналитика» sit at the TOP LEVEL of the sidebar by default** —
-  outside any group (user, 2026-09-18). <company-a> is the exception: someone there collected them into a
+  outside any group (user, 2026-09-18). `<company-a>` is the exception: someone there collected them into a
   menu group called «Системные». **The group is a per-company menu arrangement, not a platform
   constant** — in another company look for these items at the sidebar's top level, or inside whatever
   group that company made. Never navigate by the path «Системные → …»; navigate by the item name, or by
@@ -817,14 +826,14 @@ Sidebar group **«Системные»** (a collapsed menu GROUP, first item, cl
   had to be: the client's code names it — `postFileJson("/import-file", file, {})`.)
 - The log confirms **the outer file name is free**: entries include `TestSumProcess.mybpm.zip` and a
   Cyrillic `Тест вставки текста в поле типа текст.mybpm.zip`. `[C]`
-- The log also confirms **cross-tenant import works**: <company-a> holds imports of
+- The log also confirms **cross-tenant import works**: `<company-a>` holds imports of
   `MyBPM-export-<COMPANY_A>-…` and `MyBPM-export-<company-d>-…` archives. `[C]`
 - «Описание импорта» is a free-text field stored per import — so the dialog asks for a description
   (the field was never opened this session; the dialog's exact contents are `[U]`).
 
 ### Import through the API — the whole cycle without a browser `[C]` (2026-09-18)
 
-Done end to end on <company-a>: BO «Проба API 2026-09-18» (`Proba_API_20260918`) was created by this route
+Done end to end on `<company-a>`: BO «Проба API 2026-09-18» (`Proba_API_20260918`) was created by this route
 alone. Driver: `~/programming/MyBPM/tools/api-import-structure.bun.ts` (Bun, `fetch` + `FormData`;
 `--apply` / `--cancel` / `--import-id` / `--description`, token from `$MYBPM_TOKEN` or `--token-file`).
 
@@ -862,7 +871,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - The BO-side `/web/v2/business-objects/import-structure` (`postFileJson`, param `startTestProcess:false`)
   is a DIFFERENT, single-call endpoint of the BO controller — not used here, untried `[U]`.
 
-### The dry run as a VALIDATOR — 13 eval archives against <stand> `[C]` (2026-09-18)
+### The dry run as a VALIDATOR — 13 eval archives against `<stand>` `[C]` (2026-09-18)
 
 The upload→insert→analyze→`load-import-errors`→`cancel-import` cycle above is the only validator we have
 that is the platform itself. It was run over all 13 archives the §0 eval generated (`tools/out/eval*/`,
@@ -925,7 +934,7 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 
 - `load-bo-id-by-code {boCode}` → the BO id. On the API-imported probe it returned exactly the archive's
   `oldId` — confirms again that **the archive's `oldId` becomes the stand's BO id** `[C]`.
-- `load-business-object-name {boId}` → the BO's name; `load-bo-groups {}` → all 14 <company-a> groups with
+- `load-business-object-name {boId}` → the BO's name; `load-bo-groups {}` → all 14 `<company-a>` groups with
   `{id,name,code,orderIndex,kind}` (the way to prove an import renamed nothing);
 - `load-bo-fields-for-drag {boId}` → the BO's fields as `{label,type,…}`; **`code` comes back `null`** here,
   so it identifies fields by label only `[C]`.
@@ -956,10 +965,10 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 
 ### Checking the result of a structure import
 
-- **BO constructor: the sidebar item «Бизнес»** → `/business-objects/viewing-list` `[C]`. In <company-a> it
+- **BO constructor: the sidebar item «Бизнес»** → `/business-objects/viewing-list` `[C]`. In `<company-a>` it
   lives inside the menu group «Системные»; by default it is a top-level sidebar item — see the Route
   note above, the grouping is per-company. Left panel = the
-  list of BO GROUPS (<company-a> has 14: Тест, Системные, Инициатива, АВР, Задача, Компания, Встреча, Визит,
+  list of BO GROUPS (`<company-a>` has 14: Тест, Системные, Инициатива, АВР, Задача, Компания, Встреча, Визит,
   Контактные данные, Расположение, Другое, Fix, Tests, Бизнес-объект); the chevron on a group expands it
   into its BOs (grey rows underneath). This is the place to verify that an import did not rename a group.
 - **This list is invisible to text extraction** `[C]`: `get_page_text`, `read_page` and even
@@ -977,10 +986,10 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 - Cancelling that «Добавить» form asks «Несохраненные данные — У вас есть несохраненные данные. Закрыть
   без сохранения?» (ДА / НЕТ) — a draft is created as soon as the form opens.
 
-## 5b. Creating a BO in the constructor — no archive at all `[C]` (2026-09-18, <company-a>, S4.24.25.632)
+## 5b. Creating a BO in the constructor — no archive at all `[C]` (2026-09-18, `<company-a>`, S4.24.25.632)
 
 A BO does **not** have to come from a `.mybpm.zip`. The constructor creates one directly, and the same
-six `/web/v2/business-objects/*` calls do it headlessly. Two probe BOs on <company-a> prove both routes:
+six `/web/v2/business-objects/*` calls do it headlessly. Two probe BOs on `<company-a>` prove both routes:
 «Проба UI 2026-09-18» (`Proba_UI_2026_09_18`, `OpmGDzaQRUT27jky`) and «Проба API-конструктор 2026-09-18»
 (`Proba_API_konstruktor_2026_09_`, `~hb30v0XyMtGsBLj`), both in group «Бизнес-объект» (`N50iWQkw0iySlAKo`).
 
@@ -995,7 +1004,7 @@ six `/web/v2/business-objects/*` calls do it headlessly. Two probe BOs on <compa
   expand chevron: «Добавить панель / Добавить бизнес-объект / Добавить составной объект /
   Добавить справочник / Добавить бизнес-процесс / Изменить код / Переименовать / Удалить».
 - The caption-level green ⊕ offers the same list plus «Группа», but it creates with `boGroupId: null`;
-  the client then looks for a group of `kind: DEFAULT` and **all 14 <company-a> groups are `kind: MANUAL`**,
+  the client then looks for a group of `kind: DEFAULT` and **all 14 `<company-a>` groups are `kind: MANUAL`**,
   so nothing is created and the page is left half-rendered. **Always create from the group's ⋮.**
 - **There is no dialog and no name prompt**: the click creates the BO immediately as
   «Бизнес объект №N» and routes to its constructor. Created is created — undo means deleting it.
@@ -1053,7 +1062,7 @@ settings).
   «Required parameter 'groupId' is not present») → `[{id, name, nameReadonly, viewState, orderIndex,
   boCategory}]`, the cheapest way to list a group's BOs and check what an action created.
 
-### 5c. The matrix «4 routes × 5 object kinds» — column «Справочник» `[C]` (2026-09-18, <company-a>)
+### 5c. The matrix «4 routes × 5 object kinds» — column «Справочник» `[C]` (2026-09-18, `<company-a>`)
 
 A dictionary is created by all four routes with NO route-specific machinery; four probes live in group
 «Бизнес-объект» (`N50iWQkw0iySlAKo`):
@@ -1086,7 +1095,7 @@ A dictionary is created by all four routes with NO route-specific machinery; fou
   with the token in the session scratchpad) and drove the whole cycle: dry run → `--import-id … --apply`.
   The archive's `oldId` became the stand's BO id for the third time (`fArbAncLamdx5agj`).
 
-### 5d. The matrix «4 routes × 5 object kinds» — column «Панель» `[C]` (2026-09-18, <company-a>)
+### 5d. The matrix «4 routes × 5 object kinds» — column «Панель» `[C]` (2026-09-18, `<company-a>`)
 
 A panel is an ordinary BO with `boCategory: "BO_PANEL"`; all four routes need **no panel-specific
 machinery**. Four probes in group «Бизнес-объект» (`N50iWQkw0iySlAKo`), each holding one nested object
@@ -1121,13 +1130,13 @@ pointing at «Проба UI 2026-09-18» (`OpmGDzaQRUT27jky`):
   `tools/make-probe-archive.bun.ts --category BO_PANEL --field "Метка:BO@<boId>@<boCode>"` builds it.
   The import dialog's tree labels a panel node with the **bare BO name, no `<вид объекта>/` prefix**
   (a dictionary gets «Справочник/…») `[C]`.
-- <company-a>'s own panel «Главная» (`cd2gCP8IyobPtcy0`, code `Glavnaya`) exported cleanly: the same
+- `<company-a>`'s own panel «Главная» (`cd2gCP8IyobPtcy0`, code `Glavnaya`) exported cleanly: the same
   `BoStructDto`, three `dynamicFields` of `type: "BO"`, each with `boRefStruct.fieldRefs` (which columns
   of the target BO to show, `toShow`/`orderIndex`/`gridPosition` per field) and a `bracketFilter`
   («Мои встречи» = `nativeFilters: {type: "CREATED_BY", isCurrentUser: true}`). That pair —
   `fieldRefs` + `bracketFilter` — is what makes a real dashboard; the probes ship neither.
 
-### 5e. The matrix «4 routes × 5 object kinds» — column «Составной объект» `[C]` (2026-09-18, <company-a>)
+### 5e. The matrix «4 routes × 5 object kinds» — column «Составной объект» `[C]` (2026-09-18, `<company-a>`)
 
 A composite object (`boCategory: "BO_COMPOSITE"`) is the ONE kind that needs machinery of its own: it has
 its own editor route, its own controller and a DRAFT protocol. Probe: «Проба составной UI 2026-09-18»
@@ -1235,7 +1244,7 @@ routes of this section. The importer resolves `bos` **by code** into the stand's
 `boFieldCodes` into the live `links` — read back identical to a composite built in the constructor.
 Details and the failure mode in `MYBPM-IMPORTS.md` §5b.
 
-### 5f. The matrix «4 routes × 5 object kinds» — column «Бизнес-процесс» `[C]` (2026-09-18, <company-a>)
+### 5f. The matrix «4 routes × 5 object kinds» — column «Бизнес-процесс» `[C]` (2026-09-18, `<company-a>`)
 
 A business process (`boCategory: "BO_PROCESS"`) is the second kind with machinery of its own: its own
 editor route, TWO controllers and a versioned diagram. Probes in group «Бизнес-объект»
@@ -1256,7 +1265,7 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   fields are still edited through the ordinary BO constructor.
 - **The platform pre-builds two things at creation** `[C]`: the field `PROCESS_STATUS` («Статус процесса»,
   `type: "BO"`, `isSystem`, `isRequired`, pointing at the built-in dictionary «Статус процесса» — on
-  <company-a> `Q0zI~z9Ra2R7Q3yd`, group «Другое»), and **version 1 with a single `Enter` figure**.
+  `<company-a>` `Q0zI~z9Ra2R7Q3yd`, group «Другое»), and **version 1 with a single `Enter` figure**.
 - **The BO code FOLLOWS the rename** here (`Proba_process_UI_2026_09_18`), like a plain BO and unlike a
   composite — the name input of the process editor writes through the ordinary BO writer.
 - A fresh process does not validate: `validate-def` answers «Нет точка окончания» +
@@ -1357,7 +1366,7 @@ in the UI first (⊕ right of «Бизнес-объекты (N)») remains the m
 The «Зависимости:» pane lists what the selection needs («Структура у "Главная" имеет зависимость от:
 "Встречи", "Инициативы", "Задачи"» with a «Добавить в экспорт» link each and «Подтвердить все
 зависимости»); **unconfirmed dependencies do not block the export** — the archive then holds only the
-selected BOs. The <company-a> export came back named `MyBPM-export-<COMPANY_A>-…` — the file name's company slug is
+selected BOs. The `<company-a>` export came back named `MyBPM-export-<COMPANY_A>-…` — the file name's company slug is
 not the tenant you are working in `[U]`.
 
 ### 5g. Block IDE scripts on a running stand — the API `[I]` (2026-09-18, read off the bundle)
@@ -1399,7 +1408,7 @@ no longer needs it: **an archive creates scripts on import** (`MYBPM-IMPORTS.md`
   bundle — `v2/bo-process-editor/load-script-def-list` / `save-script-def-list` (§5f). Pasting figures
   rewrites `BlockSwitchExit.targetArrowId` through the arrow-id map, which is why §0S.4 calls arrow ids
   «not yours to generate».
-#### Reading a BO's scripts headlessly — the four calls, in order `[C]` (2026-09-18, <company-a>)
+#### Reading a BO's scripts headlessly — the four calls, in order `[C]` (2026-09-18, `<company-a>`)
 
 1. `v2/script-browser/load-tree {}` → `roots[]`, one **`id: "bo-<boId>"`** per BO plus the folder
    `global-methods`. This is also the cheapest BO-id lookup by name: `label` is the BO's name.
@@ -1435,10 +1444,10 @@ Use it after every script write — an import NEVER reports a broken body (`MYBP
   `load-exit-variants {scriptModuleId, scriptId}`). This answers open question 20 only on paper — nobody
   has opened it yet.
 
-### 5h. Field settings — «Обязательное», «Уникальное», «Выпадающий список» `[C]` (2026-09-18, <company-a>)
+### 5h. Field settings — «Обязательное», «Уникальное», «Выпадающий список» `[C]` (2026-09-18, `<company-a>`)
 
 What the constructor's gear popover on a field writes, and how to write the same thing through the API
-and through an archive. Two probe BOs on <company-a> in group «Бизнес-объект» prove every route:
+and through an archive. Two probe BOs on `<company-a>` in group «Бизнес-объект» prove every route:
 «Проба настройки полей 2026-09-18» (`yxTzPaWhONPNxk5j`, built by the API) and «Проба настройки полей
 импорт 2026-09-18» (`ATyioDPdsxhmVDBO`, built by an archive import), both with the same four fields:
 Наименование (обязательное), Табельный номер (уникальное), Должность (выпадающий список из справочника
@@ -1501,7 +1510,7 @@ becomes `true`. Reproduce it, or the BO's registry will differ from a UI-built o
 «Наименование» and «Табельный номер» as columns for exactly this reason.
 
 Where the dictionaries come from: **`load-bo-dictionary-list`** (params and body empty) → every
-`BO_DICTIONARY` of the company (36 on <company-a>), and `load-dictionary-bo-field-options {boId}` → its rows
+`BO_DICTIONARY` of the company (36 on `<company-a>`), and `load-dictionary-bo-field-options {boId}` → its rows
 as ready option DTOs (`Должность` = `kNfvHppcNSR6Wz@B`, code `Dolzh`, 35 rows). **Binding to an EMPTY
 dictionary is legal** and gives an empty dropdown on the form.
 
@@ -1537,10 +1546,10 @@ dictionary spelled as a code: `--field "Должность:DROPDOWN_SINGLE@Dolzh
 - A `FROM_BO` dropdown lists the dictionary's rows (Developer, Manager, General Manager, …), a
   `FROM_FIELD` one lists its own options — both with a «Поиск» box.
 
-### 5i. Every field type, widget and system field — constructor UI and API `[C]` (2026-09-18, <company-a>)
+### 5i. Every field type, widget and system field — constructor UI and API `[C]` (2026-09-18, `<company-a>`)
 
 Three families, three palette sections, three generator endpoints. Everything below was done on
-<company-a>: «Проба все типы полей 2026-09-18» `y5VYjeIOYlfTFjLk` (constructor API, 43 elements),
+`<company-a>`: «Проба все типы полей 2026-09-18» `y5VYjeIOYlfTFjLk` (constructor API, 43 elements),
 «Проба все типы импорт 2026-09-18» `w3Y4bI3H2ntf7rcF` (the same 43 through a generated archive, API
 import) and «Проба виджеты конструктор 2026-09-18» `zm8ufIOguCPru0bu` (widgets + system fields through
 the tool). The archive half is in `MYBPM-IMPORTS.md` §0.5 / §0.5a / §0.5b.
@@ -1669,7 +1678,7 @@ Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`) and `export
 {exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` is how an export gets the
 `ID` column that makes a re-import idempotent (§«Merge / idempotency»).
 
-### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`)
 
 The old blocker «the «Добавить» button reacts to no synthetic click, and the record API is draft-based
 and was never reverse-engineered» is closed. Controller **`v2/business-object-instance`** (the client's
@@ -1719,7 +1728,7 @@ SINGLE↔TABLE defect, merge/idempotency, the destructive unknowns and the impor
 `MYBPM-IMPORTS.md` **Part III** (§0X is a self-contained cookbook «build me a file for this BO», §19 the
 evidence). This document keeps the transport: the routes above, the registry kebab and the templates.
 
-## 7. Kanban — SOLVED: the card template belongs in the archive `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+## 7. Kanban — SOLVED: the card template belongs in the archive `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`)
 
 The old verdict «канбан сломан на платформе» was wrong. A kanban is two independent pieces, and the
 missing one was never the menu item:
@@ -1774,7 +1783,7 @@ Please use a keyword field instead. … set fielddata=true on
   `v2/business-object-instance/ensure-index`, which answers 200 and changes nothing), a full-DTO
   `save-business-object-portion` re-save, and `v2/business-objects/save-bo-table-sort {boId, fieldId,
   order}` (it DOES set `sortFieldId`, read back — the failing sort is a different one).
-### The defect is NOT the import — it is every NEW BO on this stand `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+### The defect is NOT the import — it is every NEW BO on this stand `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`)
 
 The test above was run and it answers the question: **a BO built in the CONSTRUCTOR fails identically.**
 
@@ -1838,7 +1847,7 @@ of the registry columns (`tableColToShow: false`) and the screen works, because 
 lands on a numeric/boolean/native field (see «The workaround that DOES exist» below). An explicit
 `CREATED_AT` ordering also works but is not reachable from the screen, and `save-bo-table-sort` to
 `CREATED_AT` does not change the default sort either.
-- **The whole tenant was swept**: all 145 BOs/dictionaries of <COMPANY_A> were called with `ordering: null`.
+- **The whole tenant was swept**: all 145 BOs/dictionaries of `<COMPANY_A>` were called with `ordering: null`.
   95 of them hold records; **not one long-standing BO fails**. The only two failures are our two probes
   that have a record — one imported, one built in the constructor. (Three more probes answer
   `AccessDenied` — rights we narrowed earlier, unrelated.)
@@ -1862,7 +1871,7 @@ lands on a numeric/boolean/native field (see «The workaround that DOES exist» 
 - **What to do meanwhile**: always send an explicit `ordering` (`{archetype:"NATIVE",
   fieldId:"CREATED_AT", state:"DESC"}` works everywhere). The stand's own client sends `ordering: null`,
   so the registry and the kanban of a freshly created BO stay broken in the UI until the mapping is fixed.
-### The defect is the INDEX, not the FIELD — the old-BO experiment `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+### The defect is the INDEX, not the FIELD — the old-BO experiment `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`)
 
 The test above was run on **«Офисы» `QXMI@1Xx6K~rV9zw`** (group «Расположение», a plain `BO`, 3 fields,
 7 records, chosen because its own `INPUT_TEXT` «Адрес» sorts fine — a long-standing, healthy index):
@@ -1982,7 +1991,7 @@ BO: every BO of the tenant, every `INPUT_TEXT` / `TEXTAREA` / `INPUT_EMAIL` / `I
 probes were excluded and every one of them fails. The split «old index healthy / new index broken» is
 therefore not a sampling artefact of the default sort.
 
-### It is the whole index, and not only `INPUT_TEXT` `[C]` (2026-09-19, <stand>/<COMPANY_A>)
+### It is the whole index, and not only `INPUT_TEXT` `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`)
 
 Follow-up to the user's question «баг только на тестовом поле, на другом его нет?» — no, it is every
 field of a broken index whose `sortValue` actually holds a string. Sorting each field of the three
@@ -2181,7 +2190,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 16. openpyxl: update both `dimension` and the table `ref`; a Cyrillic table `displayName` breaks the file.
 17. Do not chase Google Sheets grid cropping through `xl/metadata`.
 18. A BO is created only from a GROUP's hover-kebab in `/business-objects/editing`; the caption-level ⊕
-    sends `boGroupId: null`, finds no `kind: DEFAULT` group on <company-a> and silently creates nothing.
+    sends `boGroupId: null`, finds no `kind: DEFAULT` group on `<company-a>` and silently creates nothing.
 19. `save-business-object-portion` wants `{businessObject: …}` inside `jsonPart`; a bare DTO throws
     `UndeclaredThrowableException`. `save-business-form-field` never creates fields — use the portion save.
 20. BO and field codes are generated by the SERVER from the names; the BO code is cut to 30 characters.
@@ -2260,7 +2269,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     export anyway, you silently get whatever the basket held from the previous session. §5.
 42. **A «Чек лист» loses its items in an archive** `[C]` (2026-09-18) — the export writes no
     `fieldOptionsStruct` for `CHECKLIST` and the import brings none. §5i.
-43. **A newly created BO cannot be sorted by a text field** `[C]` (2026-09-19, <stand>/<COMPANY_A>) — the
+43. **A newly created BO cannot be sorted by a text field** `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`) — the
     Elasticsearch mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so the registry's own query
     answers `EsException` «Text fields are not optimised …». It hits the registry AND the kanban, and it
     hits **all four probes across all three creation routes — archive, constructor API, constructor UI**

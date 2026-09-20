@@ -34,6 +34,10 @@ Not covered yet (next rounds): Part II Block IDE scripts (§0S) and Part III rec
 
 ## Rounds
 
+The `tools/out/<round>/` snapshots named below are NOT in this repository — a run leaves archives and
+reports tied to the stand it was checked against. Reproduce them with `tools/grade-eval.bun.ts`; what the
+rounds established is written out here and in §0 itself.
+
 - **Round 1** (2026-09-18) — all 12 cases against the original §0. Snapshot `tools/out/eval-2026-09-18/`.
 - **Round 2** — all 12 against the eight §0 repairs. Snapshot `tools/out/eval2-2026-09-18/`.
 - **Round 3** — cases 03/05/06/07/11 against the four round-2 repairs. Snapshot `tools/out/eval3-2026-09-18/`.

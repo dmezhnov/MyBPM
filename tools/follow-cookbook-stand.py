@@ -131,7 +131,7 @@ def show(args, bo_id):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stand", default="https://<stand>")
+    ap.add_argument("--stand", required=True, help="https://<host> — an archive never carries it")
     ap.add_argument("--token"); ap.add_argument("--token-file")
     ap.add_argument("--login"); ap.add_argument("--password")
     ap.add_argument("--groups", action="store_true")
