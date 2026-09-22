@@ -25,6 +25,13 @@ Rule of thumb: **format → `MYBPM-IMPORTS.md`, transport → `MYBPM-UI-API.md`.
 `tools/` holds the generators, validators and API clients used to confirm those facts; each file says at
 the top what it does and how to run it. The stand host is always passed in — none of them has a default.
 
+## Skills
+The repository is also a Claude Code plugin (`.claude-plugin/`) with two skills that wrap the documents:
+`skills/mybpm-imports` → `MYBPM-IMPORTS.md`, `skills/mybpm-stand` → `MYBPM-UI-API.md`. The documents are
+NOT copied into the skills — each `SKILL.md` routes to headings by their literal text, so **after
+renaming or renumbering a heading run `mise run skills-check`**. `mise run skills-zip` packs
+`dist/skills/<name>.zip` (skill + its document) for upload to claude.ai.
+
 ## Working copy
 Folders of concrete projects built on the platform may sit beside these documents in a working copy.
 They are **not part of this repository** (see `.gitignore`): each has its own repository and its own
