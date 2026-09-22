@@ -168,7 +168,7 @@ objs.forEach((o, i) => {
 const cls = (o: any) => String(o?.["@class"] ?? "").split(".").pop();
 const menus = objs.filter(o => cls(o) === "MenuItemStructDto");
 // §5e: a menu line may point at a BO already on the stand, so an archive of menu lines alone is
-// conceivable — but it was only ever EXPORTED, never imported. Say so instead of calling it broken.
+// legal — imported 2026-09-22. It only needs every boCode to exist on the stand, which we cannot see.
 const menuOnly = menus.length > 0 && !objs.some(o => cls(o) === "BoStructDto");
 
 // ---------------------------------------------------------------- groups (§0.3, §0.10 rule 1)
@@ -198,7 +198,7 @@ function id(where: string, value: any) {
 // ---------------------------------------------------------------- business objects
 const bos = objs.filter(o => cls(o) === "BoStructDto");
 if (bos.length === 0 && !menuOnly) add("FATAL", "0.4", "no BoStructDto line");
-if (menuOnly) add("WARN", "5e", "menu lines only, no BO line — every boCode must already be on the stand, and such an archive was never imported [U]");
+if (menuOnly) add("WARN", "5e", "menu lines only, no BO line — legal (§5e), but every boCode must already be on the stand");
 
 for (const bo of bos) {
   const tag = `BO ${bo.code ?? "?"}`;
@@ -448,6 +448,14 @@ const BO_PAGES_KEYS = ["isKanbanEnabled", "kanbanIndex", "isCalendarEnabled", "c
   "isTimelineEnabled", "timelineIndex", "isListEnabled", "listIndex", "isMapEnabled", "mapIndex",
   "isGroupingEnabled", "groupingIndex"];
 
+// 0.5e: the icon catalogue, pulled off a stand's frontend by tools/menu-icons.bun.ts
+const MENU_ICON_DEFAULTS = ["bo-g-draggable", "man-with-company", "bo-d-draggable"];
+const iconFile = Bun.file(`${import.meta.dir}/menu-icons.json`);
+const iconCat = await iconFile.exists() ? await iconFile.json() : null;
+const MENU_ICONS: Set<string> | null = iconCat
+  ? new Set([...MENU_ICON_DEFAULTS, ...iconCat.tabs.flatMap((t: any) => t.names), ...iconCat.offPicker])
+  : null;
+
 const menuByCode = new Map<string, any>();
 for (const m of menus) {
   const c = String(m.menuItemCode ?? "");
@@ -465,6 +473,8 @@ menus.forEach(m => {
     if (k in m) add("ERROR", "0.10/14", `${tag}: carries "${k}" — a menu line references everything by CODE and has no id`);
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(String(m.menuItemCode ?? "")))
     add("ERROR", "0.5d", `${tag}: menuItemCode is not latin/digits/underscore`);
+  if (MENU_ICONS && m.iconName !== undefined && !MENU_ICONS.has(String(m.iconName)))
+    add("ERROR", "0.5e", `${tag}: iconName "${m.iconName}" is not in the icon catalogue — it imports, but the sidebar draws no icon`);
   if (m.chosenAccessRight === true)
     add("WARN", "5e", `${tag}: chosenAccessRight true — whether menu access rights travel in an archive is [U]`);
 
