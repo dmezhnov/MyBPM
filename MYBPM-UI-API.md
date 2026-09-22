@@ -406,6 +406,8 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
    INTERNAL_ERROR|CANCELED`. An applied import can be undone: `load-import-rollback-preview` then
    `rollback-import` — `P {"importId":…,"processId":…}` (a fresh `processId` from
    `pre-create-process`) → `{"type":"ROLLED_BACK"}`, status `ROLLED_BACK`, `canRollback:false`.
+   Only the import with `canRollback:true` can be undone, and «latest» may not be the one you applied
+   last — read §5 «Rollback trap» before undoing anything but a single import.
 
 Traps: **`load-import-state` is not a reliable «is something open?» probe** — it answered
 `{"importExists":false}` while an analysed import was waiting (trap 35). Take the `importId` from
@@ -516,8 +518,10 @@ route below is for items on BOs that are already on the stand, and for access ri
    "orderIndex":100000,"isPanel":false,"boPages":{…},"chosenAccessRight":false,"parentId":…}`.
    Default `iconName`: GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable`.
    The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it.
-3. Icons: `save-menu-item-icon-name` — `P {"menuItemId":…,"iconName":"phosphor:<name>"}`. **Only names
-   that occur as `"phosphor:*"` in the lazy chunk `956.*.js` exist** — check before sending.
+3. Icons: `save-menu-item-icon-name` — `P {"menuItemId":…,"iconName":"<namespace>:<name>"}` → empty
+   body (or set `iconName` right in `create-menu-item`). **Take the name from §4 «Menu icon catalogue»**
+   (`phosphor:*` or `menu-item:*`, 1153 names): the server stores ANY string, and a name outside the
+   catalogue gives an item with no icon at all.
 4. Rights: `load-access-group` / `save-access-group` on **`v2/menu-item`** — `P {"menuItemId":…}`, body =
    the access group (same shape as R5); then `save-menu-item-chosen-access-right` —
    `P {"menuItemId":…,"chosenAccessRight":true}`. Only `view` matters for navigation.
@@ -754,13 +758,63 @@ All verified on the `<company-c>` stand by building 5 menu groups + 36 items via
   enabled views). Only list and kanban were ever set `[C]`; what the other four need is `[U]`
   (`MYBPM-IMPORTS.md` 0.5d). Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
   the board and its COLUMNS on for THIS item; the CARD lives on the BO and must come from the archive (§7).
-- Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"phosphor:<name>"}` (empty 200). **Valid
-  names are exactly the 1048 `"phosphor:*"` strings in lazy chunk `956.*.js` — check against it**:
-  `seal-check`, `ranking`, `toolbox`, `gavel` do NOT exist. Built-in items inside «Системные» use system
-  icons (portfolio, no-color-settings, no-color-archive, man-with-company) — leave them alone.
+- Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"<namespace>:<name>"}` (empty 200).
+  **Valid names = the catalogue below** (1153 names, `phosphor:*` AND `menu-item:*`); the server accepts
+  anything, so a wrong name is found only as a blank in the sidebar. Built-in items inside «Системные»
+  use system icons (portfolio, no-color-settings, no-color-archive, man-with-company) — leave them alone.
+  (Corrected 2026-09-22: this line used to say «only the 1048 `phosphor:*` strings» — that missed the
+  105 `menu-item:*` names of the picker's commerce tab.)
 - UI: the sidebar row kebab (⋮) offers Отображать в моб. приложении / Изменить код / Права доступа /
   Переименовать / Изменить иконку / Разгруппировать / Удалить. Sidebar names are `<input>` values inside
   `app-bo-record`; clicking `.container` puts the id into the URL.
+
+### Menu icon catalogue `[C]` (2026-09-22, frontend build `C4.24.25.264`)
+
+Every value `iconName` may take besides the defaults (GROUP `bo-g-draggable`, BO `man-with-company`,
+dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `save-menu-item-icon-name`
+/ `create-menu-item` here, and a `MenuItemStructDto` line in an archive (R6, §5).
+
+- **The server checks nothing** `[C]`: `create-menu-item` and `save-menu-item-icon-name` stored
+  `menu-item:025-building`, `menu-item:002-price tag` (with the space) and the made-up
+  `phosphor:no-such-icon-xyz` verbatim, and an archive import accepted the made-up name the same way
+  (dry run clean, `APPLIED`). A wrong name shows up only in the sidebar — an EMPTY place instead of an
+  icon. So copy every name from the list below; when the user describes an icon by meaning («домик»,
+  «деньги»), take the closest name and say which one you took.
+- **How the frontend draws a name**: `<namespace>:<name>` is fetched as
+  `/assets/icons/<namespace>/<name>.svg` (read off the network log; a name with a space is URL-encoded
+  and drawn). So «valid» = «the file exists»: all 1153 names below answer HTTP 200, the made-up one 404.
+  Two namespaces, both used by the stand's own items (`phosphor:house`, `menu-item:022-presentation`).
+- Plausible Phosphor names that are NOT on the stand (404): `seal-check`, `ranking`, `toolbox`, `gavel`
+  — never compose a name from memory of the Phosphor set.
+- Where the list comes from: the picker «Изменить иконку» is the component `app-phosphor-icon-chooser`
+  in lazy chunk `956.<hash>.js` — 18 arrays, one per tab. `tools/menu-icons.bun.ts --stand https://<stand>
+  --check --md` re-reads it from a stand, HEADs every file and prints this list again; a new build may
+  change it. «tab N (head icon X)» = the picker's N-th tab from the left and the picture on its header —
+  only for finding an icon in the UI. Names in «» contain a space that is part of the name.
+
+`phosphor:` —
+- tab 1 (head icon `recycle`, 111): arrow-arc-left arrow-arc-right arrow-bend-double-up-left arrow-bend-double-up-right arrow-bend-down-left arrow-bend-down-right arrow-bend-left-down arrow-bend-left-up arrow-bend-right-down arrow-bend-right-up arrow-bend-up-left arrow-bend-up-right arrow-circle-down arrow-circle-down-left arrow-circle-down-right arrow-circle-left arrow-circle-right arrow-circle-up arrow-circle-up-left arrow-circle-up-right arrow-clockwise arrow-counter-clockwise arrow-down arrow-down-left arrow-down-right arrow-elbow-down-left arrow-elbow-down-right arrow-elbow-left arrow-elbow-left-down arrow-elbow-left-up arrow-elbow-right arrow-elbow-right-down arrow-elbow-right-up arrow-elbow-up-left arrow-elbow-up-right arrow-fat-down arrow-fat-left arrow-fat-line-down arrow-fat-line-left arrow-fat-line-right arrow-fat-line-up arrow-fat-lines-down arrow-fat-lines-left arrow-fat-lines-right arrow-fat-lines-up arrow-fat-right arrow-fat-up arrow-left arrow-line-down arrow-line-down-left arrow-line-down-right arrow-line-left arrow-line-right arrow-line-up arrow-line-up-left arrow-line-up-right arrow-right arrow-square-down arrow-square-down-left arrow-square-down-right arrow-square-in arrow-square-left arrow-square-out arrow-square-right arrow-square-up arrow-square-up-left arrow-square-up-right arrow-u-down-left arrow-u-down-right arrow-u-left-down arrow-u-left-up arrow-u-right-down arrow-u-right-up arrow-u-up-left arrow-u-up-right arrow-up arrow-up-left arrow-up-right arrows-clockwise arrows-counter-clockwise arrows-down-up arrows-horizontal arrows-in arrows-in-cardinal arrows-in-line-horizontal arrows-in-line-vertical arrows-in-simple arrows-left-right arrows-out arrows-out-cardinal arrows-out-line-horizontal arrows-out-line-vertical arrows-out-simple arrows-vertical caret-circle-double-down caret-circle-double-left caret-circle-double-right caret-circle-double-up caret-circle-down caret-circle-left caret-circle-right caret-circle-up caret-double-down caret-double-left caret-double-right caret-double-up caret-down caret-left caret-right caret-up recycle
+- tab 2 (head icon `radio`, 54): address-book asterisk asterisk-simple at broadcast chat chat-centered chat-centered-dots chat-centered-text chat-circle chat-circle-dots chat-circle-text chat-dots chat-teardrop chat-teardrop-dots chat-teardrop-text chat-text chats chats-circle chats-teardrop envelope envelope-open envelope-simple envelope-simple-open export hash hash-straight megaphone megaphone-simple paper-plane paper-plane-right paper-plane-tilt peace phone phone-call phone-disconnect phone-incoming phone-outgoing phone-slash phone-x quotes radio rss rss-simple share share-network star star-half sticker thumbs-down thumbs-up translate voicemail yin-yang
+- tab 3 (head icon `game-controller`, 42): alien baseball basketball club confetti crown crown-simple diamond dice-five dice-four dice-one dice-six dice-three dice-two finn-the-human flying-saucer football game-controller ghost heart heart-break heart-straight heart-straight-break horse mask-happy mask-sad medal parachute pinwheel poker-chip puzzle-piece scroll skull soccer-ball spade spiral strategy sword target tennis-ball trophy volleyball
+- tab 4 (head icon `microphone-stage`, 86): airplay aperture article article-medium article-ny-times camera camera-rotate camera-slash closed-captioning copyleft copyright corners-in corners-out disc ear ear-slash eject eject-simple equalizer faders faders-horizontal fast-forward fast-forward-circle film-script film-slate film-strip frame-corners gif headphones headset image image-square microphone microphone-slash microphone-stage music-note music-note-simple music-notes music-notes-plus music-notes-simple newspaper newspaper-clipping pause pause-circle piano-keys picture-in-picture play play-circle playlist queue record repeat repeat-once rewind rewind-circle screencast shuffle shuffle-angular shuffle-simple skip-back skip-back-circle skip-forward skip-forward-circle sliders sliders-horizontal speaker-high speaker-low speaker-none speaker-simple-high speaker-simple-low speaker-simple-none speaker-simple-slash speaker-simple-x speaker-slash speaker-x stop stop-circle television television-simple video-camera video-camera-slash wave-sawtooth wave-sine wave-square wave-triangle webcam
+- tab 5 (head icon `lock-key`, 35): circle-wavy circle-wavy-check circle-wavy-question circle-wavy-warning detective fingerprint fingerprint-simple info key keyhole lock lock-key lock-key-open lock-laminated lock-laminated-open lock-open lock-simple lock-simple-open password prohibit prohibit-inset question shield shield-check shield-checkered shield-chevron shield-plus shield-slash shield-star shield-warning vault wall warning warning-circle warning-octagon
+- tab 6 (head icon `google-chrome-logo`, 48): android-logo angular-logo app-store-logo apple-logo apple-podcasts-logo behance-logo codepen-logo codesandbox-logo discord-logo dribbble-logo facebook-logo figma-logo framer-logo github-logo gitlab-logo gitlab-logo-simple google-chrome-logo google-logo google-photos-logo google-play-logo google-podcasts-logo instagram-logo linkedin-logo linux-logo medium-logo messenger-logo microsoft-excel-logo microsoft-powerpoint-logo microsoft-teams-logo microsoft-word-logo ny-times-logo phosphor-logo pinterest-logo reddit-logo sketch-logo slack-logo snapchat-logo spotify-logo square-logo stack-overflow-logo stripe-logo telegram-logo tiktok-logo twitch-logo twitter-logo whatsapp-logo windows-logo youtube-logo
+- tab 7 (head icon `palette`, 88): align-bottom align-bottom-simple align-center-horizontal align-center-horizontal-simple align-center-vertical align-center-vertical-simple align-left align-left-simple align-right align-right-simple align-top align-top-simple bezier-curve bounding-box circle circle-dashed circle-half circle-half-tilt circle-notch circles-four circles-three circles-three-plus columns crop cube cylinder diamonds-four drop-half drop-half-bottom eraser eye eye-closed eye-slash eyedropper eyedropper-sample flow-arrow gradient grid-four hexagon highlighter-circle intersect layout line-segment line-segments magic-wand marker-circle octagon paint-brush paint-brush-broad paint-brush-household paint-bucket paint-roller palette pen pen-nib pen-nib-straight pencil pencil-circle pencil-line pencil-simple pencil-simple-line perspective placeholder polygon rectangle rows ruler scissors scribble-loop selection selection-all selection-background selection-foreground selection-inverse selection-plus selection-slash sidebar sidebar-simple square square-half square-half-bottom squares-four stack stack-simple stamp swatches triangle vignette
+- tab 8 (head icon `heartbeat`, 18): activity bandaids barbell bed brain face-mask first-aid first-aid-kit flask hand-soap heartbeat lifebuoy pill prescription syringe test-tube toilet toilet-paper
+- tab 9 (head icon `paperclip`, 115): archive archive-box archive-tray briefcase briefcase-metal cards clipboard clipboard-text copy copy-simple cursor-text file file-arrow-down file-arrow-up file-audio file-cloud file-code file-css file-csv file-doc file-dotted file-html file-image file-jpg file-js file-jsx file-lock file-minus file-pdf file-plus file-png file-ppt file-rs file-search file-text file-ts file-tsx file-video file-vue file-x file-xls file-zip files floppy-disk floppy-disk-back folder folder-dotted folder-lock folder-minus folder-notch folder-notch-minus folder-notch-open folder-notch-plus folder-open folder-plus folder-simple folder-simple-dotted folder-simple-lock folder-simple-minus folder-simple-plus folder-simple-star folder-simple-user folder-star folder-user folders funnel funnel-simple kanban list list-bullets list-checks list-dashes list-numbers list-plus note note-blank note-pencil notebook notepad paperclip paperclip-horizontal presentation presentation-chart printer projector-screen projector-screen-chart push-pin push-pin-simple push-pin-simple-slash push-pin-slash sort-ascending sort-descending text-aa text-align-center text-align-justify text-align-left text-align-right text-bolder text-h text-h-five text-h-four text-h-one text-h-six text-h-three text-h-two text-indent text-italic text-outdent text-strikethrough text-t text-underline textbox trash trash-simple tray
+- tab 10 (head icon `desktop-tower`, 119): app-window backspace battery-charging battery-charging-vertical battery-empty battery-full battery-high battery-low battery-medium battery-plus battery-warning battery-warning-vertical bell bell-ringing bell-simple bell-simple-ringing bell-simple-slash bell-simple-z bell-slash bell-z bluetooth bluetooth-connected bluetooth-slash bluetooth-x browser browsers cell-signal-full cell-signal-high cell-signal-low cell-signal-medium cell-signal-none cell-signal-slash cell-signal-x check check-circle check-square check-square-offset checks cloud-arrow-down cloud-arrow-up cloud-check cloud-slash command computer-tower cursor desktop desktop-tower device-mobile device-mobile-camera device-mobile-speaker device-tablet device-tablet-camera device-tablet-speaker dots-nine dots-six dots-six-vertical dots-three dots-three-circle dots-three-circle-vertical dots-three-outline dots-three-outline-vertical dots-three-vertical download download-simple flashlight gauge gear gear-six hard-drive hard-drives key-return keyboard laptop lightbulb lightbulb-filament lightning lightning-slash link link-break link-simple link-simple-break link-simple-horizontal link-simple-horizontal-break magnifying-glass magnifying-glass-minus magnifying-glass-plus monitor monitor-play mouse mouse-simple notification nut option plug plugs plugs-connected power qr-code radio-button scan sign-in sign-out sim-card spinner spinner-gap swap tabs toggle-left toggle-right upload upload-simple vibrate wifi-high wifi-low wifi-medium wifi-none wifi-slash wifi-x wrench
+- tab 11 (head icon `currency-dollar`, 74): armchair backpack bag bag-simple balloon barcode bathtub beer-bottle binoculars brandy buildings cake cardholder coat-hanger coffee coin coin-vertical coins cookie cooking-pot credit-card currency-btc currency-circle-dollar currency-cny currency-dollar currency-dollar-simple currency-eth currency-eur currency-gbp currency-inr currency-jpy currency-krw currency-kzt currency-ngn currency-rub egg egg-crack eyeglasses factory fork-knife gift hamburger handbag handbag-simple knife ladder ladder-simple lamp martini money needle package pizza popcorn receipt rug scales shopping-bag shopping-bag-open shopping-cart shopping-cart-simple shower storefront sunglasses t-shirt tag tag-chevron tag-simple ticket tote tote-simple trademark-registered wallet wine
+- tab 12 (head icon `code`, 23): brackets-angle brackets-curly brackets-round brackets-square bug bug-beetle bug-droid code code-simple cpu database git-branch git-commit git-diff git-fork git-merge git-pull-request magnet magnet-straight robot terminal terminal-window tree-structure
+- tab 13 (head icon `map-pin-line`, 50): airplane airplane-in-flight airplane-landing airplane-takeoff airplane-tilt anchor anchor-simple barricade bicycle boat bus car car-simple compass crosshair crosshair-simple door flag flag-banner flag-checkered gas-pump globe globe-hemisphere-east globe-hemisphere-west globe-simple globe-stand headlights house house-line house-simple jeep map-pin map-pin-line map-trifold navigation-arrow path police-car rocket rocket-launch signpost suitcase suitcase-simple taxi traffic-cone traffic-sign traffic-signal train train-regional train-simple truck
+- tab 14 (head icon `person`, 47): baby gender-female gender-intersex gender-male gender-neuter gender-nonbinary gender-transgender hand hand-eye hand-fist hand-grabbing hand-palm hand-pointing hand-waving hands-clapping handshake identification-badge identification-card person person-simple person-simple-run person-simple-walk smiley smiley-blank smiley-meh smiley-nervous smiley-sad smiley-sticker smiley-wink smiley-x-eyes user user-circle user-circle-gear user-circle-minus user-circle-plus user-focus user-gear user-list user-minus user-plus user-rectangle user-square user-switch users users-four users-three wheelchair
+- tab 15 (head icon `alarm`, 20): alarm calendar calendar-blank calendar-check calendar-plus calendar-x clock clock-afternoon clock-clockwise clock-counter-clockwise hourglass hourglass-high hourglass-low hourglass-medium hourglass-simple hourglass-simple-high hourglass-simple-low hourglass-simple-medium timer watch
+- tab 16 (head icon `graduation-cap`, 14): book book-bookmark book-open bookmark bookmark-simple bookmarks bookmarks-simple books chalkboard chalkboard-simple chalkboard-teacher exam graduation-cap student
+- tab 17 (head icon `calculator`, 57): bank calculator chart-bar chart-bar-horizontal chart-line chart-line-up chart-pie chart-pie-slice divide equals function graph infinity math-operations minus minus-circle number-circle-eight number-circle-five number-circle-four number-circle-nine number-circle-one number-circle-seven number-circle-six number-circle-three number-circle-two number-circle-zero number-eight number-five number-four number-nine number-one number-seven number-six number-square-eight number-square-five number-square-four number-square-nine number-square-one number-square-seven number-square-six number-square-three number-square-two number-square-zero number-three number-two number-zero percent plus plus-circle plus-minus radical table trend-down trend-up x x-circle x-square
+- tab 18 (head icon `bird`, 46): atom bird butterfly cactus campfire cat cloud cloud-fog cloud-lightning cloud-moon cloud-rain cloud-snow cloud-sun dog drop fire fire-simple fish fish-simple flame flower flower-lotus leaf moon moon-stars mountains paw-print planet rainbow rainbow-cloud snowflake sparkle star-four sun sun-dim sun-horizon thermometer thermometer-cold thermometer-hot thermometer-simple tree tree-evergreen umbrella umbrella-simple waves wind
+- not in any tab, file exists: pause-slash
+
+`menu-item:` —
+- tab 11 (head icon `currency-dollar`, 105): 001-dollar 001-notebook 002-credit-card «002-price tag» 003-auction 003-banknote 004-calculator «004-speech bubble» «005-asset management» 005-diamond «006-bar graph» 006-dollar-symbol 007-coin 007-euro 008-bank 008-bitcoin 009-worker 009-yen 010-partners 010-pound 011-piggy-bank «011-return of investment» 012-balance 012-money-bag 013-balance 013-recruitment 014-atm «014-income statement» 015-percent 015-startup 016-presentation 016-wallet 017-money-exchange 017-salary 018-briefcase «018-credit card» 019-briefcase 019-search 020-contract 020-idea 021-badges «021-pie chart» 022-growth 022-presentation 023-money 023-profits 024-oil 024-smartphone 025-building 025-profit 026-moneybox 026-notes 027-finance 027-safebox 028-gold-ingots 028-success 029-euro 029-vision 030-credit-card-1 030-exchange «031-id card» 031-target 032-manager 032-planning 033-clipboard 033-pyramid-chart 034-envelope «034-flow chart» 035-employee 035-pie-chart 036-bank 036-calculator 037-light-bulb 037-target 038-check 038-deadline «039-digital currency» 039-income «040-hierarchical structure» 040-point-of-service «041-bar graph» 041-currency 042-funnel 042-wallet 043-ipo 043-smartphone 044-analytics 044-certificate 045-businessman 045-ruby «046-atm machine» 046-umbrella 047-abacus 047-contract «048-chinese yuan» «049-gold bar» 049-key 050-security 050-tax clipboard office-building planning task to-do-list to-do
 
 ### Menu-item rights
 
@@ -897,12 +951,30 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   `/import-structure/cancel-import {importId}` drops it, `/remove-import` deletes the log row.
 - **Rollback exists** `[C]`: after apply the record carries `rollbackAvailable:true,canRollback:true`, and
   `/import-structure/load-import-rollback-preview {importId}` + `/rollback-import {importId,processId}`
-  undo the import. `newerAppliedImportsCount` presumably blocks it when later imports exist `[I]`.
+  undo the import. **Only the import the stand considers the latest can be rolled back** `[C]`: the others
+  carry `canRollback:false` + `newerAppliedImportsCount:N`, and `rollback-import` on them answers the body
+  `{"message":"RwFGhT3idZ :: Rollback is allowed only for the latest applied import", …}` — and the
+  `processId` you passed is then never finished, so a poll loop on it spins until your timeout.
   **Executed end to end** `[C]` (2026-09-22, `<stand>`/`<COMPANY_A>`): the preview answers
   `{rollbackAvailable, canRollback, newerAppliedImportsCount, restoreItems:[], deleteItems:[{action:"DELETE",
   category:"BUSINESS_OBJECT"|"MENU", code:"<code>#BUSINESS_OBJECT"|"<code>#MENU", name, structTypes}]}` —
   exactly what was created, nothing else; after `rollback-import` the BO answers `NoBoWithId` and the menu
   items are gone. The process finished with `percentage: 25` and `isFinished: true` — do not wait for 100.
+- **Rollback trap: «latest» is not the order you applied in, and a rollback restores a SNAPSHOT** `[C]`
+  (2026-09-22, `<stand>`/`<COMPANY_A>`). Three imports touching one menu item were applied A (23:08),
+  B (23:09), C (23:09) — the log keeps minutes only. The stand ranked them A < C < B: B had
+  `canRollback:true`, C `newerAppliedImportsCount:1`. An import that UPDATES something stores the state it
+  found and puts it back on rollback (`restoreItems`, `action:"RESTORE"`), without looking at what came
+  after. So rolling back in the order the stand allowed: B → the item got A's name back and **C's change,
+  applied later, was silently lost**; then C → the item got **B's** name back — a state from an import
+  that was already rolled back; then A (`deleteItems`) removed the BO and the item, and the stand was
+  clean again. Rules: when you may need to undo, **leave at least a minute between applies** (how
+  same-minute imports are ordered is unknown `[U]`); before undoing ONE import, check that it is the one
+  with `canRollback:true`; undoing a CHAIN is safe only all the way back to the import that CREATED the
+  objects, whose rollback deletes them.
+- **`load-business-object-name` is not an existence check** `[C]`: after the rollback it still answered
+  the deleted BO's name, while `load-bo-id-by-code` gave `No bo with code` and
+  `load-business-object-by-id` «бизнес-объект не существует». Verify a removal with those two.
 - Enums in chunk `5675`: import status `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
   INTERNAL_ERROR|CANCELED`; apply result `APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|HANDLING_ERROR`; struct
   types `STRUCTURE|ACCESS_RIGHTS|SCRIPTS|GLOBAL_METHODS|MENU|REPORTS|SETTINGS` (our archive → `STRUCTURE`).
@@ -2241,7 +2313,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 4. Menu-item rights use `v2/menu-item/*`; the `business-objects` menu-access endpoints fail with `NoBoWithId`.
 5. A bracket's own filters are ignored when it has sub-brackets; sibling combination uses the EARLIER
    sibling's `connectionType`.
-6. Only `"phosphor:*"` names present in chunk `956.*.js` are valid icons.
+6. A menu icon must come from §4 «Menu icon catalogue» (`phosphor:*` or `menu-item:*`); the server and the
+   importer accept any string, and a wrong one leaves the sidebar item without an icon.
 7. A kanban needs `kanbanCardTemplates` ON THE BO, and only the archive (or the constructor UI) can
    write it — `save-kanban-card-template` fills a store the view never reads (§7).
 8. Excel: every cell must be `inlineStr`; a numeric cell turned `103` into «103.0» and broke a lookup.
@@ -2258,6 +2331,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     partial ones.
 16. openpyxl: update both `dimension` and the table `ref`; a Cyrillic table `displayName` breaks the file.
 17. Do not chase Google Sheets grid cropping through `xl/metadata`.
+18. Structure-import rollback: only the import with `canRollback:true` can be undone, same-minute imports
+    may be ranked out of order, and undoing an UPDATE restores the state IT found — later changes are lost
+    (§5 «Rollback trap»). Leave a minute between applies you may want to undo.
 18. A BO is created only from a GROUP's hover-kebab in `/business-objects/editing`; the caption-level ⊕
     sends `boGroupId: null`, finds no `kind: DEFAULT` group on `<company-a>` and silently creates nothing.
 19. `save-business-object-portion` wants `{businessObject: …}` inside `jsonPart`; a bare DTO throws
