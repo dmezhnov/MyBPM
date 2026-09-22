@@ -1,0 +1,7 @@
+{
+  "name": "mybpm",
+  "description": "MyBPM low-code platform: build structure archives, Block IDE scripts and record xlsx (mybpm-imports), and drive a running stand through its API and UI (mybpm-stand).",
+  "author": { "name": "dmezhnov" },
+  "repository": "https://github.com/dmezhnov/MyBPM",
+  "skills": "./skills/"
+}

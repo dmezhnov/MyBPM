@@ -6,3 +6,6 @@ __pycache__/
 
 # Результаты прогонов: воспроизводятся генераторами, привязаны к конкретному стенду
 /tools/out/
+
+# Сборка skills для claude.ai: mise run skills-zip
+/dist/

@@ -1,0 +1,14 @@
+{
+  "name": "mybpm",
+  "owner": {
+    "name": "dmezhnov"
+  },
+  "description": "Skills for the MyBPM low-code platform, built from the platform documents in this repository.",
+  "plugins": [
+    {
+      "name": "mybpm",
+      "source": "./",
+      "description": "MyBPM low-code platform: build archives, scripts and record xlsx; drive a running stand."
+    }
+  ]
+}
