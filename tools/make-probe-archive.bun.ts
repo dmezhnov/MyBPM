@@ -232,7 +232,7 @@ function kanbanFlags(): { column: string; locations: Record<string, string[]> }[
  *   `!parent=<код>` put it inside that menu GROUP
  *   `!kanban=<код поля>` turn the kanban view on, columns = that dropdown's options
  *   `!order=<n>`    orderIndex (default 900000 + 10000 per item); the built-in «Системные» is 60000
- *   `!icon=<имя>`   iconName (default GROUP `bo-g-draggable`, BO `man-with-company`)
+ *   `!icon=<имя>`   iconName, a name from MYBPM-IMPORTS.md 0.5e (default GROUP `bo-g-draggable`, BO `man-with-company`)
  *   `!panel` `!count` `!hidemob` — isPanel / needCountMenuItem / needHideInMobApp
  *
  *   --menu "Заявки:BO@Zayavki@Заявки"          a plain root item, list view only
