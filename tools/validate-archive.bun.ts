@@ -166,10 +166,14 @@ objs.forEach((o, i) => {
     add("FATAL", "0.10/4", `line ${i + 1} "@class" = ${o["@class"]}, must start with ${PKG}`);
 });
 const cls = (o: any) => String(o?.["@class"] ?? "").split(".").pop();
+const menus = objs.filter(o => cls(o) === "MenuItemStructDto");
+// §5e: a menu line may point at a BO already on the stand, so an archive of menu lines alone is
+// conceivable — but it was only ever EXPORTED, never imported. Say so instead of calling it broken.
+const menuOnly = menus.length > 0 && !objs.some(o => cls(o) === "BoStructDto");
 
 // ---------------------------------------------------------------- groups (§0.3, §0.10 rule 1)
 const groups = objs.filter(o => cls(o) === "BoGroupStructDto");
-if (groups.length === 0) add("FATAL", "0.3", "no BoGroupStructDto line");
+if (groups.length === 0 && !menuOnly) add("FATAL", "0.3", "no BoGroupStructDto line");
 if (groups.length > 1) add("FATAL", "0.10/1", `${groups.length} BoGroupStructDto lines; multi-group archives are broken (§8)`);
 for (const g of groups) {
   if (g.kind !== "MANUAL") add("ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL`);
@@ -193,7 +197,8 @@ function id(where: string, value: any) {
 
 // ---------------------------------------------------------------- business objects
 const bos = objs.filter(o => cls(o) === "BoStructDto");
-if (bos.length === 0) add("FATAL", "0.4", "no BoStructDto line");
+if (bos.length === 0 && !menuOnly) add("FATAL", "0.4", "no BoStructDto line");
+if (menuOnly) add("WARN", "5e", "menu lines only, no BO line — every boCode must already be on the stand, and such an archive was never imported [U]");
 
 for (const bo of bos) {
   const tag = `BO ${bo.code ?? "?"}`;
@@ -432,6 +437,98 @@ for (const bo of bos) {
 for (const pv of objs.filter(o => cls(o) === "BoProcessVersionsStructDto"))
   if (!bos.some(b => b.oldId === pv.oldId))
     add("FATAL", "5c", `BoProcessVersionsStructDto oldId "${pv.oldId}" matches no BoStructDto`);
+
+// ---------------------------------------------------------------- sidebar menu items (§0.5d, §0.10 rule 14)
+const MENU_KEYS = ["@class", "menuItemCode", "menuItemName", "parentMenuItemCode", "boCode", "boName",
+  "iconName", "orderIndex", "boPages", "chosenAccessRight", "needCountMenuItem", "isPanel",
+  "needHideInMobApp", "bracketFilter", "menuItemType"];
+const MENU_REQUIRED = ["menuItemCode", "menuItemName", "iconName", "orderIndex", "chosenAccessRight",
+  "needCountMenuItem", "isPanel", "needHideInMobApp", "menuItemType"];
+const BO_PAGES_KEYS = ["isKanbanEnabled", "kanbanIndex", "isCalendarEnabled", "calendarIndex",
+  "isTimelineEnabled", "timelineIndex", "isListEnabled", "listIndex", "isMapEnabled", "mapIndex",
+  "isGroupingEnabled", "groupingIndex"];
+
+const menuByCode = new Map<string, any>();
+for (const m of menus) {
+  const c = String(m.menuItemCode ?? "");
+  if (menuByCode.has(c)) add("ERROR", "0.5d", `menu code "${c}" repeats — the stand addresses menu items by code`);
+  menuByCode.set(c, m);
+}
+const boByCode = new Map<string, any>(bos.map(b => [String(b.code), b]));
+
+menus.forEach(m => {
+  const tag = `menu ${m.menuItemCode ?? "?"}`;
+  for (const k of MENU_REQUIRED) if (!(k in m)) add("ERROR", "0.5d", `${tag}: key "${k}" missing`);
+  const unknown = Object.keys(m).filter(k => !MENU_KEYS.includes(k));
+  if (unknown.length) add("WARN", "0.5d", `${tag}: keys not in the §0.5d template: ${unknown.join(", ")}`);
+  for (const k of ["id", "oldId", "newId", "menuItemId", "parentId", "boId"])
+    if (k in m) add("ERROR", "0.10/14", `${tag}: carries "${k}" — a menu line references everything by CODE and has no id`);
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(String(m.menuItemCode ?? "")))
+    add("ERROR", "0.5d", `${tag}: menuItemCode is not latin/digits/underscore`);
+  if (m.chosenAccessRight === true)
+    add("WARN", "5e", `${tag}: chosenAccessRight true — whether menu access rights travel in an archive is [U]`);
+
+  const type = m.menuItemType;
+  if (type !== "GROUP" && type !== "BO") {
+    add("ERROR", "5e", `${tag}: menuItemType "${type}" — only GROUP and BO were ever imported`);
+    return;
+  }
+
+  // the parent: a GROUP of this archive (listed earlier), else a stand code the user must have given
+  if (m.parentMenuItemCode !== undefined) {
+    const parent = menuByCode.get(String(m.parentMenuItemCode));
+    if (!parent)
+      add("WARN", "0.5d", `${tag}: parent "${m.parentMenuItemCode}" is not in this archive — it must be a GROUP code taken off the stand, never a guess`);
+    else if (parent.menuItemType !== "GROUP")
+      add("ERROR", "0.5d", `${tag}: parent "${m.parentMenuItemCode}" is a ${parent.menuItemType} item, not a GROUP`);
+    else if (menus.indexOf(parent) > menus.indexOf(m))
+      add("WARN", "0.5d", `${tag}: listed BEFORE its group — the order proved on import is group first`);
+  }
+
+  if (type === "GROUP") {
+    for (const k of ["boPages", "bracketFilter", "boCode", "boName"])
+      if (k in m) add("ERROR", "0.10/14", `${tag}: a GROUP line carries "${k}" — the stand exports a group without it`);
+    return;
+  }
+
+  // type BO
+  for (const k of ["boCode", "boName", "boPages", "bracketFilter"])
+    if (!(k in m)) add("ERROR", "0.10/14", `${tag}: a BO line needs "${k}"`);
+  const bo = boByCode.get(String(m.boCode));
+  if (m.boCode !== undefined && !bo)
+    add("WARN", "0.5d", `${tag}: boCode "${m.boCode}" is not a BO of this archive — it must already be on the stand`);
+  const bf = m.bracketFilter;
+  if (bf) {
+    if (bf.boCode !== m.boCode) add("ERROR", "0.5d", `${tag}: bracketFilter.boCode "${bf.boCode}" != boCode "${m.boCode}"`);
+    if (bf.type !== "MENU_ITEM") add("ERROR", "0.5d", `${tag}: bracketFilter.type "${bf.type}", must be MENU_ITEM`);
+    if (Array.isArray(bf.brackets))
+      add("ERROR", "5e", `${tag}: bracketFilter.brackets is an ARRAY (the API shape) — in an archive it is a map keyed by 8-char ids`);
+    else if (bf.brackets && Object.keys(bf.brackets).length)
+      add("WARN", "5e", `${tag}: a non-empty record filter — importing one was never tried [U]`);
+  }
+  const bp = m.boPages;
+  if (!bp) return;
+  for (const k of BO_PAGES_KEYS) if (!(k in bp)) add("ERROR", "0.5d", `${tag}: boPages.${k} missing`);
+  if ("kanbanFieldId" in bp)
+    add("ERROR", "0.10/14", `${tag}: boPages.kanbanFieldId is the API key — an archive takes kanbanFieldCode`);
+  if (bp.isKanbanEnabled && !bp.kanbanFieldCode)
+    add("ERROR", "0.5d", `${tag}: kanban enabled without boPages.kanbanFieldCode — no columns`);
+  if (!bp.isKanbanEnabled && bp.kanbanFieldCode)
+    add("WARN", "0.5d", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" but isKanbanEnabled is false`);
+  if (bp.isKanbanEnabled && bp.kanbanFieldCode && bo) {
+    const f = bo.dynamicFields?.[bp.kanbanFieldCode];
+    if (!f) add("ERROR", "0.5d", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" is not a field of BO ${bo.code}`);
+    else if (f.type !== "DROPDOWN_SINGLE")
+      add("ERROR", "0.5d", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" is ${f.type}, the columns need a DROPDOWN_SINGLE`);
+    if (!bo.kanbanCardTemplates?.[bp.kanbanFieldCode])
+      add("ERROR", "0.5c", `${tag}: BO ${bo.code} has no kanbanCardTemplates.${bp.kanbanFieldCode} — the board dies with «cardTemplate is null»`);
+  }
+  for (const k of ["isCalendarEnabled", "isTimelineEnabled", "isMapEnabled", "isGroupingEnabled"])
+    if (bp[k]) add("WARN", "0.5d", `${tag}: boPages.${k} — only the list and kanban views were ever shipped, what this one needs is [U]`);
+  const on = BO_PAGES_KEYS.filter(k => k.startsWith("is") && bp[k]).map(k => bp[k.slice(2, 3).toLowerCase() + k.slice(3, -"Enabled".length) + "Index"]);
+  if (new Set(on).size !== on.length || on.some(v => !(v >= 1)))
+    add("WARN", "0.5d", `${tag}: the *Index of the enabled views should be distinct and 1-based, got ${JSON.stringify(on)}`);
+});
 
 // ---------------------------------------------------------------- report
 function report() {

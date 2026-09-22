@@ -3,8 +3,8 @@
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
 
 - **Part I — the structure archive `.mybpm.zip`** (§0 cookbook, §1–§8): business objects, fields, form
-  layout, dictionaries, references, access rules, and the scripts an export carries (§5d). The SHAPE
-  of things.
+  layout, dictionaries, references, access rules, the scripts an export carries (§5d) and the sidebar
+  menu items (§5e). The SHAPE of things.
 - **Part II — Block IDE scripts** (§0S cookbook, §9–§18): the script JSON and the paste protocol. Strictly
   speaking this one is pasted, not imported — it lives here because it is the same kind of job: assemble a
   file by hand, ship it into a stand, verify.
@@ -31,7 +31,7 @@ objects in the examples come from those stands and are examples ONLY — §0.2a 
 be copied into an archive of your own.
 
 **Evidence base.** MyBPM v4.24, builds `4.24.25.570`, `4.24.25.614` and `S4.24.25.632/C4.24.25.264`;
-facts collected 2026-08-27 .. 2026-09-19 from real exports, stand imports and IDE copies.
+facts collected 2026-08-27 .. 2026-09-22 from real exports, stand imports and IDE copies.
 **Status markers** used throughout: `[C]` confirmed on a stand or in a real export, `[I]` inferred from
 structure/behaviour but never isolated, `[U]` unverified — do not build on it without checking.
 Everything retracted has been dropped; the mistakes worth not repeating live in *Traps and defects*.
@@ -108,6 +108,9 @@ Rules, all `[C]`:
    fields too, they live on the same grid.
 7. If the object is not a plain BO (dictionary / panel / composite / process), apply the diff in 0.9
    **on top of** the same two lines.
+7a. If the user also wants the object **in the sidebar menu** (navigation: an item that opens the BO,
+   optionally inside a menu group, optionally with extra views such as a kanban), append the menu lines
+   of 0.5d AFTER the BO lines — optional, and never added unasked.
 8. **Check against 0.10 and 0.11**, then zip as in 0.1 and deliver as in 0.12.
 
 A `CompanyMetadataStructDto` line is **not** needed and must be omitted unless the archive references
@@ -508,12 +511,18 @@ controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may 
 
 ### 0.5c Kanban — the card template travels in the archive `[C]` (2026-09-19, `<stand>`)
 
-A kanban is TWO things and the archive carries only one of them:
+A kanban is TWO things, and since 2026-09-22 the archive can carry BOTH:
 
-- the **columns**, switched on per MENU ITEM (`boPages.isKanbanEnabled` + `kanbanFieldId`) — not in the
-  archive, set it through `v2/menu-item` after the import (`MYBPM-UI-API.md` §4);
 - the **card template**, which lives ON THE BO in `kanbanCardTemplates`. **Ship it, or the kanban view
   dies with «cardTemplate is null»** — that is the whole of the old «kanban is broken for imported BOs».
+  It belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here.
+- the **switch that shows the board**, with its column field. The one place verified so far is a SIDEBAR
+  MENU ITEM (`boPages.isKanbanEnabled` + the column field) — a menu line of the SAME archive does it by
+  code, `boPages.kanbanFieldCode` (0.5d, §5e); the alternative is
+  `v2/menu-item/save-menu-item-bo-pages` after the import (`MYBPM-UI-API.md` §4). **Whether a kanban can
+  be switched on anywhere else is `[U]`** — never looked at: a registry inside a `BO_PANEL`, a BO / CO
+  reference field (its `viewType` key), the BO registry opened outside the menu. Do not claim either way;
+  if the user wants a board, a menu item is the proved route.
 
 ```text
 "kanbanCardTemplates": {
@@ -541,7 +550,104 @@ A kanban is TWO things and the archive carries only one of them:
 Verified end to end on `<stand>` (`<COMPANY_A>`): archive → apply → `v2/kanban/load-kanban-template` returns a
 `cardTemplate` instead of NPE-ing, the board renders its three columns, and `load-bracket-kanban-cards`
 returns the card with its header/content/footer values. **But the cards do not appear in the UI yet** —
-a second, unrelated defect of imported BOs blocks the default sort (`MYBPM-UI-API.md` §7).
+a second, unrelated defect of every NEW BO on that stand blocks the default sort (`MYBPM-UI-API.md` §7).
+One archive with the BO + its card template + a menu group + a menu item with `kanbanFieldCode` renders the
+whole board with its columns straight after ПРИМЕНИТЬ `[C]` (2026-09-22, build `S4.24.25.632`, §5e).
+
+### 0.5d Sidebar menu items — `MenuItemStructDto` lines `[C]` (2026-09-22, build `S4.24.25.632`)
+
+Optional lines AFTER the BO lines (step 7a). A menu item is NAVIGATION: a row in the sidebar that opens
+a BO's records (or a folder that holds such rows). Views such as a kanban are an option ON an item, not
+the reason for it. One line per menu item; a group and the items inside it are separate lines.
+**Everything is referenced BY CODE** — the parent group, the BO, a view's field — and a menu line has
+**no id at all**: the stand mints the menu item's id itself. Copy the templates literally and change
+only the values marked `←`.
+
+**An item that opens a BO** — the usual case, the list view only, at the root of the sidebar:
+
+```json
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
+ "menuItemCode":"Zayavki_menu",                  ← your code, latin, unique among MENU codes
+ "menuItemName":"Заявки",                        ← the text in the sidebar
+ "boCode":"Zayavki",                             ← the BO's `code`
+ "boName":"Заявки",                              ← the BO's `name.rus`
+ "iconName":"man-with-company",
+ "orderIndex":950000,                            ← position among its siblings
+ "boPages":{"isKanbanEnabled":false,"kanbanIndex":0,
+            "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
+            "isListEnabled":true,"listIndex":1,
+            "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0},
+ "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
+ "bracketFilter":{"boCode":"Zayavki","type":"MENU_ITEM","brackets":{}},
+ "menuItemType":"BO"}
+```
+
+(This list-only shape is what the stand EXPORTS for such an item `[C]`; the item actually IMPORTED on
+2026-09-22 was the same line with the kanban on, so the list-only import itself is `[I]` — nothing in it
+is new to the importer.)
+
+**A group** (a folder in the sidebar) — only when the user wants the items grouped:
+
+```json
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
+ "menuItemCode":"Proba_menu_20260922",            ← your code
+ "menuItemName":"Проба меню 2026-09-22",          ← the text in the sidebar
+ "iconName":"bo-g-draggable",
+ "orderIndex":950000,
+ "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
+ "menuItemType":"GROUP"}
+```
+
+To put a BO item inside the group, add `"parentMenuItemCode":"<the GROUP's menuItemCode>"` to the item
+(right after `menuItemName`); without the key the item is a root.
+
+**`boPages` = the set of views of that item.** Six views exist; each has an `is*Enabled` flag and an
+`*Index` = its tab position, 1-based, counted over the ENABLED views only (disabled ones carry 0). Always
+write all twelve keys. What each view needs besides its flag:
+
+| View | Keys | Needs on the BO / on the item | Status |
+|------|------|-------------------------------|--------|
+| list (registry) | `isListEnabled`, `listIndex` | nothing | `[C]` |
+| kanban | `isKanbanEnabled`, `kanbanIndex` | `kanbanFieldCode` = code of a `DROPDOWN_SINGLE` of the BO (the columns) AND that field's card template in the BO's `kanbanCardTemplates` (0.5c) | `[C]` |
+| calendar | `isCalendarEnabled`, `calendarIndex` | presumably the BO's `isCalendarEnabled` / `calendarCardTemplates` and a date field | `[U]` |
+| timeline | `isTimelineEnabled`, `timelineIndex` | presumably the BO's `timelineTemplates`; the applied item came back with a `timelineFieldId: null` the archive never sent, so a field is probably involved | `[U]` |
+| map | `isMapEnabled`, `mapIndex` | presumably the BO's `isMapEnabled` and a location field | `[U]` |
+| grouping | `isGroupingEnabled`, `groupingIndex` | presumably the BO's `isGroupingEnabled` | `[U]` |
+
+Only list and kanban were ever shipped. **Do not switch on a `[U]` view in an archive** — if the user
+asks for a calendar / timeline / map / grouping, say it is not verified and ship the list (plus a kanban
+if asked). The kanban variant of `boPages` (kanban first tab, list second):
+
+```text
+"boPages":{"isKanbanEnabled":true,"kanbanIndex":1,
+           "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
+           "isListEnabled":true,"listIndex":2,
+           "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0,
+           "kanbanFieldCode":"Status"}          ← code of a DROPDOWN of that BO = the columns
+```
+
+Rules:
+
+- **A `GROUP` line carries NO `boPages`, NO `bracketFilter`, NO `boCode`/`boName`** — the stand exports
+  it exactly like that, and the import accepts it.
+- **A `BO` line carries both `boPages` and `bracketFilter`**; `bracketFilter.boCode` repeats `boCode`,
+  `brackets: {}` = no record filter (every record is shown).
+- `kanbanFieldCode` appears ONLY when the kanban is on. It must be a `DROPDOWN_SINGLE` of that BO and the
+  outer key of its `kanbanCardTemplates` — the columns alone give a board the stand cannot draw (0.5c).
+- `boCode` may name a BO of THIS archive (the usual case) or a BO that is ALREADY on the stand — then it
+  is a stand code, ask for it as in 0.2a (the importer resolves both). The same goes for
+  `parentMenuItemCode`: a group of this archive, or the code of an existing group taken off the stand —
+  **never guess a stand group's code**, menu codes made in the UI look like `GruppatqrXI0InJC5abW8w`
+  (a transliteration plus random characters) and cannot be derived from the name. If the user gives no
+  group code, ship your own GROUP line or make the item a root (drop `parentMenuItemCode`).
+- `orderIndex`: the built-in root «Системные» is 60000; put your own roots after it (the probe used
+  950000), children count inside their parent (the stand's own child had 10000).
+- Put the GROUP line BEFORE its children. (A stand export listed a child before its group, so the
+  importer probably tolerates any order `[I]` — but the one order proved on import is group first.)
+- Icons: `bo-g-draggable` for a group, `man-with-company` for a BO item, `bo-d-draggable` for a
+  dictionary; any other value must be a `phosphor:<name>` from the stand's icon list
+  (`MYBPM-UI-API.md` §4) — when unsure, keep the default.
+- Do not set `chosenAccessRight: true` — whether menu access rights travel with this line is `[U]` (§5e).
 
 ### 0.6 Codes: label → code
 
@@ -677,6 +783,10 @@ resolve like this:
     «системное поле» into `nativeFields` (0.5a), a widget into `signatures` / `buttons` / `iframes` /
     `captcha` / `currentDates` / `currentUser` (0.5b). Putting a widget or a native type into
     `dynamicFields` is not a valid archive.
+14. A menu line (0.5d) names its parent, its BO and — only when a kanban is on — its column field BY
+    CODE, and carries no id.
+    A `GROUP` line has no `boPages` / `bracketFilter`; a `BO` line has both. A `kanbanFieldCode` whose BO
+    carries no card template for that field gives a kanban that cannot be drawn (0.5c).
 
 ### 0.11 Self-check before shipping
 
@@ -710,6 +820,10 @@ resolve like this:
       составной объект turned into a plain BO because «the ids are unknown» (it takes codes, 0.2a), no
       `TAB_GROUP` replaced by `STATIC_TEXT` headings, no `PROCESS_STATUS` faked as a local dropdown
       (0.2a, 0.9). Only a missing stand id or stand code ever justifies a degrade.
+- [ ] Menu lines (0.5d), if any: every `parentMenuItemCode` is a GROUP line of this archive or a code the
+      user gave off the stand; every `boCode` is a BO line of this archive or a stand code; every
+      `kanbanFieldCode` is a `DROPDOWN_SINGLE` of that BO AND a key of its `kanbanCardTemplates`; no
+      `GROUP` line carries `boPages` or `bracketFilter`.
 
 ### 0.12 Building and delivering
 
@@ -721,7 +835,29 @@ bun tools/make-probe-archive.bun.ts --code Cookbook_demo --name "Демо из �
 ```
 
 (`--category`, `--field "Метка:BO@<boId>@<boCode>"`, `--source` / `--co-field`, `--process-figure`,
-`--process-status`, `--with-metadata`, `--out` — see the file's header comment and §5a–5c.)
+`--process-status`, `--kanban`, `--menu`, `--with-metadata`, `--out` — see the file's header comment,
+§5a–5c and §5e.)
+
+A BO plus a sidebar item that opens it — plain navigation, list view only (0.5d; this output is
+byte-identical to the 0.5d template and passes `tools/validate-archive.bun.ts`):
+
+```
+bun tools/make-probe-archive.bun.ts --code Zayavki --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
+    --menu "Заявки:BO@Zayavki@Заявки!code=Zayavki_menu!order=950000"
+```
+
+Add `!parent=<GROUP code>` to put the item into a group (plus a `--menu "Имя:GROUP!code=…"` if the group
+travels in the same archive), `!kanban=<dropdown code>` for a board. A BO with a kanban and its own
+sidebar group, all in one archive — the exact command whose result was applied and drawn on a stand
+(0.5c, 0.5d):
+
+```
+bun tools/make-probe-archive.bun.ts --code Proba_menu_bo_20260922 --name "Проба меню БО 2026-09-22" \
+    --field "Наименование:INPUT_TEXT!req" --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово" \
+    --kanban "Статус:HEADER=Наименование" \
+    --menu "Проба меню 2026-09-22:GROUP!code=Proba_menu_20260922!order=950000" \
+    --menu "Проба канбана из меню:BO@Proba_menu_bo_20260922@Проба меню БО 2026-09-22!code=Proba_menu_kanban_20260922!parent=Proba_menu_20260922!kanban=Status!order=950100"
+```
 
 The generator covers ALL 27 field types, the six system fields and all ten widgets `[C]` (2026-09-18 —
 the archive below was generated, imported through the API and read back field by field):
@@ -780,7 +916,8 @@ does not block applying, and `load-import-errors` can come back empty while the 
   («Extra data»). Recipe: `unzip -p <zip> 'data-*/0000001.mybpm'`, parse line by line, select the line
   whose `code` is the wanted BO (`BoStructDto`, display name in `name.rus`). `[C]`
 - Line order: `CompanyMetadataStructDto`; then each `BoGroupStructDto` followed by its `BoStructDto`(s);
-  `AccessStructDto` / `ScriptDef` optional (absence of the access DTO = default access). A one-BO export
+  `AccessStructDto` / `ScriptDef` optional (absence of the access DTO = default access); sidebar menu
+  items (`MenuItemStructDto`, §5e) come after the BOs. A one-BO export
   = 3 lines + its `AccessStructDto` if any. `[C]`
 - `CompanyMetadataStructDto` carries the company ids `personBoId`, `departmentBoId`, `personGroupBoId`
   (different per company — read them from a stand export). It has **no** stand host/URL, so record the
@@ -833,7 +970,8 @@ expect a downloaded export to carry them.
 
 Besides the BO lines an export may carry, per BO, a `BoScriptVersionsStructDto` plus one
 `ScriptDefStructDto` per non-empty script (the «Скрипты» checkbox of the export basket, §5d), an
-`AccessStructDto` (§7) and `ExportStructInstanceDto` record lines (§5, §5c).
+`AccessStructDto` (§7) and `ExportStructInstanceDto` record lines (§5, §5c). Menu items are NOT per BO:
+they come from a basket of their own on the export screen and arrive as `MenuItemStructDto` lines (§5e).
 
 An export also starts with a `CompanyMetadataStructDto` line — `{personBoId, departmentBoId,
 personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQAePlhkxrCGMW6` / `O5d@0F1zrMUmpkUt`
@@ -1266,6 +1404,86 @@ The 2 errors that survived are both the missing method the body calls
 the `[U]` above: **an archive carries hook and field scripts, not the BO's own methods**, and a body that
 calls one arrives broken. Create the method first (`v2/bo-scripts-editor/create-local-method`, §5g) or
 choose a body that calls none.
+
+## 5e. Sidebar menu items inside the archive (`MenuItemStructDto`) `[C]` (2026-09-22, build `S4.24.25.632/C4.24.25.264`, `<stand>`/`<COMPANY_A>`)
+
+The cookbook templates are 0.5d; this is the evidence behind them. Decoded by EXPORT — the export screen
+has a separate «Элементы меню» basket (`MYBPM-UI-API.md` §0U R4a, «Export tab») — of three real items of
+`<COMPANY_A>` (a group, a BO item with a `CREATED_BY` record filter, a BO item with a kanban made through
+`v2/menu-item`), then proved by a generated archive: BO + card template + menu GROUP + menu BO item with a
+kanban, dry-run, ПРИМЕНИТЬ, the board drawn with its three columns, then rolled back.
+
+**The line.** One `MenuItemStructDto` per item, a group and its children as separate lines. Keys, in the
+exporter's order: `menuItemCode`, `menuItemName`, `parentMenuItemCode` (absent on a root),
+`boCode` + `boName` (BO items only), `iconName`, `orderIndex` (the exporter writes a float, `10000.0`;
+an int imports fine), `boPages` (BO items only), `chosenAccessRight`, `needCountMenuItem`, `isPanel`,
+`needHideInMobApp`, `bracketFilter` (BO items only), `menuItemType`. The line has **no id of any kind** —
+not the menu item's own, not the BO's, not the parent's.
+
+- `menuItemType`: `GROUP` | `BO` confirmed; the stand's own items also use `ANALYTIC`, `BO_MANAGER`,
+  `COMPANY_MANAGER`, `SETTINGS`, `REPORT`, `OTHER` — never shipped in an archive `[U]`.
+- `menuItemCode` is the menu item's `code` on the stand (`v2/menu-item/load-nav-items` returns it as
+  `code`; the sidebar kebab «Изменить код» edits it). Items made in the UI get a transliteration plus a
+  random tail (`GruppatqrXI0InJC5abW8w`) or the transliteration alone (`Kanban_iz_arhiva__proba_`), so a
+  stand code is read off the stand, never derived.
+- `boPages` is the API's `boPages` (`MYBPM-UI-API.md` §4) **with `kanbanFieldId` replaced by
+  `kanbanFieldCode`**. The importer resolves the code into the real field id: the item came back from
+  `load-nav-items` with `kanbanFieldId: "wgKrnYB6fusRjmLr"` = the `newId` of the archive's own `Status`
+  field, plus a `timelineFieldId: null` the archive never mentioned.
+- `parentMenuItemCode` is resolved the same way: the child came back with `parentId` = the group's new id.
+- **A `GROUP` line has no `boPages`, `bracketFilter`, `boCode`, `boName`** — on the stand the group is
+  stored with `boPages: null`.
+- `bracketFilter` = the item's record filter, `{boCode, type: "MENU_ITEM", brackets}`. **Its shape
+  differs from the API's** (`MYBPM-UI-API.md` §0U R6.5, arrays): here `brackets` and the filters inside
+  are MAPS keyed by 8-character ids. The one non-empty filter the export showed — «only records I
+  created»:
+
+  ```json
+  "bracketFilter":{"boCode":"TestSumProcess","type":"MENU_ITEM","brackets":{
+    "fx5mBogt":{"parentTreeIds":{},"order":0,"connectionType":"AND","notType":"DEFAULT",
+                "dynamicFilters":{},
+                "nativeFilters":{"iLWNZjcz":{"type":"CREATED_BY","isCurrentUser":true,
+                                            "isEmptyValue":false,"orgUnitIds":{}}}}}}
+  ```
+
+  An empty filter (`brackets: {}`) still makes the stand create a bracket-filter record for the item
+  (`bracketFilterId` was set after the import). Importing a NON-empty filter was not tried `[U]` — the
+  map keys are presumably free 8-char ids `[I]`, and a `dynamicFilters` entry has never been seen in
+  this shape at all.
+- **A menu line may reference a BO that is not in the archive**: the 3-item export carried no BO line of
+  its own for the items' BOs (the one BO line in it came from the BO basket). Such a line relies on the
+  BO already being on the stand, by `boCode`.
+- Line order in an export: a child was listed BEFORE its group (`TestSumProcess` before
+  `GruppatqrXI0InJC5abW8w`), so the importer probably tolerates any order `[I]`; a generated archive
+  puts the group first, the order proved on import.
+
+**The analysis step sees menu lines** `[C]`. `load-import-bo-infos` lists each one next to the BOs, with
+`boCategory: null` and `structTypes: ["MENU"]` (the BO line: `["STRUCTURE"]`). `load-import-bo-record`
+fills `menuInfo` instead of `structureInfo`:
+
+```json
+"menuInfo":{"type":"BO","displayName":"Проба канбана из меню","oldDisplayName":null,
+  "parentMenuItemCode":"Proba_menu_20260922","boCode":"Proba_menu_bo_20260922",
+  "boName":"Проба меню БО 2026-09-22","iconName":"man-with-company","menuItemState":"CREATE",
+  "changedAspects":["display_name","linked_bo","parent_menu_item","icon","bracket_filter","bo_pages","order_index"],
+  "changeDetails":{"parent_menu_item":"Proba_menu_20260922","linked_bo":"Proba_menu_bo_20260922"}}
+```
+
+`menuItemState: "CREATE"` and `oldDisplayName` suggest that a line whose `menuItemCode` already exists is
+reported as an UPDATE and applied in place `[I]` — **not tested**; until it is, treat a menu code clash
+like a BO code clash (0.2a): the import may edit the customer's existing item.
+
+**Rollback removes menu items too** `[C]`. `load-import-rollback-preview` listed three `deleteItems`:
+the BO (`category: "BUSINESS_OBJECT"`, `code: "Proba_menu_bo_20260922#BUSINESS_OBJECT"`) and both menu
+lines (`category: "MENU"`, `code: "<menuItemCode>#MENU"`, `structTypes: ["MENU"]`); `rollback-import`
+answered `{"type":"ROLLED_BACK"}` and afterwards the BO answered `NoBoWithId`, the group was gone from
+the sidebar roots and the stand's list of menu items was back to its 19.
+
+Open `[U]`: re-import of the same menu code (update vs duplicate); whether menu access rights travel —
+every exported item had `chosenAccessRight: false`, so the access group of an item with `true` (the
+built-in «Системные» is one) has never been seen in an export; a non-empty `bracketFilter` on import;
+what the calendar / timeline / map / grouping views of `boPages` need (only list and kanban were ever
+shipped, 0.5d); where else a kanban can be switched on besides a menu item (0.5c).
 
 ## 6. References between BOs
 
