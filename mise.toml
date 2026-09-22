@@ -1,0 +1,39 @@
+[tools]
+bun = "latest"
+python = "latest"
+
+[tasks.skills-check]
+description = "Check that every heading a SKILL.md routes to still exists in its document"
+shell = "bun -e"
+run = '''
+const skills = [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]];
+let bad = 0;
+for (const [name, doc] of skills) {
+  const skill = await Bun.file(`skills/${name}/SKILL.md`).text();
+  const lines = (await Bun.file(doc).text()).split("\n");
+  const anchors = [...skill.matchAll(/`(#+ [^`]+)`/g)].map((m) => m[1]);
+  for (const a of anchors) {
+    if (!lines.some((l) => l.startsWith(a))) { console.error(`${name}: no heading "${a}" in ${doc}`); bad++; }
+  }
+  console.log(`${name}: ${anchors.length} anchors checked`);
+}
+if (bad) process.exit(1);
+'''
+
+[tasks.skills-zip]
+description = "Pack each skill with its document into dist/skills/<name>.zip for upload to claude.ai"
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+await $`mise run skills-check`;
+const skills = [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]];
+await $`rm -rf dist/skills`;
+for (const [name, doc] of skills) {
+  const stage = `dist/skills/stage/${name}`;
+  await Bun.write(`${stage}/SKILL.md`, Bun.file(`skills/${name}/SKILL.md`));
+  await Bun.write(`${stage}/${doc}`, Bun.file(doc));
+  await $`python3 tools/zipdir.py dist/skills/stage dist/skills/${name}.zip ${name}`;
+  console.log(`dist/skills/${name}.zip`);
+}
+await $`rm -rf dist/skills/stage`;
+'''
