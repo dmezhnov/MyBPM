@@ -5,13 +5,16 @@ description: MUST be loaded for any MyBPM file-building task — MyBPM formats a
 
 # MyBPM — the files you feed a stand
 
-All knowledge is in **`MYBPM-IMPORTS.md`**. Where it is, relative to this skill's base directory:
-installed as a Claude Code plugin — `../../MYBPM-IMPORTS.md` (the repository root); uploaded as a zip
-(claude.ai) — `./MYBPM-IMPORTS.md`, next to this file. Try the first path first.
-It is ~60k tokens: **never read it whole.** Find a heading's line number with a search
-(`grep -n '^## 0S\.' MYBPM-IMPORTS.md`), then read from that line to the next heading of the same level.
+All knowledge is in **`MYBPM-IMPORTS.md`**. Look for it next to this file (`./MYBPM-IMPORTS.md`); in a checkout of the
+MyBPM repository it sits at the repository root instead (`../../MYBPM-IMPORTS.md`, relative to this skill's
+folder). It is ~60k tokens: **never read it whole.** Locate the heading you need and read only from
+that line to the next heading of the same level — with a shell, `grep -n '^## 0S\.' MYBPM-IMPORTS.md` gives the line;
+without one, search the file for the heading text.
 
 ## Pick the cookbook for the job
+
+**Open the document before your first reply** — even the questions you must ask the user are listed
+there, and an answer from general knowledge is wrong for this platform.
 
 | The user wants | Read the section whose heading starts with | Up to |
 |---|---|---|
@@ -38,12 +41,12 @@ the cookbook sends you there or the case is exotic.
 
 ## Tools (only when the repository is at hand)
 
-Installed as a plugin, the repository's `tools/` sits at `../../tools/` (Bun). Useful without a stand:
+With a checkout of the MyBPM repository, its `tools/` sits at `../../tools/` (run with Bun). Useful without a stand:
 
 - `bun tools/validate-archive.bun.ts <file.mybpm.zip>` — checks an archive against §0; FATAL means the
   import will fail. Run it on every archive you build.
 - `bun tools/make-probe-archive.bun.ts …` — a stand-verified archive generator; prefer it over writing a
   builder (`### 0.12 Building and delivering` shows the commands).
 
-Without the repository (claude.ai), build the zip yourself exactly as `### 0.1 The artefact` says and walk
+Without the repository, build the zip yourself exactly as `### 0.1 The artefact` says and walk
 the self-check by hand.
