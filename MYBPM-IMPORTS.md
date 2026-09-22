@@ -350,7 +350,9 @@ greys the second checkbox out as soon as the first is ticked). Both flags surviv
 `[C]` (2026-09-18) and behave on the stand exactly as a constructor-built flag: an empty required field is
 refused with «Обязательные поля не заполнены», a duplicate unique one with «Продублировано уникальное
 поле». A UI-built BO ALSO carries `tableColToShow: true` on every required/unique field (the constructor
-sets it automatically) — copy that if the archive should reproduce a stand-built registry.
+sets it automatically) — copy that if the archive should reproduce a stand-built registry. **But on a
+stand with the Elasticsearch sort defect a filled STRING field as a registry column breaks the registry
+of a new BO** — see 0.5c «The Elasticsearch sort defect» before setting `tableColToShow: true` on text.
 A `DROPDOWN_SINGLE` additionally needs `fieldOptionsStruct` (§5) — a dictionary by CODE, or a local list.
 
 **The ONE documented exception to «never drop a key» is the composite.** A `BO_COMPOSITE` has no form, so
@@ -550,7 +552,24 @@ A kanban is TWO things, and since 2026-09-22 the archive can carry BOTH:
 Verified end to end on `<stand>` (`<COMPANY_A>`): archive → apply → `v2/kanban/load-kanban-template` returns a
 `cardTemplate` instead of NPE-ing, the board renders its three columns, and `load-bracket-kanban-cards`
 returns the card with its header/content/footer values. **But the cards do not appear in the UI yet** —
-a second, unrelated defect of every NEW BO on that stand blocks the default sort (`MYBPM-UI-API.md` §7).
+a second, unrelated defect of every NEW BO on that stand blocks the default sort (`MYBPM-UI-API.md` §7;
+what an archive can do about it is the next paragraph).
+
+**The Elasticsearch sort defect — what the archive must do about it** `[C]` (2026-09-19/20, `<stand>`,
+build `S4.24.25.632`). On that stand every BO created by the current version (archive AND constructor
+alike) gets an index in which a string field cannot be sorted once any record holds a value in it. The
+registry sorts by default by its FIRST column, and clicking any column header sorts by that column —
+so a registry (and a kanban, same query) whose columns include a FILLED string field shows «из N» with an
+empty table and invisible cards. Old BOs never fail; a field left empty everywhere sorts fine. **Nothing
+repairs the index; the only measure that holds is to keep string fields that will hold values OUT of the
+registry columns**: `tableColToShow: false` on them. Seen failing: `INPUT_TEXT` and `DROPDOWN_SINGLE`;
+assume every field whose value is a string does (`TEXTAREA`, `INPUT_EMAIL`, `INPUT_PHONE`, `LINK`,
+`*_LANG` `[I]`). Seen safe as columns: `INPUT_NUMBER`, `CHECKBOX`, `DATE`, a `BO` reference,
+`CREATED_AT` — put one of them first (`tableColOrderIndex` 0). Reordering alone is NOT enough — the text column breaks the
+moment someone clicks its header. Two limits: `sortFieldId` changes nothing, and a BO with **no**
+registry column at all answers «У Вас недостаточно прав на поля, которые выведены в реестр» — keep at
+least one safe column. Whether another stand has the defect is unknown `[U]`: if a new BO's registry
+there shows rows with text columns on, ignore this paragraph.
 One archive with the BO + its card template + a menu group + a menu item with `kanbanFieldCode` renders the
 whole board with its columns straight after ПРИМЕНИТЬ `[C]` (2026-09-22, build `S4.24.25.632`, §5e).
 
@@ -954,8 +973,35 @@ with zipfile.ZipFile("out.mybpm.zip", "w", zipfile.ZIP_STORED) as z:
     z.writestr(f"{d}/metadata.mybpm", f"objectCount-{len(lines)}".encode("utf-8"))
 ```
 
-Ship it to a stand through the UI or the `/web/import-structure/*` API — routes, the analysis step and
-the error dialogs are in `MYBPM-UI-API.md` §5; `tools/api-import-structure.bun.ts` does the API route.
+**Delivering it — the minimum** `[C]` (2026-09-18/22; the full transport is `MYBPM-UI-API.md` §5 / R3,
+this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, one deliberate step writes.
+
+- **UI**: open `<stand>/settings?settingsOpenPageUrl=import_export&formType=import` (navigate by URL — the
+  «Настройки» item sits wherever that company put it in the sidebar), «Импортировать файл», pick the zip.
+  A log row «Импорт проанализирован» appears — nothing is written yet. Click the row: «Ошибки» (must be
+  empty), one node per object with its pre-apply diff («Добавленные поля» …), and «Описание импорта» —
+  **required**, applying without it ends in `DESCRIPTION_ERROR`. Then ПРИМЕНИТЬ → «Импорт выполнен».
+- **API**: `bun tools/api-import-structure.bun.ts <archive.mybpm.zip> --stand https://<stand>
+  [--token-file PATH] [--apply --description "что и зачем"]` — without `--apply` it stops at the dry run
+  (status `ANALYZED`) and prints the errors and the per-object list; `--cancel` drops it. Token = the
+  browser's `localStorage.LOCAL_PRIVATE_SwebToken` without its JSON quotes, or `$MYBPM_TOKEN`. The calls
+  underneath, all `POST <stand>/web/import-structure/<method>`: `import-file` (multipart, field `file`) →
+  `insert-file-data` → `analyze-file-data` → read `load-import-errors` / `load-import-bo-infos` →
+  `save-import-description` → `apply-import`. Only ONE import may be open per company at a time.
+- **Calling a `/web` endpoint by hand** (the rollback below, the script check of §5d): `POST`, header
+  `token: <the token, no quotes>`, `Content-Type: application/json`, and ALWAYS the envelope
+  `{"useParamsFromBody": true, "params_Lr1oSgwPR8": {…}, "body_o1nhHUG480": {…}}`. In this document
+  `P {…}` means «goes into `params_Lr1oSgwPR8`», `B {…}` «goes into `body_o1nhHUG480`» (send `{}` for
+  the other half); a key in the wrong half has answered 200 and done nothing (seen twice). Answer = the bare DTO / string.
+- **Rollback**: `import-structure/load-import-rollback-preview` `P {importId}` lists what it would
+  delete / restore; `v2/process-indicator/pre-create-process` `P {}` → a fresh `processId`; then
+  `import-structure/rollback-import` `P {importId, processId}` → `{"type":"ROLLED_BACK"}` undoes it (BOs
+  and menu items alike; the process may finish at 25 %, do not wait for 100). Only the import the stand
+  flags `canRollback: true` can be undone, and «latest» is the stand's ranking, not yours — same-minute
+  applies were ranked out of order. Undoing an import that UPDATED something restores the SNAPSHOT it
+  found, silently dropping anything applied after it; undoing a chain is safe only all the way back to
+  the import that CREATED the objects. When you may need to undo, leave a minute between applies.
+
 **Always read the analysis result before pressing ПРИМЕНИТЬ** — «В Составном объекте не достаёт БО»
 does not block applying, and `load-import-errors` can come back empty while the UI dialog shows an error.
 
@@ -1158,7 +1204,12 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   field; only `.614` exports have the key). With `isHeightDynamic:true` and a 5-row cell (label + header +
   one row) the empty band under short tables disappears; import applies the flag. `[C]`
 - **Sections** = everything between one full-width «Текст» (STATIC_TEXT) field and the next. HTML goes in
-  `staticValue.rus` (sanitizer rules → `MYBPM-UI-API.md`). 15×3 showed the platform's own scrollbar inside
+  `staticValue.rus` — a FRAGMENT (no doctype / `html` / `head` / `title`), and only what the sanitizer
+  lets through `[C]` (observed on an HTML field; the same rules rendered in «Текст» headings, identical
+  sanitizing there is `[U]`): `text-transform` and `letter-spacing` are REJECTED; `main`, `header`,
+  `section`, `article` are stripped WITH their styles → use only `div` and `span`; drop `clamp()` and
+  `aria-label`; `h1`–`h3` lose bold → set `font-weight:700` explicitly; avoid `transform` and
+  `conic-gradient` (assumed filtered `[U]`). (Same list: `MYBPM-UI-API.md` §8.) 15×3 showed the platform's own scrollbar inside
   the band for "heading + subheading" → use **15×4** or more. `hideLabel:true` avoids the field label
   duplicating the heading (whether import applies it was never reported `[U]`).
   **A section heading must not repeat any field name of the BO — it breaks Excel import** (`SameBoFieldsLabel`).
@@ -1428,8 +1479,13 @@ clipboard is no longer the only write channel** (§14 is about the IDE, not abou
   `{"5wzp8xIek35QC@EU": {"afterChangeScriptId": "DAZ2eokWJRIqYGuf"}}`. The importer resolves the code.
 - **A re-import does not overwrite a script version — it ADDS one** `[C]`. First import → version «1»
   `isWork`; the same archive again (one act renamed) → version «3», `isWork`, new `boScriptModId`, and
-  version 1 stays with `isWork:false`. **Read back the module id AFTER every import** (§5g of
-  `MYBPM-UI-API.md`) — translating the old module shows the old body and looks like the import failed.
+  version 1 stays with `isWork:false`. **Read back the module id AFTER every import** — translating the
+  old module shows the old body and looks like the import failed. The check, all `POST
+  <stand>/web/v2/…` in the envelope of 0.12 `[C]`: `bo-scripts-editor/load-bo-script-versions` `P {boId}` → take the row with
+  `isWork: true`, its `boScriptModId`; then `script/translate-script` `P {scriptModuleId: <that id>,
+  scriptId: <an id from your archive — kept verbatim>}` → `{"success":true}` or a
+  `diagnosticMessageList`. An import NEVER reports a broken body; this call is the only validator. (The
+  full read-back route, tree and wiring included: `MYBPM-UI-API.md` §5g.)
   The first import also produced a version «2» with `isTest:true` carrying the same script ids, although
   the archive had **no `testScripts`** — a test version is created for you.
 - **An empty hook stays empty**: a hook id with no `ScriptDefStructDto` translates to «Не определён
@@ -1557,7 +1613,7 @@ set is not a leftover. Rolled back; the stand was left without the probe (BO `No
 roots as before).
 
 **Rolling back an UPDATE restores a snapshot, and the stand may pick the wrong import as «latest»** `[C]`
-— see `MYBPM-UI-API.md` §5 «Rollback exists»: the preview of B/C lists `restoreItems` (`action:
+— the rules are in 0.12 «Rollback» (the full run: `MYBPM-UI-API.md` §5 «Rollback trap»): the preview of B/C lists `restoreItems` (`action:
 "RESTORE"`, the BO and the menu line) and no `deleteItems`; only A's preview had `deleteItems`.
 
 Open `[U]`: whether menu access rights travel —
@@ -2660,12 +2716,14 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
   the importer finds it **by the frozen rows** (A2 / A3) or by a double bottom border in column A —
   a sheet with neither dies with `kD4QsxZrAY` «Система не может отделить строки заголовка от строк данных»;
 - an Excel table part `xl/tables/table1.xml` rides along in stand files; keep it consistent with
-  `dimension` (§9 of `MYBPM-UI-API.md` has the openpyxl traps).
+  `dimension` (the openpyxl traps are 19.9).
 
 ### 0X.2 Algorithm
 
 0. **Ask for the stand data of 0X.3.** Without the template file itself there is nothing to fill.
-1. **Take a FRESH template** (`download-template`, or an export of the registry — `MYBPM-UI-API.md` §6).
+1. **Take a FRESH template** — an export of the registry (registry kebab → «импорт/экспорт xlsx»), or
+   `GET <stand>/web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<…>`
+   (a plain GET with the `token` header, no envelope `[I]`; more in `MYBPM-UI-API.md` §6).
    Columns follow the BO at export time and their positions move between exports.
 2. **Build the column map by LABELS, never by position**: the (row-1 block, row-2 field) pair identifies a
    column. Split a row-1 label on the FIRST dot — the prefix is the tab («Системные.Код»).
@@ -2845,6 +2903,27 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 - **Before handing a file over, read the xlsx BACK and rebuild the data model from its cells** (labels →
   codes) — this caught every error before the stand did.
 - Hand-made files must reproduce the header format exactly (freeze A3 + merges).
+
+### 19.9 Editing an xlsx with openpyxl — the traps `[C]` (same list: `MYBPM-UI-API.md` §9)
+
+- The Excel table `displayName` must be Latin (`Table1`…) — a Cyrillic one makes Excel offer to «repair».
+- `tableColumns` names must match the header cells exactly, else Excel «repairs» the file. When inserting
+  columns, rebuild `tableColumns` by header name and extend the table `ref`, the autoFilter and the
+  conditional-format `sqref`.
+- **openpyxl does not widen an existing table**: after adding or removing rows update BOTH the sheet
+  `dimension` and the table `ref` (e.g. `A1:D35`), otherwise Excel reports the table as broken. A
+  hand-made sheet without a table part needs only `dimension`.
+- openpyxl writes a Python number as a numeric cell (`t="n"` — «103» comes back «103.0» and breaks a
+  lookup) and a `str` as a SHARED string, not `inlineStr`. Stand files use `inlineStr` only (0X.4 rule 1);
+  whether the importer accepts shared strings was never tried `[U]` — the 19.8 technique (rewrite
+  `sheet1.xml` yourself) avoids the question. Grep the sheet xml for `t="n"` before shipping.
+- **openpyxl's save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the
+  zip instead of loading the workbook (the 19.8 technique).
+- Moving rows: move the values AND `row_dimensions[].height` together; `customHeight` has no setter —
+  setting `height` is enough.
+- Appended rows get no style — copy it from a sample row (stand rows have thin left/bottom borders;
+  whether the importer cares about data-row borders was never tested, its header detection uses the
+  freeze / double border of 19.1).
 
 ## 20. Open questions — records
 

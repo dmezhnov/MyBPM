@@ -254,7 +254,8 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    parameters, so `fieldBoId` appears only for a nested object (`fieldType: "BO"`, R2 «Panel»).
    `fieldType` is the palette type — `INPUT_TEXT`, `INPUT_NUMBER`, `CHECKBOX`, `DATE`, `FULL_DATE`
    (**not** `DATE_TIME` — that name never existed), `INPUT_TEXT_LANG`, `STATIC_TEXT`, `BO`, … (the full
-   enum is in `MYBPM-IMPORTS.md` §3, and §5i below covers widgets and system fields). `cols: 15` is
+   enum with the palette labels is §5i «Field types — label → `fieldType`», which also covers widgets
+   and system fields). `cols: 15` is
    the full form width, `rows: 4` one line, so field *i* sits at `y = 4·i`.
    **Get the label right the first time**: a FIELD's code is generated from its label at the first save
    and never regenerated (trap 22).
@@ -1686,6 +1687,29 @@ the tool). The archive half is in `MYBPM-IMPORTS.md` §0.5 / §0.5a / §0.5b.
   arrives labelled with the type's own name («Текстовое поле»), which is then renamed in place — and the
   code is generated from the label AT THE FIRST SAVE and never again (trap 22).
 
+#### Field types — label → `fieldType` `[C]` (2026-09-18, enum `ApiFormFieldType` of the client bundle; same table: `MYBPM-IMPORTS.md` §3)
+
+The 27 values `generate-business-form-field` accepts, by palette label:
+
+| label | `fieldType` | label | `fieldType` |
+|---|---|---|---|
+| Текстовое поле | `INPUT_TEXT` | Выпадающий список | `DROPDOWN_SINGLE` |
+| Текстовый блок | `TEXTAREA` | Единичный выбор | `RADIO_BUTTON_GROUP` |
+| **Текст** (static HTML, a section heading — not an input) | `STATIC_TEXT` | Чек лист | `CHECKLIST` |
+| Число | `INPUT_NUMBER` | Опросник | `QUESTIONNAIRE` |
+| Чекбокс | `CHECKBOX` | Прогресс-бар | `PROGRESS_BAR` |
+| Дата | `DATE` | Вкладки | `TAB_GROUP` |
+| Дата и время | `FULL_DATE` (never `DATE_TIME`) | Карта | `GEO_POINT` |
+| Время | `TIME` | Ссылка | `LINK` |
+| Период / Период со временем | `PERIOD` / `PERIOD_TIME` | Загрузка файла | `FILE_UPLOAD` |
+| Год / Год и месяц | `YEAR` / `YEAR_AND_MONTH` | Мультиязычное текстовое поле / блок | `INPUT_TEXT_LANG` / `TEXTAREA_LANG` |
+| Email / Телефон | `INPUT_EMAIL` / `INPUT_PHONE` | Вложенный объект, Пользователь | `BO` (never `BUSINESS_OBJECT`) |
+| | | Составной объект | `CO` |
+
+`BUTTON`, `RANGE`, `MULTIPLE`, `SINGLE`, `INPUT` are client-only members and answer
+`400 Failed to convert 'fieldType'` (a button is a WIDGET, below). `USER_DROPDOWN_MULTI`,
+`CHECKBOX_GROUP`, `BUSINESS_OBJECT` do not exist — they are leftover i18n keys.
+
 #### The API — one generator per archetype
 
 ```
@@ -1856,6 +1880,32 @@ missing one was never the menu item:
    so `BoDto.toKanbanCardTemplate` NPE-d and the view showed «cardTemplate is null». **Ship the template
    inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
    dropdown's CODE, the card fields by CODE with `locationType` + `archetype`.
+
+**The template, as it goes into the BO's line of the archive** (`BoStructDto`, next to `dynamicFields`;
+same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
+
+```text
+"kanbanCardTemplates": {
+  "Status": {                          ← CODE of the DROPDOWN whose options become the columns
+    "kanbanFields": {
+      "Naimenovanie": {"cardOrderIndex": 0, "locationType": "HEADER",  "archetype": "DYNAMIC"},
+      "Ispolnitel":   {"cardOrderIndex": 0, "locationType": "CONTENT", "archetype": "DYNAMIC"},
+      "CREATED_BY":   {"cardOrderIndex": 1, "locationType": "CONTENT", "archetype": "NATIVE"},
+      "Kommentariyi": {"cardOrderIndex": 0, "locationType": "FOOTER",  "archetype": "DYNAMIC"}
+    }
+  }
+}
+```
+
+- Outer key = the CODE of a `DROPDOWN_*` field of this BO (one entry per field offered as a board);
+  inner key = the CODE of a card field — a dynamic field (`DYNAMIC`) or a native type (`NATIVE`). Codes
+  only, never ids. `locationType` `HEADER|CONTENT|FOOTER`; `cardOrderIndex` orders inside a location.
+- `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
+  writes exactly this for a NEW BO; add `--menu "…:BO@<code>@<name>!kanban=<dropdown code>"` and the
+  same archive also switches the board on in a sidebar item. Ship it with R3.
+- For a BO that is ALREADY on the stand: its line comes out of the struct export of R4a, the key can be
+  added and the line re-imported — **that path was never run `[U]`**; the verified route is a new BO
+  through the archive, and the only other writer is the constructor UI (below).
 
 Verified end to end: archive with `kanbanCardTemplates` → `apply-import` → `load-kanban-template` returns
 a `cardTemplate`, `load-kanban-card-template` returns header/content/footer, the board renders its three
