@@ -14,6 +14,7 @@
  * Usage:  bun tools/make-probe-archive.bun.ts [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
  *         [--category BO|BO_DICTIONARY|BO_COMPOSITE|BO_PANEL|BO_PROCESS] [--field "Метка:TYPE"]...
  *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>]
+ *         [--menu "Имя:GROUP"]... [--menu "Имя:BO@<код БО>[@Имя БО]!parent=…!kanban=…"]...
  *
  * The full `--field` grammar is «Метка:TYPE[@a][@b][#вариант|вариант][!req,uniq,readonly]»:
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
@@ -217,6 +218,79 @@ function kanbanFlags(): { column: string; locations: Record<string, string[]> }[
       locations[loc] = part.slice(eq + 1).split(",").map(s => s.trim()).filter(Boolean);
     }
     out.push({ column: raw.slice(0, at), locations });
+  }
+  return out;
+}
+
+/**
+ * `--menu "Имя:GROUP"` / `--menu "Имя:BO@<код БО>[@Имя БО]"`, repeatable — a SIDEBAR MENU ITEM
+ * (`MenuItemStructDto`, MYBPM-IMPORTS.md §5e). A menu line references everything BY CODE: its parent by
+ * `parentMenuItemCode`, its BO by `boCode`, the kanban column field by `boPages.kanbanFieldCode` — so it
+ * travels with the BO in one archive, or alone against a BO that is already on the stand.
+ * Options are appended with `!`:
+ *   `!code=<код>`   override the code (default: transliterated from the name)
+ *   `!parent=<код>` put it inside that menu GROUP
+ *   `!kanban=<код поля>` turn the kanban view on, columns = that dropdown's options
+ *   `!order=<n>`    orderIndex (default 900000 + 10000 per item); the built-in «Системные» is 60000
+ *   `!icon=<имя>`   iconName (default GROUP `bo-g-draggable`, BO `man-with-company`)
+ *   `!panel` `!count` `!hidemob` — isPanel / needCountMenuItem / needHideInMobApp
+ *
+ *   --menu "Заявки:BO@Zayavki@Заявки"          a plain root item, list view only
+ *   --menu "Проба меню:GROUP!order=950000"
+ *   --menu "Проба канбана:BO@Proba_menu_bo@Проба меню БО!parent=Proba_menu!kanban=Status"
+ * Only the list and kanban views are generated — calendar / timeline / map / grouping are `[U]` (0.5d).
+ */
+type MenuSpec = {
+  code: string; name: string; type: "GROUP" | "BO";
+  boCode?: string; boName?: string; parent?: string; kanbanField?: string;
+  order: number; icon: string; isPanel: boolean; needCount: boolean; hideMob: boolean;
+};
+
+function menuFlags(): MenuSpec[] {
+  const out: MenuSpec[] = [];
+  for (let i = 0; i < Bun.argv.length; i++) {
+    if (Bun.argv[i] !== "--menu") continue;
+    const raw = Bun.argv[i + 1] ?? "";
+    const bang = raw.indexOf("!");
+    const head = bang < 0 ? raw : raw.slice(0, bang);
+    const opts: Record<string, string> = {};
+    if (bang >= 0) {
+      for (const o of raw.slice(bang + 1).split("!").filter(Boolean)) {
+        const eq = o.indexOf("=");
+        if (eq < 0) opts[o.trim().toLowerCase()] = "";
+        else opts[o.slice(0, eq).trim().toLowerCase()] = o.slice(eq + 1).trim();
+      }
+    }
+    const colon = head.indexOf(":");
+    if (colon < 1) {
+      throw new Error(`--menu expects "Имя:GROUP" or "Имя:BO@<код БО>", got ${JSON.stringify(raw)}`);
+    }
+    const name = head.slice(0, colon);
+    const [kind, boCode, boName] = head.slice(colon + 1).split("@");
+    const type = kind.trim().toUpperCase();
+    if (type !== "GROUP" && type !== "BO") {
+      throw new Error(`--menu type must be GROUP or BO, got ${JSON.stringify(kind)}`);
+    }
+    if (type === "BO" && !boCode) {
+      throw new Error(`--menu "${name}:BO" needs the BO code: "Имя:BO@<код БО>"`);
+    }
+    if (type === "GROUP" && opts.kanban) {
+      throw new Error(`--menu "${name}": !kanban belongs to a BO item, a GROUP has no pages`);
+    }
+    out.push({
+      code: opts.code || codeOf(name),
+      name,
+      type,
+      boCode,
+      boName: boName || boCode,
+      parent: opts.parent,
+      kanbanField: opts.kanban,
+      order: opts.order ? Number(opts.order) : 900000 + out.length * 10000,
+      icon: opts.icon || (type === "GROUP" ? "bo-g-draggable" : "man-with-company"),
+      isPanel: "panel" in opts,
+      needCount: "count" in opts,
+      hideMob: "hidemob" in opts,
+    });
   }
   return out;
 }
@@ -788,6 +862,48 @@ if (CATEGORY === "BO_PROCESS") {
     workProcess: { figureStructs, scriptsDefIds: [], arrows, runWayMap: {} },
     processVersions: {},
   });
+}
+
+// ---- sidebar menu items (MenuItemStructDto) ----
+
+for (const m of menuFlags()) {
+  const line: Record<string, unknown> = {
+    "@class": `${PKG}.MenuItemStructDto`,
+    menuItemCode: m.code,
+    menuItemName: m.name,
+  };
+  if (m.parent) line.parentMenuItemCode = m.parent;
+  if (m.type === "BO") {
+    line.boCode = m.boCode;
+    line.boName = m.boName;
+  }
+  line.iconName = m.icon;
+  line.orderIndex = m.order;
+  // A GROUP carries no `boPages` and no `bracketFilter` at all — that is how the stand exports it.
+  if (m.type === "BO") {
+    line.boPages = {
+      isKanbanEnabled: !!m.kanbanField,
+      kanbanIndex: m.kanbanField ? 1 : 0,
+      isCalendarEnabled: false,
+      calendarIndex: 0,
+      isTimelineEnabled: false,
+      timelineIndex: 0,
+      isListEnabled: true,
+      listIndex: m.kanbanField ? 2 : 1,
+      isMapEnabled: false,
+      mapIndex: 0,
+      isGroupingEnabled: false,
+      groupingIndex: 0,
+      ...(m.kanbanField ? { kanbanFieldCode: m.kanbanField } : {}),
+    };
+  }
+  line.chosenAccessRight = false;
+  line.needCountMenuItem = m.needCount;
+  line.isPanel = m.isPanel;
+  line.needHideInMobApp = m.hideMob;
+  if (m.type === "BO") line.bracketFilter = { boCode: m.boCode, type: "MENU_ITEM", brackets: {} };
+  line.menuItemType = m.type;
+  lines.push(line);
 }
 
 // ---- zip writing (STORE only; no `zip` binary on this machine and Bun has no zip writer) ----

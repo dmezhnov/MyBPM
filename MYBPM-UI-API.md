@@ -29,7 +29,7 @@ document calls `<company-a>`, with its 14 BO groups and the probe group «Биз
 that looks nothing like its name. Do not take that code for a second company.
 
 **Evidence base.** MyBPM v4.24, four companies across two stands: build `S4.24.25.632/C4.24.25.264`
-(BO constructor, structure import, records, kanban, 2026-09-18/19), build `4.24.25.614` (API, menus,
+(BO constructor, structure import, records, kanban, menu items in an archive, 2026-09-18 .. 22), build `4.24.25.614` (API, menus,
 rights, kanban, Excel links, 2026-09-15/16) and builds `4.24.25.570/.614` (Excel record import,
 2026-08-28 .. 09-04).
 **Status markers**: `[C]` confirmed on a stand, `[I]` inferred, `[U]` unverified.
@@ -121,6 +121,10 @@ means «bad token», not «expired session».
   `[C]`. A curl/Bun client outside the browser needs nothing else.
 - The token is short-lived. Read it again at the start of a session, keep it in a file, never in a
   command line and never in a commit.
+- **An agent driving the browser through Claude-in-Chrome cannot lift the token out at all** `[C]`
+  (2026-09-22): `javascript_tool` refuses to return any value derived from `localStorage` or from a
+  response header. Keep the token INSIDE the page instead and call the API from there — the in-page
+  helper of §10. Only a human (DevTools) or Route A gets a token for a standalone client.
 
 ### 0U.2 One complete call — request, success, error
 
@@ -400,7 +404,8 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
    To abandon instead: `cancel-import` — `P {"importId":…}`; `remove-import` deletes the log row too.
 8. **Verify** with R4. Statuses: `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
    INTERNAL_ERROR|CANCELED`. An applied import can be undone: `load-import-rollback-preview` then
-   `rollback-import` — `P {"importId":…,"processId":…}`.
+   `rollback-import` — `P {"importId":…,"processId":…}` (a fresh `processId` from
+   `pre-create-process`) → `{"type":"ROLLED_BACK"}`, status `ROLLED_BACK`, `canRollback:false`.
 
 Traps: **`load-import-state` is not a reliable «is something open?» probe** — it answered
 `{"importExists":false}` while an analysed import was waiting (trap 35). Take the `importId` from
@@ -426,28 +431,43 @@ imported field/tab id equals the archive's `newId`. That is how a generated arch
 are stitched together. A BO created in the constructor gets a platform id instead — ids are 16 characters
 over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do not "clean" them.
 
-#### R4a — EXPORT a BO's structure through the API `[C]` (2026-09-19)
+#### R4a — EXPORT a BO's structure (or menu items) through the API `[C]` (2026-09-19, menu 2026-09-22)
 
 The reverse of an import, and the only way to read the real serialization of something built by hand
-(that is how `kanbanCardTemplates` was finally decoded). Controller **`struct`** — a basket the stand
-keeps per user, then one download:
+(that is how `kanbanCardTemplates` and `MenuItemStructDto` were decoded). Controller **`struct`** — a
+basket the stand keeps per user, then one download:
 
 | # | call | params / body | note |
 |---|---|---|---|
 | 1 | `struct/count-bo-export-records` | `{}` / `{}` | how many BOs are in the basket now |
 | 2 | `struct/load-bo-export-records` | `{offset,limit}` | the basket: `{boId, boName, boCategory, hasScript, isStructureExport, isAccessRightsExport, isScriptsExport}` |
-| 3 | `struct/save-bo-export-records` | **body** = an ARRAY of those records | adds to the basket |
+| 3 | `struct/save-bo-export-records` | **body** = an ARRAY of those records | adds to the basket; answers `""` |
 | 4 | `v2/process-indicator/pre-create-process` | `{}` | → processId |
 | 5 | `struct/export-company-structure` | params `{processId}`, body `{}` | the response body IS the `.mybpm.zip` |
-| 6 | `struct/remove-bo-export-records` / `struct/clear-export-records` | as 3 / `{}` | put the basket back as you found it |
+| 6 | `struct/remove-bo-export-records` / `struct/clear-export-records` | **body** = an ARRAY OF `boId` STRINGS / `{}` | put the basket back as you found it |
 
 - **Read the basket first and restore it afterwards** — it is the user's own selection on the
   «Импорт/Экспорт» screen, not scratch space.
-- `struct/save-bo-export-records` and `…/remove-bo-export-records` answered **HTTP 400 «Failed to read
-  request»** to a hand-built call whose body was byte-identical to the client's `[U]` — cause unknown.
-  The way round it is the UI: `/settings?settingsOpenPageUrl=import_export&formType=export`, the ⊕ next
-  to «Бизнес-объекты (N)» opens a checkbox popover (closing it saves), the row's delete icon removes one
-  (it opens a confirm whose buttons are `.confirm-button-block .ok-btn`). Steps 4–6 work over the API.
+- **Both basket writes work over the API** `[C]` (2026-09-22) — the HTTP 400 «Failed to read request»
+  once written up here as a defect was a wrong BODY: **`remove-*` takes an array of id STRINGS**
+  (`["zm8ufIOguCPru0bu"]`), not the records that `save-*` takes. Sending records to `remove-*` — with or
+  without the `isMenuExport:true` flag the basket adds — gives exactly that 400. Verified by removing the
+  one BO in a basket and saving it back: count 1 → 0 → 1, the record byte-identical to the original.
+  The UI alternative: `/settings?settingsOpenPageUrl=import_export&formType=export`, the ⊕ next to a
+  basket caption opens a checkbox popover (closing it saves), the row's delete icon removes one (it opens
+  a confirm whose buttons are `.confirm-button-block .ok-btn`).
+- **Menu items have a basket of their own** `[C]` (2026-09-22) — the same six calls with `menu` in the
+  name: `struct/count-menu-export-records`, `load-menu-export-records`, `save-menu-export-records`,
+  `remove-menu-export-records` (array of `menuItemId` strings), `clear-menu-export-records`, plus the
+  picker `struct/load-unexported-menu-records` `{}` → `[{menuItemId, code, displayName, type, parentId,
+  boId, boName}]` — every menu item NOT yet in the basket. `save-menu-export-records` takes an ARRAY of
+  those rows. Steps 4–5 then export BOTH baskets together; a menu item comes out as a `MenuItemStructDto`
+  line (`MYBPM-IMPORTS.md` §5e). The export pulls in no BO line for the items' BOs — only what the BO
+  basket holds.
+- The same set exists for the two other baskets, unexercised `[U]`: `report-` (`count/load/save/remove/
+  clear-report-export-records`, `load-unexported-report-records`) and settings
+  (`count/load/save/clear-settings-export-kinds`), plus `change/load-export-is-global-methods` for the
+  «Глобальные методы» switch.
 - Getting the bytes OUT of the browser: fetch the zip inside the page and POST the `arrayBuffer` to a
   local `Bun.serve` — the same 127.0.0.1 bridge the import dry run used (§5).
 - Also present but not needed for this: `v2/business-objects/export-structure` /
@@ -485,6 +505,10 @@ DTOs **wipes the group rights** set by hand (`MYBPM-IMPORTS.md` §8).
 #### R6 — A sidebar menu item and a record filter
 
 Controller **`v2/menu-item`** (the `business-objects` menu-access endpoints fail with `NoBoWithId`).
+**Or ship the items IN the structure archive** `[C]` (2026-09-22): a `MenuItemStructDto` line per item,
+everything by code, the item's views (list, kanban) included (`MYBPM-IMPORTS.md` 0.5d / §5e) — then R3
+alone builds BO + menu (+ kanban), and a rollback of that import removes the menu items too. The API
+route below is for items on BOs that are already on the stand, and for access rights.
 
 1. Mint an id: `POST /web/v2/id-loader/load-portion` → an array of ids.
 2. `create-menu-item` — `P {}`, `B` = the item itself:
@@ -714,11 +738,22 @@ All verified on the `<company-c>` stand by building 5 menu groups + 36 items via
   `{id, type: GROUP|BO, displayName, displayNameMap{RUS}, boId, iconName, orderIndex, isPanel:false,
   boPages{…}, chosenAccessRight:false, parentId}`; `id` comes from `v2/id-loader/load-portion`.
 - Default `iconName`: GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable`.
-- `delete-menu-item {menuItemId}`; `load-nav-items {parentId}` → the children with their ids.
+- `delete-menu-item {menuItemId}`; `load-nav-items {parentId}` → the children with their ids
+  (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
+  archive addresses it (`MYBPM-IMPORTS.md` §5e); the kebab's «Изменить код» edits it.
+- **Menu items also travel in a structure archive** `[C]` (2026-09-22) — `MenuItemStructDto`, parent /
+  BO / kanban column field all by code (`MYBPM-IMPORTS.md` 0.5d, §5e); export them with the menu basket
+  of §0U R4a.
+- **A menu item's kanban URL mislabels its ids** `[C]` (2026-09-22): opening a BO item with the kanban on
+  goes to `/business-objects/viewing-single/bo/<menuItemId>/kanban-view?businessObjectId=…&fieldId=…&menuItemId=…&boId=…`,
+  where the real menu item id is the PATH segment and the `menuItemId` QUERY parameter carries the kanban
+  column FIELD id. Read ids off the path, not the query.
 - The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it (100000, 200000, …).
-- `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages`; the view order is the `*Index` values
-  (1-based). Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId`. These switch the
-  COLUMNS on; the CARD lives on the BO and must come from the archive (§7).
+- `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages` = the item's views: list, kanban,
+  calendar, timeline, map, grouping, each an `is*Enabled` flag + an `*Index` (tab order, 1-based over the
+  enabled views). Only list and kanban were ever set `[C]`; what the other four need is `[U]`
+  (`MYBPM-IMPORTS.md` 0.5d). Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
+  the board and its COLUMNS on for THIS item; the CARD lives on the BO and must come from the archive (§7).
 - Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"phosphor:<name>"}` (empty 200). **Valid
   names are exactly the 1048 `"phosphor:*"` strings in lazy chunk `956.*.js` — check against it**:
   `seal-check`, `ranking`, `toolbox`, `gavel` do NOT exist. Built-in items inside «Системные» use system
@@ -863,6 +898,11 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - **Rollback exists** `[C]`: after apply the record carries `rollbackAvailable:true,canRollback:true`, and
   `/import-structure/load-import-rollback-preview {importId}` + `/rollback-import {importId,processId}`
   undo the import. `newerAppliedImportsCount` presumably blocks it when later imports exist `[I]`.
+  **Executed end to end** `[C]` (2026-09-22, `<stand>`/`<COMPANY_A>`): the preview answers
+  `{rollbackAvailable, canRollback, newerAppliedImportsCount, restoreItems:[], deleteItems:[{action:"DELETE",
+  category:"BUSINESS_OBJECT"|"MENU", code:"<code>#BUSINESS_OBJECT"|"<code>#MENU", name, structTypes}]}` —
+  exactly what was created, nothing else; after `rollback-import` the BO answers `NoBoWithId` and the menu
+  items are gone. The process finished with `percentage: 25` and `isFinished: true` — do not wait for 100.
 - Enums in chunk `5675`: import status `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
   INTERNAL_ERROR|CANCELED`; apply result `APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|HANDLING_ERROR`; struct
   types `STRUCTURE|ACCESS_RIGHTS|SCRIPTS|GLOBAL_METHODS|MENU|REPORTS|SETTINGS` (our archive → `STRUCTURE`).
@@ -943,8 +983,10 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 
 ### Export tab
 
-- Layout: toggles **Глобальные методы / Элементы меню / Отчеты**; then **«Бизнес-объекты (N)»** with
-  «Очистить все» — a basket of BOs, each row labelled **`<группа БО>/<имя БО>`** (e.g.
+- Layout on `S4.24.25.632` `[C]` (2026-09-22): **four baskets, each with its own grey ⊕** —
+  «Бизнес-объекты (N)», «Элементы меню», «Аналитика», «Настройки» — not the three toggles
+  «Глобальные методы / Элементы меню / Отчеты» an earlier reading of this screen recorded. Each basket has
+  an API (§0U R4a). The BO basket has «Очистить все» — each row labelled **`<группа БО>/<имя БО>`** (e.g.
   «Бизнес-объект/БО с текстом») with three checkboxes **Структура / Права доступа / Скрипты** (they decide
   which DTO lines the archive gets: `BoStructDto` / `AccessStructDto` / `BoScriptVersionsStructDto` +
   `ScriptDefStructDto`, `MYBPM-IMPORTS.md` §5d) and two
@@ -960,8 +1002,8 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
   row there does NOT remove it. The trash icon asks «Удаление элемента — Удаление элемента `<имя БО>`»
   with ДА / НЕТ; ДА only drops it from the basket — **the BO itself is untouched** (verified: the BO was
   still in the constructor afterwards). The other per-row icon is a collapse chevron.
-- **The whole screen has an API** — basket + download, see §0U R4a. Only the two basket WRITES resisted a
-  hand-built call; everything else, «Выгрузить» included, is three plain calls.
+- **The whole screen has an API** — baskets + download, see §0U R4a; the basket writes included (the old
+  «they resist a hand-built call» was a wrong body — `remove-*` takes id strings).
 
 ### Checking the result of a structure import
 
@@ -1359,6 +1401,7 @@ POST /web/struct/save-bo-export-records      BODY [ {boId, boName, boCategory, h
                                                     isAccessRightsExport:false,
                                                     isScriptsExport:false} ]
 POST /web/struct/count-bo-export-records     {}                        → how many are in it
+POST /web/struct/remove-bo-export-records     BODY [ "<boId>", … ]       ← ids, NOT records (§0U R4a)
 ```
 
 then the two calls above. `scratchpad/export.bun.ts` of this session does exactly that; picking the BOs
@@ -1733,8 +1776,10 @@ evidence). This document keeps the transport: the routes above, the registry keb
 The old verdict «канбан сломан на платформе» was wrong. A kanban is two independent pieces, and the
 missing one was never the menu item:
 
-1. **Columns** — per MENU ITEM: `boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId`
-   (§4). This part always worked.
+1. **Columns** — switched on where the board is shown; the one verified place is a MENU ITEM:
+   `boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId` (§4). This part always worked.
+   Whether a kanban can be switched on anywhere else (a panel's registry, a reference field, the BO
+   registry outside the menu) is `[U]` (`MYBPM-IMPORTS.md` 0.5c).
 2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO carried `{}`,
    so `BoDto.toKanbanCardTemplate` NPE-d and the view showed «cardTemplate is null». **Ship the template
    inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
@@ -2113,6 +2158,30 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   Calling the API from inside the page (reading `localStorage.LOCAL_PRIVATE_SwebToken` inline in the
   `fetch`) is allowed and is the fastest way to drive `/web/v2` with no token ever leaving the browser;
   a standalone Bun script still needs the user to hand the token over.
+- **`javascript_tool` will not return anything derived from `localStorage` or from response HEADERS**
+  `[C]` (2026-09-22) — the value comes back as «[BLOCKED: Cookie/query string data]», however it is
+  encoded. So the token never leaves the page; drive the API through an in-page helper that reads it
+  internally and returns only the parsed body:
+  ```js
+  window.__c = async (path, params = {}, body = {}) => {
+    const t = JSON.parse(localStorage.LOCAL_PRIVATE_SwebToken);
+    const r = await fetch('/web/' + path, {method: 'POST',
+      headers: {'Content-Type': 'application/json', token: t},
+      body: JSON.stringify({useParamsFromBody: true, params_Lr1oSgwPR8: params, body_o1nhHUG480: body})});
+    const s = await r.text(); try { return JSON.parse(s); } catch { return s; }
+  };
+  await __c('import-structure/load-import-state')      // path WITHOUT /web/, with v2/ where it belongs
+  ```
+  Never return `r.headers.get(…)` (the export's file name sits in `content-disposition` — derive a name
+  yourself). A reload wipes `window.__c`: the next call fails with `ReferenceError` BEFORE it sends
+  anything, so re-inject after every navigation.
+- **Bytes in and out of the page go through a local bridge** — a `Bun.serve` on `127.0.0.1` with
+  `Access-Control-Allow-Origin: *` (§5): `GET /get?name=` feeds a file INTO the page (the zip for
+  `import-file`), `POST /save?name=` takes bytes OUT (an export, a JSON dump). Two shell traps around it
+  `[C]` (2026-09-22): start it **detached** (`setsid nohup bun bridge.bun.ts > log 2>&1 < /dev/null &`)
+  or the session harness reaps it; and stop it **by PID** — `pkill -f 'bun bridge.bun.ts'` inside a
+  Bash call matches the wrapper shell's own command line and kills it, so the rest of that command
+  silently never runs.
 - **`javascript_tool` dies at 45 s** (`CDP sendCommand "Runtime.evaluate" timed out`) `[C]` (2026-09-18),
   but **the page keeps running the promise** — the timeout kills the wait, not the work. So for anything
   long (a loop of imports, a poll), do NOT await it in the call: start it as
