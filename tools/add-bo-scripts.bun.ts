@@ -8,6 +8,11 @@
  * write: `--def <scriptIdSuffix>:onOpen|afterSave|onClose|onCreate|field:<fieldCode>` picks the def whose
  * `compositeId` ends with that script id and wires it onto the hook named after the colon.
  *
+ * Or the bodies are GENERATED: `--bodies <file.json>` takes `{"<hook>": {entry, blocks, expressions}}` with the
+ * hook keys of `--def` (`onOpen`, `field:<fieldCode>` …) and each body in the CLIPBOARD form of Part II (`type`,
+ * `valueType`); it is rewritten into the archive form (`@class` …Struct, `valueTypeStruct`) — §5d. Each body must
+ * be a whole hook script: its `BlockFixEntryPoint` hat, the statements, a closing `BlockExit FROM_METHOD`.
+ *
  * MIND §5d: a `K-DYN` actId embeds the SOURCE field code (`F-code-K-DYN-S-boi_fields`). Moving a body to a
  * BO with different field codes needs `--rename-act code=Kod`, otherwise the import succeeds and the
  * script is silently broken — check it afterwards with `v2/script/translate-script` (MYBPM-UI-API.md §5g).
@@ -17,6 +22,7 @@
  *     --bo-code Proba_skript_arhiv_20260918 --bo-name "Проба скрипт архивом 2026-09-18" \
  *     --from <some-export>.mybpm.zip \
  *     --def s1BJw7CmFKAU2Cty:onOpen --def "DlQXUgrNRYPh@IQv:field:Kod" --rename-act code=Kod
+ *   bun tools/add-bo-scripts.bun.ts <in.mybpm.zip> <out.mybpm.zip> --bo-code C --bo-name N --bodies bodies.json
  */
 import { createHash } from "node:crypto"; // sha256 keeps the generated ids reproducible; Bun.hash is not a digest
 import { mkdtempSync } from "node:fs";    // Bun has no mktemp helper
@@ -31,7 +37,8 @@ const boCode = flag("bo-code"), boName = flag("bo-name");
 const boCategory = flag("bo-category", "BO")!;
 const from = flag("from");
 const defs = flagAll("def");
-if (!inZip || !outZip || !boCode || !boName || !from || defs.length === 0) {
+const bodiesFile = flag("bodies");
+if (!inZip || !outZip || !boCode || !boName || (!(from && defs.length) && !bodiesFile)) {
   console.error("usage: bun tools/add-bo-scripts.bun.ts <in.zip> <out.zip> --bo-code C --bo-name N --from export.zip --def <scriptId>:<hook> …");
   process.exit(2);
 }
@@ -49,10 +56,13 @@ async function unzipTo(zip: string, dir: string) {
 }
 
 // ---- the source bodies
-const srcDir = mkdtempSync(`${tmpdir()}/mybpm-src-`);
-await unzipTo(from, srcDir);
-const srcInner = (await Bun.$`ls ${srcDir}`.text()).trim().split("\n")[0];
-let srcText = await Bun.file(`${srcDir}/${srcInner}/0000001.mybpm`).text();
+let srcText = "";
+if (from) {
+  const srcDir = mkdtempSync(`${tmpdir()}/mybpm-src-`);
+  await unzipTo(from, srcDir);
+  const srcInner = (await Bun.$`ls ${srcDir}`.text()).trim().split("\n")[0];
+  srcText = await Bun.file(`${srcDir}/${srcInner}/0000001.mybpm`).text();
+}
 // `--rename-act old=new` retargets every `K-DYN` act (§5d) from the source field code to the target one.
 for (const r of flagAll("rename-act")) {
   const [a, b] = r.split("=");
@@ -75,8 +85,27 @@ const work: any = {
   onCloseScriptId: id16(`${boCode}-onClose`), onInstanceCreationId: id16(`${boCode}-onCreate`),
   methodScriptIds: [], fieldScripts: {}, scriptDefIds: [],
 };
+// clipboard form (Part II) → archive form (§5d): `type` → `@class`, `valueType` → `valueTypeStruct`
+const PKG = "kz.greetgo.mybpm.reg.structure.model.bo.process";
+const toStruct = (o: any, kind: "block" | "expr") => {
+  const { type, valueType, ...rest } = o;
+  return { "@class": `${PKG}.${kind}.${type}Struct`, ...rest, ...(valueType ? { valueTypeStruct: { isArray: false, ...valueType } } : {}) };
+};
+const specs = [...defs];
+if (bodiesFile) {
+  const bodies = await Bun.file(bodiesFile).json();
+  for (const [hook, b] of Object.entries<any>(bodies)) {
+    const key = `@generated${specs.length}`;
+    srcDefs.set(key, {
+      "@class": "kz.greetgo.mybpm.reg.structure.model.dto.ScriptDefStructDto",
+      blocks: Object.fromEntries(Object.entries<any>(b.blocks).map(([k, v]) => [k, toStruct(v, "block")])),
+      expressions: Object.fromEntries(Object.entries<any>(b.expressions).map(([k, v]) => [k, toStruct(v, "expr")])),
+    });
+    specs.push(`${key}:${hook}`);
+  }
+}
 const defLines: any[] = [];
-for (const spec of defs) {
+for (const spec of specs) {
   const [srcId, hook, fieldCode] = spec.split(":");
   const body = srcDefs.get(srcId);
   if (!body) throw new Error(`--def ${spec}: no ScriptDefStructDto ending with ${srcId} in ${from}`);

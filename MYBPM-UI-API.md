@@ -1498,7 +1498,8 @@ true of the IDE, not of the platform.
 `v2/bo-scripts-editor/load-bo-script-versions` + `load-bo-scripts`, `v2/script/load-script-def` and
 `v2/script/translate-script` (the reading half; see «Reading a BO's scripts headlessly» below). The
 WRITING half: **`apply-update-cmd` and `paste` are `[C]` since 2026-09-24** (below, «Writing a script
-headlessly»); `create-local-method` is still untried. An archive also creates scripts on import
+headlessly»), and so are `load-new-ids` + `save-bo-scripts` + `in-work-bo-script-version` (the hook
+wiring, «Wiring scripts onto a BO headlessly»); `create-local-method` is still untried. An archive also creates scripts on import
 (`MYBPM-IMPORTS.md` §5d, verified).
 
 | controller | scope | methods |
@@ -1605,6 +1606,31 @@ body   {"name":"<any label>",
 - Work on a **test version** (`in-test-bo-script-version` / the «Версия: N (Тест)» switch in the dialog) —
   it does not protect against the trap above (all versions are decoded together) but keeps a working
   hook out of an experiment's way.
+
+#### Wiring scripts onto a BO headlessly — `save-bo-scripts` `[C]` (2026-09-24, `<stand>`)
+
+The IDE's own sequence (read off the bundle, then run alone on a BO imported with NO scripts — 4 hooks +
+2 field scripts, all six fired on a record):
+
+1. `v2/bo-scripts-editor/load-bo-script-versions` P `{boId}` → a BO that never had scripts still has one
+   version, `isTest:true`, `isWork:false` — take its `boScriptModId`. (A BO without scripts is absent from
+   `script-browser/load-tree`; find its id with `load-bo-id-by-code` P `{boCode}`, §R4.)
+2. `v2/script/load-new-ids` P `{count: N}` → N fresh script ids (one per hook / field script).
+3. `v2/bo-scripts-editor/save-bo-scripts`, **everything in the BODY half**:
+   `{id: <boScriptModId>, boId, onOpenFormScriptId, afterSaveScriptId, onCloseScriptId,
+   onInstanceCreationId, fieldScripts: {<fieldID>: {afterChangeScriptId}}, methodScriptIds: []}` → empty
+   200. Keyed by field ID here (the archive keys by CODE). Send the whole record — it replaces the wiring.
+4. Each script is now empty (`load-script-def` → `{blocks:{}, expressions:{}}`): write its body with
+   `paste` + `apply-update-cmd` (above), hat and exit included, then `translate-script`.
+5. **A TEST version runs only on test records** (`boiState: DEV`, the registry tab «Тестовые»); ordinary
+   records keep running the work version (none → nothing runs). `in-work-bo-script-version`
+   P `{boId, boScriptsId}` makes it the work version and the stand immediately creates a new test
+   version (a copy, next number).
+
+- The UI lists every field in «Изменение поля» **except `TAB_GROUP` and `PROGRESS_BAR`**; the wiring
+  itself accepts them (an archive put scripts on both, and both fired).
+- When each hook fires, and which record calls trigger it: §6b and `MYBPM-IMPORTS.md` §15 «When each hook
+  runs».
 
 #### The catalogue calls — the IDE's whole palette, headlessly `[C]` (2026-09-24)
 
@@ -1929,7 +1955,61 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
   `v2/instance-form-create-draft/create-draft` demands a `boiId` (it is the EDIT draft),
   `…/create-draft-with-boi` wants a real minted `draftId` and a `BoiState`
   (`ALL|ARCHIVED|REMOVED|OFFLINE|DEV`), and `v2/instance-form/validate-apply-remove-draft` is its apply.
-  Use the four calls above instead.
+  Use the four calls above instead **when you want NO scripts to run** — see §6b.
+
+### 6b. The FORM cycle — the one that runs the BO's scripts `[C]` (2026-09-24, `<stand>`)
+
+**The §6a cycle runs no Block IDE script at all** — a record created by `create-draft` → `create-boi` →
+`save-boi-value` → `apply-and-remove-draft` came out with every hook's marker empty. The hooks run inside
+the FORM controllers, which is what the UI's own dialog calls (captured with the XHR patch of §10, then
+driven alone). Every hook ran server-side; the answers carry the script's field writes back as
+`fieldFormCommands[{commandType:"UPDATE_STORED_VALUE_FIELD", fieldId, storedValue}]`.
+
+| step | call | params / body | hooks that run |
+|---|---|---|---|
+| open NEW | `v2/instance-form-create-draft/create-draft-with-boi` | P `{boId, boiState:"ALL", isReadMode:false}` B `{}` → `{draftId, boiId}` | «Открытие» |
+| open EXISTING | `v2/instance-form-create-draft/create-draft` | P `{boId, boiId, draftId:null}` B `{}` → bare `"<draftId>"` | «Открытие» |
+| change a field | `v2/instance-field-form/save-field-value` | B `{draftId, boId, boInstanceId, values:[{fieldId, value}]}` | «Изменение поля» of that field |
+| save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]` | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
+| close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created |
+| read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
+| read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`) | — |
+
+Order on a new record, one run: открытие → поле … → создание → сохранение. Field ids and codes:
+`v2/instance-form/load-field-structure` P `{boId, boiId, draftId}`. The full semantics (what is kept, what is
+discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bite:
+
+- **«Закрытие» does not run after a save** — only on `remove-draft` of an existing record — and what it
+  writes is **stored in the record**, while every edit of the discarded draft (the «Открытие» write of
+  that same session included) is thrown away.
+- **«Изменение поля» runs on EVERY `save-field-value` call** — the same value again, and a value the
+  server then refuses to store, both fired it.
+- `boiState:"DEV"` opens a TEST record: those run the BO's TEST script version, ordinary ones the WORK
+  version (§5g «Wiring scripts onto a BO headlessly»).
+- `OPEN_COUNT` stayed `0` on a record opened only through these calls (the UI's records counted up) `[I]`.
+
+**The `value` of `save-field-value`, per type** — what the client's field classes send (bundle module
+`28149` + helpers `47749`); `[C]` = stored and read back on 2026-09-24:
+
+| type | `value` | |
+|---|---|---|
+| `INPUT_TEXT` `INPUT_PHONE` `INPUT_EMAIL` `TEXTAREA` `LINK` | the plain string (`TEXTAREA` = its HTML) | `[C]` |
+| `INPUT_NUMBER` | `"42"` | `[C]` |
+| `CHECKBOX` | `"true"` / `"false"` | `[C]` |
+| `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""` | `[C]` |
+| `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}` | `[C]` |
+| `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare | `[C]` |
+| `BO` (and, per the client, `CO`) | a JSON array of record ids `["<boiId>"]` | `BO` `[C]`; a `CO` value was not stored `[U]` |
+| `QUESTIONNAIRE` | `[{"rowId":"…","columnId":"…"}]` | `[C]` |
+| `GEO_POINT` | `{"lat":43.238,"lon":76.945}` | `[C]` |
+| `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages) | `[C]` |
+| `TAB_GROUP` | `""` | `[C]` fires the script |
+| `FILE_UPLOAD` | a JSON array of file ids | `[U]` |
+| `CHECKLIST` | a JSON array of item objects (`checked` among the keys) | `[U]` |
+| `PROGRESS_BAR` | a list of `{stepCode, color}` (step colouring) `[I]`; `["<stepId>"]` and `"[]"` are NOT it (trap 50) | — |
+
+**The server does not validate the value** — a wrong shape (`"10:30"` for `TIME`, an array for `PERIOD`)
+is stored as is; most shapes still read back, but see trap 50.
 
 ### Files and templates
 
@@ -2452,6 +2532,13 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 - «extension is not connected» / `list_connected_browsers` → `[]` after switching accounts: Claude Code and
   the extension must be on the SAME claude.ai account and the bridge binds at session start → restart
   Claude Code and reload the extension (that fixed it).
+- **When the browser window is not in front, `screenshot` times out** («Page.captureScreenshot timed out
+  … renderer may be frozen», `document.visibilityState === "hidden"`), a new tab too, while
+  `javascript_tool` keeps working (2026-09-24). Do not wait for the UI — switch to the API calls it would
+  have made (§6b), or ask the user to bring the window forward.
+- **A `javascript_tool` result containing a URL query string or cookie-like text comes back as
+  `[BLOCKED: Cookie/query string data]`** — the code DID run. Never return `location.href` or raw ids
+  mixed into long strings; `save` the result through the local bridge and read the file.
 
 ## 11. Traps and defects — the short list
 
@@ -2599,6 +2686,17 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     BO (read, translate, versions, apply, undo, delete) answers `IllegalArgumentException: No enum
     constant …`, the fix included. Only listed enum values (`MYBPM-IMPORTS.md` §10–§12a) may be written;
     a wrong `actId` or argument name is harmless. §5g «Writing a script headlessly».
+50. **A wrong `PROGRESS_BAR` value makes the whole draft unreadable** `[C]` (2026-09-24) —
+    `save-field-value` stored `["<stepId>"]` without complaint, then `load-field-data` answered
+    `IllegalStoredValue … Value_PROGRESS_BAR` for the entire form (so would the UI). `"[]"` is refused the
+    same way; **`""` repairs it**. Leave a progress bar alone unless you know its value shape (§6b).
+51. **The §6a record API runs NO script** `[C]` (2026-09-24) — not «Добавление», not «Сохранение», not
+    a field change. Use the form cycle of §6b when the BO's hooks must run, §6a when they must not.
+52. **The whole stand answered 502 for ~30 s during a burst of `save-field-value` calls** `[C] symptom,
+    [U] cause` (2026-09-24). The burst had just stored `FILE_UPLOAD = "[]"` (its field script did NOT
+    fire) and the next call was `CHECKLIST = "[]"`; afterwards everything worked again. Whether one of
+    those crashed the backend or a restart coincided is unknown — send one value at a time with a
+    `load-auth-info` health check after each, and do not send guessed values to those two types.
 
 ## 12. Open questions
 
@@ -2615,6 +2713,11 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - **Is there any repair for a BO whose script module no longer decodes** (§11 trap 49)? Candidates
   never tried: a structure import carrying that BO's scripts, `save-bo-scripts`, `copy-bo-script-version`,
   a vendor-side database fix. The probe BO «Проба скрипт архивом 2026-09-18» on `<stand>` is in that state.
+- **Field scripts on `FILE_UPLOAD`, `CHECKLIST` and `CO`** — the only three field types whose
+  «Изменение поля» was not seen firing (2026-09-24, §6b): the value shapes are `[U]`, and a burst that
+  touched the first two coincided with a 30-second outage of the stand (trap 52). Next attempt: through
+  the UI (upload a real file, tick a checklist item on a BO whose items were typed in the constructor,
+  add a composite row), capturing the request with the XHR patch.
 - **The success path of `/web/v2/auth/v3/login` was never run** (§0U.1 route A) — only the failure. If
   the body turns out not to be the bare token, §0U.1 and §1 need correcting.
 - The `v2/bo-transfer` record import/export (§6) is equally unexecuted — the UI route is the confirmed one.
