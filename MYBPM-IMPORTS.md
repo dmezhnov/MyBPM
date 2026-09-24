@@ -1406,8 +1406,9 @@ only 3 of the 10 BOs carried scripts.
   present on 1 BO of 3; a BO never edited in test mode carries `workScripts` alone. (Same split as a
   process: an imported version arrives as `isWork` — §5c.)
 - The four hooks are the UI dialog «Настройка скрипта» → «Запуск скрипта на: Открытие / Сохранение /
-  Добавление новой записи / Закрытие» `[I]` for the name↔label mapping,
-  `onOpenFormScriptId` / `afterSaveScriptId` / `onInstanceCreationId` / `onCloseScriptId`.
+  Добавление новой записи / Закрытие» = `onOpenFormScriptId` / `afterSaveScriptId` /
+  `onInstanceCreationId` / `onCloseScriptId` `[C]` (2026-09-24 — each proven by its own marker; when each
+  one runs: §15 «When each hook runs»).
 - **`fieldScripts` is keyed by FIELD CODE** `[C]` — «На изменение <поля>» of the same dialog
   (`condition`, `calc`, `final_code`, `code` are real `dynamicFields` codes of those BOs).
 - **A hook id is always written, a body is not.** All four hook ids appear even when the script is empty;
@@ -1515,6 +1516,28 @@ The 2 errors that survived are both the missing method the body calls
 the `[U]` above: **an archive carries hook and field scripts, not the BO's own methods**, and a body that
 calls one arrives broken. Create the method first (`v2/bo-scripts-editor/create-local-method`, §5g) or
 choose a body that calls none.
+
+#### Generated bodies on every trigger — the trigger probe `[C]` (2026-09-24, `<stand>`)
+
+The bodies need not be lifted from an export: an archive with **31 GENERATED scripts** — the four hooks
+plus a field script on one field of each of the 27 field types — imported cleanly
+(`structTypes: ["SCRIPTS","STRUCTURE"]`, no errors) and every one of the 31 translated `{"success":true}`.
+Each body was: `#время# = Сейчас.Дата в строку(DD_MM_YYYY_DOT) ◊ " " ◊ Сейчас.Время в строку(HH_MM_COLON)`;
+hooks also write `"<hook> " ◊ #время#` into their own marker field; every script appends
+`"<tag> " ◊ #время# ◊ "; "` to a shared log field (`'' ◊ ЭТА ИНСТАНЦИЯ.Журнал.#Значение ◊ …`). The runtime
+result is §15 «When each hook runs».
+
+- **Tool**: `tools/add-bo-scripts.bun.ts … --bodies <file.json>` takes
+  `{"onOpen"|"afterSave"|"onCreate"|"onClose"|"field:<code>": {entry, blocks, expressions}}` in the
+  CLIPBOARD form of Part II and rewrites each body into the archive form (`type` → `@class` …`Struct`,
+  `valueType` → `valueTypeStruct`). A body is a whole hook script: its `BlockFixEntryPoint` (`x`/`y`), the
+  statements, a closing `BlockExit FROM_METHOD`. `canWriteValue`, `isTextMultiline`, `latitude/longitude`
+  may be omitted.
+- **`fieldScripts` accepts every field type**, `TAB_GROUP`, `PROGRESS_BAR` and `STATIC_TEXT` included —
+  although the IDE's «Изменение поля» list hides `TAB_GROUP` and `PROGRESS_BAR`. All three fired.
+- `'' ◊ <an empty field>` gives `""`, not `"null"`; a `TEXTAREA` drops the trailing space of `"; "`.
+- The same bodies were also written WITHOUT an archive (`save-bo-scripts` + `paste` +
+  `apply-update-cmd`, `MYBPM-UI-API.md` §5g) — identical runtime.
 
 ## 5e. Sidebar menu items inside the archive (`MenuItemStructDto`) `[C]` (2026-09-22, build `S4.24.25.632/C4.24.25.264`, `<stand>`/`<COMPANY_A>`)
 
@@ -3345,6 +3368,35 @@ nothing of this was executed on a record.
 
 ## 15. Runtime semantics of the built-in actions
 
+### When each hook runs `[C]` (2026-09-24, `<stand>`, two probe BOs — one wired by archive, one by API)
+
+Every script wrote a timestamped marker; the record was then driven through the UI and through the
+form API (`MYBPM-UI-API.md` §6b), and read back from the database.
+
+| action on the record | hooks that ran, in order | what is kept |
+|---|---|---|
+| open a NEW record | Открытие | written into the draft |
+| change a field | Изменение поля (that field) — on EVERY change call, even the same value again or one the server then refuses | draft |
+| save a NEW record | Добавление новой записи → Сохранение | draft + both writes land in the record |
+| open an EXISTING record | Открытие | draft |
+| save an EXISTING record | Сохранение (NOT «Добавление») | record |
+| close/cancel an EXISTING record without saving | Закрытие | **its writes go straight into the RECORD**, while the discarded draft's edits — the «Открытие» write of the same session included — are lost |
+| cancel a NEW record | — | nothing is created |
+| save and close | no «Закрытие» | — |
+
+- `onOpenFormScriptId` = Открытие, `onInstanceCreationId` = Добавление новой записи (runs at the first
+  SAVE, not when the empty form opens), `afterSaveScriptId` = Сохранение, `onCloseScriptId` = Закрытие.
+- **Only the FORM controllers run scripts** — `POST /web/v2/instance-form-create-draft/create-draft-with-boi`
+  (new) / `…/create-draft` (existing), `v2/instance-field-form/save-field-value`,
+  `v2/instance-form/validate-apply-remove-draft`, `v2/instance-form/remove-draft`; bodies and value
+  formats: `MYBPM-UI-API.md` §6b. A record created through the plain record API (`create-draft`
+  + `save-boi-value` + `apply-and-remove-draft`, `MYBPM-UI-API.md` §6a) and an xlsx import run none `[C]`
+  for the API, `[I]` for xlsx.
+- A **test** script version runs only on test records (`boiState DEV`, the «Тестовые» tab); ordinary
+  records run the **work** version. A BO whose only version is a test one runs nothing on ordinary records.
+- Field scripts were seen firing on 24 of the 27 types; `FILE_UPLOAD`, `CHECKLIST` and `CO` are `[U]`
+  (`MYBPM-UI-API.md` §12).
+
 Most number/string readings were taken THROUGH a formula engine that delegates each operation to a built-in
 block and renders results with `'' ⊕ число`; attributing a reading to the platform is an inferred mapping
 unless marked otherwise.
@@ -3531,6 +3583,13 @@ Scripts:
     it needs the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
     `constType`, block/expression `type`, `varType`) takes ONLY a value listed in §10–§12a — a
     string-typed key (`actId`, `enumValue`, `varName`) is safe to get wrong, the validator reports it.
+27. **A record written through the plain record API runs no script** `[C]` (2026-09-24) — hooks and field
+    scripts run only inside the form controllers (`MYBPM-UI-API.md` §6b). Testing a hook with
+    `save-boi-value` shows «nothing fired» and proves nothing.
+28. **A test script version runs only on test (`DEV`) records** `[C]` — a freshly wired test version looks
+    dead on ordinary records until `in-work-bo-script-version`.
+29. **«Закрытие» writes into the saved RECORD, not into the draft being discarded** `[C]` — and it does not
+    run on save. Do not use it to «undo» the form; do not expect it after СОХРАНИТЬ.
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
@@ -3548,6 +3607,8 @@ here; the rules themselves are §0X.4.
 - How to express an M:N (TABLE↔TABLE) link.
 - Whether import applies `hideLabel` and the real ceiling of `gridLayoutPosition.h`.
 - The runtime of `Or` / `Xor` / `Not` / `LessEq` / `MoreEq` / `OrEq` / `AndNotEq` (they compile, §12a).
+- Whether a field script fires on `FILE_UPLOAD`, `CHECKLIST` and `CO` (the other 24 types do, §15), and
+  whether an xlsx record import runs any hook.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
 - The checkbox value's runtime type and its text form when concatenated.
 - Whether a counted loop re-evaluates its bound, and the counter's base.
