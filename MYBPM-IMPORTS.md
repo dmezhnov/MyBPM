@@ -1923,7 +1923,8 @@ A BO **type** (`BoRefCode` — the left operand of create-instance and of `findB
 {"exprValueType":"THIS_PROCESS","constType":"BoiRefCode","type":"ExprValue"}
 ```
 A variable reference names the block that declared it (or the parameter id for a parameter).
-`THIS_PROCESS` (IDE: `ЭТОТ_ПРОЦЕСС`) is the process's own record — only in a process script.
+`THIS_PROCESS` is the record the script runs on: IDE «ЭТОТ ПРОЦЕСС» in a process script, **«ЭТА
+ИНСТАНЦИЯ» in a BO's form script** (the hooks and field-change scripts) `[C]` (2026-09-24).
 
 ```json
 {"opType":"Concat","leftExprId":"<expr>","rightExprId":"<expr>","type":"ExprOp"}
@@ -1931,10 +1932,13 @@ A variable reference names the block that declared it (or the parameter id for a
  "more":{"<id>":{"opType":"Concat","order":10,"exprId":"<expr>"}},"type":"ExprOp"}
 ```
 Binary operator; a third and further operand go into `more`, applied after left/right in `order`.
-**Allowed `opType`s — there are no others you may use**: `Plus`, `Minus`, `Mul`, `Div`, `Concat`, `Eq`,
-`NotEq`, `More`, `Less`, `And`. (`Or` and `Not` exist in the IDE palette but their names were never
-captured — write disjunction as nested `ЕСЛИ`, negation as the `ИНАЧЕ` branch. There is no `>=`/`<=`:
-`a >= b` is «ЕСЛИ a < b : нет ИНАЧЕ : да».)
+**Run-proven `opType`s** (use these by default): `Plus`, `Minus`, `Mul`, `Div`, `Concat`, `Eq`,
+`NotEq`, `More`, `Less`, `And`. The language has seven more — `Or`, `Xor`, `Not` (unary: `leftExprId`
+only), `LessEq`, `MoreEq`, and `OrEq` / `AndNotEq` (only inside `more` of an `Eq` / `NotEq`) — which
+compile but were never run on a record (§12a); until they are, write disjunction as nested `ЕСЛИ` and
+negation as the `ИНАЧЕ` branch. **Never type any other string into `opType`**: a value outside the
+server's enum is stored as is and then makes EVERY script of the BO unreadable, with no way back
+through the API (§17 trap 26).
 
 ```json
 {"leftExprId":"<expr>","actId":"F-length-K-FIX-T-String","type":"ExprAct"}
@@ -2002,10 +2006,13 @@ Fields and collections
   НайтиПоФильтру  F-findByFilter-K-FIX-T-BoRefCode
 ```
 
-There is no `indexOf`, no `ceil`, no «strip trailing zeros», no string→case folding. If the algorithm
-needs one of those, build it out of the actions above.
+This is the run-proven core. **The complete catalogue — 30 text actions (case folding, trim, contains,
+last index, cut, JSON, Base64 …), dates with units and patterns, filters, JSON, REST, e-mail, files,
+spreadsheets, field meta-attributes and validation errors — is §12a.** An `actId` from §12a compiles;
+one that is in neither place does not exist. There is still no `indexOf` (only
+`F-returnLastIndex-K-FIX-T-String`), no `ceil`, no «strip trailing zeros».
 
-### 0S.9 Twelve rules — each of these has silently broken a real script
+### 0S.9 Thirteen rules — each of these has silently broken a real script
 
 1. **Never compare numbers with `Eq`/`NotEq`.** They are `BigDecimal.equals` — scale-sensitive, so
    `4/2 = 2` is **false**. Equality = «не меньше и не больше»; a zero guard likewise (`1/(0.5−0.5)` slipped
@@ -2034,6 +2041,10 @@ needs one of those, build it out of the actions above.
     Bind the bound to a value that cannot change inside the loop.
 12. **Paste callees before callers.** A call emitted while the callee did not exist keeps a synthetic
     parameter id and must be re-pasted afterwards — the IDE's «не определён тип» warning hides it.
+13. **Enum-typed keys take only listed values.** `opType`, `exitType`, `exprValueType`, `constType`,
+    `type`: a value the server does not know is stored anyway and makes every script of the BO
+    unreadable, irreparably through the API (§17 trap 26). Wrong `actId`s and argument names are safe —
+    `translate-script` reports them.
 
 ### 0S.10 Worked example — a whole file
 
@@ -2154,6 +2165,19 @@ Run all of it — the IDE will not tell you about any of these:
 6. **Patching an existing script**: read the user's fresh copy, modify it, send it back — **never re-paste
    a whole script "just in case"**: it silently reverts every edit the user made in the IDE since your
    dump, and locate anchors by SHAPE (`varName`, branch structure), never by id.
+7. **Headless alternative — no clipboard, no user** `[C]` (2026-09-24), when you hold a session token of the
+   stand (`/web/` envelope `{useParamsFromBody:true, params_Lr1oSgwPR8:{…}, body_o1nhHUG480:{…}}`, header
+   `token`): the target is a pair `{scriptModuleId, scriptId}` (a hook or a method of a BO's script
+   version — take a TEST version).
+   1. `POST /web/v2/script/paste` params `{scriptModuleId, scriptId}`, body `{copied: <your file>}` → the
+      same fragment back as `copied`, every id regenerated. It writes NOTHING.
+   2. `POST /web/v2/script/apply-update-cmd`, same params, body `{name:"PASTE", forward:{type:"Group",
+      list:[{type:"Set",dotPath:"blocks.<id>",value:<block>} …, {type:"Set",dotPath:"expressions.<id>",
+      value:<expr>} …]}, backward:{…the same list as Unset…}}` over the returned `copied`.
+   3. `POST /web/v2/script/translate-script`, same params → must be `{"success":true}` (INFO notes are fine).
+   4. To take it back: `POST /web/v2/script/undo`, same params — one call undoes the whole step 2.
+   Into an EMPTY hook the file goes WITH its entry-point hat (`BlockFixEntryPoint`) and a closing
+   `BlockExit FROM_METHOD`. Proven on a 711-block / 1723-expression fragment and 26 small ones.
 
 ---
 
@@ -2234,8 +2258,8 @@ Exact encodings from real copies, used in pastes that worked:
   Use `И` or nested `Если`.
 - opTypes confirmed in IDE copies / live processes: `Eq`, `NotEq`, `More`, `Less`, `Plus`, `Minus`,
   `Mul`, `Div` (**not** `Multiply`/`Divide`), `And`, `Concat`.
-- `Or`, `Not`, `≥`, `≤` exist in the IDE palette (user screenshots) but their opType names were never
-  captured `[U]` — generated code uses nested IFs / else branches instead.
+- The whole enum has 17 members (§12a): also `Or`, `Xor`, `Not` (unary), `LessEq` (⩽), `MoreEq` (⩾),
+  `OrEq`, `AndNotEq` `[C]` compile, 2026-09-24; runtime `[U]`.
 - `Concat` accepts a BigDecimal on either side (`"" Concat число` = number→text; concat with `""` is a
   no-op on strings).
 - Arithmetic is `ExprOp`, not calls into a directory.
@@ -2270,7 +2294,7 @@ a field between form tabs needs no script patch).
 #Пусто?       F-isEmpty-K-FIX-T-String
 #Заменить     F-replaceByTemplate-K-FIX-T-String               args target, replacement, needReplaceAll
 #В число      F-convertToBigDecimal-K-FIX-T-String
-#Содержит     F-contains-K-FIX-T-String                        arg fragment — [U], never seen in a copy
+#Содержит     F-contains-K-FIX-T-String                        arg fragment — [C] catalogue (§12a)
 ```
 
 There is **no `indexOf`** in the known String palette (not proven exhaustive).
@@ -2291,7 +2315,7 @@ Full palette (user screenshot, «Всё, больше ни чего нет»): o
 #Округлять дробную часть  F-roundFractionPart-K-FIX-T-BigDecimal   arg value
 ```
 
-`#Чётное ли?` was never captured. Natives accept any BigDecimal (`7,5.#не чётное ли?` was accepted).
+`#Чётное ли?` = `F-isEven-K-FIX-T-BigDecimal` (§12a). Natives accept any BigDecimal (`7,5.#не чётное ли?` was accepted).
 
 ### Field access (DYN)
 
@@ -2350,6 +2374,785 @@ processes `[C]`.
 dictionary's `boCode` is a CONST inside the expression's `valueType`. Therefore reading "the field named in
 a variable" needs one IF per field, and a dictionary whose code is computed at run time cannot be
 enumerated (§15).
+
+## 12a. The whole palette — read off the stand's own catalogue API `[C]` (2026-09-24, `<stand>`)
+
+§12 was assembled from copies of real scripts, so it lists only what somebody happened to use. The IDE
+builds every list it shows from six calls of `v2/script` (`MYBPM-UI-API.md` §5g «The catalogue
+calls»), and those calls were walked exhaustively: every value type → every action on it → the type it
+returns → the actions on that, down to the leaves. **This section is therefore the complete language
+as of this build; anything not here does not exist.** The raw dumps sit in
+`tools/out/ide-catalogue-2026-09-24/` (git-ignored — they contain stand codes).
+
+### The toolbox — what the IDE's left panel really holds `[C]` (screen + bundle module `oe.ngOnInit`)
+
+| panel row | creates | JSON |
+|---|---|---|
+| ТОЧКА ВХОДА / method hat | `BlockFixEntryPoint` (hook, process) or `BlockFixMethod` (local method) | §10 |
+| «Пусть переменная = ⬭» | `BlockNewVar` | §10 |
+| «⬭ = ⬭» + «‹значение›» | `BlockAssign` + an empty `ExprValue` | §10 |
+| «Выход» + «⬭.‹действие›» | `BlockExit` + an empty `ExprAct` | §10 |
+| «‹Вызов метода›» | `ExprCall` | §11 |
+| «Если ⬡ то» / «Цикл элемент :» | `BlockIf` / `BlockForeach` | §10 |
+| `+` `∙` `И` `=` | `ExprOp` Plus / Mul / And / Eq — the operator is changed afterwards from the value's action list | §11 |
+
+A **hidden «old elements» panel** exists (shown only when `load-script-meta-state` answers
+`showPanelWithOldElements:true`; it was `false` here): `BlockSetVar` (`varType` `LocalCreate`/`LocalRef`),
+`BlockSetField`, `BlockObject`, `BlockReturn` (or `BlockSwitchExit` in a `SwitchCondition` script),
+`ExprConst` (`valueBool`/`valueNumber`/`valueTxt`), `ExprVar`, `ExprField`, `ExprObject`, `ExprNewBoi`,
+`ExprBoiFind`, `ExprCreateObject`, `BlockFunc`, `ExprFunc`. **Do not generate them**: `translate-script`
+accepts a `BlockFunc` but answers `WARN used_deprecated_blocks` «…оптимизация компиляции отключена» —
+the whole script then runs unoptimised. Everything they did is reachable through the modern elements.
+
+### Every `opType` — 17, with the operators each one may be chained with in `more` `[C]`
+
+Read off the client's operator table (module `88612`); all 17 are in `kz.greetgo.script.model.expr.enums.OpType`.
+
+| `opType` | sign | result | may continue in `more` with |
+|---|---|---|---|
+| `Concat` | ◊ | Text | Concat |
+| `Plus` `Minus` `Mul` `Div` | + - ∙ / | Number | Plus Minus Mul Div |
+| `And` `Or` `Xor` | И ИЛИ ИЛИ-ИЛИ | Bool | And Or Xor |
+| `Not` | НЕ | Bool | — (**unary: `leftExprId` only**) |
+| `Less` `LessEq` `More` `MoreEq` | < ⩽ > ⩾ | Bool | Less LessEq More MoreEq |
+| `Eq` | = | Bool | `OrEq` («или =»: `a = x или = y`) |
+| `NotEq` | ≠ | Bool | `AndNotEq` («и ≠») |
+
+`Or`, `Not`, `Xor`, `LessEq`, `MoreEq`, `OrEq` and `AndNotEq` all **compile** (`translate-script`
+`success:true`, 2026-09-24). Their runtime was not exercised on a record `[U]` — §15's advice to prefer
+nested `ЕСЛИ` stands until it is. In the action list of a value an operator appears as a pseudo-action
+`K-OP-OP-<opType>`; that id is never written into a script — choosing it produces an `ExprOp`.
+
+**A wrong `opType` string destroys the BO's scripts** — see §17 trap 26 before you write one by hand.
+
+### Value kinds of `ExprValue` — the 15 entries of «выберите значение» `[C]`
+
+`load-const-value-type-list` returns them; the key names are those `load-const-form` binds (`recordIdDotPaths`
+/ `updateDotPathMap` / `textDotPath`), and each literal below compiled.
+
+| UI | `exprValueType` / `constType` | keys |
+|---|---|---|
+| Переменная | `VAR_REF` | `varBlockId` |
+| **ЭТА ИНСТАНЦИЯ** (BO script) / ЭТОТ ПРОЦЕСС (process) | `THIS_PROCESS`, `constType:"BoiRefCode"` | — the record the script runs on |
+| Текст / Число | `CONST` `String` / `BigDecimal` | `value` (a string) |
+| Да/Нет | `CONST` `Boolean` | `value` `"yes"`/`"no"` |
+| Дата/время | `CONST` `Date` | `value` (format not captured `[U]`) |
+| Гео-координаты | `CONST` `GeoPoint` | `latitude`, `longitude`, `geoPointShowType` (`DEGREES_PARTS`/`DEGREES_MIN_SEC`) |
+| Бизнес-объект (тип) / (экземпляр) | `CONST` `BoRefCode` / `BoiRefCode` | `boCode` / `boCode`+`boiId` |
+| Одиночный выбор | `CONST` `SingleSelectRefCode` | `boCode`, `fieldCode`, `optionId` |
+| **Перечисление** | `CONST` `Enum` | **`enumBaseType`, `enumValue`**; `valueType:{type:"EnumRef",baseType:<enum>,enumNativeName:<enum>}` |
+| **Встроенные объекты** | `CONST` `JavaObjectFactories` | **`objectDescriptor`** (table below); `valueType:{type:"Object",baseType:<class>}` |
+| Метод скрипта | `CONST` `ScriptMethodRef` | `value` (for a timer / a confirm-form button) |
+| Печатная форма | `CONST` `PrintFormRef` | `boCode`, `printFormCode` |
+| Аналитика | `CONST` `ReportRefCode` | `reportCode` |
+
+Enum literal that compiled: `{"type":"ExprValue","exprValueType":"CONST","constType":"Enum",
+"valueType":{"type":"EnumRef","baseType":"DateDeltaUnit","enumNativeName":"DateDeltaUnit"},
+"enumBaseType":"DateDeltaUnit","enumValue":"DAYS"}`.
+
+### Enumerations — the 16 that exist `[C]`
+
+| enum | values (`enumValue` → label) |
+|---|---|
+| `EdsSignerType` | `PHYSICAL` PHYSICAL, `LEGAL` LEGAL |
+| `MybpmSignatureType` | `EDS` EDS, `OTP` OTP |
+| `AlignmentVertical` | `TOP` К ВЕРХНЕМУ КРАЮ, `CENTER` ПО СЕРЕДИНЕ, `BOTTOM` К НИЖНЕМУ КРАЮ, `JUSTIFY` JUSTIFY, `DISTRIBUTED` DISTRIBUTED |
+| `AlignmentHorizontal` | `GENERAL` ПО УМОЛЧАНИЮ, `LEFT` К ЛЕВОМУ КРАЮ, `CENTER` ПО ЦЕНТРУ, `RIGHT` К ПРАВОМУ КРАЮ, `FILL` ЗАПОЛНИТЬ ВСЮ ШИРИНУ, `JUSTIFY` ЗАПОЛНИТЬ ВСЮ ШИРИНУ КРОМЕ ПОСЛЕДНЕЙ, `CENTER_SELECTION` CENTER_SELECTION, `DISTRIBUTED` DISTRIBUTED |
+| `DateDeltaUnit` | `MILLI_SECONDS` миллисекунды, `SECONDS` секунды, `MINUTES` минуты, `HOURS` часы, `DAYS` дни, `MONTHS` месяцы, `YEARS` годы |
+| `RestRequestMethod` | `GET` GET, `POST` POST, `PUT` PUT |
+| `TimePattern` | `HH_MM_COLON` ЧЧ:ММ |
+| `DatePattern` | `DD_MM_YYYY_DOT` ДД.ММ.ГГГГ, `DD_MM_YY_DOT` ДД.ММ.ГГ, `DD_MM_YYYY_SLASH` ДД/ММ/ГГГГ, `DD_MM_YY_SLASH` ДД/ММ/ГГ, `DD_MM_YYYY_DASH` ДД-ММ-ГГГГ, `DD_MM_YY_DASH` ДД-ММ-ГГ, `YYYY_MM_DD_DOT` ГГГГ.ММ.ДД, `YY_MM_DD_DOT` ГГ.ММ.ДД, `YYYY_MM_DD_SLASH` ГГГГ/ММ/ДД, `YY_MM_DD_SLASH` ГГ/ММ/ДД, `YY_MM_DD_DASH` ГГГГ-ММ-ДД, `YYYY_MM_DD_DASH` ГГ-ММ-ДД |
+| `ReportFilterSortType` | `ASC` По возрастанию, `DESC` По убыванию |
+| `ElectronicBorderStyle` | `NONE` НЕТ ГРАНИЦЫ, `THIN` ЛИНИЯ ТОНКАЯ, `MEDIUM` ЛИНИЯ СРЕДНЕЙ ТОЛЩИНЫ, `THICK` ЛИНИЯ ТОЛСТАЯ, `HAIR` ЛИНИЯ ОЧЕНЬ ТОНКАЯ, `DASHED` ЧЁРТОЧКАМИ ТОНКИМИ, `MEDIUM_DASHED` ЧЁРТОЧКАМИ СРЕДНЕЙ ТОЛЩИНЫ, `DOTTED` ТОЧЕЧКАМИ ТОНКИМИ, `DOUBLE` ДВОЙНАЯ ЛИНИЯ, `DASH_DOT` ЧЕРТА ТОЧКА ТОНКАЯ, `MEDIUM_DASH_DOT` ЧЕРТА ТОЧКА СРЕДНЕЙ ТОЛЩИНЫ, `DASH_DOT_DOT` ЧЕРТА ТОЧКА ТОЧКА ТОНКАЯ, `MEDIUM_DASH_DOT_DOT` ЧЕРТА ТОЧКА ТОЧКА СРЕДНЕЙ ТОЛЩИНЫ, `SLANTED_DASH_DOT` НАКЛОННАЯ ЧЕРТА ТОЧКА |
+| `ElectronicUnderline` | `SINGLE` ЛИНИЯ, `DOUBLE` ДВОЙНАЯ ЛИНИЯ, `NONE` НЕТ ПОДЧЁРКИВАНИЯ |
+| `MybpmFileType` | `PDF` PDF, `DOC` DOC, `UNKNOWN` UNKNOWN |
+| `MybpmUrlType` | `OPEN_BOI_CREATE` Открыть создание экземпляра, `OPEN_BOI_EDIT` Открыть экземпляр на изменение, `SET_NEW_PASS` Получение ссылки на установку пароля |
+| `ElectronicCellType` | `TEXT` Текст, `NUMBER` Число, `DATE` Дата, `BOOL` Да/Нет, `FORMULA` Формула |
+| `Color` | `RED` красный, `GREEN` зеленый, `YELLOW` желтый, `BLUE` синий, `ORANGE` оранжевый, `PURPLE` фиолетовый |
+| `MybpmLang` | `RUS` RUS, `ENG` ENG, `KAZ` KAZ, `QAZ` QAZ |
+`DatePattern` has two labels swapped **on the platform side**: `YY_MM_DD_DASH` is labelled «ГГГГ-ММ-ДД» and
+`YYYY_MM_DD_DASH` «ГГ-ММ-ДД». Which output each really gives was not run `[U]` — test before relying on it.
+
+### Built-in objects («Встроенные объекты») — the 22 factories `[C]`
+
+`load-value-ext-type-for-expr` gives the type each returns; a factory is an `ExprValue` constant, so it is
+written wherever a value is expected (usually `Пусть #x# = <factory>`).
+
+| `objectDescriptor` | UI | returns |
+|---|---|---|
+| `BEAN_METHOD-GeoMapExtensions-geoMap` | Карта | `Object/GeoMap` |
+| `BEAN_METHOD-DateExtensions-now` | Сейчас | `Date` |
+| `BEAN_METHOD-MybpmSystemFactory-newMybpmSystem` | Система | `Object/MybpmSystem` |
+| `BEAN_METHOD-MybpmLangFactory-getSystemDefaultLanguage` | Системный язык | `EnumRef/MybpmLang` |
+| `BEAN_METHOD-ScriptEmailFactory-newScriptEmail` | Создать Email | `Object/ScriptEmail` |
+| `BEAN_METHOD-JsonExtensions-createJsonArr` | Создать Json [] массив | `Object/JsonDeck[]` |
+| `BEAN_METHOD-JsonExtensions-createJsonDeck` | Создать Json {} объект | `Object/JsonDeck` |
+| `BEAN_METHOD-JsonExtensions-createScriptMultipartForm` | Создать Multipart Form | `Object/ScriptMultipartForm` |
+| `BEAN_METHOD-RestExtensions-createJsonDeck` | Создать Rest-запрос | `Object/RestRequest` |
+| `BEAN_METHOD-ScriptSmsFactory-newScriptSms` | Создать Sms | `Object/ScriptSms` |
+| `BEAN_METHOD-UuidExtension-createManagerUUID` | Создать UUID-менеджер | `Object/ManagerUUID` |
+| `BEAN_METHOD-MybpmFileExtensions-createArchiveManager` | Создать Архивариус | `Object/ArchiveManager` |
+| `BEAN_METHOD-MybpmSignatureFactory-newSignedField` | Создать Подписанное поле | `Object/SignedField` |
+| `BEAN_METHOD-MybpmSignatureFactory-newScriptEmail` | Создать Подпись | `Object/MybpmSignature` |
+| `BEAN_METHOD-XmlExtensions-createScriptXmlManager` | Создать конструктор XML/JSON | `Object/ScriptXmlManager` |
+| `BEAN_METHOD-MybpmUrlFactory-create` | Создать конструктор ссылок | `Object/MybpmUrl` |
+| `BEAN_METHOD-ScriptMultiLangTextFactory-newMultiLangText` | Создать мультиязычный текст | `Object/ScriptMultiLangText` |
+| `BEAN_METHOD-ScriptNotificationFactory-newScriptNotification` | Создать оповещение | `Object/ScriptNotification` |
+| `BEAN_METHOD-ScriptMethodTimerFactory-newScriptMethodTimer` | Создать таймер | `Object/ScriptMethodTimerPlaque` |
+| `BEAN_METHOD-ConfirmFormFactory-newConfirmForm` | Создать форму подтверждения | `Object/ConfirmForm` |
+| `BEAN_METHOD-ElectronicTableExtensions-newElectronicColorWrapper` | Создать цветовую палитру | `Object/ElectronicColorPalette` |
+| `BEAN_METHOD-ElectronicTableExtensions-createElectronicTableBo` | Создать электронную таблицу | `Object/ElectronicTableBo` |
+### Actions on the basic value types `[C]`
+
+`argExprIds` keys are the `argId`s below; `?` marks an argument the IDE lets you leave empty. Every type
+also offers the operators its row in the `opType` table allows.
+
+**Текст `Text/String`**
+
+```text
+F-toBase64-K-FIX-T-String                            -> Base64                                () → Text/String
+F-isBigDecimal-K-FIX-T-String                        #Число ли?                               () → Bool/boolean
+F-killSides-K-FIX-T-String                           #Убрать по краям                         (countLeft:Number/BigDecimal?, countRight:Number/BigDecimal?) → Text/String
+F-trim-K-FIX-T-String                                #Убрать все пробелы по бокам             () → Text/String
+F-doesItMatchARegularExpression-K-FIX-T-String       #Соответствует ли регулярному выражению  (regExp:Text/String?) → Bool/boolean
+F-contains-K-FIX-T-String                            #Содержит ли                             (fragment:Text/String?) → Bool/boolean
+F-isEmpty-K-FIX-T-String                             #Пусто?                                  () → Bool/boolean
+F-strToJsonDeck-K-FIX-T-String                       #Преобразовать в Json {} объект          () → Object/JsonDeck
+F-strToJsonArr-K-FIX-T-String                        #Преобразовать в Json [] массив          () → Object/JsonDeck[]
+F-substring-K-FIX-T-String                           #Подстрока,                              (startIndex:Number/BigDecimal?, endIndex:Number/BigDecimal?) → Text/String
+F-cutRight-K-FIX-T-String                            #Отрезать справа                         (count:Number/BigDecimal) → Text/String
+F-cutLeft-K-FIX-T-String                             #Отрезать слева                          (count:Number/BigDecimal) → Text/String
+F-cutMiddle-K-FIX-T-String                           #Отрезать по середине                    (count:Number/BigDecimal, skipCount:Number/BigDecimal, skipLeft:Bool/Boolean) → Text/String
+F-remove-K-FIX-T-String                              #Исключить из строки                     (regex:Text/String?) → Text/String
+F-returnLastIndex-K-FIX-T-String                     #Индекс конца последней подстроки        (indexStr:Text/String?) → Number/BigDecimal
+F-writeToFile-K-FIX-T-String                         #Записать в файл                         (fileName:Text/String) → File/MybpmFile
+F-replaceByIndexes-K-FIX-T-String                    #Заменить текст по индексу               (startIndex:Number/BigDecimal?, endIndex:Number/BigDecimal?, fragment:Text/String?) → Text/String
+F-replaceByTemplate-K-FIX-T-String                   #Заменить                                (target:Text/String?, replacement:Text/String?, needReplaceAll:Bool/boolean) → Text/String
+F-isDefined-K-FIX-T-String                           #Есть символ(ы)?                         () → Bool/boolean
+F-length-K-FIX-T-String                              #Длина                                   () → Number/BigDecimal
+F-partAfter-K-FIX-T-String                           #Всё правее                              (index:Number/BigDecimal?) → Text/String
+F-concat-K-FIX-T-String                              #Вставить подстроку                      (sharedString:Text/String?, index:Number/BigDecimal?) → Text/String
+F-convertToBigDecimal-K-FIX-T-String                 #В число                                 () → Number/BigDecimal
+F-convertToLowerCase-K-FIX-T-String                  #В нижний регистр                        () → Text/String
+F-convertToDate-K-FIX-T-String                       #В дату                                  (datePattern:EnumRef/DatePattern) → Date
+F-convertToUpperCase-K-FIX-T-String                  #В верхний регистр                       () → Text/String
+F-contentType_to_fileExtension-K-FIX-T-String        #Content-Type конвертировать в расширение файла () → Text/String
+F-textToFile-K-FIX-T-String                          #Base64 преобразовать в файл             (fileName:Text/String) → File/MybpmFile
+operators: Concat NotEq Eq
+```
+
+**Число `Number/BigDecimal`**
+
+```text
+F-isOdd-K-FIX-T-BigDecimal                           #не чётное ли?                           () → Bool/boolean
+F-isEven-K-FIX-T-BigDecimal                          #Чётное ли?                              () → Bool/boolean
+F-isNull-K-FIX-T-BigDecimal                          #Пусто?                                  () → Bool/boolean
+F-numberToWordsRU-K-FIX-T-BigDecimal                 #Превратить в русскую пропись            () → Text/String
+F-numberToWordsKZ-K-FIX-T-BigDecimal                 #Превратить в казахскую пропись          () → Text/String
+F-toDate-K-FIX-T-BigDecimal                          #Превратить в дату                       () → Date
+F-roundFractionPart-K-FIX-T-BigDecimal               #Округлять дробную часть:                (value:Number/BigDecimal?) → Number/BigDecimal
+F-round-K-FIX-T-BigDecimal                           #Округлить до целого                     () → Number/BigDecimal
+F-abs-K-FIX-T-BigDecimal                             #Модуль                                  () → Number/BigDecimal
+F-intPart-K-FIX-T-BigDecimal                         #Взять целую часть                       () → Number/BigDecimal
+F-fractionPart-K-FIX-T-BigDecimal                    #Взять дробную часть                     () → Number/BigDecimal
+operators: MoreEq LessEq NotEq Mul More Eq Less Div Minus Plus
+```
+
+**Да/Нет `Bool/Boolean`**
+
+```text
+operators: NotEq Not Xor Or And Eq
+```
+
+**Дата `Date` (DATE, FULL_DATE, TIME, YEAR, YEAR_AND_MONTH)**
+
+```text
+F-incWorkingDate-K-FIX-T-Date                        увеличить (рабочие)                      (amount:Number/BigDecimal, unit:EnumRef/DateDeltaUnit, irgUnit:Bo/BoiRefCode) → Date
+F-incDate-K-FIX-T-Date                               увеличить                                (amount:Number/BigDecimal, unit:EnumRef/DateDeltaUnit) → Date
+F-isEquals_GMD-K-FIX-T-Date                          сравнить (ГМД)                           (anotherDate:Date) → Bool/boolean
+F-changeTime-K-FIX-T-Date                            сменить время                            (time:Date?) → Date
+F-diffWorkingDate-K-FIX-T-Date                       разница (рабочие)                        (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Number/BigDecimal
+F-diff-K-FIX-T-Date                                  разница                                  (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Number/BigDecimal
+F-equals-K-FIX-T-Date                                равно                                    (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Bool/boolean
+F-isDayOff-K-FIX-T-Date                              праздничный или выходной день            () → Bool/boolean
+F-extractMonth-K-FIX-T-Date                          получить месяц (1-12)                    () → Number/BigDecimal
+F-extractYear-K-FIX-T-Date                           получить год                             () → Number/BigDecimal
+F-toPeriod-K-FIX-T-Date                              период                                   (to:Date?) → Object/Period
+F-notEquals-K-FIX-T-Date                             не равно                                 (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Bool/boolean
+F-lessEq-K-FIX-T-Date                                меньше или равно                         (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Bool/boolean
+F-less-K-FIX-T-Date                                  меньше                                   (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Bool/boolean
+F-extractDayOfMonth-K-FIX-T-Date                     изъять день месяца                       () → Number/BigDecimal
+F-isDefined-K-FIX-T-Date                             заполнена?                               () → Bool/boolean
+F-moreEq-K-FIX-T-Date                                больше или равно                         (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Bool/boolean
+F-more-K-FIX-T-Date                                  больше                                   (anotherDate:Date, unit:EnumRef/DateDeltaUnit) → Bool/boolean
+F-extractDayWeek-K-FIX-T-Date                        Получить день недели                     () → Number/BigDecimal
+F-dateToString-K-FIX-T-Date                          Дата в строку                            (pattern:EnumRef/DatePattern) → Text/String
+F-timeToString-K-FIX-T-Date                          Время в строку                           (pattern:EnumRef/TimePattern) → Text/String
+operators: NotEq Eq
+```
+
+**Период `Period` (PERIOD, PERIOD_TIME)**
+
+```text
+F-diffPeriod-K-FIX-T-Period                          разница                                  (unit:EnumRef/DateDeltaUnit) → Number/BigDecimal
+F-first-K-FIX-T-Period                               первая дата-время                        () → Date
+F-second-K-FIX-T-Period                              вторая дата-время                        () → Date
+operators: NotEq Eq
+```
+
+**Мультиязычный текст `TextLang`**
+
+```text
+F-KAZ-K-DYN-S-TextLang                               Значение на языке Қазақша                () → Text/String
+F-RUS-K-DYN-S-TextLang                               Значение на языке Русский                () → Text/String
+F-QAZ-K-DYN-S-TextLang                               Значение на языке Qazaqsha               () → Text/String
+F-ENG-K-DYN-S-TextLang                               Значение на языке English                () → Text/String
+operators: NotEq Eq
+```
+
+**Гео-точка `GeoPoint`**
+
+```text
+F-getLatitude-K-FIX-T-GeoPoint                       #широта                                  () → Number/BigDecimal
+F-getLongitude-K-FIX-T-GeoPoint                      #долгота                                 () → Number/BigDecimal
+operators: NotEq Eq
+```
+
+**Одиночный выбор `SingleSelect/SingleSelectRefCode` (DROPDOWN_SINGLE, RADIO_BUTTON_GROUP)**
+
+```text
+F-isEmpty-K-FIX-T-SingleSelectRefCode                пусто?                                   () → Bool/boolean
+F-getBoiFieldOptionValue-K-FIX-T-SingleSelectRefCode Текст                                    () → Text/String
+F-getBoiFieldOptionShown-K-FIX-T-SingleSelectRefCode Получить видимость                       (boiRefCode:Bo/BoiRefCode, boiRefCodeOrgUnit:Bo/BoiRefCode?) → Bool/boolean
+F-extractBoCode-K-FIX-T-SingleSelectRefCode          Код БО                                   () → Text/String
+F-replaceByLabel-K-FIX-T-SingleSelectRefCode         Заменить по тексту                       (text:Text/String) → SingleSelect/SingleSelectRefCode
+F-setBoiFieldOptionShown-K-FIX-T-SingleSelectRefCode Видимость                                (boiRef:Bo/BoiRefCode, boiRefOrgUnit:Bo/BoiRefCode?, value:Bool/boolean) → —
+operators: NotEq Eq
+```
+
+**Любой массив `…[]` (`-K-FIX-T-Iterable`)**
+
+```text
+F-contains-K-FIX-T-Iterable                          содержит ли                              (element:Object) → Bool/boolean
+F-count-K-FIX-T-Iterable                             размер                                   () → Number/BigDecimal
+F-isEmpty-K-FIX-T-Iterable                           пустой?                                  () → Bool/boolean
+F-last-K-FIX-T-Iterable                              последний                                () → Object
+F-first-K-FIX-T-Iterable                             первый                                   () → Object
+F-add-K-FIX-T-Iterable                               добавить                                 (element:Object?) → —
+F-get-K-FIX-T-Iterable                               взять                                    (index:Number/BigDecimal) → Object
+operators: 
+```
+
+**`Bo/BoiRef` (ссылка без кода; из функций)**
+
+```text
+F-boiRef_to_boiRefCode-K-FIX-T-BoiRef                #С кодом                                 () → Bo/BoiRefCode
+F-boiRef_to_boCode-K-FIX-T-BoiRef                    #Дай код БО                              () → Text/String
+F-boiRef_to_boiId-K-FIX-T-BoiRef                     #Дай идентификатор инстанции БО          () → Text/String
+F-boiRef_to_boId-K-FIX-T-BoiRef                      #Дай идентификатор БО                    () → Text/String
+operators: NotEq Eq
+```
+
+**`BoField/BoiFieldRef`**
+
+```text
+F-boiFieldRef_to_BoiFieldRefCode-K-FIX-T-BoiFieldRef #С кодом                                 () → BoField/BoiFieldRefCode
+F-boiFieldRef_to_fieldCode-K-FIX-T-BoiFieldRef       #Дай код поля БО                         () → Text/String
+F-boiFieldRef_to_boCode-K-FIX-T-BoiFieldRef          #Дай код БО                              () → Text/String
+F-boiFieldRef_to_fieldId-K-FIX-T-BoiFieldRef         #Дай идентификатор поля БО               () → Text/String
+F-boiFieldRef_to_boiId-K-FIX-T-BoiFieldRef           #Дай идентификатор инстанции БО          () → Text/String
+F-boiFieldRef_to_boId-K-FIX-T-BoiFieldRef            #Дай идентификатор БО                    () → Text/String
+operators: NotEq Eq
+```
+
+**Подпись `Object/MybpmSignature`**
+
+```text
+F-type-K-FIX-T-MybpmSignature                        Тип подписи (MybpmSignatureType)         () → EnumRef/MybpmSignatureType
+F-extendedKeyUsages-K-FIX-T-MybpmSignature           Список кодов использования сертификата   () → Text/String[]
+F-serialNumber-K-FIX-T-MybpmSignature                Серийный номер сертификата               () → Text/String
+F-mail-K-FIX-T-MybpmSignature                        Почта получателя сертификата             () → Text/String
+F-fullName-K-FIX-T-MybpmSignature                    Полное имя                               () → Text/String
+F-signedFields-K-FIX-T-MybpmSignature                Подписанные поля                         () → Object/SignedField[]
+F-signedFiles-K-FIX-T-MybpmSignature                 Подписанные документы                    () → File/MybpmFile[]
+F-getPersonBoiRefCode-K-FIX-T-MybpmSignature         Подписавший пользователь                 () → Bo/BoiRefCode
+F-phoneNumber-K-FIX-T-MybpmSignature                 Номер телефона                           () → Text/String
+F-organizationName-K-FIX-T-MybpmSignature            Наименование организации и форма         () → Text/String
+F-edsSignerType-K-FIX-T-MybpmSignature               Категория подписи (EdsSignerType)        () → EnumRef/EdsSignerType
+F-iin-K-FIX-T-MybpmSignature                         ИИН из сертификата                       () → Text/String
+F-signedAt-K-FIX-T-MybpmSignature                    Дата подписи                             () → Date
+F-certificateEndDate-K-FIX-T-MybpmSignature          Дата окончания сертификата               () → Date
+F-certificateStartDate-K-FIX-T-MybpmSignature        Дата начала сертификата                  () → Date
+F-organizationBin-K-FIX-T-MybpmSignature             БИН организации из сертификата           () → Text/String
+F-removeMybpmSignature-K-FIX-T-MybpmSignature        #удалить                                 () → —
+operators: NotEq Eq
+```
+### A field of a record — `<record>.<field>` returns `Bo/BoiFieldRefCode` `[C]`
+
+Walked on a probe BO holding all 27 field types plus the system fields and widgets.
+
+Every field reference offers:
+
+```text
+F-VALUE-K-DYN-R-D-S-boi_fields                    #Значение                  → the value type (table below)
+F-Readonly-K-DYN-R-M-S-boi_fields                 #Только для чтения (orgUnit?) → Bool   — ASSIGNABLE: `поле.#Только для чтения = Да`
+F-Required-K-DYN-R-M-S-boi_fields                 #Обязателен для заполнения (orgUnit?) → Bool — assignable
+F-Shown-K-DYN-R-M-S-boi_fields                    #Видимость (orgUnit?) → Bool           — assignable
+F-addError-K-FIX-T-BoiFieldRefCode                #Добавить ошибку (scriptMultiLangText:Object/ScriptMultiLangText)
+F-removeError-K-FIX-T-BoiFieldRefCode             #Удалить ошибку
+F-isPresent-K-FIX-T-BoiFieldRefCode               #Существует? → Bool
+F-reloadDisplayValue-K-FIX-T-BoiFieldRefCode      #Обновить из базы
+F-boiFieldRefCode_to_{boCode,boId,boiId,fieldCode,fieldId}-K-FIX-T-BoiFieldRefCode → Text
+F-saveBoiChanges / F-closeOpenedBoi / F-updateOpenedBoi(target)  -K-FIX-T-BoiRefCode  (act on the owning record)
+```
+
+(`-K-DYN-R-M-` = a field **meta** attribute; the `-R-D-` acts are the field's **data**.) The same three
+meta acts exist for widgets as `…-K-DYN-R-M-S-boi_widgets`.
+
+| field type | `#Значение` returns | extra acts on the field reference |
+|---|---|---|
+| INPUT_TEXT, TEXTAREA, INPUT_PHONE, INPUT_EMAIL, LINK | Text | — |
+| INPUT_NUMBER | Number | — |
+| CHECKBOX | Bool | — |
+| DATE, FULL_DATE, TIME, YEAR, YEAR_AND_MONTH | Date | — |
+| PERIOD, PERIOD_TIME | Period | — |
+| INPUT_TEXT_LANG, TEXTAREA_LANG, STATIC_TEXT | TextLang | `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields (language:EnumRef/MybpmLang)` → Text |
+| DROPDOWN_SINGLE, RADIO_BUTTON_GROUP | SingleSelect | — |
+| GEO_POINT | GeoPoint | — |
+| FILE_UPLOAD | File/MybpmFile | `F-addFile_v2-K-FIX-T-BoiFieldRefCode (file)` |
+| BO (link, multiple) / CO | `Bo/BoiRefCode[]` | `F-ADD (adding)`, `F-DELETE (deleting)`, `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST` («Значения как в реестре»), all `-K-DYN-R-D-S-boi_fields`; CO also `F-SHOWN_BO_IN_CO_FIELD-K-DYN-R-M-S-boi_fields (boRefCode, orgUnit)` |
+| BO (single — e.g. CREATED_BY, LAST_MODIFIED_BY) | `Bo/BoiRefCode` | the same list-acts plus `F-HAS_REF`, **and every field of the target BO directly**: `rec.CREATED_BY.surname` is `F-surname-K-DYN-S-boi_fields` applied to the field reference, no `#Значение` hop |
+| PROGRESS_BAR | — (no `#Значение`) | one act per step: `F-<field>-K-DYN-PS-<stepCode>-S-boi_fields` → `ProgressBar/ProgressStepRefCode` |
+| CHECKLIST, QUESTIONNAIRE | — (**`#Значение` has no type** — not readable from a script) | — |
+
+Other members of a record (`<record>.` on `Bo/BoiRefCode`):
+
+- widgets `F-<widgetCode>-K-DYN-S-boi_widgets` (current user / date / day / month / year, button, iframe,
+  captcha, signature) — the current-user widget behaves like a BO-link field; the signature widget adds
+  `F-signFields` / `F-signDocs` / `F-signList` / `F-signCount` (`-K-DYN-S-boi_widgets`);
+- tabs `F-TAB_<code>_<id>-K-DYN-S-boi_tabs` with `F-COLOR-K-DYN-R-C-S-boi_tabs (color:EnumRef/Color)`;
+- the record-level actions:
+
+```text
+F-count-K-FIX-T-BoiRefCode                           размер                                   () → Number/BigDecimal
+F-isEmpty-K-FIX-T-BoiRefCode                         пустой?                                  () → Bool/boolean
+F-last-K-FIX-T-BoiRefCode                            последний                                () → Bo/BoiRefCode
+F-first-K-FIX-T-BoiRefCode                           первый                                   () → Bo/BoiRefCode
+F-getPrintForms-K-FIX-T-BoiRefCode                   Печатные формы                           () → Object/BoiPrintFormsRefCode
+F-readSignatures-K-FIX-T-BoiRefCode                  #получи подписи                          () → Object/MybpmSignature[]
+F-deleteBoi-K-FIX-T-BoiRefCode                       #Удалить                                 () → —
+F-showFormDel-K-FIX-T-BoiRefCode                     #Убрать форму                            (for:Bo/BoiRefCode?) → —
+F-setFormMetadataAccess-K-FIX-T-BoiRefCode           #Только для чтения инстанции             (for:Bo/BoiRefCode?, value:Bool/boolean) → —
+F-saveBoiChanges-K-FIX-T-BoiRefCode                  #Сохранить                               () → —
+F-showForm-K-FIX-T-BoiRefCode                        #Отобразить форму                        (for:Bo/BoiRefCode?) → —
+F-updateOpenedBoi-K-FIX-T-BoiRefCode                 #Обновить из базы открытую инстанцию     (target:Bo/BoiRefCode) → —
+F-closeOpenedBoi-K-FIX-T-BoiRefCode                  #Закрыть                                 () → —
+F-duplicate-K-FIX-T-BoiRefCode                       #Дублировать                             () → Bo/BoiRefCode
+F-boiRefCode_to_boCode-K-FIX-T-BoiRefCode            #Дай код БО                              () → Text/String
+F-boiRefCode_to_boiId-K-FIX-T-BoiRefCode             #Дай идентификатор инстанции БО          () → Text/String
+F-boiRefCode_to_boId-K-FIX-T-BoiRefCode              #Дай идентификатор БО                    () → Text/String
+F-restoreBoi-K-FIX-T-BoiRefCode                      #Восстановить                            () → —
+F-archiveBoi-K-FIX-T-BoiRefCode                      #Архивировать                            () → —
+```
+The BO **type** (`BoRefCode` constant) offers `F-<field>-K-DYN-S-bo_fields` (a field of the TYPE, not of a
+record → `Bo/BoFieldRefCode`), `F-findByFilter-K-FIX-T-BoRefCode (filter:Filter/AbstractFilter?)` →
+`Bo/BoiRefCode[]`, and `F-CI-K-DYN-R-C-S-bo_fields` (create a record).
+
+### Searching records — filters `[C]`
+
+A filter is built on a field of the BO **type** and fed to `findByFilter`:
+
+```text
+<BoRefCode>.F-<field>-K-DYN-S-bo_fields                      → Bo/BoFieldRefCode
+   .F-find-K-FIX-T-BoFieldRefCode (fieldValue)               → Bo/BoiRefCode[]   (also findSmall / findArchived / findRemoved)
+   .F-create…Filter-K-FIX-T-BoFieldRefCode (…)               → Filter/AbstractFilter
+<filter>.F-createAndFilter / F-createOrFilter (rightFilter) / F-createNotFilter  -K-FIX-T-AbstractFilter
+<BoRefCode>.F-findByFilter-K-FIX-T-BoRefCode (filter)       → Bo/BoiRefCode[]
+```
+
+Which filter constructors a field offers depends on its type:
+
+| field type | filter constructors (`F-create<X>Filter-K-FIX-T-BoFieldRefCode`) |
+|---|---|
+| text kinds (INPUT_TEXT, TEXTAREA, PHONE, EMAIL, LINK) | `ExactEquality (value)`, `ExactInequality (value)`, `ContainsText`, `ContainsPhraseText`, `StartsWithText`, `EndsWithText` (value:Text) |
+| NUMBER, all dates, CREATED_AT … | `ExactEquality`, `ExactInequality`, `GreaterThan`, `LessThan`, `GreaterThanOrEqual`, `LessThanOrEqual` (value); `GreaterThanButLessThan`, `GreaterThanOrEqualButLessThan`, `GreaterThanButLessThanOrEqual`, `GreaterThanOrEqualButLessThanOrEqual` (from, to) |
+| CHECKBOX, DROPDOWN_SINGLE, RADIO_BUTTON_GROUP, single BO link | `ExactEquality`, `ExactInequality` (value) |
+| BO link (multiple) | `ExactEquality`, `ExactInequality`, `ContainsAny (value:Iterable[])`, `ExactEmpty ()` |
+| CO | `ContainsAny`, `ExactEmpty` |
+| TextLang kinds, PERIOD*, GEO_POINT, FILE_UPLOAD, CHECKLIST, QUESTIONNAIRE, PROGRESS_BAR | none — only `find*` |
+
+### Built-in functions (`ExprFunc` / `BlockFunc` — old panel only) `[C]`
+
+`{"type":"ExprFunc","groupId":"<group>","funcId":"<func>","args":{"a0":{"exprId":…},…}}`; `BlockFunc` the
+same as a statement. They are listed because old scripts contain them; each has a modern equivalent
+(an action or a built-in object) and a `BlockFunc` switches compile optimisation off.
+
+| group | functions |
+|---|---|
+| `str` Работа со строками | `contains`(a0:Text/String, a1:Text/String)→Bool/Boolean |
+| `print` Работа с печатными формами | `getPrintForm`(a0:Bo/BoiRef, a1:Text/String)→File/MybpmFile[] |
+| `signature` Работа с подписями | `readSignatures`(a0:Bo/BoiRef)→Object/MybpmSignature[]; `removeSignature`(a0:Object/MybpmSignature)→— |
+| `fieldMetaData` Работа с полями | `readBoiFieldMeta`(a0:BoField/BoiFieldRef, a1:Bo/BoiRef, a2:EnumRef/FieldMetaType)→Bool/Boolean; `getBoiActualRecord`(a0:Bo/BoiRef)→Bool/Boolean; `writeBoiFormMetaReadonly`(a0:Bo/BoiRef, a1:Bo/BoiRef, a2:Bool/Boolean)→—; `writeBoiFieldOptionShown`(a0:Bo/BoiRef, a1:SingleSelect/SingleSelectRef, a2:Bo/BoiRef, a3:Bool/Boolean)→—; `writeBoiFieldMeta`(a0:BoField/BoiFieldRef, a1:Bo/BoiRef, a2:EnumRef/FieldMetaType, a3:Bool/Boolean)→— |
+| `alert` Оповещения | `sendEmail`(a0:Text/String, a1:Text/String, a2:Text/String, a3:File/MybpmFile[])→—; `sendNavigableMultiLangPushNotificationToManyRecipients`(a0:Bo/BoiRef[], a1:TextLang, a2:TextLang, a3:Text/String, a4:Bool/Boolean, a5:Bool/Boolean, a6:Number/BigDecimal)→—; `sendNavigablePushNotification`(a0:Bo/BoiRef, a1:Text/String, a2:Text/String, a3:Text/String, a4:Bool/Boolean, a5:Bool/Boolean, a6:Number/BigDecimal)→—; `sendEmailToUsers`(a0:Bo/BoiRef, a1:Text/String, a2:Text/String, a3:File/MybpmFile[])→—; `sendPushNotification`(a0:Bo/BoiRef, a1:Text/String, a2:Text/String, a3:Text/String, a4:Bool/Boolean, a5:Number/BigDecimal, a6:Text/String, a7:Text/String)→—; `sendNavigableMultiLangPushNotification`(a0:Bo/BoiRef, a1:TextLang, a2:TextLang, a3:Text/String, a4:Bool/Boolean, a5:Bool/Boolean, a6:Number/BigDecimal)→— |
+| `boProcess` Работа с бизнес-процессами | `go`(a0:Bo/BoiRef)→— |
+| `self` Работа с текущим процессом | `getCurrentBoiProcess`()→Bo/BoiRef |
+| `dates` Работа с датами | `incWorkingDateMillis`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date; `diffHours`(a0:Date, a1:Date)→Number/BigDecimal; `incDateYears`(a0:Date, a1:Number/BigDecimal)→Date; `secondDateFromPeriod`(a0:Period)→Date; `incDateMinutes`(a0:Date, a1:Number/BigDecimal)→Date; `currentMonth`()→Number/BigDecimal; `incWorkingDateHours`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date; `currentYear`()→Number/BigDecimal; `checkDateRange`(a0:Date, a1:Date, a2:Date)→Bool/Boolean; `eqDateYMD`(a0:Date, a1:Date)→Bool/Boolean; `getDayOfWeek`(a0:Date)→Number/BigDecimal; `diffDays`(a0:Date, a1:Date)→Number/BigDecimal; `now`()→Date; `getMonth`(a0:Date)→Number/BigDecimal; `incWorkingDateDays`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date; `incDateHours`(a0:Date, a1:Number/BigDecimal)→Date; `incWorkingDateSeconds`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date; `assembleDateWithTime`(a0:Date, a1:Date)→Date; `incDateDays`(a0:Date, a1:Number/BigDecimal)→Date; `incDateMillis`(a0:Date, a1:Number/BigDecimal)→Date; `diffYears`(a0:Date, a1:Date)→Number/BigDecimal; `incWorkingDateMonths`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date; `diffMonth`(a0:Date, a1:Date)→Number/BigDecimal; `checkDate`(a0:Date)→Bool/Boolean; `getDay`(a0:Date)→Number/BigDecimal; `firstDateFromPeriod`(a0:Period)→Date; `incWorkingDateMinutes`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date; `getYear`(a0:Date)→Number/BigDecimal; `currentDay`()→Number/BigDecimal; `incDateMonths`(a0:Date, a1:Number/BigDecimal)→Date; `diffMinutes`(a0:Date, a1:Date)→Number/BigDecimal; `incDateSeconds`(a0:Date, a1:Number/BigDecimal)→Date; `incWorkingDateYears`(a0:Bo/BoiRef, a1:Date, a2:Number/BigDecimal)→Date |
+| `terminator` Другое | `renameFile`(a0:File/MybpmFile[], a1:Text/String)→—; `terminate`(a0:Bo/BoiRef)→— |
+| `bo` Работа с бизнес-объектами | `restoreBoi`(a0:Bo/BoiRef)→—; `addRefToField`(a0:BoField/BoiFieldRef, a1:Bo/BoiRef)→—; `removeBoi`(a0:Bo/BoiRef)→—; `delFileFromField`(a0:BoField/BoiFieldRef, a1:File/MybpmFile[])→—; `delRefToField`(a0:BoField/BoiFieldRef, a1:Bo/BoiRef)→—; `addFileToField`(a0:BoField/BoiFieldRef, a1:File/MybpmFile[])→—; `archiveBoi`(a0:Bo/BoiRef)→— |
+### The objects the factories return — their actions `[C]`
+
+Property-like actions (no arguments, a value type) are **assignable** (`BlockAssign`, left = the act):
+`email.«Заголовок письма» = "…"`, `rest.«адрес» = "…"`, `confirm.«метод Да» = <ScriptMethodRef>`.
+Actions that return nothing are written as a statement: `BlockAssign` with `leftExprId` only (below).
+
+`Object/GeoMap`
+```text
+F-geoPointAddresses-K-FIX-T-GeoMap                         Указать точки                          (originGeoPoint:GeoPoint, destinationGeoPoint:GeoPoint) → —
+F-strAddresses-K-FIX-T-GeoMap                              Указать адреса                         (originStr:Text/String, destinationStr:Text/String) → —
+F-getDistance-K-FIX-T-GeoMap                               Получить расстояние                    () → Number/BigDecimal
+F-getGeoPointFromAddress-K-FIX-T-GeoMap                    Получить геолокацию по адресу          (address:Text/String) → GeoPoint
+F-openRoute-K-FIX-T-GeoMap                                 Открыть маршрут                        () → Text/String
+F-myGeolocation-K-FIX-T-GeoMap                             Моя геолокация                         () → GeoPoint
+```
+
+`Object/MybpmSystem`
+```text
+F-download-K-FIX-T-MybpmSystem                             Скачать файлы                          (field:BoField/BoiFieldRefCode?) → —
+F-getSystemUser-K-FIX-T-MybpmSystem                        Системный пользователь                 () → Bo/BoiRefCode
+F-refreshBrowserPage-K-FIX-T-MybpmSystem                   Перезагрузить страницу                 () → —
+```
+
+`Object/ScriptEmail`
+```text
+F-sendToUsers-K-FIX-T-ScriptEmail                          послать пользователям                  (whom:Bo/BoiRefCode?) → —
+F-body-K-FIX-T-ScriptEmail                                 Текст содержимого                      () → Text/String
+F-attachments-K-FIX-T-ScriptEmail                          Прикреплённые файлы                    () → File/MybpmFile[]
+F-sendToAddress-K-FIX-T-ScriptEmail                        Отправить на Email-адрес               (email:Text/String?) → —
+F-topic-K-FIX-T-ScriptEmail                                Заголовок письма                       () → Text/String
+```
+
+`Object/ScriptMultipartForm`
+```text
+F-addFile-K-FIX-T-ScriptMultipartForm                      добавить файл:                         (name:Text/String, file:File/MybpmFile?) → —
+F-addParam-K-FIX-T-ScriptMultipartForm                     добавить параметр:                     (name:Text/String, value:Text/String?) → —
+```
+
+`Object/RestRequest`
+```text
+F-sendingText-K-FIX-T-RestRequest                          отправляемый текст                     () → Text/String
+F-sendingXmlTag-K-FIX-T-RestRequest                        отправляемый XML                       () → Object/XmlTag
+F-sendingMultipartForm-K-FIX-T-RestRequest                 отправляемый Multipart Form            () → Object/ScriptMultipartForm
+F-sendingJsonDeck-K-FIX-T-RestRequest                      отправляемый Json {} объект            () → Object/JsonDeck
+F-sendingJsonArr-K-FIX-T-RestRequest                       отправляемый Json [] массив            () → Object/JsonDeck[]
+F-address-K-FIX-T-RestRequest                              адрес                                  () → Text/String
+F-showHeaders-K-FIX-T-RestRequest                          Получить заголовки                     () → Text/String
+F-method-K-FIX-T-RestRequest                               Метод вызова                           () → EnumRef/RestRequestMethod
+F-readTimeout-K-FIX-T-RestRequest                          #тайм-аут чтения                       () → Number/BigDecimal
+F-connectTimeout-K-FIX-T-RestRequest                       #тайм-аут подключения                  () → Number/BigDecimal
+F-writeTimeout-K-FIX-T-RestRequest                         #тайм-аут записи                       () → Number/BigDecimal
+F-callTimeout-K-FIX-T-RestRequest                          #тайм-аут вызова                       () → Number/BigDecimal
+F-checkSslCertificate-K-FIX-T-RestRequest                  #проверять сертификат                  () → Bool/boolean
+F-call-K-FIX-T-RestRequest                                 #вызвать                               () → Object/RestResponse
+F-setHeader-K-FIX-T-RestRequest                            #Заголовок                             (name:Text/String, value:Text/String) → —
+```
+
+`Object/ScriptSms`
+```text
+F-message-K-FIX-T-ScriptSms                                Текст содержимого                      () → Text/String
+F-sendToPhone-K-FIX-T-ScriptSms                            Отправить по номеру                    (phone:Text/String?) → —
+```
+
+`Object/ManagerUUID`
+```text
+F-textToUUID-K-FIX-T-ManagerUUID                           #преобразовать в UUID                  (text:Text/String) → Object/UUID
+F-createLicenceNumber-K-FIX-T-ManagerUUID                  #Сгенерировать случайный лицензионный ключ () → Text/String
+F-createRandom-K-FIX-T-ManagerUUID                         #Сгенерировать случайный               () → Object/UUID
+```
+
+`Object/ArchiveManager`
+```text
+F-addFile-K-FIX-T-ArchiveManager                           Добавить файл                          (archiveFile:File/MybpmFile) → —
+F-archiveFiles-K-FIX-T-ArchiveManager                      #архивировать                          (text:Text/String?) → File/MybpmFile
+```
+
+`Object/ScriptXmlManager`
+```text
+F-putVarValue-K-FIX-T-ScriptXmlManager                     установить переменную шаблона          (name:Text/String, value:Text/String) → —
+F-createXmlTagWithNamespace-K-FIX-T-ScriptXmlManager       создать тег XML в пространстве имён    (namespaceUri:Text/String, tagName:Text/String) → Object/XmlTag
+F-createXmlTag-K-FIX-T-ScriptXmlManager                    создать тег XML                        (tagName:Text/String) → Object/XmlTag
+F-convertToXmlTag-K-FIX-T-ScriptXmlManager                 преобразовать в XML                    (xmlText:Text/String) → Object/XmlTag
+F-convertToJsonObject-K-FIX-T-ScriptXmlManager             преобразовать в JSON {} объект         (text:Text/String) → Object/JsonDeck
+F-convertToJsonArray-K-FIX-T-ScriptXmlManager              преобразовать в JSON [] массив         (text:Text/String) → Object/JsonDeck[]
+```
+
+`Object/ScriptNotification`
+```text
+F-body-K-FIX-T-ScriptNotification                          тело                                   () → Text/String
+F-url-K-FIX-T-ScriptNotification                           ссылка                                 () → Text/String
+F-sendToManyRecipients-K-FIX-T-ScriptNotification          послать множеству получателей          (target:Bo/BoiRefCode[]) → —
+F-send-K-FIX-T-ScriptNotification                          послать                                (target:Bo/BoiRefCode) → —
+F-openUrlOnInit-K-FIX-T-ScriptNotification                 открыть ссылку?                        () → Bool/boolean
+F-topicMultiLang-K-FIX-T-ScriptNotification                мультиязычный заголовок                () → TextLang
+F-bodyMultiLang-K-FIX-T-ScriptNotification                 мультиязычное тело                     () → TextLang
+F-topic-K-FIX-T-ScriptNotification                         заголовок                              () → Text/String
+F-duration-K-FIX-T-ScriptNotification                      длительность (секунд)                  () → Number/BigDecimal
+F-needAudio-K-FIX-T-ScriptNotification                     аудио                                  () → Bool/boolean
+```
+
+`Object/ScriptMethodTimerPlaque`
+```text
+F-scheduleMethod-K-FIX-T-ScriptMethodTimerPlaque           Запланировать вызов                    (method:Object/ScriptMethodRef?, executeAt:Date?) → —
+```
+
+`Object/ConfirmForm`
+```text
+F-noButtonText-K-FIX-T-ConfirmForm                         текст кнопки Нет                       () → Text/String
+F-yesButtonText-K-FIX-T-ConfirmForm                        текст кнопки Да                        () → Text/String
+F-text-K-FIX-T-ConfirmForm                                 текст                                  () → Text/String
+F-show-K-FIX-T-ConfirmForm                                 показать                               () → —
+F-noMethod-K-FIX-T-ConfirmForm                             метод Нет                              () → Object/ScriptMethodRef
+F-yesMethod-K-FIX-T-ConfirmForm                            метод Да                               () → Object/ScriptMethodRef
+F-title-K-FIX-T-ConfirmForm                                заголовок                              () → Text/String
+```
+
+`Object/ElectronicColorPalette`
+```text
+F-blue-K-FIX-T-ElectronicColorPalette                      Синий (0..255)                         () → Number/BigDecimal
+F-alpha-K-FIX-T-ElectronicColorPalette                     Синий (0..255)                         () → Number/BigDecimal
+F-isAbsent-K-FIX-T-ElectronicColorPalette                  Отсутствует цвет?                      () → Bool/boolean
+F-red-K-FIX-T-ElectronicColorPalette                       Красный (0..255)                       () → Number/BigDecimal
+F-green-K-FIX-T-ElectronicColorPalette                     Зелёный (0..255)                       () → Number/BigDecimal
+F-setRGB-K-FIX-T-ElectronicColorPalette                    Задать RGB                             (r:Number/BigDecimal?, g:Number/BigDecimal?, b:Number/BigDecimal?) → Object/ElectronicColorPalette
+F-setARGB-K-FIX-T-ElectronicColorPalette                   Задать ARGB                            (a:Number/BigDecimal?, r:Number/BigDecimal?, g:Number/BigDecimal?, b:Number/BigDecimal?) → Object/ElectronicColorPalette
+F-isDefined-K-FIX-T-ElectronicColorPalette                 Задан цвет?                            () → Bool/boolean
+F-copy-K-FIX-T-ElectronicColorPalette                      #Скопировать                           () → Object/ElectronicColorPalette
+F-makeTeal-K-FIX-T-ElectronicColorPalette                  #Сделать цветом МОРСКОЙ ВОЛНЫ          () → Object/ElectronicColorPalette
+F-makeIndigo-K-FIX-T-ElectronicColorPalette                #Сделать цветом ИНДИГО                 () → Object/ElectronicColorPalette
+F-makeAmber-K-FIX-T-ElectronicColorPalette                 #Сделать ЯНТАРНЫМ                      () → Object/ElectronicColorPalette
+F-makeBlack-K-FIX-T-ElectronicColorPalette                 #Сделать ЧЁРНЫМ                        () → Object/ElectronicColorPalette
+F-makePurple-K-FIX-T-ElectronicColorPalette                #Сделать ФИОЛЕТОВЫМ                    () → Object/ElectronicColorPalette
+F-makeNavyBlue-K-FIX-T-ElectronicColorPalette              #Сделать ТЁМНО-СИНИМ                   () → Object/ElectronicColorPalette
+F-makeBlue-K-FIX-T-ElectronicColorPalette                  #Сделать СИНИМ                         () → Object/ElectronicColorPalette
+F-makeGray-K-FIX-T-ElectronicColorPalette                  #Сделать СЕРЫМ                         () → Object/ElectronicColorPalette
+F-makeLightSteelBlue-K-FIX-T-ElectronicColorPalette        #Сделать СЕРО-ГОЛУБЫМ                  () → Object/ElectronicColorPalette
+F-makeLightGray-K-FIX-T-ElectronicColorPalette             #Сделать СВЕТЛО-СЕРЫМ                  () → Object/ElectronicColorPalette
+F-makeLightGreen-K-FIX-T-ElectronicColorPalette            #Сделать СВЕТЛО-ЗЕЛЁНЫМ                () → Object/ElectronicColorPalette
+F-makeLightBlue-K-FIX-T-ElectronicColorPalette             #Сделать СВЕТЛО-ГОЛУБЫМ                () → Object/ElectronicColorPalette
+F-makeLimeLightGreen-K-FIX-T-ElectronicColorPalette        #Сделать САЛАТОВЫМ                     () → Object/ElectronicColorPalette
+F-makePink-K-FIX-T-ElectronicColorPalette                  #Сделать РОЗОВЫМ                       () → Object/ElectronicColorPalette
+F-makeMagenta-K-FIX-T-ElectronicColorPalette               #Сделать ПУРПУРНЫМ                     () → Object/ElectronicColorPalette
+F-makeOrange-K-FIX-T-ElectronicColorPalette                #Сделать ОРАНЖЕВЫМ                     () → Object/ElectronicColorPalette
+F-makeOlive-K-FIX-T-ElectronicColorPalette                 #Сделать ОЛИВКОВЫМ                     () → Object/ElectronicColorPalette
+F-makeRed-K-FIX-T-ElectronicColorPalette                   #Сделать КРАСНЫМ                       () → Object/ElectronicColorPalette
+F-makeBrown-K-FIX-T-ElectronicColorPalette                 #Сделать КОРИЧНЕВЫМ                    () → Object/ElectronicColorPalette
+F-makeGold-K-FIX-T-ElectronicColorPalette                  #Сделать ЗОЛОТЫМ                       () → Object/ElectronicColorPalette
+F-makeGreen-K-FIX-T-ElectronicColorPalette                 #Сделать ЗЕЛЁНЫМ                       () → Object/ElectronicColorPalette
+F-makeYellow-K-FIX-T-ElectronicColorPalette                #Сделать ЖЁЛТЫМ                        () → Object/ElectronicColorPalette
+F-makeDeepPurple-K-FIX-T-ElectronicColorPalette            #Сделать ГЛУБОКИМ ФИОЛЕТОВЫМ           () → Object/ElectronicColorPalette
+F-makeDeepOrange-K-FIX-T-ElectronicColorPalette            #Сделать ГЛУБОКИМ ОРАНЖЕВЫМ            () → Object/ElectronicColorPalette
+F-makeCyan-K-FIX-T-ElectronicColorPalette                  #Сделать БИРЮЗОВЫМ                     () → Object/ElectronicColorPalette
+F-makeWhite-K-FIX-T-ElectronicColorPalette                 #Сделать БЕЛЫМ                         () → Object/ElectronicColorPalette
+F-clear-K-FIX-T-ElectronicColorPalette                     #Очистить цвет                         () → Object/ElectronicColorPalette
+```
+
+`Object/ElectronicTableBo`
+```text
+F-createTab-K-FIX-T-ElectronicTableBo                      #Создать новый лист                    (tabTitle:Text/String) → Object/ElectronicTableBoTab
+F-convertToMybpmFileXlsx-K-FIX-T-ElectronicTableBo         #Преобразовать в файл XLSX             (fileName:Text/String?) → File/MybpmFile
+F-convertToMybpmFilePdf-K-FIX-T-ElectronicTableBo          #Преобразовать в файл PDF              (fileName:Text/String?) → File/MybpmFile
+F-firstTab-K-FIX-T-ElectronicTableBo                       #Первый лист                           () → Object/ElectronicTableBoTab
+F-tabCount-K-FIX-T-ElectronicTableBo                       #Количество листов                     () → Number/BigInteger
+F-isTabWithTitle-K-FIX-T-ElectronicTableBo                 #Есть ли лист с названием              (title:Text/String) → Bool/boolean
+F-appendFromFileXlsx-K-FIX-T-ElectronicTableBo             #Добавить листы из файла               (file:Object) → —
+F-tabByTitle-K-FIX-T-ElectronicTableBo                     #Дай лист по названию                  (title:Text/String) → Object/ElectronicTableBoTab
+F-tabByIndex-K-FIX-T-ElectronicTableBo                     #Дай лист по индексу                   (tabIndex:Number/int) → Object/ElectronicTableBoTab
+```
+
+`Object/XmlTag`
+```text
+F-setInnerText-K-FIX-T-XmlTag                              установить текст внутри                (text:Text/String) → —
+F-putNamespaceUriPrefix-K-FIX-T-XmlTag                     установить префикс                     (paramName:Text/String, namespaceUri:Text/String) → —
+F-createChild-K-FIX-T-XmlTag                               создать дочерний тег                   (tagName:Text/String) → Object/XmlTag
+F-getInnerText-K-FIX-T-XmlTag                              получить текст внутри                  () → Text/String
+F-getAttrAsText-K-FIX-T-XmlTag                             получить текст атрибута                (attrName:Text/String) → Text/String
+F-getInnerDate-K-FIX-T-XmlTag                              получить дату внутри                   () → Date
+F-gotoTag-K-FIX-T-XmlTag                                   перейти                                (qNamePath:Text/String) → Object/XmlTag
+F-tagName-K-FIX-T-XmlTag                                   имя тега                               () → Text/String
+F-setAttrAsText-K-FIX-T-XmlTag                             задать атрибут                         (attrName:Text/String, attrValue:Text/String) → —
+F-children-K-FIX-T-XmlTag                                  внутренние XML теги                    () → Object/XmlTag[]
+F-outerToXml-K-FIX-T-XmlTag                                XML в текст                            (pretty:Bool/boolean) → Text/String
+```
+
+`Object/RestResponse`
+```text
+F-resultAsText-K-FIX-T-RestResponse                        результат как текст                    () → Text/String
+F-resultAsMybpmByteArray-K-FIX-T-RestResponse              результат как массив байтов            () → Object/MybpmByteArray
+F-resultAsXml-K-FIX-T-RestResponse                         результат как XML                      () → Object/XmlTag
+F-resultAsJsonDeck-K-FIX-T-RestResponse                    результат как Json {} объект           () → Object/JsonDeck
+F-resultAsJsonArr-K-FIX-T-RestResponse                     результат как Json [] массив           () → Object/JsonDeck[]
+F-resultCode-K-FIX-T-RestResponse                          код статуса вызова                     () → Number/BigDecimal
+F-headers-K-FIX-T-RestResponse                             имена заголовков                       () → Text/String[]
+F-headerNumber-K-FIX-T-RestResponse                        заголовок как число                    (headerName:Text/String) → Number/BigDecimal
+F-headerText-K-FIX-T-RestResponse                          заголовок как текст                    (headerName:Text/String) → Text/String
+F-headerDate-K-FIX-T-RestResponse                          заголовок как дата/время               (headerName:Text/String) → Date
+```
+
+`Object/UUID`
+```text
+F-uuidToString-K-FIX-T-UUID                                #В текст                               () → Text/String
+```
+
+`Object/ElectronicTableBoTab`
+```text
+F-maxBatchSize-K-FIX-T-ElectronicTableBoTab                максимальный размер порции данных      () → Number/int
+F-currentRowIndex-K-FIX-T-ElectronicTableBoTab             индекс строки загрузки/выгрузки        () → Number/int
+F-colWidth-K-FIX-T-ElectronicTableBoTab                    Ширина колонки                         (colIndex:Number/int) → Number/BigDecimal
+F-cellType-K-FIX-T-ElectronicTableBoTab                    Тип ячейки                             (rowIndex:Number/int, colIndex:Number/int) → EnumRef/ElectronicCellType
+F-cellText-K-FIX-T-ElectronicTableBoTab                    Текст ячейки                           (rowIndex:Number/int, colIndex:Number/int) → Text/String
+F-cellStyle-K-FIX-T-ElectronicTableBoTab                   Стиль ячейки:                          (rowIndex:Number/int, colIndex:Number/int) → Object/ElectronicCellStyle
+F-title-K-FIX-T-ElectronicTableBoTab                       Имя листа                              () → Text/String
+F-rowHeight-K-FIX-T-ElectronicTableBoTab                   Высота строки                          (rowIndex:Number/int) → Number/BigDecimal
+F-removeThisTab-K-FIX-T-ElectronicTableBoTab               #Удалить этот лист                     () → —
+F-putErrorsIntoKeyColumn-K-FIX-T-ElectronicTableBoTab      #Ошибки помещать в колонку с индексом  (field:Number/int) → —
+F-clearAssociations-K-FIX-T-ElectronicTableBoTab           #Очистить ассоциации                   () → —
+F-countRows-K-FIX-T-ElectronicTableBoTab                   #Количество строк                      () → Number/int
+F-countCols-K-FIX-T-ElectronicTableBoTab                   #Количество колонок                    () → Number/int
+F-associateSingleUniqueRefCO-K-FIX-T-ElectronicTableBoTab  #Ассоциировать ссылку на композитный объект (КЛЮЧ) (field1:Object/BoFieldRefCode, field2:Object/BoFieldRefCode, colIndexFld:Number/int, colIndexType:Number/int, createIfNotFound:Bool/Boolean?) → —
+F-associateSingleRefCO-K-FIX-T-ElectronicTableBoTab        #Ассоциировать ссылку на композитный объект (field1:Object/BoFieldRefCode, field2:Object/BoFieldRefCode, colIndexFld:Number/int, colIndexType:Number/int) → —
+F-associateSingleUniqueRefBO-K-FIX-T-ElectronicTableBoTab  #Ассоциировать ссылку на бизнес-объект (КЛЮЧ) (field1:Object/BoFieldRefCode, field2:Object/BoFieldRefCode, colIndexFld:Number/int, createIfNotFound:Bool/Boolean?) → —
+F-associateSingleRefBO-K-FIX-T-ElectronicTableBoTab        #Ассоциировать ссылку на бизнес-объект (field1:Object/BoFieldRefCode, field2:Object/BoFieldRefCode, colIndexFld:Number/int) → —
+F-associateFieldByColIndex-K-FIX-T-ElectronicTableBoTab    #Ассоциировать поле                    (field:Object/BoFieldRefCode, colIndex:Number/int) → —
+F-associateKeyFieldByColIndex-K-FIX-T-ElectronicTableBoTab #Ассоциировать УНИКАЛЬНОЕ поле         (field:Object/BoFieldRefCode, colIndex:Number/int) → —
+F-copyFromTableToBo_colEqText-K-FIX-T-ElectronicTableBoTab # СКОПИРОВАТЬ: Электронная Таблица ➔ Бизнес-объект по условию (colIndex:Number/int, text:Text/String) → —
+F-copyFromTableToBo-K-FIX-T-ElectronicTableBoTab           # СКОПИРОВАТЬ: Электронная Таблица ➔ Бизнес-объект () → —
+F-copyFromBoToTable-K-FIX-T-ElectronicTableBoTab           # СКОПИРОВАТЬ: Бизнес-объект ➔ Электронная Таблица (filter:Filter/AbstractFilter?, sortField:Object/BoFieldRefCode?, ascending:Bool/Boolean?) → —
+```
+
+`Object/ElectronicCellStyle`
+```text
+F-font-K-FIX-T-ElectronicCellStyle                         Стиль текста                           () → Object/ElectronicFontWrapper
+F-borderRight-K-FIX-T-ElectronicCellStyle                  Граница справа                         () → Object/ElectronicCellBorder
+F-borderBottom-K-FIX-T-ElectronicCellStyle                 Граница снизу                          () → Object/ElectronicCellBorder
+F-borderLeft-K-FIX-T-ElectronicCellStyle                   Граница слева                          () → Object/ElectronicCellBorder
+F-borderTop-K-FIX-T-ElectronicCellStyle                    Граница сверху                         () → Object/ElectronicCellBorder
+F-alignmentHorizontal-K-FIX-T-ElectronicCellStyle          Выравнивание по горизонтали            () → EnumRef/AlignmentHorizontal
+F-alignmentVertical-K-FIX-T-ElectronicCellStyle            Выравнивание по вертикали              () → EnumRef/AlignmentVertical
+F-borders_setColor-K-FIX-T-ElectronicCellStyle             #Установить цвет сразу всем границам   (color:Object/ElectronicColorPalette) → —
+F-borders_setStyle-K-FIX-T-ElectronicCellStyle             #Установить стиль сразу всем границам  (color:EnumRef/ElectronicBorderStyle?) → —
+F-copyFrom-K-FIX-T-ElectronicCellStyle                     #Скопировать сюда все стили из         (acs:Object/ElectronicCellStyle) → —
+```
+
+`Object/BoFieldRefCode`
+```text
+F-findRemoved-K-FIX-T-BoFieldRefCode                       Найти по этому полю в удаленных        (fieldValue:Object?) → Bo/BoiRefCode[]
+F-findArchived-K-FIX-T-BoFieldRefCode                      Найти по этому полю в архивных         (fieldValue:Object?) → Bo/BoiRefCode[]
+F-findSmall-K-FIX-T-BoFieldRefCode                         Найти по этому полю (мало данных)      (fieldValue:Object?) → Bo/BoiRefCode[]
+F-find-K-FIX-T-BoFieldRefCode                              Найти по этому полю                    (fieldValue:Object?) → Bo/BoiRefCode[]
+```
+
+`Object/ElectronicFontWrapper`
+```text
+F-bgColor-K-FIX-T-ElectronicFontWrapper                    Цвет фона                              () → Object/ElectronicColorPalette
+F-fontColor-K-FIX-T-ElectronicFontWrapper                  Цвет текста                            () → Object/ElectronicColorPalette
+F-fontHeight-K-FIX-T-ElectronicFontWrapper                 Размер шрифта                          () → Number/BigDecimal
+F-fontUnderline-K-FIX-T-ElectronicFontWrapper              Подчёркивание                          () → EnumRef/ElectronicUnderline
+F-italic-K-FIX-T-ElectronicFontWrapper                     Наклонность                            () → Bool/boolean
+F-fontName-K-FIX-T-ElectronicFontWrapper                   Имя шрифта                             () → Text/String
+F-strikeout-K-FIX-T-ElectronicFontWrapper                  Зачёркнутость                          () → Bool/boolean
+F-bold-K-FIX-T-ElectronicFontWrapper                       Жирность                               () → Bool/boolean
+```
+
+`Object/ElectronicCellBorder`
+```text
+F-color-K-FIX-T-ElectronicCellBorder                       Цвет                                   () → Object/ElectronicColorPalette
+F-style-K-FIX-T-ElectronicCellBorder                       Стиль                                  () → EnumRef/ElectronicBorderStyle
+```
+
+`Object/JsonDeck`
+```text
+F-put-K-FIX-T-JsonDeck                                     установить                             (paramName:Text/String, value:Object) → —
+F-toTextPretty-K-FIX-T-JsonDeck                            #превратить json в текст (красиво)     () → Text/String
+F-toText-K-FIX-T-JsonDeck                                  #превратить json в текст               () → Text/String
+F-isNumber-K-FIX-T-JsonDeck                                #Число ли?                             (paramName:Text/String) → Bool/boolean
+F-isText-K-FIX-T-JsonDeck                                  #Текст ли?                             (paramName:Text/String) → Bool/boolean
+F-isDate-K-FIX-T-JsonDeck                                  #Дата/время ли?                        (paramName:Text/String) → Bool/boolean
+F-isBool-K-FIX-T-JsonDeck                                  #Да/Нет ли?                            (paramName:Text/String) → Bool/boolean
+F-getAsNumber-K-FIX-T-JsonDeck                             #Взять число                           (paramName:Text/String) → Number/BigDecimal
+F-getAsText-K-FIX-T-JsonDeck                               #Взять текст                           (paramName:Text/String) → Text/String
+F-getAsDate-K-FIX-T-JsonDeck                               #Взять дату/время                      (paramName:Text/String) → Date
+F-getAsBool-K-FIX-T-JsonDeck                               #Взять Да/Нет                          (paramName:Text/String) → Bool/boolean
+F-getAsJsonDeck-K-FIX-T-JsonDeck                           #Взять Json {} объект                  (paramName:Text/String) → Object/JsonDeck
+F-getAsJsonArr-K-FIX-T-JsonDeck                            #Взять Json [] массив                  (paramName:Text/String) → Object/JsonDeck[]
+F-isJsonDeck-K-FIX-T-JsonDeck                              #Json {} объект ли?                    (paramName:Text/String) → Bool/boolean
+F-isJsonArr-K-FIX-T-JsonDeck                               #Json [] массив ли?                    (paramName:Text/String) → Bool/boolean
+```
+
+`Filter/AbstractFilter`
+```text
+F-createNotFilter-K-FIX-T-AbstractFilter                   НЕ                                     () → Filter/AbstractFilter
+F-createOrFilter-K-FIX-T-AbstractFilter                    ИЛИ                                    (rightFilter:Filter/AbstractFilter) → Filter/AbstractFilter
+F-createAndFilter-K-FIX-T-AbstractFilter                   И                                      (rightFilter:Filter/AbstractFilter) → Filter/AbstractFilter
+```
+
+`Object/ScriptMultiLangText`
+```text
+F-addText-K-FIX-T-ScriptMultiLangText                      Добавить                               (text:Text/String, lang:EnumRef/MybpmLang) → —
+```
+
+`File/MybpmFile`
+```text
+F-isEmpty-K-FIX-T-MybpmFile                                пусто?                                 () → Bool/boolean
+F-type-K-FIX-T-MybpmFile                                   Тип файла                              () → EnumRef/MybpmFileType
+F-createdAt-K-FIX-T-MybpmFile                              Когда создали                          () → Date
+F-name-K-FIX-T-MybpmFile                                   Имя                                    () → Text/String
+F-unzipFile-K-FIX-T-MybpmFile                              #разархивировать                       () → Object/File[]
+F-toMybpmByteArray-K-FIX-T-MybpmFile                       #преобразовать в массив байтов         () → Object/MybpmByteArray
+F-extractFileExtension-K-FIX-T-MybpmFile                   #Скачать и преобразовать в Java-файл   () → Object/File
+F-loadFromFile-K-FIX-T-MybpmFile                           #Превратить в электронную таблицу      () → Object/ElectronicTableBo
+```
+
+`Object/MybpmByteArray`
+```text
+F-convertToFile-K-FIX-T-MybpmByteArray                     конвертировать в файл                  (fileName:Text/String) → File/MybpmFile
+F-toBase64-K-FIX-T-MybpmByteArray                          #преобразовать в текст Base64          () → Text/String
+```
+
+`Object/MybpmUrl`
+```text
+F-boiRefCode-K-FIX-T-MybpmUrl                              Экземпляр БО                           () → Bo/BoiRefCode
+F-type-K-FIX-T-MybpmUrl                                    Тип ссылки                             () → EnumRef/MybpmUrlType
+F-personRefCode-K-FIX-T-MybpmUrl                           Ссылка на пользователя                 () → Bo/BoiRefCode
+F-fieldRefCode-K-FIX-T-MybpmUrl                            Поле экземпляра БО                     () → BoField/BoiFieldRefCode
+F-isExternal-K-FIX-T-MybpmUrl                              Внешняя ссылка                         () → Bool/boolean
+F-generate-K-FIX-T-MybpmUrl                                #Сформировать                          () → Text/String
+```
+
+`Object/SignedField`
+```text
+F-fieldId-K-FIX-T-SignedField                              Идентификатор поля                     () → Text/String
+F-boId-K-FIX-T-SignedField                                 Идентификатор БО                       () → Text/String
+F-mybpmFiles-K-FIX-T-SignedField                           Документы                              () → File/MybpmFile[]
+```
+
+`ProgressBar/ProgressStepRefCode`
+```text
+F-getColor-K-FIX-T-ProgressStepRefCode                     #получить цвет                         () → EnumRef/Color
+F-setColorUntil-K-FIX-T-ProgressStepRefCode                #покрасить предыдущие в                (color:EnumRef/Color) → —
+F-setColor-K-FIX-T-ProgressStepRefCode                     #покрасить в                           (color:EnumRef/Color) → —
+F-clearAfter-K-FIX-T-ProgressStepRefCode                   #очистить последующие                  () → —
+F-clear-K-FIX-T-ProgressStepRefCode                        #очистить                              () → —
+F-hasColor-K-FIX-T-ProgressStepRefCode                     #есть цвет?                            () → Bool/boolean
+F-saveBoiChanges-K-FIX-T-BoiRefCode                        #Сохранить                             () → —
+F-updateOpenedBoi-K-FIX-T-BoiRefCode                       #Обновить из базы открытую инстанцию   (target:Bo/BoiRefCode) → —
+F-closeOpenedBoi-K-FIX-T-BoiRefCode                        #Закрыть                               () → —
+```
+### Calling an action that returns nothing — `BlockAssign` without `rightExprId` `[C]`
+
+`{"type":"BlockAssign","leftExprId":"<ExprAct of a void action>"}` — no `rightExprId`. The IDE draws it
+with the right slot hidden (`scriptMetaState.blockAssignStates[<blockId>].hideRightExpr`, UI state only,
+not part of the def). Compiled for `JsonDeck.put`, `ScriptMultiLangText.addText` and
+`field.#Добавить ошибку` (2026-09-24). A method call used as a statement is the same shape with an
+`ExprCall` on the left.
 
 ## 13. Methods
 
@@ -2468,6 +3271,52 @@ all pasted without loss where read back. If a paste ever chokes, split into meth
   bound carriers are harmless); (b) delete the carriers and reconnect refs to the parameters — the next
   copy then has body + hat and no carriers.
 
+### Validator phases — `translate-script` stops at the first failing phase `[C]` (2026-09-24)
+
+Found by pasting a 750-block / 1848-expression scratch (every catalogue act once) into a hook. The server
+checks in phases and **reports only the phase that fails** — an error list is never the whole story, fix and
+re-check until `{"success":true}`:
+1. **Script structure**: `noEntryPoint` «Нет точки входа» (a hook body needs the `BlockFixEntryPoint` hat in
+   the fragment — it pastes fine into a hook) and `blockIf__allBranchMustReturn__orContinueDownWithReturn`
+   (a hook must END with `{"type":"BlockExit","exitType":"FROM_METHOD"}` — put it `downBlockId` of the last
+   top-level block). A variable whose type has no ext type (`getPrintForms` of a record) fails here too.
+2. **Types**, all at once (17 in one list): a scalar added to / searched in a typed array
+   (`illegalElementTypeForList`), `Readonly/Required/Shown -K-DYN-R-M-` need a user/department/group ref as
+   argument, `SHOWN_BO_IN_CO_FIELD` needs a BO chosen as a CO attribute, `addFile_v2` wants a `File`, a
+   filter kind not applicable to the field (`inapplicableFilter`), `sendToUsers` wants Person/PersonGroup/
+   Department, the four `associateSingle*Ref*` of a spreadsheet tab need a reference main field.
+3. **Read / write access, ONE error per run**: some properties are WRITE-ONLY — they may only stand on the
+   left of `=` (`exprAct__readWayIsAbsent` «Нет действия на чтение у акта …») — and some are READ-ONLY
+   (`exprAct__writeWayIsAbsent` «Нет действия на запись у акта …» when assigned). The catalogue carries NO
+   read/write flag (`load-act-record-list` / `load-act-details` / the IDE bundle) — only this phase tells.
+   Confirmed `[C]` (2026-09-24, every `RestRequest` property tested alone, as a write and as a read):
+
+   | object | write-only | read-only | read + write |
+   |---|---|---|---|
+   | `RestRequest` | `sendingText`, `sendingXmlTag`, `sendingMultipartForm`, `sendingJsonDeck`, `sendingJsonArr`, `address`, `method` | `showHeaders` | `readTimeout`, `connectTimeout`, `writeTimeout`, `callTimeout`, `checkSslCertificate` |
+   | `ElectronicTableBoTab` | `cellType` | | |
+
+   So a REST call is written `запрос.адрес = …`, `запрос.Метод вызова = GET`, `запрос.отправляемый … = …`,
+   then `#ответ# = запрос.#вызвать`; the request's own address/body cannot be read back. Properties of the
+   other objects were only READ in the scratch (all compile); whether they are writable is untested `[U]`.
+4. **Java compilation** — the script is translated to `Main.java` and compiled (`compile:compiler.err.*`,
+   `sourceMessage` carries the Java line; the `exprId` sits at the TOP level of the diagnostic, not in
+   `messageArgs`). **Defect** `[C]`: the catalogue offers `saveBoiChanges` / `updateOpenedBoi` /
+   `closeOpenedBoi` (`-K-FIX-T-BoiRefCode`) also on a BO type (`BoRefCode`), a field (`BoiFieldRefCode`)
+   and a progress step (`ProgressStepRefCode`); phases 1-3 accept them, the compiler rejects them
+   («BoRefCode cannot be converted to BoiRefCode»). Use them only on a record.
+   Two `INFO` diagnostics `compile:compiler.note.unchecked.*` («uses unchecked or unsafe operations») come
+   with a success and mean nothing.
+Undo between attempts: `v2/script/undo {scriptModuleId, scriptId}` reverts the whole paste (one command).
+
+After cutting everything these phases reported, **the rest of the scratch — 711 blocks / 1723 expressions,
+454 of the 476 catalogue acts — translates with `{"success":true}`** `[C]` (2026-09-24). The 22 acts that
+were cut: the 13 `RestRequest` properties (the scratch READ them; 7 are write-only, the other 6 were cut
+wholesale and are fine — phase 3's table), `ElectronicTableBoTab.cellType` (write-only), `getPrintForms` (phase 1),
+`SHOWN_BO_IN_CO_FIELD`, `addFile_v2`, `sendToUsers` and the four `associateSingle*Ref*` (phase 2 — they
+need arguments of a kind this probe BO does not have, not a platform defect). Compiling is not running:
+nothing of this was executed on a record.
+
 ### Verifying a pasted script
 
 - **"The IDE showed no red" is NOT a check** — it silently ate 55 expressions. Always copy back and compare
@@ -2574,7 +3423,7 @@ unless marked otherwise.
   from an IF branch.
   **Rule: test a boolean as `ЕСЛИ #переменная#` (`ifExprId` = VAR_REF, else branch `exprId:null`); keep
   ONE method exit; `FROM_CIRCLE` inside loops is fine.**
-- `Or` was never seen working `[U]` — write disjunction as nested IFs.
+- `Or` (and `Not`, `Xor`) compile (§12a) but were never run on a record `[U]` — write disjunction as nested IFs.
 - A checkbox's value act is accepted as a bare IF condition and a dependent stand check passed `[I]`; its
   runtime type and its text form when concatenated (`yes`/`Да`/`1`/empty) were never measured `[U]`.
   Fallback: compare against `{constType:"Boolean", value:"yes"}`.
@@ -2670,7 +3519,18 @@ Scripts:
 24. Never re-paste a whole script "just in case" — it reverts every IDE edit made since the dump.
 25. Never assume a primitive is missing — ask for a palette screenshot; `#В число` and `#Заменить` were
     both "missing" and both exist. Never guess an actId — have the user build the block and copy the JSON
-    (`op_type`, `step_order`, `Multiply`, `Divide` were all wrong guesses).
+    (`op_type`, `step_order`, `Multiply`, `Divide` were all wrong guesses). Since 2026-09-24 the palette
+    need not be guessed at all: §12a is the complete catalogue, read off the stand.
+26. **An enum value the server does not know bricks the BO** `[C]` (2026-09-24, a probe BO on `<stand>`).
+    A script def is stored as sent — `apply-update-cmd` (and, by the same storage, an archive) wrote
+    `"opType":"GreaterEq"` without complaint. From then on the server cannot decode the BO's script
+    module: `translate-script`, `load-script-def`, `load-bo-scripts` of EVERY version (work included),
+    `load-bo-script-versions`, `apply-update-cmd`, `undo`, `delete-local-method` and
+    `remove-bo-script-version` all answer `IllegalArgumentException: No enum constant …OpType.GreaterEq`
+    — so the bad value cannot be overwritten either. Other BOs are unaffected. No API repair was found;
+    it needs the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
+    `constType`, block/expression `type`, `varType`) takes ONLY a value listed in §10–§12a — a
+    string-typed key (`actId`, `enumValue`, `varName`) is safe to get wrong, the validator reports it.
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
@@ -2687,7 +3547,8 @@ here; the rules themselves are §0X.4.
   `authorsField.fieldCodes` / `participants` + `needAddToParticipants` are unconfirmed.
 - How to express an M:N (TABLE↔TABLE) link.
 - Whether import applies `hideLabel` and the real ceiling of `gridLayoutPosition.h`.
-- opType names for `Or`, `Not`, `≥`, `≤`; the `#Содержит` and `#Чётное ли?` actIds.
+- The runtime of `Or` / `Xor` / `Not` / `LessEq` / `MoreEq` / `OrEq` / `AndNotEq` (they compile, §12a).
+- The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
 - The checkbox value's runtime type and its text form when concatenated.
 - Whether a counted loop re-evaluates its bound, and the counter's base.
 - Whether a method argument can carry a LIST of instances.

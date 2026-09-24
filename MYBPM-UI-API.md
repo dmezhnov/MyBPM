@@ -1497,8 +1497,9 @@ true of the IDE, not of the platform.
 **Six calls were executed on 2026-09-18 and are `[C]`** — `v2/script-browser/load-tree` + `load-children`,
 `v2/bo-scripts-editor/load-bo-script-versions` + `load-bo-scripts`, `v2/script/load-script-def` and
 `v2/script/translate-script` (the reading half; see «Reading a BO's scripts headlessly» below). The
-WRITING half — `paste`, `apply-update-cmd`, `create-local-method` — is still untried, but writing a script
-no longer needs it: **an archive creates scripts on import** (`MYBPM-IMPORTS.md` §5d, verified).
+WRITING half: **`apply-update-cmd` and `paste` are `[C]` since 2026-09-24** (below, «Writing a script
+headlessly»); `create-local-method` is still untried. An archive also creates scripts on import
+(`MYBPM-IMPORTS.md` §5d, verified).
 
 | controller | scope | methods |
 |---|---|---|
@@ -1516,8 +1517,12 @@ no longer needs it: **an archive creates scripts on import** (`MYBPM-IMPORTS.md`
 - **`/paste` is the server side of Ctrl+V**: the client sends `{copied: <the exact JSON of §0S.3>}`, gets
   back `{copied: …}` with every id regenerated, and then writes the returned `blocks`/`expressions` into
   the script with one `apply-update-cmd` (`Set` per `blocks.<id>` / `expressions.<id>`). **That is a
-  headless delivery path for a script**, and it is the thing to try first when §0S.12's
-  «put it on the clipboard and ask the user to paste» is inconvenient. Untried `[U]`.
+  headless delivery path for a script** `[C]` (2026-09-24): `paste` alone writes nothing; the
+  `apply-update-cmd` that follows (a `Group` of `Set`s, the `backward` a `Group` of `Unset`s) does, then
+  `translate-script` checks and `undo` removes the whole step in one call. Used with no browser UI at all
+  on a 711-block / 1723-expression fragment and on 26 small ones in a row. Into an empty hook the fragment
+  goes with its `BlockFixEntryPoint` hat and a closing `BlockExit FROM_METHOD` (`MYBPM-IMPORTS.md` §0S.12
+  item 7, §14 «Validator phases»).
 - The paste the IDE refuses is reproduced server-side too: a fragment whose blocks include
   `BlockFixMethod` or `BlockFixEntryPoint` is rejected for a global method.
 - A process version carries its scripts as a `scriptsDefs {defs: {<figureId>: {blocks, expressions}}}`
@@ -1559,6 +1564,83 @@ Use it after every script write — an import NEVER reports a broken body (`MYBP
   (controller `v2/script-browser`: `load-tree`, `load-children {folderId}`, `search {query}`,
   `load-exit-variants {scriptModuleId, scriptId}`). This answers open question 20 only on paper — nobody
   has opened it yet.
+
+#### Writing a script headlessly — `apply-update-cmd` `[C]` (2026-09-24, `<stand>`)
+
+Captured from the IDE itself (a `fetch`/XHR patch, §10) and then used alone to write a 27-block /
+84-expression probe:
+
+```
+POST /web/v2/script/apply-update-cmd
+params {scriptModuleId, scriptId}
+body   {"name":"<any label>",
+        "forward": {"type":"Group","list":[{"type":"Set","dotPath":"blocks.<id>","value":{…whole block…}},
+                                           {"type":"Set","dotPath":"expressions.<id>.opType","value":"Or"},
+                                           {"type":"Unset","dotPath":"blocks.<id>"}, …]},
+        "backward":{"type":"Group","list":[…the inverse, for the server-side undo…]}}
+```
+
+- `dotPath` goes as deep as you like: a whole block, one key of it (`blocks.<id>.downBlockId`), a map
+  entry (`blocks.<id>.branches.<branchId>`). The IDE sends one small command per gesture
+  (`CREATE_BLOCK_AND_CONNECT_DOWN`, `Bond_newExprValue`, `ExprValue_ChangeConstType` …); one big `Group`
+  works as well. The answer echoes the applied update.
+- Ids are yours: any 16 characters of `A-Za-z0-9@~`, kept verbatim (`load-new-ids {count}` hands out
+  server-made ones if you prefer).
+- To replace a body: `Unset` every old block and expression except the hat / entry point, `Set` the new
+  ones, `Set` the hat's `downBlockId`. The hook's exit block may be kept and re-linked.
+- **Some properties are write-only or read-only**, and the catalogue does not say which — only
+  `translate-script` does (`exprAct__readWayIsAbsent` / `exprAct__writeWayIsAbsent`, one per run) `[C]`
+  (2026-09-24). `RestRequest`: write-only `sendingText/XmlTag/MultipartForm/JsonDeck/JsonArr`, `address`,
+  `method`; read-only `showHeaders`; both `*Timeout`, `checkSslCertificate`. `ElectronicTableBoTab.cellType`
+  is write-only. (`MYBPM-IMPORTS.md` §14 «Validator phases» has the four phases.)
+- **Then `translate-script`** — the only check. It reports wrong `actId`s, argument names, dangling ids
+  and types; `success:true` with a `WARN used_deprecated_blocks` means an old-panel element is present.
+- **Never write an enum value you have not seen in `MYBPM-IMPORTS.md` §10–§12a** (`opType`, `exitType`,
+  `exprValueType`, `constType`, `type`). The server stores it, then cannot decode the BO's script module
+  any more: every read and write of every version of that BO's scripts — including `apply-update-cmd`,
+  `undo`, `delete-local-method`, `remove-bo-script-version` — answers `IllegalArgumentException: No enum
+  constant …`, so nothing can repair it through the API `[C]` (2026-09-24, one probe BO lost this way;
+  other BOs unaffected). A wrong STRING value (`actId`, argument key, `enumValue`) is harmless — the
+  validator reports it.
+- Work on a **test version** (`in-test-bo-script-version` / the «Версия: N (Тест)» switch in the dialog) —
+  it does not protect against the trap above (all versions are decoded together) but keeps a working
+  hook out of an experiment's way.
+
+#### The catalogue calls — the IDE's whole palette, headlessly `[C]` (2026-09-24)
+
+All `POST /web/v2/script/<method>`; `P` = the params half, `B` = the body half. They are what the IDE
+itself calls to fill its dialogs; `MYBPM-IMPORTS.md` §12a is the complete result.
+
+| method | send | returns |
+|---|---|---|
+| `load-func-groups-definition` | P `{scriptModuleId, scriptId}` | `{groups:{<groupId>:{name, functions:{<funcId>:{args:{a0…}, returnDefinition}}}}}` — the old-panel functions |
+| `load-objects-definition` | same | `{objects:{MybpmUrl, MybpmFile, SignedField, MybpmSignature, ProcessServiceCaller}}` with `members` |
+| `load-enums-definition` | same | 5 enums only — the full 16 come from `load-const-field-list` below |
+| `load-bo-def-list` | same | `{selfBoId, list:[{id, name, code, fields:{<fieldId>:{label, code, valueExtType}}}]}` — every BO the script may see |
+| `load-const-value-type-list` | P `{filter:null}` | the 15 value kinds of «выберите значение» |
+| `load-const-form` | P `{baseType}` (`String`, `Enum`, `JavaObjectFactories` …) | the form of a constant: which keys it writes (`updateDotPathMap`) and which list feeds it (`fieldCode`) |
+| `load-const-field-list` | B `{fieldCode, inputDataValues:{…}, isProcessTest:false, scriptModuleId, ownerBoIsProcess:false, filter:"", offset:0, limit:1000}` | a list for a constant: `ENUM_LIST`, `ENUM_VALUE_LIST` (`inputDataValues:{enumBaseType}`), `JAVA_OBJECT_FACTORY_LIST`, `SCRIPT_METHOD_LIST`, `REPORT_LIST`, `PRINT_FORM_LIST`, `BOOLEAN_LIST` … **`inputDataValues` is an object — an array answers 400 «Failed to read request»** |
+| `load-act-record-list` | B `{filter:"", offset:0, limit:500, leftType:<valueExtType>, companyId, testMode:false, contextOwnerBoId}` | the actions on a value of that type (`[{id, displayStr}]`); **`companyId` is required** (missing → `NullPointerException: strId …`); it is `companyId` of `GET /web/v2/auth/load-auth-info` |
+| `load-act-details` | B `{leftType, actId, companyId, testMode:false}` | `{name, description, arguments:[{argId, type, canBeEmpty}], ret:{type}}` |
+| `load-value-ext-type-for-expr` | B = an expression (e.g. a `JavaObjectFactories` constant) | its `valueExtType` |
+| `load-predefined-expr-value-params-for-ext-type` | B = a `valueExtType` | the default keys of a new value in a slot of that type |
+
+A `valueExtType` is `{type, baseType, isArray, boCode?, boId?, enumNativeName?}` — e.g.
+`{type:"Text",baseType:"String"}`, `{type:"Bo",baseType:"BoiRefCode",boCode,boId}` (a record),
+`{type:"Bo",baseType:"BoRefCode",boCode,boId}` (the BO type). Walk: `load-act-record-list` →
+`load-act-details(ret.type)` → `load-act-record-list(ret.type)` … — that is how §12a was produced.
+
+#### Where the IDE is and what its panel holds `[C]` (2026-09-24)
+
+BO constructor `…/business-objects/editing/<boId>/object-editing` → the orange «scripts» icon at the top
+right → dialog **«Настройка скрипта»**: left, the tabs «Скрипты» (hooks Открытие / Сохранение /
+Добавление новой записи / Закрытие, and «На изменение Поля: ⊕») and «Локальные методы»; top right, the
+version switch («Версия: N (Тест)»); in the canvas the `»` at the top left unfolds the toolbox. The
+toolbox holds exactly: ТОЧКА ВХОДА, «Пусть переменная =», «⬭ = ⬭» with «‹значение›», «Выход» with
+«⬭.‹действие›», «‹Вызов метода›», «Если … то», «Цикл элемент :», and `+ ∙ И =`. A click on an empty slot
+opens «выберите значение» (15 kinds; in a BO script `THIS_PROCESS` is labelled «ЭТА ИНСТАНЦИЯ»); a
+second-level list such as «Встроенные объекты» may open EMPTY («Данных нет») until «Загрузить ещё» is
+pressed. The red dot with a number at the top right is the count of `translate-script` diagnostics.
 
 ### 5h. Field settings — «Обязательное», «Уникальное», «Выпадающий список» `[C]` (2026-09-18, `<company-a>`)
 
@@ -2111,6 +2193,13 @@ the registry, the sort arrow sits on «Дата и время», no error — pi
   left in the registry breaks the moment anyone clicks it (and clicking again for the other direction
   fails too). Reordering only decides whether the screen is broken *on arrival*. №6983 is in that state:
   healthy until its «Текстовое поле» header is clicked.
+- **The registry REMEMBERS the clicked sort** `[C]` (2026-09-23, build S4.24.25.632, in the UI): after one
+  click on a text header, every later opening of that registry (navigation or F5) arrives empty — only
+  «Загрузить ещё», the counter still «из N», 2–4 «Ошибка» toasts — until a header of a non-string column
+  is clicked. Right after the failing click the screen keeps the OLD rows unchanged plus the toast, so it
+  looks half-alive; it is the next opening that is empty. Whether the remembered sort is per user or
+  shared by everyone was not checked `[U]`. This is why №6983 was found broken on arrival although its
+  first column is the date.
 - **The only reliable UI-side mitigation is to keep filled string fields OUT of the registry columns**
   (`tableColToShow: false`) — then the failing sort is unreachable from the screen. Everything else is
   cosmetic, and nothing repairs the mapping itself.
@@ -2304,6 +2393,17 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   or the session harness reaps it; and stop it **by PID** — `pkill -f 'bun bridge.bun.ts'` inside a
   Bash call matches the wrapper shell's own command line and kills it, so the rest of that command
   silently never runs.
+- **Pasting into the Block IDE from automation** `[C]` (2026-09-24): the IDE pastes from the canvas
+  CONTEXT MENU (right click → «Вставить»), not from Ctrl+V, and reads the clipboard with
+  `navigator.clipboard.readText()` when the menu opens — which fails under CDP («Document is not focused»),
+  so the item silently pastes nothing. Fix: override it in the page before the right click —
+  `navigator.clipboard.readText = async () => window.__scr` (the JSON fetched from the local bridge) —
+  then click «Вставить» with a REAL `computer left_click` (`el.click()` and synthetic mouse events on its
+  `<tr>` are ignored); compute the point from the `<tr>` rect × (screenshot width / `innerWidth`). The
+  paste is `v2/script/paste` + one `apply-update-cmd`. After a navigation the first click on the scripts
+  icon is swallowed — click `[selenide=q9qtPW3E-bo-script-icon]` from JS instead.
+  **Usually you do not need the UI at all**: the same two calls work headlessly from any page of the
+  stand (`fetch('/web/…')` with the page's own token) — §5g «Writing a script headlessly» `[C]` (2026-09-24).
 - **`javascript_tool` dies at 45 s** (`CDP sendCommand "Runtime.evaluate" timed out`) `[C]` (2026-09-18),
   but **the page keeps running the promise** — the timeout kills the wait, not the work. So for anything
   long (a loop of imports, a poll), do NOT await it in the call: start it as
@@ -2494,6 +2594,11 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     (2026-09-19) — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a Spring
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
     `ensure-index`. Whenever a bundle-read controller 404s, retry the same path under `v2`. §6a.
+49. **One unknown enum value in a script def makes ALL scripts of that BO unreadable — for good** `[C]`
+    (2026-09-24). `apply-update-cmd` stored `"opType":"GreaterEq"`; afterwards every script call on that
+    BO (read, translate, versions, apply, undo, delete) answers `IllegalArgumentException: No enum
+    constant …`, the fix included. Only listed enum values (`MYBPM-IMPORTS.md` §10–§12a) may be written;
+    a wrong `actId` or argument name is harmless. §5g «Writing a script headlessly».
 
 ## 12. Open questions
 
@@ -2503,10 +2608,13 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - What `save-business-form-field` is actually for, since it does not create fields.
 - Whether a BO created in the constructor can be moved between groups by `move-business-object-to-group`,
   and what `clone-business-object` copies.
-- **The whole of §5g is unexecuted**: whether `v2/script/load-script-def` really returns the §0S JSON,
-  whether `v2/script/paste` + `apply-update-cmd` delivers a script without the clipboard, and whether
-  `create-local-method` / `create-company-global-method` really create a method headlessly. This is the
-  one thing that would rewrite `MYBPM-IMPORTS.md` §0S.1 and §0S.12.
+- **Still unexecuted in §5g**: whether `create-local-method` /
+  `create-company-global-method` really create a method headlessly (`load-script-def`,
+  `translate-script`, `apply-update-cmd`, `paste` and the catalogue calls are `[C]` since 2026-09-18/24). A
+  headless method would rewrite `MYBPM-IMPORTS.md` §0S.1 and §0S.12.
+- **Is there any repair for a BO whose script module no longer decodes** (§11 trap 49)? Candidates
+  never tried: a structure import carrying that BO's scripts, `save-bo-scripts`, `copy-bo-script-version`,
+  a vendor-side database fix. The probe BO «Проба скрипт архивом 2026-09-18» on `<stand>` is in that state.
 - **The success path of `/web/v2/auth/v3/login` was never run** (§0U.1 route A) — only the failure. If
   the body turns out not to be the bare token, §0U.1 and §1 need correcting.
 - The `v2/bo-transfer` record import/export (§6) is equally unexecuted — the UI route is the confirmed one.
