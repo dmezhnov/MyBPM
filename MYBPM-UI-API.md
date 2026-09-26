@@ -1454,6 +1454,41 @@ identical (`validate-def` clean, Enter → Exit rendered on screen).
   (`--process-status <refBoId>`, the stand's «Статус процесса» dictionary id) if the imported process is
   meant to look like an exported one. Whether a process RUNS without that field is `[U]`.
 
+#### Configuring the figures — what each settings dialog writes `[C]` (2026-09-26, `<stand>`)
+
+Probe «Проба БП 2026-09-26» (`7zJ~KDo4TeqT~pxZ`, version `3Fv2pBOX@Dq2fJhI`, group «Бизнес-объект»):
+Enter → Form → Script → Switch → two Exits. Every setting is ONE `apply-update-cmd` (named as below)
+followed by `validate-def {boProcessId, testMode:true}`; nothing else is written.
+
+- **Form** — born as `{x, y, type:"Form", fieldId:null, createTimer:null, openFormTimer:null,
+  touchDraftTimer:null}`. Double-click opens `mybpm-process-figure-form-dialog`:
+  - «Выберите бизнес-объект» lists the process's own **BO-reference fields** (a fresh process has only
+    `PROCESS_STATUS`) → `CHANGE_FIGURE_FIELD_ID`, `Set figures.<id>.fieldId = "<fieldId>"`. So a Form step
+    shows the form of the record held in that field; the figure's label becomes the field's name.
+    Choosing it closes the dialog.
+  - «Задать таймер» — three timers «Время от создания» / «от открытия формы» / «от первого изменения» →
+    `CHANGE_FIGURE_CREATE_TIMER` / `…_OPEN_FORM_TIMER` / `…_TOUCH_DRAFT_TIMER`, each
+    `Set figures.<id>.<createTimer|openFormTimer|touchDraftTimer> = {useTimer, timeInMinute, unitType:
+    "MINUTES"|"HOURS"|…, workingTime}` («Календарное / Рабочее» = `workingTime`). They are written when the
+    dialog CLOSES (all three at once after choosing a field). An armed timer draws a clock on the figure
+    and does **not** add a slot: validation asks for no second exit. What happens when it fires is `[U]`.
+  - Trap: the dialog's checkboxes and unit buttons ignore `el.click()` from JS; the number input does
+    take the native-setter trick. Writing the command directly is simpler.
+- **Arrow name** — double-click the arrow → an inline input; Enter →
+  `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
+  («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
+- **Script / Switch** — born as `{x, y, type:"Script", script:null}` / `{x, y, type:"Switch"}`.
+  Double-click → `save-editing-script-figure-id {boProcessId, scriptFigureId}` and the ordinary Block IDE
+  opens with **`scriptModuleId = boProcessId` (the version id) and `scriptId = the figure id`**
+  (`v2/script/load-script-def` → `{blocks:{}, expressions:{}}` when empty). So §5g's headless
+  `paste` / `apply-update-cmd` apply to process scripts with those two ids. An EMPTY Script or Switch
+  validates clean — `validate-def` checked nothing inside them.
+- **Slots**: a figure dragged out of a slot joins by `startSlotName` of that slot → `finishSlotName:"left"`
+  on a Form; the Switch's `main` slot is its TOP vertex. Dragging out of a slot worked from the Enter but
+  NOT from the Form's right slot (two tries, no picker) — the API route is the reliable one.
+- The IDE of a process record offers three process-only actions — `goForProcess`, `continueProcess`,
+  `terminateProcess` (`MYBPM-IMPORTS.md` §12a «Actions that exist only on a PROCESS record»).
+
 ### Export through the API — no browser download `[C]` (2026-09-18)
 
 The browser's own «Выгрузить» fires but **the file never reaches `~/Downloads` under Claude-in-Chrome**.
@@ -2532,6 +2567,12 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 - «extension is not connected» / `list_connected_browsers` → `[]` after switching accounts: Claude Code and
   the extension must be on the SAME claude.ai account and the bridge binds at session start → restart
   Claude Code and reload the extension (that fixed it).
+- **Claude Desktop installed next to Claude Code steals the extension** `[C]` (2026-09-26): reloading the
+  extension did not help — it kept spawning Claude Desktop's `chrome-native-host` (manifest
+  `~/.config/google-chrome/NativeMessagingHosts/com.anthropic.claude_browser_extension.json`) and Claude
+  Code's `claude --chrome-native-host` never started. Renaming that manifest to `*.json.disabled` and
+  killing the Desktop hosts brought Claude Code's host up within ~10 s. Renaming it back returns Chrome to
+  Claude Desktop.
 - **When the browser window is not in front, `screenshot` times out** («Page.captureScreenshot timed out
   … renderer may be frozen», `document.visibilityState === "hidden"`), a new tab too, while
   `javascript_tool` keeps working (2026-09-24). Do not wait for the UI — switch to the API calls it would
