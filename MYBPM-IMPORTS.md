@@ -1373,6 +1373,15 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   (`MYBPM-UI-API.md` §5f); the import dialog labels the node **«Бизнес-процесс/<имя>»** and
   `load-import-bo-infos` returns `boCategory: "BO_PROCESS"`.
 
+- **Figure settings as the editor stores them** `[C]` (2026-09-26, `<stand>`, read off
+  `load-bo-process-def`; the archive's typed structs are assumed to carry the same keys `[I]`):
+  Form = `{fieldId, createTimer, openFormTimer, touchDraftTimer}` — `fieldId` is one of the process's own
+  BO-reference fields (the record whose form the step shows), each timer is
+  `{useTimer, timeInMinute, unitType:"MINUTES"|"HOURS"|…, workingTime}` and adds no slot; Script =
+  `{script:null}` until its IDE is opened, the script itself lives under `scriptModuleId = <version id>`,
+  `scriptId = <figure id>`; **every arrow leaving a Switch needs a `name`** or validation fails. Full
+  write-up: `MYBPM-UI-API.md` §5f «Configuring the figures».
+
 ## 5d. Scripts inside the archive (`BoScriptVersionsStructDto` + `ScriptDefStructDto`) `[C]` (2026-09-18, sample `MyBPM-export-<company-b>-v4.24.25.614-2026-09-15T16-55-04.mybpm.zip`)
 
 Ticking the per-BO checkbox **«Скрипты»** in the export basket (`MYBPM-UI-API.md`, Export tab) adds two
@@ -3176,6 +3185,24 @@ with the right slot hidden (`scriptMetaState.blockAssignStates[<blockId>].hideRi
 not part of the def). Compiled for `JsonDeck.put`, `ScriptMultiLangText.addText` and
 `field.#Добавить ошибку` (2026-09-24). A method call used as a statement is the same shape with an
 `ExprCall` on the left.
+
+### Actions that exist only on a PROCESS record `[C]` (2026-09-26, `<stand>`)
+
+`load-act-record-list` offers these three ONLY when `leftType` is a record (`BoiRefCode`) — or the type
+(`BoRefCode`) — of a `BO_PROCESS` BO; on a plain BO's record they are absent, which is why the catalogue
+walk above (done in a plain BO's context) missed them. All three take no arguments and return nothing
+(use them as `BlockAssign` without `rightExprId`, see above):
+
+```
+F-goForProcess-K-FIX-T-BoiRefCode      #Запустить процесс     () → —   start the business process of that record
+F-continueProcess-K-FIX-T-BoiRefCode   #Продолжить процесс    () → —   release every wait of that process: a Form
+                                                                         it waits on, or a Timer, passes on at once
+F-terminateProcess-K-FIX-T-BoiRefCode  #Терминируй процесс    () → —   stop the whole process, all arrows halt
+```
+
+A process record also has the field action `F-PROCESS_STATUS-K-DYN-S-boi_fields` (its `PROCESS_STATUS`).
+`F-updateTrapDate-K-FIX-T-BoiFieldRefCode` («Обновить таймер для процесса», on a `FULL_DATE` field that a
+Timer figure watches) is known from a prior export `[I]` — not yet read on a stand.
 
 ## 13. Methods
 
