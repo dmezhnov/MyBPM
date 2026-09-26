@@ -1482,10 +1482,55 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   opens with **`scriptModuleId = boProcessId` (the version id) and `scriptId = the figure id`**
   (`v2/script/load-script-def` → `{blocks:{}, expressions:{}}` when empty). So §5g's headless
   `paste` / `apply-update-cmd` apply to process scripts with those two ids. An EMPTY Script or Switch
-  validates clean — `validate-def` checked nothing inside them.
-- **Slots**: a figure dragged out of a slot joins by `startSlotName` of that slot → `finishSlotName:"left"`
-  on a Form; the Switch's `main` slot is its TOP vertex. Dragging out of a slot worked from the Enter but
-  NOT from the Form's right slot (two tries, no picker) — the API route is the reliable one.
+  validates clean — `validate-def` checked nothing inside them (while `translate-script` on an empty
+  one answers «Не определён модуль»: nothing is stored for that figure yet).
+- **Writing a Script and a Switch headlessly** `[C]` (2026-09-26, same probe) — one `apply-update-cmd`
+  each, ids of my own, then `translate-script` → `success:true` and `validate-def` → `[]`:
+
+  ```
+  Script: {"<hat>": {"x":40,"y":40,"downBlockId":"<exit>","type":"BlockFixEntryPoint"},
+           "<exit>":{"exitType":"FROM_METHOD","type":"BlockExit"}}
+  Switch: {"<hat>": {"x":40,"y":40,"downBlockId":"<exit>","type":"BlockFixEntryPoint"},
+           "<exit>":{"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<arrow «Да» id>","type":"BlockExit"}}
+  ```
+
+  - The IDE draws them as «Выйти из скрипта» and **«Выйти из скрипта по стрелке: Да»**; a click on the
+    exit block lists the choices — on a Script only «Выйти из скрипта», on a Switch ONLY «… по стрелке:
+    <name>» for each of ITS OWN outgoing arrows (no plain exit). The arrow ids + names come from
+    `v2/script-browser/load-exit-variants {scriptModuleId: boProcessId, scriptId: figureId}` →
+    `[{id, displayName}]` (a nameless arrow shows its id's first six characters) — use it to pick
+    `targetArrowId` instead of reading the def.
+  - **The validators do NOT enforce that choice** `[C]`: a Switch with a plain `FROM_METHOD`, a Switch
+    exiting by ANOTHER figure's arrow, and a Script exiting `FROM_METHOD_BY_ARROW` all pass both
+    `translate-script` and `validate-def`. Only a missing `targetArrowId` is caught
+    (`blockExit__targetArrowId_isNull` «Не указан targetArrowId»; `validate-def` then reports it on the
+    figure as «В скрипте присутствуют ошибки»). What such a script does at RUN time is `[U]` — keep to
+    what the IDE offers.
+- **Slots — the real names, per figure** `[C]` (2026-09-26, read off the client bundle, chunk `9839`, the
+  figure factory `switch(v.type)`; `slotByName` falls back as shown):
+
+  | figure | slot names | wrong or missing name → |
+  |---|---|---|
+  | Enter, Exit | `main`, `top`, `bottom` | a wrong name → nothing; a MISSING one → Enter `left` (absent!), Exit `main` |
+  | Switch | `up`, `right`, `down`, `left` | `up` |
+  | Script | `left`, `right`, `top`, `bottom`, `topLeft`, `topRight`, `bottomLeft`, `bottomRight` | `top` |
+  | Form | as Script minus `bottom`, plus `timerCreate`, `timerOpenForm`, `timerTouchDraft` | `up` (absent!) |
+  | Timer | as Script | `up` (absent!) |
+  | Terminator | `left`, `right`, `top`, `bottom` | `top` |
+  | SingleToParallel | `in`, `out1`…`outN` (`outSlotsCount`) | missing → `in`; wrong → not read further |
+  | ParallelToSingle | `out`, `in1`…`inN` (`inSlotsCount`) | missing → `in` (absent!); wrong → not read further |
+
+  So `main` on a Switch silently means `up` (the top vertex — what this probe's arrow «Нет» uses), and a
+  wrong name on a Form or Timer resolves to nothing. **A Form has three timer slots of its own** — an
+  armed timer's exit is presumably an arrow out of `timerCreate` / `timerOpenForm` / `timerTouchDraft`
+  `[I]`. kc-energy's generated archives use Switch `left`/`right`/`down` out and `up` in, Exit `main`/`top`.
+- Dragging out of a slot worked from the Enter but NOT from the Form's right slot (two tries, no picker) —
+  the API route is the reliable one.
+- **The editor remembers the open script** — `load-editor-state` → `{scrollTop, scrollLeft,
+  scriptFigureId}`; with `scriptFigureId` set, reopening `…/process-editing` can come up straight in that
+  figure's IDE: an empty grey canvas with only `»` at the top left, which looks like a diagram that failed
+  to render. `save-editing-script-figure-id {boProcessId, scriptFigureId: null}` (or the IDE's × at the
+  top right) brings the diagram back `[C]`; when exactly it reopens is `[I]` (it did not every time).
 - The IDE of a process record offers three process-only actions — `goForProcess`, `continueProcess`,
   `terminateProcess` (`MYBPM-IMPORTS.md` §12a «Actions that exist only on a PROCESS record»).
 
