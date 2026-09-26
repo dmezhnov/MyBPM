@@ -3543,6 +3543,22 @@ unless marked otherwise.
 - **Failure path**: set an error-code reference (`~Код ошибки~.#Значение = <BoiRefCode>`), then `BlockExit`
   with `exitType: "FROM_METHOD_BY_ARROW"` and the `targetArrowId` of the error arrow.
 - A process JSON round-trips paste → copy with only the entry block's x/y changing. `[C]`
+- **How a figure's script leaves it** `[C]` (2026-09-26, `<stand>`, written headlessly and read back in
+  the IDE): a **Script** figure (one outgoing arrow) ends in `{"exitType":"FROM_METHOD","type":"BlockExit"}`
+  («Выйти из скрипта»); a **Switch** figure (several NAMED outgoing arrows) ends every path in
+  `{"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<one of ITS OWN arrows>","type":"BlockExit"}`
+  («Выйти из скрипта по стрелке: <name>»). The IDE offers exactly that split — a Switch has no plain exit,
+  a Script no exit by arrow. **The validators do not enforce it**: the swapped forms and an arrow of
+  another figure pass `translate-script` and `validate-def`; only a missing `targetArrowId` fails
+  («Не указан targetArrowId»). Write only what the IDE would offer. The arrow ids of a figure:
+  `MYBPM-UI-API.md` §5f `load-exit-variants`; in an archive they are the `arrows` keys of the
+  `BoProcessVersionsStructDto` whose `startFigureId` is that Switch.
+- **Arrow slot names differ per figure** `[C]` (client bundle): Enter/Exit `main`/`top`/`bottom`; Switch
+  `up`/`right`/`down`/`left`; Script and Timer `left`/`right`/`top`/`bottom` + the four corners
+  (`topLeft`…); Form = Script's without `bottom` plus `timerCreate`/`timerOpenForm`/`timerTouchDraft`;
+  Terminator `left`/`right`/`top`/`bottom`; SingleToParallel `in` + `out1…N`, ParallelToSingle `out` +
+  `in1…N`. A wrong name on a Switch falls back to `up`, on a Script/Terminator to `top`, on a Form/Timer to
+  nothing — use the real names (full table: `MYBPM-UI-API.md` §5f «Slots»).
 
 ### Verifying on the stand
 
