@@ -1496,13 +1496,16 @@ emit the same thing from the same spec, and the result imported and run:
   field is `isRequired`; the constructor defaults it to the «Статус процесса» row `CREATED`. Imported
   without a default, `validate-apply-remove-draft` on a new process record answers **200** with the form
   command `ALERT_SAVE_BUTTON_NOTIFICATION` «validate_required_title» — no record, no process, and nothing
-  throws. **The export's `ExportStructInstanceDto` with a `DEFAULT_VALUE` source does NOT set the default**
-  (tried on a fresh BO and on a re-import); `"defaultValue": "[\"<CREATED row id>\"]"` (+ `defaultValueMap`)
-  on the field does. Both ids are per stand: read them off any constructor-built process —
+  throws. **The default takes only when the archive carries BOTH** the key on the field,
+  `"defaultValue": "[\"<CREATED row id>\"]"` (+ `defaultValueMap`), AND the export's `ExportStructInstanceDto`
+  line for the `CREATED` row with a `DEFAULT_VALUE` source `[C]` (2026-09-27: the line alone and the key
+  alone each left `"[]"` on a new BO; both together took — `make-probe-archive.bun.ts` now writes both;
+  the earlier «the line is ignored» was wrong). Both ids are per stand: read them off any constructor-built process —
   `load-business-object-by-id` → `formFields[code=PROCESS_STATUS]` → `refBoId`, `defaultValue`.
   `runOnTestRecord` now throws on that form command instead of reporting an empty run.
 - **Re-importing the same code adds a version** `[C]`: version 2 `isWork+isTest`, version 1 demoted to
-  `isWork:false, isTest:false`; the field default was NOT repaired by that re-import (the ignored line).
+  `isWork:false, isTest:false`; the field default was NOT repaired by that re-import (it carried the line
+  but not the key).
 - **The EXPORT itself, re-imported as is (only code and name changed)** `[C]` (2026-09-27): analysis
   clean, `validate-def []`, figure/arrow/field ids = the export's, but (a) the `processVersions` form comes
   in as a **test-only** version (`isWork:false, isTest:true`) — it runs on DEV records, an ordinary record
@@ -1539,6 +1542,12 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
     and does **not** add a slot: validation asks for no second exit. What happens when it fires is `[U]`.
   - Trap: the dialog's checkboxes and unit buttons ignore `el.click()` from JS; the number input does
     take the native-setter trick. Writing the command directly is simpler.
+- **Timer** `[C]` (2026-09-27, probe «Проба БП таймер 2026-09-27» `UocM4WIwJI3YGSL1`) — born as
+  `{x, y, type:"Timer"}` (drawn with «выберите поле»). Double-click → a popup **«Выберите поле с датой:»**
+  listing the process's date fields; one click writes `Set figures.<id>.fieldId = "<fieldId>"` and closes
+  it. Nothing else to set — the due time IS that field's value when the process enters the Timer.
+  A Timer without a field validates clean. Run-time behaviour (empty / past / future date, a field
+  changed while it stands, `#Обновить таймер для процесса`): `MYBPM-IMPORTS.md` §16 «A Timer».
 - **Arrow name** — double-click the arrow → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
@@ -1658,7 +1667,7 @@ The run-time controller, read off the bundle (chunk `9839`), all `P`: `v2/boi-pr
 
 | call | params | what it does |
 |---|---|---|
-| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|FAILED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` |
+| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|GO\|WAITING\|FAILED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` — `GO` = a figure running, `WAITING` = a Timer past due but not yet fired (seen 2026-09-27); a run is over when none is `STAND`/`GO`/`WAITING` |
 | `load-test-run-poi-id` | `{boProcessId}` | the editor's current test record `[C]` |
 | `push-step-forcibly` | `{boProcessId, boiId, arrowId}` | «Продолжить принудительно» `[C]` |
 | `push-step-retry` | `{boProcessId, boiId, figureId}` | «Попробовать еще раз» (Script / Switch / Form STAND with diagnostics) `[C]` refusal only |

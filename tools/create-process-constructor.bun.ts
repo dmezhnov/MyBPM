@@ -46,7 +46,8 @@
  *                             — repeatable, one run each (e.g. «Одобрить» true and false to reach both
  *                             Switch exits); `release` must CHANGE a value, or the Form is not released
  *   --page-script             print a snippet for the stand's page instead (no --stand, no token): it
- *                             defines `window.mybpmProcess = {build(spec), run(built, run)}` over an in-page
+ *                             defines `window.mybpmProcess = {build(spec), run(built, spec, run), script(built, figKey,
+ *                             scriptSpec), watch(built, {values?, state?, everyMs?, maxMs?})}` over an in-page
  *                             fetch that reads the token from localStorage — the token never leaves the page.
  *
  * Token: Chrome → localStorage.LOCAL_PRIVATE_SwebToken, quotes stripped; pass it as --token-file.
@@ -93,7 +94,9 @@ const api = async (controller, method, params = {}, body = {}) => {
 const runArgs = ${runArgs.toString()};
 window.mybpmProcess = { log: [], api,
   build(spec) { return buildProcess(api, spec, s => this.log.push(s)); },
-  run(built, spec, run) { return runOnTestRecord(api, runArgs(built, spec, run)); } };
+  run(built, spec, run) { return runOnTestRecord(api, runArgs(built, spec, run)); },
+  script(built, figKey, s) { return writeScript(api, built, figKey, s); },
+  watch(built, opts = {}) { return runAndWatch(api, { boId: built.boId, boProcessId: built.boProcessId, ...opts }); } };
 return "window.mybpmProcess ready";
 })()`);
   process.exit(0);

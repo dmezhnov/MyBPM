@@ -440,6 +440,14 @@ for (const bo of bos) {
             else if (!target || target.type !== "BO")
               add("ERROR", "5c", `${dt}: Form ${fid}.fieldCode "${fig.fieldCode}" is not a BO-reference field of this process`);
           }
+          if (t === "Timer") {
+            const target = fig.fieldCode ? (df as any)[fig.fieldCode] : undefined;
+            if (!fig.fieldCode) add("WARN", "5c", `${dt}: Timer ${fid} has no fieldCode — it passes at once`);
+            else if (!target || !["FULL_DATE", "DATE"].includes(target.type))
+              add("ERROR", "5c", `${dt}: Timer ${fid}.fieldCode "${fig.fieldCode}" is not a date field of this process`);
+            else if (fig.archetype !== "DYNAMIC")
+              add("WARN", "5c", `${dt}: Timer ${fid} has no archetype "DYNAMIC" (what exports write for a dynamic field)`);
+          }
           if ((t === "Script" || t === "Switch") &&
               !objs.some(o => cls(o) === "ScriptDefStructDto" && String(o.compositeId).endsWith(`-${fid}`)))
             add("WARN", "5c", `${dt}: ${t} ${fid} has no ScriptDefStructDto "<version>-${fid}" — it runs empty`);
@@ -465,7 +473,12 @@ for (const bo of bos) {
     }
     const ps = (df as any).PROCESS_STATUS;
     if (ps && (!ps.defaultValue || ps.defaultValue === "[]"))
-      add("ERROR", "5c", `${tag}: PROCESS_STATUS has no defaultValue (the stand's CREATED row) — required and empty, every record is refused on save; an export's DEFAULT_VALUE ExportStructInstanceDto line does NOT set it`);
+      add("ERROR", "5c", `${tag}: PROCESS_STATUS has no defaultValue (the stand's CREATED row) — required and empty, every record is refused on save; the export's DEFAULT_VALUE line alone does NOT set it`);
+    const code = (bo as any).code;
+    if (ps && !objs.some(o => cls(o) === "ExportStructInstanceDto" && (o.sources ?? []).some((x: any) =>
+        x.sourceType === "DEFAULT_VALUE" && x.defaultValueInstanceSource?.boCode === code &&
+        x.defaultValueInstanceSource?.fieldCode === "PROCESS_STATUS")))
+      add("ERROR", "5c", `${tag}: no ExportStructInstanceDto with a DEFAULT_VALUE source for PROCESS_STATUS — without that line the field's defaultValue does not take and every record is refused on save`);
     const hasStatus = Object.keys(df).some(k => k === "PROCESS_STATUS") ||
       Object.values<any>(df).some(f => f.boRefStruct?.boInfo?.code === "PROCESS_STATUS");
     // §0.9: shipping the process WITHOUT PROCESS_STATUS is the prescribed answer when the
