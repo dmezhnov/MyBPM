@@ -66,6 +66,7 @@ const FIELD_KEYS = ["code", "newId", "archetype", "kind", "boRefStruct", "label"
 // §5b — a BO_COMPOSITE has no form: the verified sample carries none of these three keys
 // on its dynamicFields, and an archive generated without them imports fine.
 const COMPOSITE_ABSENT_KEYS = new Set(["gridPosition", "tableColOrderIndex", "removeType"]);
+const PROCESS_STATUS_ABSENT_KEYS = new Set(["tableColOrderIndex", "removeType", "inMigrationTimezoneMinutes"]);
 const EMPTY_SET = new Set<string>();
 
 // §0.6 transliteration table
@@ -236,11 +237,16 @@ for (const bo of bos) {
     if (f.archetype !== "DYNAMIC") add("ERROR", "0.5", `${ft}: archetype "${f.archetype}", a dynamicFields entry is DYNAMIC`);
 
     // §5b: a composite has no form, so its fields legitimately carry no layout keys
-    const skipKeys = bo.category === "BO_COMPOSITE" ? COMPOSITE_ABSENT_KEYS : EMPTY_SET;
+    // a process's PROCESS_STATUS and its BO-reference fields are exported without these (§5c, 2026-09-27)
+    const processSkip = bo.category === "BO_PROCESS" && f.type === "BO"
+      ? (key === "PROCESS_STATUS" ? PROCESS_STATUS_ABSENT_KEYS : new Set(["tableColOrderIndex"]))
+      : EMPTY_SET;
+    const skipKeys = bo.category === "BO_COMPOSITE" ? COMPOSITE_ABSENT_KEYS : processSkip;
     for (const k of FIELD_KEYS) if (!(k in f) && !skipKeys.has(k))
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
-      !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue"].includes(k));
+      !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
+        "defaultValueMap"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
 
     const type = f.type;
@@ -257,7 +263,7 @@ for (const bo of bos) {
     else {
       if (lab !== lab.trimStart()) add("WARN", "0.5", `${ft}: label has a leading space`);
       const want = translit(lab);
-      if (want !== c && !c.startsWith(want) && bo.category !== "BO_DICTIONARY")
+      if (want !== c && !c.startsWith(want) && bo.category !== "BO_DICTIONARY" && c !== "PROCESS_STATUS")
         add("WARN", "0.6", `${ft}: code "${c}" != transliteration of "${lab}" ("${want}")`);
       if (labels.has(lab)) add("WARN", "0.5", `${ft}: label "${lab}" repeats inside the BO`);
       labels.add(lab);
@@ -319,6 +325,8 @@ for (const bo of bos) {
         else if (Array.isArray(bo.bos) && !bo.bos.some((s: any) => s.code === l.boCode))
           add("ERROR", "5b", `${ft}: boFieldCodes names "${l.boCode}" which is not declared in bos[]`);
       }
+    } else if (bo.category === "BO_PROCESS" && key === "PROCESS_STATUS") {
+      // the constructor's own 8×4 box — not part of the §0.8 stacking rule
     } else {
       const gp = f.gridPosition;
       if (!gp) add("ERROR", "0.8", `${ft}: no gridPosition`);
@@ -332,7 +340,7 @@ for (const bo of bos) {
         if (prevY === null && gp.y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${gp.y}`);
         prevY = gp.y; prevRows = gp.rows;
       }
-      if (f.tableColOrderIndex !== idx) add("WARN", "0.5", `${ft}: tableColOrderIndex=${f.tableColOrderIndex}, expected ${idx} (form order)`);
+      if (!(bo.category === "BO_PROCESS" && type === "BO") && f.tableColOrderIndex !== idx) add("WARN", "0.5", `${ft}: tableColOrderIndex=${f.tableColOrderIndex}, expected ${idx} (form order)`);
     }
     idx++;
   }
@@ -410,21 +418,52 @@ for (const bo of bos) {
     if (pv.length === 0)
       add("FATAL", "5c", `${tag}: a BO_PROCESS needs a BoProcessVersionsStructDto line whose oldId == the BO's oldId`);
     else {
-      const wp = pv[0].workProcess;
-      if (!wp?.figureStructs || !Object.keys(wp.figureStructs).length) add("ERROR", "5c", `${tag}: workProcess has no figureStructs`);
-      else for (const [fid, fig] of Object.entries<any>(wp.figureStructs)) {
-        if (!String(fig["@class"] ?? "").includes("bo.process.figure.Figure"))
-          add("ERROR", "5c", `${tag}: figure ${fid} has no Figure<Type>Struct "@class"`);
-      }
-      if (!wp?.arrows) add("WARN", "5c", `${tag}: workProcess has no arrows`);
-      else for (const [aid, a] of Object.entries<any>(wp.arrows ?? {})) {
-        for (const k of ["startFigureId", "finishFigureId"]) {
-          if (!a[k]) { add("ERROR", "5c", `${tag}: arrow ${aid} misses ${k}`); continue; }
-          if (wp.figureStructs && !(a[k] in wp.figureStructs))
-            add("ERROR", "5c", `${tag}: arrow ${aid}.${k} points at "${a[k]}", not a declared figure`);
+      // the diagram lives in workProcess (what a generator writes; imported as the WORK version) or, in
+      // an export of a test version, under processVersions.<version id> — check every one present
+      const diagrams: [string, any][] = [
+        ...(pv[0].workProcess ? [["workProcess", pv[0].workProcess] as [string, any]] : []),
+        ...Object.entries<any>(pv[0].processVersions ?? {}).map(([v, d]) => [`processVersions.${v}`, d] as [string, any]),
+      ];
+      if (!diagrams.length) add("ERROR", "5c", `${tag}: neither workProcess nor processVersions carries a diagram`);
+      for (const [where, wp] of diagrams) {
+        const dt = `${tag} ${where}`;
+        if (!wp?.figureStructs || !Object.keys(wp.figureStructs).length) { add("ERROR", "5c", `${dt}: no figureStructs`); continue; }
+        const figType = (fig: any) => String(fig["@class"] ?? "").match(/\.Figure(\w+)Struct$/)?.[1];
+        for (const [fid, fig] of Object.entries<any>(wp.figureStructs)) {
+          const t = figType(fig);
+          if (!t) { add("ERROR", "5c", `${dt}: figure ${fid} has no Figure<Type>Struct "@class"`); continue; }
+          if (t === "Form") {
+            const target = fig.fieldCode ? (df as any)[fig.fieldCode] : undefined;
+            if (!fig.fieldCode) add("WARN", "5c", `${dt}: Form ${fid} has no fieldCode — the step has no record to show`);
+            else if (!target || target.type !== "BO")
+              add("ERROR", "5c", `${dt}: Form ${fid}.fieldCode "${fig.fieldCode}" is not a BO-reference field of this process`);
+          }
+          if ((t === "Script" || t === "Switch") &&
+              !objs.some(o => cls(o) === "ScriptDefStructDto" && String(o.compositeId).endsWith(`-${fid}`)))
+            add("WARN", "5c", `${dt}: ${t} ${fid} has no ScriptDefStructDto "<version>-${fid}" — it runs empty`);
+        }
+        const arrows = wp.arrows ?? {};
+        if (!wp.arrows) add("WARN", "5c", `${dt}: no arrows`);
+        for (const [aid, a] of Object.entries<any>(arrows)) {
+          for (const k of ["startFigureId", "finishFigureId"]) {
+            if (!a[k]) { add("ERROR", "5c", `${dt}: arrow ${aid} misses ${k}`); continue; }
+            if (!(a[k] in wp.figureStructs)) add("ERROR", "5c", `${dt}: arrow ${aid}.${k} points at "${a[k]}", not a declared figure`);
+          }
+          if (figType(wp.figureStructs[a.startFigureId] ?? {}) === "Switch" && !a.name)
+            add("ERROR", "5c", `${dt}: arrow ${aid} leaves a Switch without a name — validation fails`);
+        }
+        for (const sid of wp.scriptsDefIds ?? []) {
+          const def = objs.find(o => cls(o) === "ScriptDefStructDto" && o.compositeId === sid);
+          if (!def) { add("ERROR", "5c", `${dt}: scriptsDefIds names "${sid}", no ScriptDefStructDto has that compositeId`); continue; }
+          for (const [bid, blk] of Object.entries<any>(def.blocks ?? {}))
+            if (blk.targetArrowId && !(blk.targetArrowId in arrows))
+              add("ERROR", "5d", `${dt}: script ${sid} block ${bid} exits by arrow "${blk.targetArrowId}", not an arrow of this diagram`);
         }
       }
     }
+    const ps = (df as any).PROCESS_STATUS;
+    if (ps && (!ps.defaultValue || ps.defaultValue === "[]"))
+      add("ERROR", "5c", `${tag}: PROCESS_STATUS has no defaultValue (the stand's CREATED row) — required and empty, every record is refused on save; an export's DEFAULT_VALUE ExportStructInstanceDto line does NOT set it`);
     const hasStatus = Object.keys(df).some(k => k === "PROCESS_STATUS") ||
       Object.values<any>(df).some(f => f.boRefStruct?.boInfo?.code === "PROCESS_STATUS");
     // §0.9: shipping the process WITHOUT PROCESS_STATUS is the prescribed answer when the

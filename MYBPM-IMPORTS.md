@@ -58,7 +58,7 @@ Everything retracted has been dropped; the mistakes worth not repeating live in 
 
 **Read this section if your job is «make me an archive that creates a BO with fields».** It is
 self-contained **for the FORMAT** — every literal value below is copied from an archive that a stand
-actually imported — but not for the target: three inputs belong to the stand and must be **asked for**,
+actually imported — but not for the target: four inputs belong to the stand and must be **asked for**,
 see 0.2a. Sections 1–8 explain *why*; this one is *what to type*. Follow it literally, change only what step 2
 says you may change, and **never invent a key name** — a key you cannot find in this section does not
 belong in the file.
@@ -118,7 +118,7 @@ the built-in Person / Department / PersonGroup BOs (§1).
 
 ### 0.2a Stand data — ASK for it, never invent it
 
-Three inputs below **cannot be derived from this document**: they are properties of the target stand, and
+The inputs below **cannot be derived from this document**: they are properties of the target stand, and
 every one of them fails SILENTLY when guessed — the archive stays valid, the import reports success, the
 damage shows up later. So: **ask the user for them before building.** If the user answers «build without»,
 take the fallback of the last column, state in one line which default you took and what it risks, and
@@ -128,6 +128,7 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 |---|---|---|
 | The **BO group name**, character for character, as it stands on the target | the importer matches groups BY NAME; when nothing matches it **renames an existing group** instead of creating one (§8) — the customer's group list is destroyed, and the BOs may not appear at all | ask for an explicit confirmation of the default `Бизнес-объект`; ship exactly ONE group line with the confirmed name and say which name went in |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
+| For a business process — the stand's **«Статус процесса» dictionary id AND the id of its `CREATED` row** (both are in `formFields[code=PROCESS_STATUS]` of any constructor-built process: `refBoId` / `defaultValue`, `MYBPM-UI-API.md` §5f) | the dictionary id is an `oldRefBoId` like any other; without the row id the required status field has no default and **every record of the process is refused on save** — the import itself still reports success (§5c) | ship the process WITHOUT `PROCESS_STATUS` (§0.9) and say so |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` fed `FROM_BO` — the **dictionary CODE** | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 
 **Every id literal printed in this section is `<company-a>`'s, not yours** `[C]`. Copying one out of an
@@ -181,7 +182,7 @@ BO in the same archive **only when the user explicitly asked for that BO to be c
 - **and do not ship both** — a panel plus three freshly invented registries is the same substitution with
   the panel added on top.
 
-**0.2a covers those three inputs and NOTHING else.** It is not a general licence to replace whatever you
+**0.2a covers those four inputs and NOTHING else.** It is not a general licence to replace whatever you
 feel unsure about with something simpler. Everything else in this document is buildable from the document
 alone: tabs (`TAB_GROUP`), a progress scale (`PROGRESS_BAR`), a questionnaire, a local dropdown, a
 multi-file upload need no stand data at all — building section headings «instead of» tabs because
@@ -819,7 +820,9 @@ must ship it (§5c) — but that field is a `type: "BO"` reference to the stand'
 dictionary and needs its `oldRefBoId`, which 0.2a forbids inventing. The two rules do not collide; they
 resolve like this:
 
-- the id was supplied → ship `PROCESS_STATUS` exactly as §5c prints it;
+- the id was supplied → ship `PROCESS_STATUS` exactly as §5c prints it, **with `defaultValue` = the id
+  of the dictionary's `CREATED` row** — ask for that row id too (§0.2a). Without the default no record
+  of the process can be saved (§5c);
 - the id was NOT supplied → **ship the process WITHOUT `PROCESS_STATUS`** and say so in one line. The
   archive imports and the process works as a diagram `[C]` (every probe was built that way); the status
   field is then added in the constructor, or the id is read off the stand with `load-bo-dictionary-list`
@@ -1345,31 +1348,68 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
  "processVersions":{}}
 ```
 
-- `workProcess` is the **editable version's** diagram, in the same shape `bo-process-editor/load-bo-process-def`
-  returns (`MYBPM-UI-API.md` §5f) — except that each figure is a **typed struct**
+- `workProcess` is a diagram in the same shape `bo-process-editor/load-bo-process-def` returns
+  (`MYBPM-UI-API.md` §5f) — except that each figure is a **typed struct**
   `kz.greetgo.mybpm.reg.structure.model.bo.process.figure.Figure<Type>Struct` (`FigureEnterStruct`,
-  `FigureExitStruct`, `FigureScriptStruct`, …) instead of a `"type"` string. `processVersions` was `{}`
-  in the sample and in both probes — published versions are `[U]`.
+  `FigureExitStruct`, `FigureFormStruct`, `FigureScriptStruct`, `FigureSwitchStruct`, …) instead of a
+  `"type"` string, and it also carries `methodScriptIds: []`. **Write your diagram into `workProcess`.**
+  An EXPORT of a process that only has a test version (built in the constructor, never put «в работу»)
+  has NO `workProcess` key: the diagram sits under `processVersions.<version id>` in the same shape `[C]`
+  (2026-09-27); importing that form is untried `[U]`.
 - **Figure and arrow ids survive the import unchanged** `[C]` — the stand's def carries the archive's own
-  ids, the same determinism as `oldId` → `boId`.
-- **An imported version comes in as `isWork: true`** («Версия: 1 (Опубликованный)»), not as the `isTest`
-  version the constructor creates `[C]`.
-- A `FigureScriptStruct` needs the matching `ScriptDefStructDto` (its `compositeId` is
-  `<scriptDefId>-<figureId>`, and the id is repeated in `scriptsDefIds`). The probes stayed
-  Enter → Exit, so a script figure shipped WITHOUT its def was never tried `[U]`.
+  ids, the same determinism as `oldId` → `boId` (re-checked 2026-09-27 on 6 figures + 5 arrows). The
+  **version id does not**: the stand mints its own and re-keys the scripts to it.
+- **An imported version comes in as `isWork: true`** («Версия: 1 (Опубликованный)»), and on
+  2026-09-27 it read `isWork: true, isTest: true` — it runs on test (DEV) AND ordinary records `[C]`.
+- **Re-importing the same process code adds a NEW version** `[C]` (2026-09-27): version 2 came in as
+  `isWork+isTest`, version 1 dropped to `isWork:false, isTest:false`. The BO itself is updated in place.
+- **Scripts of Script / Switch figures** — one `ScriptDefStructDto` per figure, `compositeId =
+  "<version id>-<figure id>"`, the same string repeated in `workProcess.scriptsDefIds`. For `workProcess`
+  the version id is any id you mint — it only ties the lines together (the stand re-keys it, see above).
+  Blocks and expressions are the IDE JSON (§16) with `@class` instead of `type`:
+  `…bo.process.block.Block<Name>Struct` / `…bo.process.expr.Expr<Name>Struct`; an export also writes
+  `canWriteValue:false` on every `ExprAct`, `isTextMultiline:false, latitude:0, longitude:0,
+  methodArgs:{}` on every `ExprValue`, `hasExpr:false` on an ИНАЧЕ branch. Acts are named by their CODE
+  (`F-Zayavka-K-DYN-S-boi_fields`), so the body is portable; `targetArrowId` is an `arrows` key of the
+  same line. Ticking «Скрипты» in the export basket is NOT needed — the process's script defs come out
+  with the structure `[C]`.
+- **A Form step names its record field by CODE**: `FigureFormStruct {x, y, fieldCode: "<code of a
+  BO-reference field of this process>"}` — the stand resolves it to the field's id (`fieldId` in the
+  editor) `[C]`. Such a field is exported as a single picker: `type: "BO"`, `viewType: "SINGLE"`,
+  `isKindAddForSelect: false`, `tableColToShow: false`, no `tableColOrderIndex`, `oldRefBoId` = the
+  target BO's stand id, `boRefStruct.boInfo = {code, name, boCategory}` of the target, `fieldRefs: {}`.
+- **A whole configured process travels in one archive and runs** `[C]` (2026-09-27, `<stand>`):
+  Enter → Form(«Заявка») → Script → Switch(ЕСЛИ «Заявка».«Одобрить») → Exit «Да» / Exit «Нет», imported
+  through the API route (`MYBPM-UI-API.md` §5) — analysis clean, `validate-def []`, both scripts
+  `translate-script success`, and both branches reached on DEV records and again on ordinary records
+  (`…, Switch PASSED, Exit «Да» PASSED` / `…, Exit «Нет» PASSED`, `scriptRunSuccess: true`). Generator:
+  `make-probe-archive.bun.ts --process-spec <spec.json>` — the SAME spec `tools/process-builder.ts` builds
+  through the API (`tools/process-probe.spec.json`; a field entry needs `refBoCode` for the archive).
 - **`PROCESS_STATUS` is not created by the importer** `[C]`. The constructor gives every process the
   system field `PROCESS_STATUS` («Статус процесса», `type: "BO"`, `isSystem`, `isCodeReadonly`,
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
   процесса", boCategory: "BO_DICTIONARY"}`, `fieldRefs.label.toShow`, `oldRefBoId` = the stand's
   «Статус процесса» dictionary — `<company-a>` `Q0zI~z9Ra2R7Q3yd`) — an archive must ship that field itself.
+- **…and it must carry its DEFAULT VALUE, or no record of the process can be saved** `[C]` (2026-09-27,
+  `<stand>`). The field is required; the constructor defaults it to the dictionary row `CREATED`
+  («Только что создан»). Shipped without a default, every `validate-apply-remove-draft` of a process
+  record answers 200 with the form command `ALERT_SAVE_BUTTON_NOTIFICATION` «validate_required_title»,
+  the record is never created and the process never starts. **An export carries the default as a
+  separate `ExportStructInstanceDto` with `sources:[{sourceType:"DEFAULT_VALUE", defaultValueInstanceSource:
+  {boCode, fieldCode:"PROCESS_STATUS"}}]` — the importer IGNORES that line** (tried on a new BO and on
+  re-import of an existing one; `defaultValue` stayed `"[]"`). What takes is the key on the field itself:
+  `"defaultValue": "[\"<CREATED row id>\"]", "defaultValueMap": {"RUS": "[\"<CREATED row id>\"]"}`.
+  The row id is per stand like the dictionary id — read both off the stand (§0.2a). So an exported process
+  moved to another stand the same way would lose its default too `[I]`.
 - The two `ExportStructInstanceDto` in the sample are RECORDS, not structure: one row of the
   `PROCESS_STATUS` dictionary (`CREATED` / «Только что создан»), and a `Coordinate` instance whose
   `sources: [{sourceType: "PROCESS", processInstanceSource: {boCode, isWork}}]` ties it to the process.
   Neither was needed to import a working process.
 - **Generator**: `tools/make-probe-archive.bun.ts --category BO_PROCESS` emits both lines; it always puts
   an `Enter` at (100,100) and chains `--process-figure "<Type>[@x,y]"` (repeatable, default a single
-  `Exit@440,104`) after it with `main → main` arrows, and `--process-status <refBoId>` adds the
-  `PROCESS_STATUS` field in the export's own shape. Both routes verified on `<company-a>`
+  `Exit@440,104`) after it with `main → main` arrows, and `--process-status <refBoId>:<CREATED row id>`
+  adds the `PROCESS_STATUS` field in the export's own shape plus its `defaultValue`. A CONFIGURED process
+  comes from `--process-spec` instead (above). Both routes verified on `<company-a>`
   (`MYBPM-UI-API.md` §5f); the import dialog labels the node **«Бизнес-процесс/<имя>»** and
   `load-import-bo-infos` returns `boCategory: "BO_PROCESS"`.
 
@@ -3600,7 +3640,10 @@ unless marked otherwise.
 - **A configured process from a spec, headlessly** `[C]` (2026-09-27): `tools/process-builder.ts` builds
   fields + figures + named arrows + Script/Switch bodies (the JSON above, generated) through the
   constructor API and runs both Switch branches on test records; it passed at the first try. This is the
-  API route; the archive route for the same process is `[U]` (next). `MYBPM-UI-API.md` §5f point 6.
+  API route (`MYBPM-UI-API.md` §5f point 6). **The archive route for the same spec is `[C]` too**
+  (2026-09-27): `make-probe-archive.bun.ts --process-spec` → import → both branches on DEV and ordinary
+  records — the script bodies above travel as `ScriptDefStructDto` with `@class` names, and the one trap
+  is `PROCESS_STATUS`'s `defaultValue` (§5c).
 
 ### Verifying on the stand
 
