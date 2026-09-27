@@ -2,7 +2,7 @@
   "group": "Бизнес-объект",
   "name": "Проба БП API 2026-09-27",
   "desc": "Enter → Form(Заявка) → Script → Switch(Одобрить) → Exit Да / Exit Нет, собран tools/process-builder.ts",
-  "fields": [{"key": "req", "label": "Заявка", "refBoId": "QM7HF4sqowhKcDRX"}],
+  "fields": [{"key": "req", "label": "Заявка", "refBoId": "QM7HF4sqowhKcDRX", "refBoCode": "Proba_BP_zayavka"}],
   "figures": [
     {"key": "enter",  "type": "Enter",  "x": 100, "y": 100},
     {"key": "form",   "type": "Form",   "x": 260, "y": 90, "field": "req"},

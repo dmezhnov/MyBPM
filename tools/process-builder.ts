@@ -42,7 +42,9 @@ export type ProcessSpec = {
   group: string;
   name: string;
   desc?: string;
-  fields?: { key: string; label: string; refBoId: string }[];
+  // refBoCode is read only by the archive route (make-probe-archive.bun.ts --process-spec): an archive
+  // names the target BO by code in boRefStruct.boInfo, next to its stand id in oldRefBoId
+  fields?: { key: string; label: string; refBoId: string; refBoCode?: string }[];
   figures: { key: string; type: FigureType; x: number; y: number; field?: string }[];
   arrows: { key: string; from: string; fromSlot: string; to: string; toSlot: string; name?: string }[];
   scripts?: Record<string, ScriptSpec>;
@@ -73,8 +75,8 @@ async function savePortion(api: Api, payload: object): Promise<string | null> {
   return id;
 }
 
-/** The blocks and expressions of one figure's script, with ids from `newId`. */
-function scriptBody(spec: ScriptSpec, arrowId: (key: string) => string, fieldCode: (seg: string) => string,
+/** The blocks and expressions of one figure's script, with ids from `newId` — the editor's shape (`type`). */
+export function scriptBody(spec: ScriptSpec, arrowId: (key: string) => string, fieldCode: (seg: string) => string,
                     newId: () => string) {
   const blocks: Record<string, any> = {};
   const expressions: Record<string, any> = {};
@@ -103,6 +105,28 @@ function scriptBody(spec: ScriptSpec, arrowId: (key: string) => string, fieldCod
   blocks[hat] = { x: 40, y: 40, downBlockId: ifId, type: "BlockFixEntryPoint" };
   blocks[ifId] = { ifExprId: expr, thenBlockId: exit(spec.then),
     branches: { [newId()]: { blockId: exit(spec.else), order: 10 } }, type: "BlockIf" };
+  return { blocks, expressions };
+}
+
+/**
+ * The same script in the ARCHIVE's shape (`ScriptDefStructDto`, MYBPM-IMPORTS.md §5d): `type: "BlockExit"`
+ * becomes `@class: "…bo.process.block.BlockExitStruct"`, and the defaults an export writes are filled in.
+ */
+export function toArchiveScript(body: { blocks: Record<string, any>; expressions: Record<string, any> }) {
+  const P = "kz.greetgo.mybpm.reg.structure.model.bo.process";
+  const blocks: Record<string, any> = {};
+  for (const [id, { type, ...rest }] of Object.entries(body.blocks)) {
+    if (rest.branches) rest.branches = Object.fromEntries(Object.entries<any>(rest.branches)
+      .map(([k, b]) => [k, { ...b, hasExpr: b.hasExpr ?? false }]));
+    blocks[id] = { "@class": `${P}.block.${type}Struct`, ...rest };
+  }
+  const expressions: Record<string, any> = {};
+  for (const [id, { type, ...rest }] of Object.entries(body.expressions)) {
+    const defaults = type === "ExprValue"
+      ? { isTextMultiline: false, latitude: 0, longitude: 0, methodArgs: {} }
+      : type === "ExprAct" ? { canWriteValue: false } : {};
+    expressions[id] = { "@class": `${P}.expr.${type}Struct`, ...rest, ...defaults };
+  }
   return { blocks, expressions };
 }
 
@@ -248,7 +272,10 @@ export async function runOnTestRecord(api: Api, p: { boId: string; boProcessId: 
   });
   const save = async (boId: string, draftId: string, boInstanceId: string, values: { fieldId: string; value: string }[]) => {
     if (values.length) await api("instance-field-form", "save-field-value", {}, { draftId, boId, boInstanceId, values });
-    await api("instance-form", "validate-apply-remove-draft", { draftId });
+    // A refused save still answers 200; the refusal is a form command (e.g. a required field left empty).
+    const r = await api<any>("instance-form", "validate-apply-remove-draft", { draftId });
+    const alert = (r?.formCommands ?? []).find((c: any) => c.commandType === "ALERT_SAVE_BUTTON_NOTIFICATION");
+    if (alert) throw new Error(`save of ${boId} refused: ${alert.notificationBody?.notificationText?.text}`);
   };
   const saveNew = async (boId: string, values: { fieldId: string; value: string }[]) => {
     const d = await api<any>("instance-form-create-draft", "create-draft-with-boi", { boId, boiState, isReadMode: false }, {});

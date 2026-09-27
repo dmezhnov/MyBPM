@@ -37,3 +37,30 @@ for (const [name, doc] of skills) {
 }
 await $`rm -rf dist/skills/stage`;
 '''
+
+[tasks.bridge]
+description = "Start the 127.0.0.1:8787 page<->disk bridge detached (GET /get?name= feeds tools/out/bridge/<name> into a page, POST /save?name= writes it)"
+shell = "bun -e"
+run = '''
+const pidFile = "tools/out/bridge/bridge.pid";
+if (await Bun.file(pidFile).exists()) {
+  const pid = Number(await Bun.file(pidFile).text());
+  try { process.kill(pid, 0); console.log(`bridge already running, pid ${pid}`); process.exit(0); } catch {}
+}
+const child = Bun.spawn(["setsid", "bun", "tools/bridge.bun.ts"], {
+  stdin: "ignore", stdout: Bun.file("tools/out/bridge/bridge.log"), stderr: Bun.file("tools/out/bridge/bridge.log"),
+});
+child.unref();
+await Bun.sleep(500);
+console.log(`bridge started on 127.0.0.1:8787 (dir tools/out/bridge/)`);
+'''
+
+[tasks.bridge-stop]
+description = "Stop the bridge started by `mise run bridge` (by its pid file)"
+shell = "bun -e"
+run = '''
+const pidFile = Bun.file("tools/out/bridge/bridge.pid");
+if (!(await pidFile.exists())) { console.log("no bridge pid file"); process.exit(0); }
+try { process.kill(Number(await pidFile.text())); console.log("bridge stopped"); } catch { console.log("bridge was not running"); }
+await pidFile.delete();
+'''

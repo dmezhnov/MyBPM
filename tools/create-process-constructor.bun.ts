@@ -42,6 +42,7 @@
  *
  *   --spec <file.json>        build it; then optionally run it on test records:
  *   --run '<json>'            {"field":"<field key>","values":{"<code>":"<value>"},"release":{"<code>":"<new>"}}
+ *                             [,"state":"ALL"] — ordinary records (a WORK version, e.g. an imported one); default DEV
  *                             — repeatable, one run each (e.g. «Одобрить» true and false to reach both
  *                             Switch exits); `release` must CHANGE a value, or the Form is not released
  *   --page-script             print a snippet for the stand's page instead (no --stand, no token): it
@@ -64,10 +65,11 @@ const flagAll = (name: string): string[] => {
 
 import { buildProcess, runOnTestRecord, type Api, type BuiltProcess, type ProcessSpec } from "./process-builder.ts";
 
-type RunSpec = { field: string; values: Record<string, string>; release: Record<string, string> };
+type RunSpec = { field: string; values: Record<string, string>; release: Record<string, string>; state?: "DEV" | "ALL" };
 const runArgs = (built: BuiltProcess, spec: ProcessSpec, run: RunSpec) => ({
   boId: built.boId, boProcessId: built.boProcessId, refFieldId: built.fields[run.field].id,
   refBoId: spec.fields!.find(f => f.key === run.field)!.refBoId, values: run.values, release: run.release,
+  state: run.state,
 });
 
 if (argv.includes("--page-script")) {

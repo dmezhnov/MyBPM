@@ -14,6 +14,7 @@
  * Usage:  bun tools/make-probe-archive.bun.ts [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
  *         [--category BO|BO_DICTIONARY|BO_COMPOSITE|BO_PANEL|BO_PROCESS] [--field "Метка:TYPE"]...
  *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>]
+ *         [--process-spec <spec.json>]   (a CONFIGURED process — the spec of tools/process-builder.ts)
  *         [--menu "Имя:GROUP"]... [--menu "Имя:BO@<код БО>[@Имя БО]!parent=…!kanban=…"]...
  *
  * The full `--field` grammar is «Метка:TYPE[@a][@b][#вариант|вариант][!req,uniq,readonly]»:
@@ -42,6 +43,7 @@
  */
 
 import { createHash } from "node:crypto"; // Bun.hash is not a cryptographic digest; sha256 keeps ids reproducible
+import { scriptBody, toArchiveScript, type ProcessSpec } from "./process-builder.ts";
 
 const PKG = "kz.greetgo.mybpm.reg.structure.model.dto";
 
@@ -70,11 +72,21 @@ function flag(name: string, fallback: string): string {
   return i >= 0 ? Bun.argv[i + 1] : fallback;
 }
 
+/**
+ * `--process-spec <file>` — the SAME spec `tools/process-builder.ts` builds through the API (its header has
+ * the grammar), emitted as an archive instead: the BO-reference fields, the typed figures (a Form names its
+ * field by CODE), the named arrows and one `ScriptDefStructDto` per scripted figure (MYBPM-IMPORTS.md §5c).
+ * Every `fields[]` entry needs `refBoCode` here — an archive names the target BO by code as well as by id.
+ */
+const PROCESS_SPEC: ProcessSpec | null = flag("process-spec", "")
+  ? await Bun.file(flag("process-spec", "")).json()
+  : null;
+
 const BO_CODE = flag("code", "Proba_importa_20260918");
-const BO_NAME = flag("name", "Проба импорта 2026-09-18");
+const BO_NAME = flag("name", PROCESS_SPEC?.name ?? "Проба импорта 2026-09-18");
 
 /** BoStructDto.category — the same five kinds the group's kebab offers (MYBPM-UI-API.md §5b). */
-const CATEGORY = flag("category", "BO");
+const CATEGORY = flag("category", PROCESS_SPEC ? "BO_PROCESS" : "BO");
 
 /**
  * `--field "Метка:TYPE"`, repeatable; the code is transliterated from the label the way the stand does
@@ -557,6 +569,10 @@ const DEFAULT_FIELDS = {
 const isDictionary = CATEGORY === "BO_DICTIONARY";
 const isComposite = CATEGORY === "BO_COMPOSITE";
 const custom = fieldFlags();
+for (const f of PROCESS_SPEC?.fields ?? []) {
+  if (!f.refBoCode) throw new Error(`--process-spec: field «${f.label}» needs refBoCode for the archive`);
+  custom.push({ label: f.label, type: "BO", refBoId: f.refBoId, refBoCode: f.refBoCode, options: [], flags: [] });
+}
 const sources = sourceFlags();
 const coFields = coFieldFlags();
 const natives = nativeFlags();
@@ -632,13 +648,32 @@ if (isComposite) {
 }
 
 /**
+ * A process's own BO-reference field (the record a Form step shows) is exported as a SINGLE picker, not
+ * the TABLE a panel's nested object is: `viewType: "SINGLE"`, not «добавить для выбора», no column, no
+ * dynamic height (read off the export of the API-built probe, 2026-09-27).
+ */
+for (const f of PROCESS_SPEC?.fields ?? []) {
+  const df: any = dynamicFields[codeOf(f.label)];
+  Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: false });
+  delete df.isHeightDynamic;
+  delete df.tableColOrderIndex;
+}
+
+/**
  * `--process-status <refBoId>` adds the process's own system field `PROCESS_STATUS` — the BO-reference
  * to the stand's built-in dictionary «Статус процесса» (its id is per-stand — read it off your own). The constructor
  * creates this field by itself; the IMPORTER does not `[C]` (2026-09-18), so an archive that wants a
  * process shaped like an exported one has to ship it. Its shape is copied verbatim off a real export —
  * `viewType: "SINGLE"`, `isSystem`/`isCodeReadonly`/`isRequired`, no `removeType`, no `tableColOrderIndex`.
+ *
+ * `--process-status <refBoId>:<CREATED row id>` also gives the field its DEFAULT VALUE — the dictionary
+ * row `CREATED` («Только что создан»; its id is per-stand too). Without it the field is required AND
+ * empty, so every record of the process is refused on save («validate_required_title») and the process
+ * never starts `[C]` (2026-09-27). An export carries this default as a separate `ExportStructInstanceDto`
+ * with a `DEFAULT_VALUE` source — the importer IGNORES that line (tried on a new and on an existing BO);
+ * `defaultValue` on the field itself is what takes.
  */
-const processStatusRefBoId = flag("process-status", "");
+const [processStatusRefBoId, processStatusCreatedId] = flag("process-status", "").split(":");
 if (CATEGORY === "BO_PROCESS" && processStatusRefBoId) {
   dynamicFields.PROCESS_STATUS = {
     code: "PROCESS_STATUS",
@@ -662,6 +697,10 @@ if (CATEGORY === "BO_PROCESS" && processStatusRefBoId) {
     type: "BO", viewType: "SINGLE",
     groupingInfo: {},
     oldRefBoId: processStatusRefBoId,
+    ...(processStatusCreatedId ? {
+      defaultValue: JSON.stringify([processStatusCreatedId]),
+      defaultValueMap: { RUS: JSON.stringify([processStatusCreatedId]) },
+    } : {}),
     // a real export puts the status first; here it goes under whatever `--field` already claimed
     gridPosition: { x: 0, y: Object.keys(dynamicFields).length * 4, cols: 8, rows: 4 },
     fieldTabs: {}, gantTableLocations: {}, boFieldCodes: [], linkedCoSettings: {},
@@ -830,8 +869,68 @@ lines.push({
  * `--process-figure "<Type>[@x,y]"` (repeatable) chains figures after the Enter the platform always
  * starts with; the default is a single Exit, i.e. the smallest diagram that validates.
  */
-if (CATEGORY === "BO_PROCESS") {
-  const FIG_PKG = "kz.greetgo.mybpm.reg.structure.model.bo.process.figure";
+const FIG_PKG = "kz.greetgo.mybpm.reg.structure.model.bo.process.figure";
+
+if (CATEGORY === "BO_PROCESS" && PROCESS_SPEC) {
+  /**
+   * The configured process. The diagram goes into `workProcess` (imported as the WORK version, §5c) and
+   * every script's `compositeId` is `<version id>-<figure id>` — for `workProcess` the version id is one
+   * we mint; the exporter writes the platform's own. Figure / arrow / block ids are derived from the BO
+   * code and the spec keys, so the same spec + code always yields the same archive.
+   */
+  const spec = PROCESS_SPEC;
+  const versionId = id(`version.${BO_CODE}`);
+  const figures: Record<string, string> = {};
+  const arrowIds: Record<string, string> = {};
+  const fieldCodes: Record<string, string> = Object.fromEntries((spec.fields ?? []).map(f => [f.key, codeOf(f.label)]));
+  const figureStructs: Record<string, object> = {};
+  for (const f of spec.figures) {
+    const figId = id(`figure.${BO_CODE}.${f.key}`);
+    figures[f.key] = figId;
+    const struct: Record<string, unknown> = { "@class": `${FIG_PKG}.Figure${f.type}Struct`, x: f.x, y: f.y };
+    if (f.type === "Form") {
+      if (f.field && !fieldCodes[f.field]) throw new Error(`Form ${f.key}: unknown field key ${f.field}`);
+      if (f.field) struct.fieldCode = fieldCodes[f.field];
+    }
+    figureStructs[figId] = struct;
+  }
+  const arrows: Record<string, object> = {};
+  for (const a of spec.arrows) {
+    const arrId = id(`arrow.${BO_CODE}.${a.key}`);
+    arrowIds[a.key] = arrId;
+    if (!figures[a.from] || !figures[a.to]) throw new Error(`arrow ${a.key}: unknown figure`);
+    arrows[arrId] = {
+      ...(a.name ? { name: a.name } : {}),
+      startFigureId: figures[a.from], startSlotName: a.fromSlot,
+      finishFigureId: figures[a.to], finishSlotName: a.toSlot,
+    };
+  }
+  const scriptLines: object[] = [];
+  for (const [figKey, sc] of Object.entries(spec.scripts ?? {})) {
+    const figId = figures[figKey];
+    if (!figId) throw new Error(`script for unknown figure ${figKey}`);
+    let n = 0;
+    const body = scriptBody(sc,
+      key => { if (!arrowIds[key]) throw new Error(`script ${figKey}: unknown arrow ${key}`); return arrowIds[key]; },
+      seg => seg.startsWith("@") ? (fieldCodes[seg.slice(1)] ?? (() => { throw new Error(`unknown field ${seg}`); })()) : seg,
+      () => id(`script.${BO_CODE}.${figKey}.${n++}`));
+    scriptLines.push({ "@class": `${PKG}.ScriptDefStructDto`, compositeId: `${versionId}-${figId}`, ...toArchiveScript(body) });
+  }
+  // the export's own order: the script bodies BEFORE the versions line, the BO after both
+  lines.splice(lines.length - 1, 0, ...scriptLines);
+  lines.push({
+    "@class": `${PKG}.BoProcessVersionsStructDto`,
+    oldId: id(`bo.${BO_CODE}`),
+    workProcess: {
+      figureStructs,
+      scriptsDefIds: scriptLines.map((l: any) => l.compositeId),
+      methodScriptIds: [],
+      arrows,
+      runWayMap: {},
+    },
+    processVersions: {},
+  });
+} else if (CATEGORY === "BO_PROCESS") {
   const specs: { type: string; x: number; y: number }[] = [];
   for (let i = 0; i < Bun.argv.length; i++) {
     if (Bun.argv[i] !== "--process-figure") continue;
