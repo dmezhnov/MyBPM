@@ -1399,15 +1399,18 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   `<stand>`). The field is required; the constructor defaults it to the dictionary row `CREATED`
   («Только что создан»). Shipped without a default, every `validate-apply-remove-draft` of a process
   record answers 200 with the form command `ALERT_SAVE_BUTTON_NOTIFICATION` «validate_required_title»,
-  the record is never created and the process never starts. **An export carries the default as a
-  separate `ExportStructInstanceDto` with `sources:[{sourceType:"DEFAULT_VALUE", defaultValueInstanceSource:
-  {boCode, fieldCode:"PROCESS_STATUS"}}]` — the importer IGNORES that line** (tried on a new BO and on
-  re-import of an existing one; `defaultValue` stayed `"[]"`). What takes is the key on the field itself:
-  `"defaultValue": "[\"<CREATED row id>\"]", "defaultValueMap": {"RUS": "[\"<CREATED row id>\"]"}`.
+  the record is never created and the process never starts. **The default needs TWO things in the
+  archive** `[C]` (2026-09-27, `<stand>`, four new-BO imports compared): (1) the key on the field itself,
+  `"defaultValue": "[\"<CREATED row id>\"]", "defaultValueMap": {"RUS": "[\"<CREATED row id>\"]"}`,
+  AND (2) the export's separate `ExportStructInstanceDto` line for the `CREATED` row with
+  `sources:[{sourceType:"DEFAULT_VALUE", defaultValueInstanceSource:{boCode:<this BO>, fieldCode:"PROCESS_STATUS"}}]`
+  (its full shape: `tools/make-probe-archive.bun.ts`, `pushStatusDefault`). The line alone left
+  `defaultValue "[]"`; the key alone left `"[]"` too; both together took. (An earlier reading «the line is
+  ignored, the key is enough» was wrong — every archive that worked happened to carry both.)
   The row id is per stand like the dictionary id — read both off the stand (§0.2a). **So an EXPORTED
   process never imports runnable as is** `[C]` (2026-09-27, `<stand>`): the export writes
-  `PROCESS_STATUS` with no `defaultValue` (the default lives only in the ignored line), the imported copy
-  refused every record with «validate_required_title»; adding those two keys to the field — and nothing
+  `PROCESS_STATUS` with no `defaultValue` key (only the line), the imported copy
+  refused every record with «validate_required_title»; adding the key to the field — and nothing
   else — made the same archive run both branches. Patch every exported process before re-importing it.
 - The two `ExportStructInstanceDto` in the sample are RECORDS, not structure: one row of the
   `PROCESS_STATUS` dictionary (`CREATED` / «Только что создан»), and a `Coordinate` instance whose
@@ -1427,8 +1430,12 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   BO-reference fields (the record whose form the step shows), each timer is
   `{useTimer, timeInMinute, unitType:"MINUTES"|"HOURS"|…, workingTime}` and adds no slot; Script =
   `{script:null}` until its IDE is opened, the script itself lives under `scriptModuleId = <version id>`,
-  `scriptId = <figure id>`; **every arrow leaving a Switch needs a `name`** or validation fails. Full
-  write-up: `MYBPM-UI-API.md` §5f «Configuring the figures».
+  `scriptId = <figure id>`; **every arrow leaving a Switch needs a `name`** or validation fails; Timer =
+  `{fieldId}` of a date field of the process (a Timer with no field still validates clean). **In the
+  archive** a Timer is `FigureTimerStruct {x, y, archetype:"DYNAMIC", fieldCode:"<the date field's code>"}`
+  (as a Form is `FigureFormStruct {fieldCode}`) — `[C]` (2026-09-27): imported, the code resolved to the
+  new field's `fieldId`, and the Timer fired on an ordinary record. Full write-up: `MYBPM-UI-API.md` §5f
+  «Configuring the figures».
 
 ## 5d. Scripts inside the archive (`BoScriptVersionsStructDto` + `ScriptDefStructDto`) `[C]` (2026-09-18, sample `MyBPM-export-<company-b>-v4.24.25.614-2026-09-15T16-55-04.mybpm.zip`)
 
@@ -3249,8 +3256,13 @@ F-terminateProcess-K-FIX-T-BoiRefCode  #Терминируй процесс    (
 ```
 
 A process record also has the field action `F-PROCESS_STATUS-K-DYN-S-boi_fields` (its `PROCESS_STATUS`).
-`F-updateTrapDate-K-FIX-T-BoiFieldRefCode` («Обновить таймер для процесса», on a `FULL_DATE` field that a
-Timer figure watches) is known from a prior export `[I]` — not yet read on a stand.
+`F-updateTrapDate-K-FIX-T-BoiFieldRefCode` «#Обновить таймер для процесса» `[C]` (2026-09-27, read in a
+process's own context) is an action on a process FIELD (`BoiFieldRefCode` = `ЭТОТ_ПРОЦЕСС.<field>`, no
+`#Значение` hop), no arguments, returns nothing — a `BlockAssign` with only `leftExprId`. Platform's
+description: «a Timer's schedule is not updated automatically when its field changes; to move it, change
+the field and then call this». The same list on a process field also offers `#Удалить ошибку`,
+`#Добавить ошибку`, `#Существует?`, `#Обновить из базы`, `#Дай код поля БО` / `#Дай код БО` /
+`#Дай идентификатор …`, and the three record actions above. When it is (not) needed: §16 «A Timer».
 
 ## 13. Methods
 
@@ -3645,6 +3657,28 @@ unless marked otherwise.
   on test records, and their reference fields list only test records `[I]`. The run-time API and the
   manual unstick («Продолжить принудительно» = `push-step-forcibly` on the stuck step's OUTGOING arrow):
   `MYBPM-UI-API.md` §5f «Running a process on a record».
+- **A Timer** `[C]` (2026-09-27, `<stand>`, probe «Проба БП таймер 2026-09-27», Enter → Script → Timer →
+  Exit, six runs). The figure watches ONE date field of the process (`FULL_DATE`; the editor stores
+  `fieldId`, the archive `archetype:"DYNAMIC", fieldCode`, §5c). When the process ENTERS the Timer it reads
+  that field once: a future date → the step stands until then; an EMPTY field or a date in the PAST → it
+  passes at once. It fires 10–40 s after the due time (a scheduler tick): the step goes `STAND` →
+  `WAITING` (due, not yet fired) → `PASSED`. **Changing the field on the record while the Timer stands
+  does NOT move it** — a save setting it into the past left the step standing until the ORIGINAL due time.
+  Setting the date in a Script right before the Timer is the pattern:
+  `ЭТОТ_ПРОЦЕСС.Пауза.#Значение = Сейчас.увеличить(1, минуты)` →
+
+  ```
+  {"<assign>":{"leftExprId":"<Пауза.#Значение>","rightExprId":"<inc>","downBlockId":"<exit>","type":"BlockAssign"}}
+  "<now>":  {"exprValueType":"CONST","constType":"JavaObjectFactories","objectDescriptor":"BEAN_METHOD-DateExtensions-now",
+             "valueType":{"type":"Object","baseType":"Date"},"type":"ExprValue"}
+  "<inc>":  {"leftExprId":"<now>","actId":"F-incDate-K-FIX-T-Date","argExprIds":{"amount":"<1>","unit":"<MINUTES>"},"type":"ExprAct"}
+  ```
+
+  (`amount` a `BigDecimal` constant, `unit` a `DateDeltaUnit` enum constant — shapes in §12.) **`#Обновить
+  таймер для процесса` is NOT needed before a Timer** — the run above fired without it, contrary to an
+  older library's rule «every script before a Timer must call it». What it is for, per the platform's own
+  description: after changing the date of a Timer that is ALREADY standing, call it on that field to
+  move the schedule `[I]` (not run). Calling it right before the Timer is harmless (fired on time).
 - **A configured process from a spec, headlessly** `[C]` (2026-09-27): `tools/process-builder.ts` builds
   fields + figures + named arrows + Script/Switch bodies (the JSON above, generated) through the
   constructor API and runs both Switch branches on test records; it passed at the first try. This is the

@@ -1,0 +1,20 @@
+{
+  "group": "Бизнес-объект",
+  "name": "Проба БП таймер 2026-09-27",
+  "desc": "Enter → Script(Пауза = сейчас + 1 мин) → Timer(Пауза) → Exit, собран tools/process-builder.ts",
+  "fields": [{"key": "pause", "label": "Пауза", "type": "FULL_DATE"}],
+  "figures": [
+    {"key": "enter",  "type": "Enter",  "x": 100, "y": 100},
+    {"key": "script", "type": "Script", "x": 260, "y": 90},
+    {"key": "timer",  "type": "Timer",  "x": 440, "y": 90, "field": "pause"},
+    {"key": "exit",   "type": "Exit",   "x": 620, "y": 100}
+  ],
+  "arrows": [
+    {"key": "a1", "from": "enter",  "fromSlot": "main",  "to": "script", "toSlot": "left"},
+    {"key": "a2", "from": "script", "fromSlot": "right", "to": "timer",  "toSlot": "left"},
+    {"key": "a3", "from": "timer",  "fromSlot": "right", "to": "exit",   "toSlot": "main"}
+  ],
+  "scripts": {
+    "script": {"exit": "plain", "steps": [{"setDate": ["@pause"], "plus": 1, "unit": "MINUTES"}]}
+  }
+}
