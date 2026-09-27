@@ -1435,7 +1435,11 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   archive** a Timer is `FigureTimerStruct {x, y, archetype:"DYNAMIC", fieldCode:"<the date field's code>"}`
   (as a Form is `FigureFormStruct {fieldCode}`) — `[C]` (2026-09-27): imported, the code resolved to the
   new field's `fieldId`, and the Timer fired on an ordinary record. Full write-up: `MYBPM-UI-API.md` §5f
-  «Configuring the figures».
+  «Configuring the figures». **Parallel figures and the Terminator in the archive** `[C]` (2026-09-27,
+  read off an export, then imported and run): `FigureSingleToParallelStruct {x, y, outSlotsCount: N}`,
+  `FigureParallelToSingleStruct {x, y, inSlotsCount: N}`, `FigureTerminatorStruct {x, y}` (nothing else —
+  the editor's `fieldId:""` does not travel); arrows keep the slot names `in` / `out1…outN` and
+  `in1…inN` / `out`. Runs: §16 «Parallel branches» and «A Terminator ends the WHOLE process».
 
 ## 5d. Scripts inside the archive (`BoScriptVersionsStructDto` + `ScriptDefStructDto`) `[C]` (2026-09-18, sample `MyBPM-export-<company-b>-v4.24.25.614-2026-09-15T16-55-04.mybpm.zip`)
 
@@ -3687,7 +3691,22 @@ unless marked otherwise.
   `out`) is a real join: its step appears as `STAND` as soon as the first branch reaches it and passes only
   when the LAST one arrives — here B was done at 6 s and the join stood until A's Timer fired (~70 s), then
   A2, the join and the Exit passed together. One step per figure, all `PASSED`; a Timer in one branch does
-  not hold the others. Archive struct names of these two figures: `[U]` (not exported yet).
+  not hold the others. In the archive they are `FigureSingleToParallelStruct {outSlotsCount}` /
+  `FigureParallelToSingleStruct {inSlotsCount}` (§5c) `[C]`.
+- **A Terminator ends the WHOLE process, not just its branch** `[C]` (2026-09-27, `<stand>`, API probe
+  «Проба БП терминатор-2 2026-09-27» from `tools/process-terminator2.spec.json` on a DEV record, and the
+  same spec through an ARCHIVE — «Проба БП терминатор архив 2026-09-27» — on an ordinary record): Enter →
+  SingleToParallel → (A: Script sets Пауза = now + 3 min → Timer(Пауза) → Script A2 → Exit) ‖ (B: Script
+  sets Пауза B = now + 1 min → Timer(Пауза B) → Terminator). Branch A stood on its Timer while B's Timer
+  fired (~65–100 s); the moment B passed the Terminator, **A's standing Timer turned `PASSED` with no next
+  step** — A2 and the Exit never ran, not even after A's due time. `load-process-steps` shows nothing
+  special: the cut Timer is just `PASSED`, `nextProcessSteps: []`, no diagnostic message. (The
+  record's `PROCESS_STATUS` after it is NOT readable this way — `load-boi-values` answers `""` for any
+  reference field of a process record, a record ended by an Exit included.) Use it for «stop everything»
+  (e.g. a cancel branch); that an Exit ends only ITS branch is `[I]` (not run) — with a join, just lead
+  the branch into the join. A first variant with an instant B (`tools/process-terminator.spec.json`:
+  Script → Terminator, no Timer) did the same — A's Timer, entered 30 ms after the Terminator, was closed
+  at once.
 - **A configured process from a spec, headlessly** `[C]` (2026-09-27): `tools/process-builder.ts` builds
   fields + figures + named arrows + Script/Switch bodies (the JSON above, generated) through the
   constructor API and runs both Switch branches on test records; it passed at the first try. This is the
