@@ -685,7 +685,16 @@ something behaves impossibly** · §12 what is still unknown.
   the save call returned 200.
 - **State stand facts only after READING the stand** (API or export) — never infer them.
 - The auto-mode classifier blocks the FIRST stand-changing API call of a session; an explicit grant from
-  the user in chat («даю все права, разрешаю») unblocks it — no settings change needed.
+  the user in chat («даю все права, разрешаю») unblocks it — no settings change needed. A durable fix
+  `[C]` (2026-09-27): an `autoMode` block in the user's `~/.claude/settings.json`, with an `environment`
+  line («the user owns the stands *.mybpm.kz») and an `allow` line (any action on the stand through
+  claude-in-chrome, in-page API writes included), each list starting with `"$defaults"`. With it,
+  in-page `save-business-object-portion`, JS clicks on «СОХРАНИТЬ» and `push-step-forcibly` all passed
+  with no prompt.
+- **The constructor's «СОХРАНИТЬ» ignored two real mouse clicks and saved on `button.click()` from JS**
+  `[C]` (2026-09-27, `mybpm-ng-action-buttons button.main`, with a field-settings panel open). This is the
+  opposite of the Form dialog's checkboxes (§5f). If a click sends nothing, check the XHR log, then try
+  the other kind of click.
 
 ## 3. Access rights
 
@@ -1163,6 +1172,10 @@ settings).
   with the new fields appended to `formFields`) plus
   `editedFields: [{fieldId, gridPosition, needFreezeWhenScroll}]`, `addedFieldIds: [<new fieldIds>]`,
   `deletedFieldIds: []`.
+- **Changing an EXISTING field** goes through `editedFields` only `[C]` (2026-09-27): the constructor sends
+  the whole DTO plus `editedFields: [{fieldId, <only the changed keys>}]` (e.g. `viewType`, `boFieldRefs`),
+  and the server applies exactly those keys. The same change made only inside `businessObject.formFields`
+  is silently dropped (trap 53).
 - `generate-business-form-field` returns a ready ~60-key field DTO with a fresh `fieldId` and `code: null`.
   Set `label`, `labelMap` and `gridPosition`, leave the code alone.
 - **`save-business-form-field` `{businessObjectId, fieldList}` does NOT create fields** — it answers 200
@@ -1533,6 +1546,62 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   top right) brings the diagram back `[C]`; when exactly it reopens is `[I]` (it did not every time).
 - The IDE of a process record offers three process-only actions — `goForProcess`, `continueProcess`,
   `terminateProcess` (`MYBPM-IMPORTS.md` §12a «Actions that exist only on a PROCESS record»).
+
+#### Running a process on a record `[C]` (2026-09-27, `<stand>`)
+
+Same probe, a TEST version, so only **test records** run it (`boiState: DEV`, registry tab «Тестовые»,
+§5g). The process field «Заявка» is a `BO` reference to «Проба БП заявка» (a CHECKBOX «Одобрить» + an
+INPUT_TEXT «Текст заявки»), and the Form points at it. Everything below was driven with the §6b form
+cycle from inside the page, and every claim was read back with `load-process-steps`.
+
+1. **The process starts when the record is SAVED, not when it is opened.** `create-draft-with-boi
+   {boId:<process BO>, boiState:"DEV"}` → `load-process-steps` = `[]`; `validate-apply-remove-draft` →
+   Enter `PASSED`, Form `STAND` at once. «Статус процесса» shows «В ожидании» (`WAITING`) while a step
+   stands.
+2. **A Form step is released by saving THE record that was in its field when the step was entered.**
+   Filling «Заявка» in the same draft as the process record's first save, then
+   `create-draft` + `save-field-value` + `validate-apply-remove-draft` on that Заявка, made Form →
+   Script → Switch → Exit «Да» pass in one go (`scriptRunSuccess: true` on both scripts) and set the
+   status to «Завершён» (`FINISHED`). Nothing but the record save is needed: no task, no button on the
+   process card.
+3. **Filling the field AFTER the Form was entered leaves the step stuck for good** — proven twice,
+   including a controlled run (empty field on save → Form `STAND` → field filled through the process
+   record's form → Заявка saved with a changed value → still `STAND`). A retry does not help
+   (`push-step-retry` → «Нет активных шагов для повторного запуска»; it is only for a step with
+   diagnostics). So whatever feeds a Form must fill its field BEFORE the process reaches it: at the
+   record's first save, or in a Script placed before the Form.
+4. **Unsticking a step by hand: «Продолжить принудительно»** — the context menu of a STAND step's
+   OUTGOING arrow in the diagram → `v2/boi-process/push-step-forcibly P {boProcessId, boiId, arrowId}`
+   → empty 200, and the process runs on from that arrow's target (all later figures ran and the record
+   finished). Given the arrow INTO the standing step (Enter → Form) it did nothing.
+
+The run-time controller, read off the bundle (chunk `9839`), all `P`: `v2/boi-process/…`
+
+| call | params | what it does |
+|---|---|---|
+| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|FAILED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` |
+| `load-test-run-poi-id` | `{boProcessId}` | the editor's current test record `[C]` |
+| `push-step-forcibly` | `{boProcessId, boiId, arrowId}` | «Продолжить принудительно» `[C]` |
+| `push-step-retry` | `{boProcessId, boiId, figureId}` | «Попробовать еще раз» (Script / Switch / Form STAND with diagnostics) `[C]` refusal only |
+| `stop-step` | `{boProcessId, boiId, figureId}` | «Остановить текущий» `[I]` |
+| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь» `[I]` |
+| `start-dev-process` / `stop-dev-process` | `{boProcessId}` | the editor's test run (a process with no «on record create» fields) `[I]` |
+| `go` | `{boProcessId, boiId}` | `[U]` |
+
+Plus `v2/boi-process2/load-boi-process-id {boId, boiId, draftId}` → the version a record runs, and in
+`v2/bo-process-editor/`: `load-bo-with-instance-id {boProcessId, poiId, fieldId}` → `{boId, boiId}` of the
+record held in a field (what a Form step opens) `[C]`; `load-on-boi-create-fields {boProcessId}` → the
+fields whose referenced BO can START the process by creating a record there (`[]` on this probe; the editor
+then opens that BO's new-record form instead of `start-dev-process`) `[I]`.
+
+- **In the process EDITOR, a double-click on a standing Form opens the form of its record** (test mode
+  only — the diagram on a record's own card does nothing). It is the same `create-draft` as anywhere
+  else, with no process context, so saving it from the API is equivalent `[C]`.
+- **A DEV process record lists only DEV records in its reference fields** `[I]`: the «Заявка» picker of
+  a test record said «Данные отсутствуют» while the BO held two ordinary records and no test ones. Make the
+  referenced records with `create-draft-with-boi {…, boiState:"DEV"}` for a test run.
+- `load-boi-values` returns `""` for a `BO` reference field on a process record; read the link with
+  `load-bo-with-instance-id` instead `[C]`.
 
 ### Export through the API — no browser download `[C]` (2026-09-18)
 
@@ -2783,6 +2852,16 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     fire) and the next call was `CHECKLIST = "[]"`; afterwards everything worked again. Whether one of
     those crashed the backend or a restart coincided is unknown — send one value at a time with a
     `load-auth-info` health check after each, and do not send guessed values to those two types.
+53. **A BO-reference field created over the API renders EMPTY on the record card** `[C]` (2026-09-27) —
+    `generate-business-form-field` leaves `viewType: null` and every `boFieldRefs[].toShow: false`; the
+    card then draws a bare selector with no «Выберите» and no chips. Set it in the constructor (gear →
+    «Отображение» → «Вид отображения» + «Выбрать поля для отображения») or send it: **an existing field
+    changes ONLY through its `editedFields` entry** — `{fieldId, viewType:"SINGLE", boFieldRefs:[…,
+    toShow:true, orderIndex:i]}`; the same keys changed in the `businessObject.formFields` copy are
+    silently ignored (the call still answers an accumulator id). §5b.
+54. **A process Form only waits for the record that was in its field when the step began** `[C]`
+    (2026-09-27). Fill the field later and saving that record never releases the step. Only
+    `push-step-forcibly` does, on the Form's outgoing arrow. §5f «Running a process on a record».
 
 ## 12. Open questions
 
