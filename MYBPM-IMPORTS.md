@@ -3553,6 +3553,31 @@ unless marked otherwise.
   («Не указан targetArrowId»). Write only what the IDE would offer. The arrow ids of a figure:
   `MYBPM-UI-API.md` §5f `load-exit-variants`; in an archive they are the `arrows` keys of the
   `BoProcessVersionsStructDto` whose `startFigureId` is that Switch.
+- **A Switch with a condition** `[C]` (2026-09-27, `<stand>`, written headlessly and RUN both ways on
+  test records): the process field «Заявка» (`Zayavka`, a BO reference) points at a record with a CHECKBOX
+  «Одобрить» (`Odobrit`); the Switch reads it and leaves by one of its two arrows:
+
+  ```json
+  "blocks": {
+   "<hat>":  {"x":40,"y":40,"downBlockId":"<if>","type":"BlockFixEntryPoint"},
+   "<if>":   {"ifExprId":"<e4>","thenBlockId":"<exitYes>",
+              "branches":{"<br>":{"blockId":"<exitNo>","order":10}},"type":"BlockIf"},
+   "<exitYes>":{"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<arrow «Да»>","type":"BlockExit"},
+   "<exitNo>": {"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<arrow «Нет»>","type":"BlockExit"}},
+  "expressions": {
+   "<e1>":{"exprValueType":"THIS_PROCESS","constType":"BoiRefCode","type":"ExprValue"},
+   "<e2>":{"leftExprId":"<e1>","actId":"F-Zayavka-K-DYN-S-boi_fields","type":"ExprAct"},
+   "<e3>":{"leftExprId":"<e2>","actId":"F-Odobrit-K-DYN-S-boi_fields","type":"ExprAct"},
+   "<e4>":{"leftExprId":"<e3>","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","type":"ExprAct"}}
+  ```
+
+  IDE reading: `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрить.#Значение ТО выйти по стрелке: Да ИНАЧЕ выйти по
+  стрелке: Нет`. Three things this proves: a field of the REFERENCED record is reached by applying its
+  `F-<code>-K-DYN-S-boi_fields` straight to the reference field (no `#Значение` hop in between, as §12a
+  says for a single link); the boolean is tested bare (trap 22); the `ЕСЛИ` has no `downBlockId`, because
+  both of its branches are exits. Run: «Одобрить» = Да → Exit «Да», = Нет → Exit «Нет», both with
+  `scriptRunSuccess: true` — the condition is evaluated, not ignored. The value read is the one saved at
+  the moment the Switch runs (here: the Заявка save that released the Form).
 - **Arrow slot names differ per figure** `[C]` (client bundle): Enter/Exit `main`/`top`/`bottom`; Switch
   `up`/`right`/`down`/`left`; Script and Timer `left`/`right`/`top`/`bottom` + the four corners
   (`topLeft`…); Form = Script's without `bottom` plus `timerCreate`/`timerOpenForm`/`timerTouchDraft`;
