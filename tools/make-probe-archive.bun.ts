@@ -570,6 +570,7 @@ const isDictionary = CATEGORY === "BO_DICTIONARY";
 const isComposite = CATEGORY === "BO_COMPOSITE";
 const custom = fieldFlags();
 for (const f of PROCESS_SPEC?.fields ?? []) {
+  if ((f.type ?? "BO") !== "BO") { custom.push({ label: f.label, type: f.type!, options: [], flags: [] }); continue; }
   if (!f.refBoCode) throw new Error(`--process-spec: field «${f.label}» needs refBoCode for the archive`);
   custom.push({ label: f.label, type: "BO", refBoId: f.refBoId, refBoCode: f.refBoCode, options: [], flags: [] });
 }
@@ -653,6 +654,7 @@ if (isComposite) {
  * dynamic height (read off the export of the API-built probe, 2026-09-27).
  */
 for (const f of PROCESS_SPEC?.fields ?? []) {
+  if ((f.type ?? "BO") !== "BO") continue; // e.g. a Timer's FULL_DATE: an ordinary field, left as generated
   const df: any = dynamicFields[codeOf(f.label)];
   Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: false });
   delete df.isHeightDynamic;
@@ -669,9 +671,8 @@ for (const f of PROCESS_SPEC?.fields ?? []) {
  * `--process-status <refBoId>:<CREATED row id>` also gives the field its DEFAULT VALUE — the dictionary
  * row `CREATED` («Только что создан»; its id is per-stand too). Without it the field is required AND
  * empty, so every record of the process is refused on save («validate_required_title») and the process
- * never starts `[C]` (2026-09-27). An export carries this default as a separate `ExportStructInstanceDto`
- * with a `DEFAULT_VALUE` source — the importer IGNORES that line (tried on a new and on an existing BO);
- * `defaultValue` on the field itself is what takes.
+ * never starts `[C]` (2026-09-27). The default takes only together with the export's separate
+ * `ExportStructInstanceDto` line for that row (see `pushStatusDefault` below), which is written too.
  */
 const [processStatusRefBoId, processStatusCreatedId] = flag("process-status", "").split(":");
 if (CATEGORY === "BO_PROCESS" && processStatusRefBoId) {
@@ -871,6 +872,29 @@ lines.push({
  */
 const FIG_PKG = "kz.greetgo.mybpm.reg.structure.model.bo.process.figure";
 
+/**
+ * The `CREATED` row as the export writes it: an `ExportStructInstanceDto` whose source is
+ * `DEFAULT_VALUE` of this BO's `PROCESS_STATUS`. **It is needed TOGETHER with `defaultValue` on the field**
+ * `[C]` (2026-09-27, `<stand>`): a new BO imported with the field key alone kept `defaultValue "[]"`, with
+ * this line alone likewise (archive-2); with both the default took (archive-3, and the patched export of
+ * 4c2, which carried the export's own line). Goes between the BO and the versions line, as in an export.
+ */
+function pushStatusDefault() {
+  if (!processStatusCreatedId) return;
+  lines.push({
+    "@class": `${PKG}.ExportStructInstanceDto`,
+    compositeId: `${processStatusRefBoId}-${processStatusCreatedId}`,
+    boCode: "PROCESS_STATUS",
+    kind: "GENERAL",
+    fieldMap: {
+      code: { type: "INPUT_TEXT", storedValue: "CREATED", isUnique: true, showTable: true, orderIndex: 2147483647, kind: "GENERAL" },
+      label: { type: "INPUT_TEXT_LANG", storedValue: JSON.stringify({ ENG: "Just created", KAZ: "Жақында жасалды",
+        QAZ: "Zhaqynda zhasaldy", RUS: "Только что создан" }), isUnique: false, showTable: true, orderIndex: 2147483647, kind: "GENERAL" },
+    },
+    sources: [{ sourceType: "DEFAULT_VALUE", defaultValueInstanceSource: { boCode: BO_CODE, fieldCode: "PROCESS_STATUS" } }],
+  });
+}
+
 if (CATEGORY === "BO_PROCESS" && PROCESS_SPEC) {
   /**
    * The configured process. The diagram goes into `workProcess` (imported as the WORK version, §5c) and
@@ -891,6 +915,11 @@ if (CATEGORY === "BO_PROCESS" && PROCESS_SPEC) {
     if (f.type === "Form") {
       if (f.field && !fieldCodes[f.field]) throw new Error(`Form ${f.key}: unknown field key ${f.field}`);
       if (f.field) struct.fieldCode = fieldCodes[f.field];
+    }
+    if (f.type === "Timer") {
+      // the editor's `fieldId` becomes a code + archetype, as in the exports of real processes (§5c)
+      if (f.field && !fieldCodes[f.field]) throw new Error(`Timer ${f.key}: unknown field key ${f.field}`);
+      if (f.field) Object.assign(struct, { archetype: "DYNAMIC", fieldCode: fieldCodes[f.field] });
     }
     figureStructs[figId] = struct;
   }
@@ -918,6 +947,7 @@ if (CATEGORY === "BO_PROCESS" && PROCESS_SPEC) {
   }
   // the export's own order: the script bodies BEFORE the versions line, the BO after both
   lines.splice(lines.length - 1, 0, ...scriptLines);
+  pushStatusDefault();
   lines.push({
     "@class": `${PKG}.BoProcessVersionsStructDto`,
     oldId: id(`bo.${BO_CODE}`),
@@ -955,6 +985,7 @@ if (CATEGORY === "BO_PROCESS" && PROCESS_SPEC) {
     prev = figId;
   });
 
+  pushStatusDefault();
   lines.push({
     "@class": `${PKG}.BoProcessVersionsStructDto`,
     oldId: id(`bo.${BO_CODE}`),
