@@ -3590,10 +3590,17 @@ unless marked otherwise.
   then the process runs on through Script / Switch to the Exit, and the status becomes «Завершён».
   **The Form binds to the record that is in the field WHEN THE STEP BEGINS.** A field filled later is never
   watched, and the step stays stuck. So the design rule is: fill a Form's field before the process gets
-  there, either in the record's first save or in a Script placed before the Form. A test version runs only
+  there, either in the record's first save or in a Script placed before the Form. **The save that
+  releases a Form must CHANGE a value** of that record `[C]` (2026-09-27) — opening and saving it
+  unchanged (or re-sending the stored value) leaves the step standing. The start is asynchronous: the
+  steps can still be empty right after the first save. A test version runs only
   on test records, and their reference fields list only test records `[I]`. The run-time API and the
   manual unstick («Продолжить принудительно» = `push-step-forcibly` on the stuck step's OUTGOING arrow):
   `MYBPM-UI-API.md` §5f «Running a process on a record».
+- **A configured process from a spec, headlessly** `[C]` (2026-09-27): `tools/process-builder.ts` builds
+  fields + figures + named arrows + Script/Switch bodies (the JSON above, generated) through the
+  constructor API and runs both Switch branches on test records; it passed at the first try. This is the
+  API route; the archive route for the same process is `[U]` (next). `MYBPM-UI-API.md` §5f point 6.
 
 ### Verifying on the stand
 
