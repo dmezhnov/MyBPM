@@ -295,7 +295,8 @@ export async function runOnTestRecord(api: Api, p: { boId: string; boProcessId: 
   for (let i = 0; i < 20; i++) {
     await sleep(500);
     final = await steps();
-    if (!final.some(s => s.state === "STAND")) break;
+    // GO = a figure still running (seen on a Switch right after the Form was released) — not an end state.
+    if (!final.some(s => s.state === "STAND" || s.state === "GO")) break;
   }
   return { refBoiId, poiId, afterStart: brief(afterStart), final: brief(final) };
 }

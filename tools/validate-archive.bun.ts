@@ -425,6 +425,8 @@ for (const bo of bos) {
         ...Object.entries<any>(pv[0].processVersions ?? {}).map(([v, d]) => [`processVersions.${v}`, d] as [string, any]),
       ];
       if (!diagrams.length) add("ERROR", "5c", `${tag}: neither workProcess nor processVersions carries a diagram`);
+      else if (!pv[0].workProcess)
+        add("WARN", "5c", `${tag}: only processVersions — imports as a TEST-only version (DEV records only); move the diagram to workProcess to run on ordinary records`);
       for (const [where, wp] of diagrams) {
         const dt = `${tag} ${where}`;
         if (!wp?.figureStructs || !Object.keys(wp.figureStructs).length) { add("ERROR", "5c", `${dt}: no figureStructs`); continue; }
