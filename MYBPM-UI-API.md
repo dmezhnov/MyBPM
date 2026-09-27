@@ -1464,8 +1464,48 @@ identical (`validate-def` clean, Enter → Exit rendered on screen).
   exactly like `oldId` → `boId` (that happened for the 5th and 6th time here).
 - **The importer does NOT create `PROCESS_STATUS`** `[C]`: the process imported without it has only the
   archive's own fields, while every constructor-made process has it. Ship it in `dynamicFields`
-  (`--process-status <refBoId>`, the stand's «Статус процесса» dictionary id) if the imported process is
-  meant to look like an exported one. Whether a process RUNS without that field is `[U]`.
+  (`--process-status <refBoId>:<CREATED row id>`) **together with its `defaultValue`** — see the next
+  block. Whether a process RUNS without that field at all is `[U]`.
+
+#### The same configured process through an ARCHIVE — export, generate, import, run `[C]` (2026-09-27, `<stand>`)
+
+The API probe «Проба БП API 2026-09-27» (Enter → Form «Заявка» → Script → Switch on «Заявка».«Одобрить»
+→ Exit «Да» / Exit «Нет», §«Running a process on a record» point 6) was exported, a generator taught to
+emit the same thing from the same spec, and the result imported and run:
+
+1. **Export** through the `struct` basket (§0U R4a) from inside the page — read the basket, put the
+   process BO (+ its Заявка BO) in, `pre-create-process` → `struct/export-company-structure`, POST the
+   bytes to the local bridge (`mise run bridge`, `tools/bridge.bun.ts`, §10), put the basket back. The
+   process's `ScriptDefStructDto` lines come out WITHOUT ticking «Скрипты»; the basket even reset
+   `isScriptsExport` / `hasScript` to `false` for a process BO. Shapes: `MYBPM-IMPORTS.md` §5c — Form =
+   `FigureFormStruct {fieldCode}` (a CODE, portable), a test-only process sits under
+   `processVersions.<version id>` with no `workProcess`.
+2. **Generate**: `bun tools/make-probe-archive.bun.ts --process-spec tools/process-probe.spec.json --code
+   <Code> --name "<Имя>" --process-status '<Статус процесса dict id>:<CREATED row id>'` → group, 2 script
+   defs, BO, versions line; `tools/validate-archive.bun.ts` now checks the process part (Form `fieldCode`
+   is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is
+   an arrow of the diagram, `PROCESS_STATUS` has a `defaultValue`).
+3. **Import** through the §5 API cycle from the page (bridge `GET` → `FormData` → `import-file` → insert →
+   analyze → apply): analysis clean, `validate-def []`, both scripts `translate-script success`. Figure
+   and arrow ids are the archive's; the VERSION id is the stand's own, scripts re-keyed to it.
+4. **Run** with `window.mybpmProcess.run(…)` (`create-process-constructor.bun.ts --page-script`): both
+   branches reached on DEV records AND on ordinary records (`"state":"ALL"` in the run spec) — the
+   imported version reads `isWork: true, isTest: true`.
+
+- **The first import ran NOTHING — `PROCESS_STATUS` without a default blocks every record** `[C]`. The
+  field is `isRequired`; the constructor defaults it to the «Статус процесса» row `CREATED`. Imported
+  without a default, `validate-apply-remove-draft` on a new process record answers **200** with the form
+  command `ALERT_SAVE_BUTTON_NOTIFICATION` «validate_required_title» — no record, no process, and nothing
+  throws. **The export's `ExportStructInstanceDto` with a `DEFAULT_VALUE` source does NOT set the default**
+  (tried on a fresh BO and on a re-import); `"defaultValue": "[\"<CREATED row id>\"]"` (+ `defaultValueMap`)
+  on the field does. Both ids are per stand: read them off any constructor-built process —
+  `load-business-object-by-id` → `formFields[code=PROCESS_STATUS]` → `refBoId`, `defaultValue`.
+  `runOnTestRecord` now throws on that form command instead of reporting an empty run.
+- **Re-importing the same code adds a version** `[C]`: version 2 `isWork+isTest`, version 1 demoted to
+  `isWork:false, isTest:false`; the field default was NOT repaired by that re-import (the ignored line).
+- Probes left on `<stand>` (group «Бизнес-объект»): «Проба БП архив 2026-09-27» (no default — its records
+  cannot be saved; versions 1-2), «Проба БП архив-2 2026-09-27» (same defect), «Проба БП архив-3
+  2026-09-27» (the working one, with 2 DEV + 2 ordinary process records and their Заявки).
 
 #### Configuring the figures — what each settings dialog writes `[C]` (2026-09-26, `<stand>`)
 
@@ -2650,7 +2690,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   `[C]` (2026-09-22): start it **detached** (`setsid nohup bun bridge.bun.ts > log 2>&1 < /dev/null &`)
   or the session harness reaps it; and stop it **by PID** — `pkill -f 'bun bridge.bun.ts'` inside a
   Bash call matches the wrapper shell's own command line and kills it, so the rest of that command
-  silently never runs.
+  silently never runs. Since 2026-09-27 the bridge is committed — `tools/bridge.bun.ts`, started
+  detached by `mise run bridge` and stopped by pid with `mise run bridge-stop`; files live in
+  `tools/out/bridge/`.
 - **Pasting into the Block IDE from automation** `[C]` (2026-09-24): the IDE pastes from the canvas
   CONTEXT MENU (right click → «Вставить»), not from Ctrl+V, and reads the clipboard with
   `navigator.clipboard.readText()` when the menu opens — which fails under CDP («Document is not focused»),
