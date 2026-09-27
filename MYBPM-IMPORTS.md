@@ -3559,6 +3559,16 @@ unless marked otherwise.
   Terminator `left`/`right`/`top`/`bottom`; SingleToParallel `in` + `out1…N`, ParallelToSingle `out` +
   `in1…N`. A wrong name on a Switch falls back to `up`, on a Script/Terminator to `top`, on a Form/Timer to
   nothing — use the real names (full table: `MYBPM-UI-API.md` §5f «Slots»).
+- **How a process runs** `[C]` (2026-09-27, `<stand>`, a probe built in the constructor, run on test
+  records): it **starts when a record is first SAVED** (not when the form opens); Enter passes at once;
+  a **Form** step stands (status «В ожидании») **until the record held in the Form's BO field is saved**,
+  then the process runs on through Script / Switch to the Exit, and the status becomes «Завершён».
+  **The Form binds to the record that is in the field WHEN THE STEP BEGINS.** A field filled later is never
+  watched, and the step stays stuck. So the design rule is: fill a Form's field before the process gets
+  there, either in the record's first save or in a Script placed before the Form. A test version runs only
+  on test records, and their reference fields list only test records `[I]`. The run-time API and the
+  manual unstick («Продолжить принудительно» = `push-step-forcibly` on the stuck step's OUTGOING arrow):
+  `MYBPM-UI-API.md` §5f «Running a process on a record».
 
 ### Verifying on the stand
 
