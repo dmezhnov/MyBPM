@@ -21,8 +21,11 @@
  *   {group, name, desc?,
  *    fields:  [{key, label, type?, refBoId?}],          // process fields: type "BO" (default) needs refBoId;
  *                                                       // "FULL_DATE" etc. for a Timer
- *    figures: [{key, type, x, y, field?}],              // type "Enter" reuses the one the platform made;
- *                                                       // a Form's / Timer's `field` is a key of `fields`
+ *    figures: [{key, type, x, y, field?, slots?}],      // type "Enter" reuses the one the platform made;
+ *                                                       // a Form's / Timer's `field` is a key of `fields`;
+ *                                                       // `slots` = branch count of a SingleToParallel
+ *                                                       // (outSlotsCount, slots out1…outN) / ParallelToSingle
+ *                                                       // (inSlotsCount, slots in1…inN), default 2
  *    arrows:  [{key, from, fromSlot, to, toSlot, name?}], // slot names per figure: §5f «Slots»
  *    scripts: {<figure key>: {exit: "plain", steps?}    // Script: «Выйти из скрипта»; steps run first:
  *                                                       //   {setDate: <path>, plus: 1, unit: "MINUTES"} —
@@ -53,7 +56,7 @@ export type ProcessSpec = {
   // names the target BO by code in boRefStruct.boInfo, next to its stand id in oldRefBoId
   // type defaults to "BO" (a reference, needs refBoId); any other palette type, e.g. "FULL_DATE" for a Timer
   fields?: { key: string; label: string; type?: string; refBoId?: string; refBoCode?: string }[];
-  figures: { key: string; type: FigureType; x: number; y: number; field?: string }[];
+  figures: { key: string; type: FigureType; x: number; y: number; field?: string; slots?: number }[];
   arrows: { key: string; from: string; fromSlot: string; to: string; toSlot: string; name?: string }[];
   scripts?: Record<string, ScriptSpec>;
 };
@@ -278,6 +281,10 @@ export async function buildProcess(api: Api, spec: ProcessSpec, log: (s: string)
       Object.assign(value, { fieldId: field?.id ?? null, createTimer: null, openFormTimer: null, touchDraftTimer: null });
     }
     if (f.type === "Script") value.script = null;
+    // the editor's palette and slot-drag write exactly these (bundle chunk 9839: createFigureSingleToParallel …)
+    if (f.type === "SingleToParallel") value.outSlotsCount = f.slots ?? 2;
+    if (f.type === "ParallelToSingle") value.inSlotsCount = f.slots ?? 2;
+    if (f.type === "Terminator") value.fieldId = "";
     if (f.type === "Timer") {
       // «Выберите поле с датой» writes just this; a Timer with no field still validates clean
       const field = f.field ? fields[f.field] : undefined;
