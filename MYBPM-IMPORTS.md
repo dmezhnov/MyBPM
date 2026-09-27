@@ -1355,7 +1355,12 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   `"type"` string, and it also carries `methodScriptIds: []`. **Write your diagram into `workProcess`.**
   An EXPORT of a process that only has a test version (built in the constructor, never put «в работу»)
   has NO `workProcess` key: the diagram sits under `processVersions.<version id>` in the same shape `[C]`
-  (2026-09-27); importing that form is untried `[U]`.
+  (2026-09-27). **Importing that form works, but gives a TEST-ONLY version** `[C]` (2026-09-27, `<stand>`,
+  the export imported as is under a new code): `isWork: false, isTest: true` — the process runs on DEV
+  (test) records only; an ordinary record gets no process at all (`load-process-steps` stays `[]`).
+  A `workProcess` line imports as `isWork+isTest` instead (below). To ship a process that runs on
+  ordinary records, move the diagram from `processVersions.<id>` to `workProcess`. Re-importing the
+  `processVersions` form again adds version 2 as `isTest` and demotes version 1 to neither.
 - **Figure and arrow ids survive the import unchanged** `[C]` — the stand's def carries the archive's own
   ids, the same determinism as `oldId` → `boId` (re-checked 2026-09-27 on 6 figures + 5 arrows). The
   **version id does not**: the stand mints its own and re-keys the scripts to it.
@@ -1399,8 +1404,11 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   {boCode, fieldCode:"PROCESS_STATUS"}}]` — the importer IGNORES that line** (tried on a new BO and on
   re-import of an existing one; `defaultValue` stayed `"[]"`). What takes is the key on the field itself:
   `"defaultValue": "[\"<CREATED row id>\"]", "defaultValueMap": {"RUS": "[\"<CREATED row id>\"]"}`.
-  The row id is per stand like the dictionary id — read both off the stand (§0.2a). So an exported process
-  moved to another stand the same way would lose its default too `[I]`.
+  The row id is per stand like the dictionary id — read both off the stand (§0.2a). **So an EXPORTED
+  process never imports runnable as is** `[C]` (2026-09-27, `<stand>`): the export writes
+  `PROCESS_STATUS` with no `defaultValue` (the default lives only in the ignored line), the imported copy
+  refused every record with «validate_required_title»; adding those two keys to the field — and nothing
+  else — made the same archive run both branches. Patch every exported process before re-importing it.
 - The two `ExportStructInstanceDto` in the sample are RECORDS, not structure: one row of the
   `PROCESS_STATUS` dictionary (`CREATED` / «Только что создан»), and a `Coordinate` instance whose
   `sources: [{sourceType: "PROCESS", processInstanceSource: {boCode, isWork}}]` ties it to the process.

@@ -1503,6 +1503,18 @@ emit the same thing from the same spec, and the result imported and run:
   `runOnTestRecord` now throws on that form command instead of reporting an empty run.
 - **Re-importing the same code adds a version** `[C]`: version 2 `isWork+isTest`, version 1 demoted to
   `isWork:false, isTest:false`; the field default was NOT repaired by that re-import (the ignored line).
+- **The EXPORT itself, re-imported as is (only code and name changed)** `[C]` (2026-09-27): analysis
+  clean, `validate-def []`, figure/arrow/field ids = the export's, but (a) the `processVersions` form comes
+  in as a **test-only** version (`isWork:false, isTest:true`) — it runs on DEV records, an ordinary record
+  gets no process (`load-process-steps` = `[]`); (b) every record is refused — the export carries no
+  `defaultValue` on `PROCESS_STATUS`. Adding `defaultValue` + `defaultValueMap` to that one field and
+  re-importing fixed it: both branches reached on DEV records. So: **export → patch the default (and move
+  `processVersions.<id>` to `workProcess` if ordinary records must run it) → import.** The BO the Form
+  points at, shipped in the same export, merged into the existing one by CODE (its export `oldId` differs
+  from its stand id). Probe: «Проба БП экспорт как есть 2026-09-27» `W7AckAuPtOhZsatz`.
+- **A run is over only when no step is `STAND` or `GO`** `[C]`: right after the Form is released the
+  Switch reads `GO` for a moment; a poll that stopped at «no `STAND`» reported an unfinished run.
+  `runOnTestRecord` waits for both.
 - Probes left on `<stand>` (group «Бизнес-объект»): «Проба БП архив 2026-09-27» (no default — its records
   cannot be saved; versions 1-2), «Проба БП архив-2 2026-09-27» (same defect), «Проба БП архив-3
   2026-09-27» (the working one, with 2 DEV + 2 ordinary process records and their Заявки).
