@@ -1,0 +1,30 @@
+{
+  "group": "Бизнес-объект",
+  "name": "Проба БП терминатор 2026-09-27",
+  "desc": "Enter → SingleToParallel → (A: Script ставит Пауза = сейчас + 2 мин → Timer(Пауза) → Script A2 → Exit) ‖ (B: Script B → Terminator) — останавливает ли Терминатор ветку A; собран tools/process-builder.ts",
+  "fields": [{"key": "pause", "label": "Пауза", "type": "FULL_DATE"}],
+  "figures": [
+    {"key": "enter", "type": "Enter",            "x": 80,  "y": 200},
+    {"key": "fork",  "type": "SingleToParallel", "x": 200, "y": 200, "slots": 2},
+    {"key": "a1",    "type": "Script",           "x": 340, "y": 120},
+    {"key": "timer", "type": "Timer",            "x": 500, "y": 120, "field": "pause"},
+    {"key": "a2",    "type": "Script",           "x": 660, "y": 120},
+    {"key": "exit",  "type": "Exit",             "x": 820, "y": 120},
+    {"key": "b1",    "type": "Script",           "x": 500, "y": 290},
+    {"key": "term",  "type": "Terminator",       "x": 660, "y": 290}
+  ],
+  "arrows": [
+    {"key": "e0", "from": "enter", "fromSlot": "main",  "to": "fork",  "toSlot": "in"},
+    {"key": "f1", "from": "fork",  "fromSlot": "out1",  "to": "a1",    "toSlot": "left"},
+    {"key": "f2", "from": "fork",  "fromSlot": "out2",  "to": "b1",    "toSlot": "left"},
+    {"key": "a1t","from": "a1",    "fromSlot": "right", "to": "timer", "toSlot": "left"},
+    {"key": "ta2","from": "timer", "fromSlot": "right", "to": "a2",    "toSlot": "left"},
+    {"key": "a2x","from": "a2",    "fromSlot": "right", "to": "exit",  "toSlot": "main"},
+    {"key": "bt", "from": "b1",    "fromSlot": "right", "to": "term",  "toSlot": "left"}
+  ],
+  "scripts": {
+    "a1": {"exit": "plain", "steps": [{"setDate": ["@pause"], "plus": 2, "unit": "MINUTES"}]},
+    "a2": {"exit": "plain"},
+    "b1": {"exit": "plain"}
+  }
+}

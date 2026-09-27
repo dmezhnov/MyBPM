@@ -1558,8 +1558,16 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   `{x, y, type:"ParallelToSingle", inSlotsCount:2}` (slot-drag: 3; the palette also adds `orientation`,
   not needed); arrows use `out1…outN` / `in` and `in1…inN` / `out` (table «Slots» below). Built through
   one `apply-update-cmd` with these shapes, `validate-def` → `[]`, and the run behaves as a fork + a real
-  join (`MYBPM-IMPORTS.md` §16 «Parallel branches»). A Terminator is born `{x, y, type:"Terminator",
-  fieldId:""}` (bundle) — not run yet `[U]`.
+  join (`MYBPM-IMPORTS.md` §16 «Parallel branches»). In an archive: `FigureSingleToParallelStruct
+  {outSlotsCount}` / `FigureParallelToSingleStruct {inSlotsCount}` `[C]` (exported, then imported and run).
+- **Terminator** `[C]` (2026-09-27, probes «Проба БП терминатор-2 2026-09-27» `HPPPJggl~~3b6E62` through
+  the API and «Проба БП терминатор архив 2026-09-27» through an archive) — born `{x, y, type:"Terminator",
+  fieldId:""}` (bundle; one `apply-update-cmd` with that shape, `validate-def` → `[]`), slots
+  `left`/`right`/`top`/`bottom`, nothing to configure. In the archive it is `FigureTerminatorStruct {x, y}`.
+  Run: **it ends the whole process** — a Timer standing in the other parallel branch turns `PASSED` with
+  no next step the moment the Terminator is passed, and that branch's later figures never run
+  (`MYBPM-IMPORTS.md` §16 «A Terminator ends the WHOLE process»). That an Exit inside one branch ends only
+  that branch is `[I]` (not run).
 - **Arrow name** — double-click the arrow → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
