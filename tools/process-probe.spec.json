@@ -1,0 +1,25 @@
+{
+  "group": "Бизнес-объект",
+  "name": "Проба БП API 2026-09-27",
+  "desc": "Enter → Form(Заявка) → Script → Switch(Одобрить) → Exit Да / Exit Нет, собран tools/process-builder.ts",
+  "fields": [{"key": "req", "label": "Заявка", "refBoId": "QM7HF4sqowhKcDRX"}],
+  "figures": [
+    {"key": "enter",  "type": "Enter",  "x": 100, "y": 100},
+    {"key": "form",   "type": "Form",   "x": 260, "y": 90, "field": "req"},
+    {"key": "script", "type": "Script", "x": 440, "y": 90},
+    {"key": "switch", "type": "Switch", "x": 620, "y": 90},
+    {"key": "yes",    "type": "Exit",   "x": 820, "y": 100},
+    {"key": "no",     "type": "Exit",   "x": 640, "y": 260}
+  ],
+  "arrows": [
+    {"key": "a1",  "from": "enter",  "fromSlot": "main",  "to": "form",   "toSlot": "left"},
+    {"key": "a2",  "from": "form",   "fromSlot": "right", "to": "script", "toSlot": "left"},
+    {"key": "a3",  "from": "script", "fromSlot": "right", "to": "switch", "toSlot": "left"},
+    {"key": "aYes","from": "switch", "fromSlot": "right", "to": "yes",    "toSlot": "main", "name": "Да"},
+    {"key": "aNo", "from": "switch", "fromSlot": "down",  "to": "no",     "toSlot": "top",  "name": "Нет"}
+  ],
+  "scripts": {
+    "script": {"exit": "plain"},
+    "switch": {"if": ["@req", "Odobrit"], "then": "aYes", "else": "aNo"}
+  }
+}
