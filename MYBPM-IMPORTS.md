@@ -3679,6 +3679,15 @@ unless marked otherwise.
   older library's rule «every script before a Timer must call it». What it is for, per the platform's own
   description: after changing the date of a Timer that is ALREADY standing, call it on that field to
   move the schedule `[I]` (not run). Calling it right before the Timer is harmless (fired on time).
+- **Parallel branches** `[C]` (2026-09-27, `<stand>`, probe «Проба БП параллель 2026-09-27», built through
+  the API from `tools/process-parallel.spec.json`: Enter → SingleToParallel → (A: Script sets Пауза = now
+  + 1 min → Timer(Пауза) → Script A2) ‖ (B: Script B) → ParallelToSingle → Exit; one DEV run). A
+  **SingleToParallel** (`outSlotsCount: N`, exits `out1…outN`) starts EVERY branch at once — both first
+  Scripts passed in the same second. A **ParallelToSingle** (`inSlotsCount: N`, entries `in1…inN`, exit
+  `out`) is a real join: its step appears as `STAND` as soon as the first branch reaches it and passes only
+  when the LAST one arrives — here B was done at 6 s and the join stood until A's Timer fired (~70 s), then
+  A2, the join and the Exit passed together. One step per figure, all `PASSED`; a Timer in one branch does
+  not hold the others. Archive struct names of these two figures: `[U]` (not exported yet).
 - **A configured process from a spec, headlessly** `[C]` (2026-09-27): `tools/process-builder.ts` builds
   fields + figures + named arrows + Script/Switch bodies (the JSON above, generated) through the
   constructor API and runs both Switch branches on test records; it passed at the first try. This is the
