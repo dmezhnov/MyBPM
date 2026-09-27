@@ -921,6 +921,9 @@ if (CATEGORY === "BO_PROCESS" && PROCESS_SPEC) {
       if (f.field && !fieldCodes[f.field]) throw new Error(`Timer ${f.key}: unknown field key ${f.field}`);
       if (f.field) Object.assign(struct, { archetype: "DYNAMIC", fieldCode: fieldCodes[f.field] });
     }
+    // as exported (2026-09-27): the branch count is the only setting; a Terminator carries just x, y
+    if (f.type === "SingleToParallel") struct.outSlotsCount = f.slots ?? 2;
+    if (f.type === "ParallelToSingle") struct.inSlotsCount = f.slots ?? 2;
     figureStructs[figId] = struct;
   }
   const arrows: Record<string, object> = {};
