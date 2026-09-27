@@ -1563,7 +1563,12 @@ cycle from inside the page, and every claim was read back with `load-process-ste
    `create-draft` + `save-field-value` + `validate-apply-remove-draft` on that Заявка, made Form →
    Script → Switch → Exit «Да» pass in one go (`scriptRunSuccess: true` on both scripts) and set the
    status to «Завершён» (`FINISHED`). Nothing but the record save is needed: no task, no button on the
-   process card.
+   process card. **The save must CHANGE a value of that record** `[C]` (2026-09-27): a `create-draft` →
+   `validate-apply-remove-draft` with no edit, and one that re-sends the value already stored, both left
+   the Form `STAND` minutes later, while the next save with a changed «Текст заявки» released it at once.
+   **The start is asynchronous**: right after the process record's first save `load-process-steps` can
+   still be `[]` — poll until a step is `STAND` before saving the Form's record, or the release may land
+   before the step exists.
 3. **Filling the field AFTER the Form was entered leaves the step stuck for good** — proven twice,
    including a controlled run (empty field on save → Form `STAND` → field filled through the process
    record's form → Заявка saved with a changed value → still `STAND`). A retry does not help
@@ -1581,6 +1586,21 @@ cycle from inside the page, and every claim was read back with `load-process-ste
    `"true"` / `"false"`, a DEV process record pointing at it, the Заявка saved again — ended in
    `…, Switch PASSED, Exit «Да» PASSED` and `…, Switch PASSED, Exit «Нет» PASSED` respectively. The whole
    run (both cases) is one in-page script of ~12 calls; no UI.
+
+6. **The whole thing headlessly — `tools/process-builder.ts`** `[C]` (2026-09-27): a spec (process
+   fields, figures with slots, named arrows, Script/Switch bodies incl. a condition over a path of field
+   codes) becomes a process in ONE pass — `create-bo` → rename → the BO-reference field with
+   `viewType:"SINGLE"` + `toShow` in `editedFields` (trap 53) → one diagram `apply-update-cmd` (the born
+   Enter is reused, a Form gets `fieldId`, Switch arrows get `name`) → one script `apply-update-cmd` per
+   figure (`scriptModuleId` = version, `scriptId` = figure) → `translate-script` → `validate-def`.
+   `runOnTestRecord` then runs it: DEV Заявка → DEV process record → poll for `STAND` → Заявка saved with
+   a CHANGED value → steps read back. Probe «Проба БП API 2026-09-27» (`zvIXEBMFuEL2CmbB`, version
+   `eNBdDZg~Yk78g1Sp`, spec `tools/process-probe.spec.json`): translate `success` ×2, `validate-def`
+   clean at the first try; runs «Одобрить» = Да → `…, switch PASSED, yes PASSED`, = Нет →
+   `…, no PASSED`, `scriptRunSuccess: true`. Two drivers: `create-process-constructor.bun.ts --spec <f>
+   [--run '<json>']…` from the shell (token file), or `--page-script`, which prints a snippet defining
+   `window.mybpmProcess = {api, build(spec), run(built, spec, run)}` in the stand's page — the token never
+   leaves it (§10), and this is the way it was run.
 
 The run-time controller, read off the bundle (chunk `9839`), all `P`: `v2/boi-process/…`
 
@@ -2870,7 +2890,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     silently ignored (the call still answers an accumulator id). §5b.
 54. **A process Form only waits for the record that was in its field when the step began** `[C]`
     (2026-09-27). Fill the field later and saving that record never releases the step. Only
-    `push-step-forcibly` does, on the Form's outgoing arrow. §5f «Running a process on a record».
+    `push-step-forcibly` does, on the Form's outgoing arrow. And the releasing save must CHANGE a value of
+    that record — a save with nothing changed releases nothing (2026-09-27). §5f «Running a process on a
+    record».
 
 ## 12. Open questions
 

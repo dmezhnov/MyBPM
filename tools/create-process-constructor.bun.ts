@@ -37,6 +37,17 @@
  *                             each arrow leaving slot «main» and entering slot «main».
  *   --show <boId>             inspection only: versions, def and validation of an existing process.
  *
+ * A CONFIGURED process — Form bound to a field, named arrows, Script/Switch bodies — comes from a spec
+ * (grammar and call sequence: `tools/process-builder.ts`; example: `tools/process-probe.spec.json`):
+ *
+ *   --spec <file.json>        build it; then optionally run it on test records:
+ *   --run '<json>'            {"field":"<field key>","values":{"<code>":"<value>"},"release":{"<code>":"<new>"}}
+ *                             — repeatable, one run each (e.g. «Одобрить» true and false to reach both
+ *                             Switch exits); `release` must CHANGE a value, or the Form is not released
+ *   --page-script             print a snippet for the stand's page instead (no --stand, no token): it
+ *                             defines `window.mybpmProcess = {build(spec), run(built, run)}` over an in-page
+ *                             fetch that reads the token from localStorage — the token never leaves the page.
+ *
  * Token: Chrome → localStorage.LOCAL_PRIVATE_SwebToken, quotes stripped; pass it as --token-file.
  */
 
@@ -50,6 +61,41 @@ const flagAll = (name: string): string[] => {
   argv.forEach((a, i) => { if (a === `--${name}`) out.push(argv[i + 1]); });
   return out;
 };
+
+import { buildProcess, runOnTestRecord, type Api, type BuiltProcess, type ProcessSpec } from "./process-builder.ts";
+
+type RunSpec = { field: string; values: Record<string, string>; release: Record<string, string> };
+const runArgs = (built: BuiltProcess, spec: ProcessSpec, run: RunSpec) => ({
+  boId: built.boId, boProcessId: built.boProcessId, refFieldId: built.fields[run.field].id,
+  refBoId: spec.fields!.find(f => f.key === run.field)!.refBoId, values: run.values, release: run.release,
+});
+
+if (argv.includes("--page-script")) {
+  // Types stripped, `export` dropped, wrapped with an api that calls the stand from inside its own page.
+  const js = new Bun.Transpiler({ loader: "ts" })
+    .transformSync(await Bun.file(new URL("./process-builder.ts", import.meta.url)).text())
+    .replace(/^export /gm, "");
+  console.log(`(() => {
+${js}
+const api = async (controller, method, params = {}, body = {}) => {
+  const res = await fetch(location.origin + "/web/v2/" + controller + "/" + method, { method: "POST",
+    headers: { "Content-Type": "application/json", token: JSON.parse(localStorage.LOCAL_PRIVATE_SwebToken) },
+    body: JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params, body_o1nhHUG480: body }) });
+  const text = await res.text();
+  if (!text) return null;
+  let json; try { json = JSON.parse(text); } catch { return text; }
+  if (json && typeof json === "object" && !Array.isArray(json) && ("errorType" in json || "className" in json))
+    throw new Error(controller + "/" + method + ": " + (json.errorType ?? json.className) + " " + (json.message ?? ""));
+  return json;
+};
+const runArgs = ${runArgs.toString()};
+window.mybpmProcess = { log: [], api,
+  build(spec) { return buildProcess(api, spec, s => this.log.push(s)); },
+  run(built, spec, run) { return runOnTestRecord(api, runArgs(built, spec, run)); } };
+return "window.mybpmProcess ready";
+})()`);
+  process.exit(0);
+}
 
 const stand = flag("stand");
 if (!stand) throw new Error("--stand <host> is required: the stand host is never implied");
@@ -101,6 +147,16 @@ async function show(boId: string) {
 }
 
 if (flag("show")) { await show(flag("show")!); process.exit(0); }
+
+if (flag("spec")) {
+  const spec: ProcessSpec = await Bun.file(flag("spec")!).json();
+  const built = await buildProcess(call as Api, spec, console.log);
+  for (const r of flagAll("run")) {
+    const run: RunSpec = JSON.parse(r);
+    console.log(`run ${JSON.stringify(run.values)}:`, await runOnTestRecord(call as Api, runArgs(built, spec, run)));
+  }
+  process.exit(built.validate.length || Object.values(built.translate).some(t => !t.success) ? 1 : 0);
+}
 
 /** save-business-object-portion chunks the JSON at 80 000 chars; each part carries the previous part's id. */
 async function savePortion(payload: object): Promise<string | null> {
