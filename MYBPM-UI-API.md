@@ -1574,6 +1574,13 @@ cycle from inside the page, and every claim was read back with `load-process-ste
    OUTGOING arrow in the diagram → `v2/boi-process/push-step-forcibly P {boProcessId, boiId, arrowId}`
    → empty 200, and the process runs on from that arrow's target (all later figures ran and the record
    finished). Given the arrow INTO the standing step (Enter → Form) it did nothing.
+5. **A conditional Switch branches on the data** `[C]` (2026-09-27): the Switch's script rewritten with
+   `apply-update-cmd` to `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрить.#Значение → по стрелке «Да», ИНАЧЕ → по
+   стрелке «Нет»` (the JSON: `MYBPM-IMPORTS.md` §16 «A Switch with a condition»; `translate-script`
+   `success:true`, `validate-def` `[]`). Two test runs with the steps above — a DEV Заявка with «Одобрить»
+   `"true"` / `"false"`, a DEV process record pointing at it, the Заявка saved again — ended in
+   `…, Switch PASSED, Exit «Да» PASSED` and `…, Switch PASSED, Exit «Нет» PASSED` respectively. The whole
+   run (both cases) is one in-page script of ~12 calls; no UI.
 
 The run-time controller, read off the bundle (chunk `9839`), all `P`: `v2/boi-process/…`
 
@@ -2600,7 +2607,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   a standalone Bun script still needs the user to hand the token over.
 - **`javascript_tool` will not return anything derived from `localStorage` or from response HEADERS**
   `[C]` (2026-09-22) — the value comes back as «[BLOCKED: Cookie/query string data]», however it is
-  encoded. So the token never leaves the page; drive the API through an in-page helper that reads it
+  encoded. The same happens to the WHOLE result when it includes `location.href` of a page with a query
+  string (a record panel carries `draftId=…`) `[C]` (2026-09-27) — leave the URL out; the tab context
+  already shows it. So the token never leaves the page; drive the API through an in-page helper that reads it
   internally and returns only the parsed body:
   ```js
   window.__c = async (path, params = {}, body = {}) => {
