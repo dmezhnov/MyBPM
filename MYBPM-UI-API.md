@@ -617,6 +617,11 @@ dropped (trap 13).
 - [ ] For a process: `validate-def` returned an empty list.
 - [ ] For rights: `load-access-group` re-read and compared, not assumed.
 - [ ] Nothing was left open: no dangling `v2/co` draft, no analysed-but-unapplied structure import.
+- [ ] The notifications your work raised were cleared: every structure import leaves an «Анализ импорта
+      завершен» under the bell (header, «События»). The red × on the «События» header deletes them all —
+      `v2/user-notification/delete-notifications` (body not captured `[U]`); the grey × on one entry
+      deletes that one; `v2/user-notification/count` / `load-notifications` read them `[C]` (2026-09-27).
+      Clear only what your own run raised.
 
 ### 0U.7 Where the rest is
 
@@ -1548,6 +1553,13 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   it. Nothing else to set — the due time IS that field's value when the process enters the Timer.
   A Timer without a field validates clean. Run-time behaviour (empty / past / future date, a field
   changed while it stands, `#Обновить таймер для процесса`): `MYBPM-IMPORTS.md` §16 «A Timer».
+- **SingleToParallel / ParallelToSingle** `[C]` (2026-09-27, probe «Проба БП параллель 2026-09-27»
+  `klMcOWWPP~QYQY8g`) — the palette writes `{x, y, type:"SingleToParallel", outSlotsCount:2}` /
+  `{x, y, type:"ParallelToSingle", inSlotsCount:2}` (slot-drag: 3; the palette also adds `orientation`,
+  not needed); arrows use `out1…outN` / `in` and `in1…inN` / `out` (table «Slots» below). Built through
+  one `apply-update-cmd` with these shapes, `validate-def` → `[]`, and the run behaves as a fork + a real
+  join (`MYBPM-IMPORTS.md` §16 «Parallel branches»). A Terminator is born `{x, y, type:"Terminator",
+  fieldId:""}` (bundle) — not run yet `[U]`.
 - **Arrow name** — double-click the arrow → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
