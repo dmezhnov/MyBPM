@@ -370,7 +370,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | UI «Тип поля» | `type` | extra keys in the archive |
 |---|---|---|
 | Текстовое поле | `INPUT_TEXT` | — |
-| Текстовый блок | `TEXTAREA` | — |
+| Текстовый блок | `TEXTAREA` | — (the value may be HTML, below) |
 | Текст (заголовок секции, статический HTML) | `STATIC_TEXT` | `staticValue` |
 | Число | `INPUT_NUMBER` | — |
 | Чекбокс | `CHECKBOX` | — |
@@ -390,7 +390,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Загрузка файла | `FILE_UPLOAD` | `viewType` SINGLE/MULTIPLE + `params.contentType` ALL/FOR_CAMERA |
 | Email / Телефон | `INPUT_EMAIL` / `INPUT_PHONE` | — |
 | Мультиязычное текстовое поле | `INPUT_TEXT_LANG` | — |
-| Мультиязычный текстовый блок | `TEXTAREA_LANG` | — |
+| Мультиязычный текстовый блок | `TEXTAREA_LANG` | — (the value may be HTML, below) |
 | Вложенный объект / Пользователь | `BO` | `oldRefBoId` + `boRefStruct.boInfo` |
 | Составной объект | `CO` | `oldRefBoId` + `boRefStruct.boInfo` with `boCategory: "BO_COMPOSITE"` |
 
@@ -400,6 +400,20 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
 - `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<h2>…</h2>"}`, and the cell
   should be `{"x":0,"y":<y>,"cols":15,"rows":8}`. A heading text **must not repeat any field label of
   the same BO** — that breaks Excel import.
+- **A `STATIC_TEXT` also has a per-record value** `[C]` (2026-09-28, core2): `staticValue` is only what the
+  card shows until a record gets its own. A script writes that value with
+  `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` (`language` = Enum const `MybpmLang` `RUS`) on the field
+  reference; the card shows it at once, and after saving, only that record shows it. This is how the
+  demo BO puts a per-record `<iframe>` map into a «Текст» field (`MYBPM-UI-API.md` §8).
+- **HTML instead of plain text** `[C]` (the user, 2026-09-28): «Текст» (`STATIC_TEXT`), «Текстовый блок»
+  (`TEXTAREA`) and «Мультиязычный текстовый блок» (`TEXTAREA_LANG`) render HTML, so anywhere their text
+  goes — `staticValue`, a record value written by a script, the API or an xlsx cell — an HTML fragment
+  may stand in for the plain string (`<b>`, `<br>`, `<a href>`, `<div style=…>`). What the sanitizer keeps
+  is `MYBPM-UI-API.md` §8. «Текстовое поле» (`INPUT_TEXT`) and `INPUT_TEXT_LANG` are single-line inputs
+  and show the tags as text `[I]` — this rule is not about them.
+  `<script>` makes the server reject the whole value, `srcdoc` is stripped, while `<iframe src>`, `<img>`,
+  `<a>` and inline `style` are kept, and an `<iframe>` renders live on the card `[C]` (2026-09-28,
+  `MYBPM-UI-API.md` §8).
 - `BO` (nested object / reference) — add `"oldRefBoId": "<the target BO's id ON THE STAND>"`,
   `"viewType": "TABLE"` (or `SINGLE`), `"isHeightDynamic": true`, and
   `"boRefStruct": {"boInfo": {"code": "<target code>", "name": "<target name>", "boCategory": "BO"}, "fieldRefs": {}}`.
@@ -1128,8 +1142,8 @@ personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQA
 | UI name | export `type` | note |
 |---|---|---|
 | Текстовое поле | `INPUT_TEXT` | |
-| Текстовый блок | `TEXTAREA` | |
-| **Текст** | `STATIC_TEXT` | static HTML in `staticValue.rus`, a section heading — *not* a text input |
+| Текстовый блок | `TEXTAREA` | the value may be HTML (§0.5 «HTML instead of plain text») |
+| **Текст** | `STATIC_TEXT` | static HTML in `staticValue.rus`, a section heading — *not* a text input; a script may still write a per-record HTML value (§0.5) |
 | Число | `INPUT_NUMBER` | |
 | Чекбокс | `CHECKBOX` | not «Логический» |
 | Дата | `DATE` | |
@@ -1143,11 +1157,11 @@ personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQA
 | Опросник | `QUESTIONNAIRE` | `questionnaires` = columns + rows in one map |
 | Прогресс-бар | `PROGRESS_BAR` | `progressSteps`; sits in the «Виджеты» palette section but is a normal field |
 | Вкладки | `TAB_GROUP` | `fieldTabs`; also from the «Виджеты» section |
-| Карта | `GEO_POINT` | excluded from filters and from a BO-reference's column list by the client |
+| Карта | `GEO_POINT` | excluded from filters and from a BO-reference's column list by the client; the platform's own map (Google, platform team 2026-09-28), so a Yandex Maps key is not used — `MYBPM-UI-API.md` §5i |
 | Ссылка | `LINK` | URLs — not a text field |
 | Загрузка файла | `FILE_UPLOAD` | `viewType` SINGLE / MULTIPLE, `params.contentType` ALL / FOR_CAMERA |
 | Мультиязычное текстовое поле | `INPUT_TEXT_LANG` | scripts read it through `.RUS` |
-| Мультиязычный текстовый блок | `TEXTAREA_LANG` | |
+| Мультиязычный текстовый блок | `TEXTAREA_LANG` | the value may be HTML, per language |
 | Вложенный объект, Пользователь | `BO` | **not** `BUSINESS_OBJECT` |
 | Составной объект | `CO` | points at a `BO_COMPOSITE` |
 | Email / Телефон | `INPUT_EMAIL` / `INPUT_PHONE` | |
@@ -3138,7 +3152,8 @@ script on a button, 57 blocks, and it compiled and ran on the first paste:
   `#файлы#.добавить(<file>)` (`F-add-K-FIX-T-Iterable`, a `BlockAssign` without `rightExprId`), then
   `<field>.#Значение = #файлы#`. That compiled and ran, and it still replaces rather than appends.
 - **A TEXTAREA on that build is an HTML editor (summernote)**, so `\n` in a written text collapses into
-  a space. Separate lines with `<br>`, which the sanitizer keeps.
+  a space. Separate lines with `<br>`, which the sanitizer keeps. The same holds for `TEXTAREA_LANG`, and
+  a script may write any HTML fragment into either, not only `<br>` `[C]` (the user, 2026-09-28).
 - `F-returnLastIndex-K-FIX-T-String` plus `substring(0, idx)` plus `trim` split `"lon lat"` correctly.
   The lat was taken as `trim(replace(pos, lon, ""))`, so the exact index semantics did not matter.
 
