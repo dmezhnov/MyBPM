@@ -439,7 +439,14 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
 - `TAB_GROUP` — `"fieldTabs"` keyed by the tab code:
   `{"Obschee": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"Obschee","newId":"<16 chars>"}}`
 - `FILE_UPLOAD` — `"viewType": "MULTIPLE"` («несколько файлов») and `"params": {"contentType": "ALL"}`
-  (`FOR_CAMERA` = «только фото с камеры»).
+  (`FOR_CAMERA` = «только фото с камеры»). The constructor's «Отображение» radio (Одиночный /
+  Множественный / Плиточный) lives in **`params.viewType`** (`MYBPM-UI-API.md` §5i «FILE_UPLOAD display
+  mode»). **A photo shows in the field without downloading only with «Плиточный»** (platform team,
+  2026-09-28, corrected from «Множественный» the same day). «Плиточный» = `params.viewType: "TILE"` `[C]`
+  (2026-09-28, captured off the constructor's save; the top-level `viewType` stayed `MULTIPLE` and does
+  not matter). In both «Множественный» and «Плиточный» a script sees the field's value as `File[]` `[C]` —
+  the same script compiled unchanged after the switch, and a script-written PNG then showed as a tile
+  thumbnail on the card.
 - `CHECKLIST` — **a known gap `[C]`**: the items live on the field (`options` + `optionSource` in the
   constructor DTO), but a structure export writes NO `fieldOptionsStruct` for a checklist and an import
   cannot bring them either. The field arrives empty and the items have to be typed in the constructor.
@@ -511,6 +518,13 @@ Heights: 4 rows for a button and the CURRENT_* widgets, 6 for `SIGNATURE` / `CAP
 8 for `IFRAME`. A widget's code and url survive an import and can be read back through the widget's own
 controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may be placed **once** per BO;
 `BUTTON`, `IFRAME` and `CAPTCHA` may repeat.
+
+**A script on a button = a field script on the button's code** — the ordinary «На изменение поля»
+trigger. A click fires it, and each further click fires it again; leave `url` empty for a script-only
+button (`MYBPM-UI-API.md` §5i «A BUTTON runs a script»). On a stand this is `[C]`: wired by `fieldId`
+through `save-bo-scripts`, run by a real click, 2026-09-28. In an archive it is
+`fieldScripts: {"<button code>": {"afterChangeScriptId": …}}` (§5d), keyed like any field — `[I]`, not
+yet imported.
 
 ### 0.5c Kanban — the card template travels in the archive `[C]` (2026-09-19, `<stand>`)
 
@@ -860,6 +874,11 @@ resolve like this:
     CODE, and carries no id.
     A `GROUP` line has no `boPages` / `bracketFilter`; a `BO` line has both. A `kanbanFieldCode` whose BO
     carries no card template for that field gives a kanban that cannot be drawn (0.5c).
+15. **Every BO shows at least one field in its registry** (`tableColToShow: true` on at least one
+    field) **and every `BO` / `CO` reference field shows at least one field of its target**
+    (`boFieldCodes` / `boFieldRefs` with `toShow: true`). This is a rule from the platform team
+    (2026-09-28). Without a column the registry answers `AccessDenied` and lists nothing; without a
+    shown field the reference renders empty (`MYBPM-UI-API.md` §0U.5 rule 11, traps 48 and 53).
 
 ### 0.11 Self-check before shipping
 
@@ -3087,6 +3106,41 @@ F-headerNumber-K-FIX-T-RestResponse                        заголовок к
 F-headerText-K-FIX-T-RestResponse                          заголовок как текст                    (headerName:Text/String) → Text/String
 F-headerDate-K-FIX-T-RestResponse                          заголовок как дата/время               (headerName:Text/String) → Date
 ```
+
+A GET run end to end on core2 on 2026-09-28 `[C]`. The script was
+`Пусть #запрос# = Создать Rest-запрос` (`JavaObjectFactories` `BEAN_METHOD-RestExtensions-createJsonDeck`)
+→ `#запрос#.адрес = …` → `#запрос#.Метод вызова = GET` (an `Enum` constant `RestRequestMethod`) →
+optional `#запрос#.#Заголовок("Referer", …)` (a `BlockAssign` with `leftExprId` only) →
+`Пусть #ответ# = #запрос#.#вызвать`. What the run showed:
+- **A 4xx does not throw.** The script goes on with `resultCode` 403 or 401 and the error body in
+  `resultAsText`.
+- **Every non-2xx also raises a notification for the user**: «Ошибка — Возникла ошибка при запросе в
+  сервис <full url> причина: Forbidden». **The url is shown whole, query string and `apikey=` included** —
+  keep secrets out of the query where you can (put them in a header).
+- **Number → text works with `'' ⊕ resultCode`.**
+- **`headerText` of a header the response lacks gives an empty string.**
+
+A second script, run on core2 on 2026-09-28 `[C]`, chained three GETs and parsed their JSON. It was a field
+script on a button, 57 blocks, and it compiled and ran on the first paste:
+- **A Cyrillic and spaced value can go into `адрес` raw** (`"…&geocode=" ⊕ <address field>`). The
+  request reached the service correctly encoded. A raw curl URL, by contrast, needs `--data-urlencode`.
+- **JSON walk**: `resultAsJsonDeck` → `getAsJsonDeck(name)` … → `getAsJsonArr(name)`. **A
+  `BlockForeach` over a `JsonDeck[]` types its element as `JsonDeck`**, so the loop body goes on with
+  `getAsJsonDeck` / `getAsText` on the element. Use that for «the first item». `F-first-K-FIX-T-Iterable`
+  returns a bare `Object`, which is not verified to take the `JsonDeck` acts.
+- **A Rest response into a file field**: `resultAsMybpmByteArray` → `convertToFile(fileName)`, then
+  **`BlockAssign` to the FILE_UPLOAD field's `#Значение`, which REPLACES the file**.
+  `F-addFile_v2-K-FIX-T-BoiFieldRefCode` on the field reference APPENDS one more file on each run.
+  **In «Множественный» mode `#Значение` is `File[]`**, and assigning one file fails `translate-script`
+  with `blockAssign_arrayAssignNoArray`. The script language has no array constructor. What works is
+  `Пусть #файлы# = (Создать Email).Прикреплённые файлы` (`BEAN_METHOD-ScriptEmailFactory-newScriptEmail`
+  → `F-attachments-K-FIX-T-ScriptEmail`, an empty `File[]`), then
+  `#файлы#.добавить(<file>)` (`F-add-K-FIX-T-Iterable`, a `BlockAssign` without `rightExprId`), then
+  `<field>.#Значение = #файлы#`. That compiled and ran, and it still replaces rather than appends.
+- **A TEXTAREA on that build is an HTML editor (summernote)**, so `\n` in a written text collapses into
+  a space. Separate lines with `<br>`, which the sanitizer keeps.
+- `F-returnLastIndex-K-FIX-T-String` plus `substring(0, idx)` plus `trim` split `"lon lat"` correctly.
+  The lat was taken as `trim(replace(pos, lon, ""))`, so the exact index semantics did not matter.
 
 `Object/UUID`
 ```text
