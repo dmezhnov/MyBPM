@@ -605,6 +605,13 @@ dropped (trap 13).
 10. Do not fight the UI where an API exists. And where you must use the UI, read §10: clicks in this app
     go through `javascript_tool` (`el.click()` matched on `innerText`), text through the native value
     setter — `computer type` silently drops spaces and punctuation.
+11. **Every BO shows at least one field in its registry, and every BO-reference field shows at least one
+    field of the BO it points at** — a rule from the platform team (2026-09-28). A BO with no
+    `tableColToShow` field answers `AccessDenied` in its registry and lists no rows (trap 48). A reference
+    with every `boFieldRefs[].toShow: false` renders an empty selector on the card (trap 53). The API
+    creates both states by default, so set a column (`editedFields: [{fieldId, tableColToShow:true,
+    tableColOrderIndex:0}]`) and a displayed field of every reference before handing the BO over.
+    Prefer a non-string first column on a new BO (§7, the Elasticsearch sort defect).
 
 ### 0U.6 Self-check before you say it worked
 
@@ -2108,6 +2115,37 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
 | `STATIC_TEXT` | `staticValueMap.RUS` = the HTML |
 | `BO` / `CO` | `fieldBoId` on the generator call (BO) or `refBoId` on the DTO (CO), `viewType` TABLE/SINGLE |
 
+#### Tabs (`TAB_GROUP`) over the API `[C]` (2026-09-28, core2 / NIT)
+
+- **Create**: `generate-business-form-field {boId, fieldType:"TAB_GROUP"}`, then set `tabs[]` to
+  `{id, label, labelMap, isActive, chosenAccessRight:false, orderIndex, isInvalid:false, isRight:false,
+  isDefault}`. The ids come from `v2/id-loader/load-portion`, and the first tab is `isDefault` /
+  `isActive`. Add it like any field (`addedFieldIds` + `editedFields` with its `gridPosition`).
+- **A field on a tab carries `tabId`**, and its `gridPosition` is **relative to the tab** (y starts at 0
+  on each tab). A NEW field takes `tabId` straight from its DTO in `formFields`.
+- **Moving an EXISTING field onto a tab needs `tabId` in BOTH places**: in the field's copy inside
+  `businessObject.formFields` AND in its `editedFields` entry. With `editedFields` alone, the same call
+  applied `gridPosition` / `tableColToShow` / `label` but silently kept `tabId: null`.
+- Fields outside the group stay on the form above and below it. The group's own `rows` is its height on
+  the form.
+
+#### FILE_UPLOAD display mode — `params.viewType` `[C]` (2026-09-28)
+
+The gear → «Отображение» radio (Одиночный / Множественный / Плиточный) is written by the constructor as
+`editedFields: [{fieldId, params: {viewType: "MULTIPLE", contentType: "ALL"}}]`. **The key is
+`params.viewType`, not the top-level `viewType`.** Setting only the top-level key over the API left
+the radio on «Одиночный». Two rules follow:
+- **For a photo to show in the field without downloading it, choose «Плиточный»** — the platform team's
+  rule (2026-09-28; an earlier note here said «Множественный», which the platform team corrected the same
+  day). What we saw: in «Множественный», a PNG written by a script (`convertToFile("karta.png")`) still
+  rendered as a file row with a preview on click. **«Плиточный» writes `params: {viewType: "TILE",
+  contentType: "ALL"}`** `[C]` (2026-09-28, core2, captured off `save-business-object-portion`; the
+  top-level `viewType` stayed `MULTIPLE` and is ignored). After the switch the same PNG showed as a
+  thumbnail tile on the card. Captured values: `MULTIPLE`, `TILE`; the «Одиночный» one is `[U]`.
+- **In MULTIPLE and TILE mode the field's `#Значение` is `File[]`** (TILE `[C]`: the script compiled
+  unchanged after the switch): a script that assigned one file stops
+  compiling with `blockAssign_arrayAssignNoArray` (`MYBPM-IMPORTS.md` §12a, RestResponse notes).
+
 #### A widget's code and url are NOT keys of the field DTO
 
 Each widget family has its own controller, and everything goes into the **params** half of the envelope —
@@ -2126,6 +2164,27 @@ The `<widget>Id` is the widget field's `fieldId`. **`load-business-object-by-id`
 every widget except BUTTON** — that is not a missing code, read it through the controller above. A widget
 that never got a code still exports with one the server derives from the label («Кнопка» → `Knopka`,
 «ЭЦП/SMS» → `ECP_SMS`); the UI warns «У виджета … нет кода» where a code is required.
+
+#### A BUTTON runs a script through the «Изменение поля» trigger `[C]` (2026-09-28, core2 / NIT)
+
+A button has no script slot of its own. It gets one the same way as any other field: the trigger
+**«На изменение поля: <кнопка>»** in the BO's script dialog. Headlessly, that is the button's `fieldId` in
+the `fieldScripts` map of `save-bo-scripts` (§5g «Wiring scripts onto a BO headlessly»):
+`fieldScripts: {<button fieldId>: {afterChangeScriptId}}`.
+
+- **The click is a field change.** The widget's click handler (bundle, chunk with `handleButtonUrl`) runs
+  `forkJoin([load-button-url, load-button-field-ids, changeValue$()])`. `changeValue$` sends the button's
+  value to the draft, and that fires the field's «Изменение поля» script server-side, like
+  `save-field-value` does for any field (§6b). Each click fires it again, and its field writes come back
+  in `fieldFormCommands` and show on the open form at once. Verified with a real mouse click on the form
+  and headlessly with `save-field-value {values:[{fieldId:<button id>, value:""}]}`.
+- **The button's `url` decides the rest, and an EMPTY url is the script-only button.** A url that starts with
+  `call/plugin/` also calls `v2/button/call-button-plugin {boId, boiId, fieldId, draftId}`. The url
+  `client/save-current-boi` also saves the record. Any other url, or none, does nothing more than the
+  script.
+- Worked example: BO «Тест Яндекс API» on core2 / NIT. Four buttons, each with its own field script:
+  `RestRequest` GET → `resultCode` / `resultAsText` into the record's fields
+  (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a).
 
 #### The tool
 
