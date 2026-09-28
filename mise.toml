@@ -38,6 +38,63 @@ for (const [name, doc] of skills) {
 await $`rm -rf dist/skills/stage`;
 '''
 
+[tasks.test]
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document"
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+await $`mise run skills-check`;
+for (const f of new Bun.Glob("tools/*.ts").scanSync()) await $`bun build --target=bun --no-bundle ${f}`.quiet();
+const py = [...new Bun.Glob("tools/*.py").scanSync()];
+await $`python3 -m py_compile ${py}`;
+await $`mise run skills-zip`;
+for (const [name, doc] of [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]]) {
+  const list = await $`python3 -m zipfile -l dist/skills/${name}.zip`.text();
+  for (const want of [`${name}/SKILL.md`, `${name}/${doc}`]) {
+    if (!list.includes(want)) { console.error(`dist/skills/${name}.zip: no ${want}`); process.exit(1); }
+  }
+}
+console.log("all tests passed");
+'''
+
+[tasks.publish]
+description = "Set the plugin version, commit everything, push to test and stream the CI run (mise test -> fast-forward main -> GitHub release with the skill zips)"
+usage = '''
+arg "<version>" help="New plugin version for .claude-plugin/plugin.json, e.g. 1.2.0; the release tag is v<version>"
+arg "<message>" help="Commit message for the release commit"
+'''
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+const version = Bun.env.usage_version ?? "", message = Bun.env.usage_message ?? "";
+if (!/^\d+\.\d+\.\d+$/.test(version)) { console.error(`version must look like 1.2.0, got "${version}"`); process.exit(1); }
+if ((await $`git ls-remote --tags origin refs/tags/v${version}`.text()).trim()) {
+  console.error(`tag v${version} already exists on origin; pick a new version`); process.exit(1);
+}
+// The same checks CI runs: a failure here costs seconds, not a CI round trip.
+await $`mise test`;
+
+const pluginFile = ".claude-plugin/plugin.json";
+const plugin = await Bun.file(pluginFile).json();
+plugin.version = version;
+await Bun.write(pluginFile, JSON.stringify(plugin, null, 2) + "\n");
+await $`git add -A`;
+await $`git commit -m ${message}`;
+await $`git push origin HEAD:test --force-with-lease`;
+
+// Match the run by the pushed SHA, not "latest"; it takes a few seconds to register.
+const sha = (await $`git rev-parse HEAD`.text()).trim();
+let runId = "";
+for (let i = 0; i < 10 && !runId; i++) {
+  await Bun.sleep(3000);
+  const runs = await $`gh run list --branch test --limit 10 --json databaseId,headSha`.json();
+  runId = String(runs.find((r) => r.headSha === sha)?.databaseId ?? "");
+}
+if (!runId) { console.error("Publish run not found yet; check GitHub Actions manually."); process.exit(0); }
+const watch = await $`gh run watch ${runId} --exit-status`.nothrow();
+process.exit(watch.exitCode);
+'''
+
 [tasks.bridge]
 description = "Start the 127.0.0.1:8787 page<->disk bridge detached (GET /get?name= feeds tools/out/bridge/<name> into a page, POST /save?name= writes it)"
 shell = "bun -e"
