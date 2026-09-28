@@ -1188,6 +1188,11 @@ settings).
   the whole DTO plus `editedFields: [{fieldId, <only the changed keys>}]` (e.g. `viewType`, `boFieldRefs`),
   and the server applies exactly those keys. The same change made only inside `businessObject.formFields`
   is silently dropped (trap 53).
+- **Deleting a field** `[C]` (2026-09-28, core2): leave it out of `businessObject.formFields` and put its
+  id into `deletedFieldIds`. A field referenced by a script is still deleted, and the script stops
+  compiling until you rewrite it. **The text of a «Текст» (`STATIC_TEXT`) field** changes through
+  `editedFields: [{fieldId, staticValueMap: {RUS: "<html>", …}}]` `[C]`. Adding, deleting and editing
+  can all go in one save.
 - `generate-business-form-field` returns a ready ~60-key field DTO with a fresh `fieldId` and `code: null`.
   Set `label`, `labelMap` and `gridPosition`, leave the code alone.
 - **`save-business-form-field` `{businessObjectId, fieldList}` does NOT create fields** — it answers 200
@@ -2146,6 +2151,18 @@ the radio on «Одиночный». Two rules follow:
   unchanged after the switch): a script that assigned one file stops
   compiling with `blockAssign_arrayAssignNoArray` (`MYBPM-IMPORTS.md` §12a, RestResponse notes).
 
+#### GEO_POINT («Карта») is the platform's own map, not Yandex `[C]` (2026-09-28)
+
+- **The «Карта» field works with Google** (platform team, 2026-09-28). What the bundle shows (build
+  `C4.24.x`, chunks `2245` / `5214` / `9753`): the company settings screen «Навигатор» goes through the
+  controller `/geo-map/settings` (`load-geo-map-company-fields`, `load-geo-map-company-field-values`,
+  `save-geo-map-company-field-values`, all with P `{geoMapType}`). The only `geoMapType` is `GOOGLE_MAP`,
+  and the screen takes a Google API key («Google API ключ действителен»). The coordinate picker dialog
+  itself draws Leaflet on `tile.openstreetmap.org` tiles `[I]` (read off the bundle, not seen on screen).
+- The consequence: **a GEO_POINT neither uses nor demonstrates a customer's Yandex Maps key.** Its value
+  is `{"lat":…,"lon":…}` (§6b). An interactive Yandex map on a card needs an IFRAME widget pointing at your
+  own page that loads `api-maps.yandex.ru`, as described in the next section.
+
 #### A widget's code and url are NOT keys of the field DTO
 
 Each widget family has its own controller, and everything goes into the **params** half of the envelope —
@@ -2159,6 +2176,14 @@ a call that puts them into the body answers 200 and writes nothing:
 | CAPTCHA | `v2/captcha` | `save-captcha-code {boId, captchaId, code}` | `load-captcha-code` |
 | CURRENT_* (date family) | `v2/current-date` | `save-current-date-code {boId, currentDateId, code}` | `load-current-date-code` |
 | CURRENT_USER | `v2/widget-current-user` | `save-current-user-code {boId, currentUserId, code}` | `load-current-user-code` |
+
+**An IFRAME shows one fixed url per BO, and the record is NOT passed to it** `[C]` (bundle, 2026-09-28,
+chunk `6621` `DffIframeComponent`). The card calls `load-iframe-url {boId, iframeId}` and puts the answer
+into `<iframe src>` unchanged, with no placeholders and no record or draft ids. A page inside learns which
+record it sits on only when it is served from the stand's own origin: then it can read the parent
+document. A cross-origin page gets only the stand's origin as its referrer. The settings dialog refuses
+an `http:` url on an `https:` stand (protocol error). A cell smaller than 1366×768 renders the page scaled
+from 1920×1080, and a click opens it full screen (90vw × 90vh).
 
 The `<widget>Id` is the widget field's `fieldId`. **`load-business-object-by-id` returns `code: null` for
 every widget except BUTTON** — that is not a missing code, read it through the controller above. A widget
@@ -2289,7 +2314,7 @@ driven alone). Every hook ran server-side; the answers carry the script's field 
 | save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]` | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
 | close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created |
 | read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
-| read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`) | — |
+| read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`). **`tabId:null` returns only the fields OUTSIDE tabs**; the fields of a `TAB_GROUP` tab come back only with that tab's id in `tabId` `[C]` (2026-09-28) | — |
 
 Order on a new record, one run: открытие → поле … → создание → сохранение. Field ids and codes:
 `v2/instance-form/load-field-structure` P `{boId, boiId, draftId}`. The full semantics (what is kept, what is
@@ -2309,7 +2334,7 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 
 | type | `value` | |
 |---|---|---|
-| `INPUT_TEXT` `INPUT_PHONE` `INPUT_EMAIL` `TEXTAREA` `LINK` | the plain string (`TEXTAREA` = its HTML) | `[C]` |
+| `INPUT_TEXT` `INPUT_PHONE` `INPUT_EMAIL` `TEXTAREA` `LINK` | the plain string (`TEXTAREA` = its HTML — any HTML fragment may be sent instead of plain text, §8) | `[C]` |
 | `INPUT_NUMBER` | `"42"` | `[C]` |
 | `CHECKBOX` | `"true"` / `"false"` | `[C]` |
 | `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""` | `[C]` |
@@ -2318,7 +2343,7 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `BO` (and, per the client, `CO`) | a JSON array of record ids `["<boiId>"]` | `BO` `[C]`; a `CO` value was not stored `[U]` |
 | `QUESTIONNAIRE` | `[{"rowId":"…","columnId":"…"}]` | `[C]` |
 | `GEO_POINT` | `{"lat":43.238,"lon":76.945}` | `[C]` |
-| `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages) | `[C]` |
+| `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages; for `TEXTAREA_LANG` / `STATIC_TEXT` each language may be HTML, §8) | `[C]` |
 | `TAB_GROUP` | `""` | `[C]` fires the script |
 | `FILE_UPLOAD` | a JSON array of file ids | `[U]` |
 | `CHECKLIST` | a JSON array of item objects (`checked` among the keys) | `[U]` |
@@ -2475,7 +2500,7 @@ in the UI hints at sorting, which is why this reads as «канбан/реест
 **Reproducing it by hand, no API** (≈2 minutes): `/business-objects/editing` → hover a BO-group row →
 ⋮ → «Добавить бизнес-объект» → name it → drag **«Текстовое поле»** (`INPUT_TEXT`) from the palette onto
 the canvas, label it → **СОХРАНИТЬ**. **Not «Текст»** — that one is `STATIC_TEXT`, a static HTML section
-heading that stores no value, and **not «Текстовый блок»** (`TEXTAREA`, untested here); the ES error
+heading (it holds a record value only when a script writes one, §8), and **not «Текстовый блок»** (`TEXTAREA`, untested here); the ES error
 names `INPUT_TEXT` explicitly. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group
 → click the BO → its registry → **«Добавить»** → fill the text field → save.
 
@@ -2676,6 +2701,44 @@ Two by-products of the experiment `[C]`:
   the full-text `search` find it `[I]` — before the flip `search:"яблоко"` returned 0 hits, after it 1.
 
 ## 8. HTML fields and «Текст» sections — what the sanitizer accepts
+
+**Which fields take HTML** `[C]` (the user, 2026-09-28): «Текст» (`STATIC_TEXT`), «Текстовый блок»
+(`TEXTAREA`) and «Мультиязычный текстовый блок» (`TEXTAREA_LANG`) — an HTML fragment can go into them
+instead of plain text, whether typed in the card, saved through `save-field-value` (§6b), written by a
+script or imported. «Текстовое поле» (`INPUT_TEXT`) and its multilingual twin are plain single-line inputs `[I]`.
+
+**What the server keeps** `[C]` (2026-09-28, core2, `save-field-value` into a `TEXTAREA`, read back with
+`load-field-data`; the same held for `staticValueMap` of a `STATIC_TEXT` saved through
+`save-business-object-portion`). The server re-serialises the HTML (pretty-printed, `\n` + indent around
+block tags) and:
+- keeps `<b>`, `<br>`, `<div style=…>`, `<a href target>`, `<img src width>` and **`<iframe src width
+  height>`**;
+- strips `srcdoc` from an `<iframe>` silently (the tag stays, empty);
+- **rejects the whole value** when it holds `<script>`: the call answers `RestError` «Обнаружено
+  недопустимое значение: <script>… Проверьте введённые данные на наличие не доверенных ссылок, программного
+  кода…» and nothing is stored, the other tags of that value included.
+
+**An `<iframe>` in these fields renders on the card** `[C]` (2026-09-28): in a «Текст» section as a live
+frame, and in a `TEXTAREA` inside the summernote editor (`.note-editable`), with no `sandbox` and no
+`referrerpolicy`. So a script that writes `<iframe src="https://<host>/page.html?<record data>">` into a
+`TEXTAREA` gives each record its own embedded page. That is the way around the IFRAME widget's single
+fixed url (§5i). The page still needs a host of its own: **`/web/v2/file/download/<fileId>`** (controller
+`v2/file`, `upload` / `download/{id}`) answers `SecurityError «Illegal Session»` without the `token`
+header, so a file uploaded to the platform cannot be the `src` of a frame.
+Proven end to end on 2026-09-28 (core2): a button script wrote
+`<iframe src="https://<external host>/?a=<lat,lon>&b=<lat,lon>" width="100%" height="400">` into a
+`TEXTAREA`; the card showed the external page inside the field, and the value was stored with `&` as
+`&amp;`. A page that loads a Referer-restricted browser API key (Yandex JS API) sends ITS OWN host as the
+Referer, not the stand's, so that host must be on the key's list.
+
+**A «Текст» (`STATIC_TEXT`) field works the same way, with no editor around it** `[C]` (2026-09-28, core2,
+the user's request). Its `staticValueMap` is only the default: a script writes the RECORD's own HTML with
+`F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` (`language` = Enum `MybpmLang` `RUS`) on the field reference
+(`MYBPM-IMPORTS.md` §0.5). A real button click showed the `<iframe>` at once. After СОХРАНИТЬ and reopening,
+the record still showed its own frame, while the BO's `staticValueMap` kept its placeholder. Prefer this
+over a `TEXTAREA` for a read-only embed. Which sites can be framed at all: `yandex.ru/maps` answers
+`X-Frame-Options: DENY`; the embeddable widget `https://yandex.ru/map-widget/v1/?rtt=auto&rtext=<lat,lon>~<lat,lon>`
+(no key, draws the road route) has no XFO / `frame-ancestors` and renders `[C]`.
 
 Observed while pasting a dashboard into a MyBPM HTML field; the same rules were reused for HTML inside
 «Текст» (STATIC_TEXT) headings, which rendered on the stand (whether that field sanitizes identically is
