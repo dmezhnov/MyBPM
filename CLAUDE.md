@@ -32,6 +32,11 @@ NOT copied into the skills — each `SKILL.md` routes to headings by their liter
 renaming or renumbering a heading run `mise run skills-check`**. `mise run skills-zip` packs
 `dist/skills/<name>.zip` (skill + its document) for upload to claude.ai.
 
+**Releases go through `mise publish <version> "<message>"`, never a direct push to `main`**: it runs
+`mise test`, writes the version into `.claude-plugin/plugin.json`, commits everything and pushes to
+`test`; `.github/workflows/publish.yml` reruns `mise test` there and, only if green, fast-forwards
+`main` (via the `RELEASE_SSH_KEY` deploy key) and creates the release `v<version>` with the skill zips.
+
 ## Working copy
 Folders of concrete projects built on the platform may sit beside these documents in a working copy.
 They are **not part of this repository** (see `.gitignore`): each has its own repository and its own
