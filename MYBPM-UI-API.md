@@ -2036,6 +2036,11 @@ dictionary spelled as a code: `--field "Должность:DROPDOWN_SINGLE@Dolzh
   field outlined red.
 - A duplicate in a unique field is refused with the field-level tooltip **«Ошибка — Продублировано
   уникальное поле»**; the card stays open and nothing is written.
+- A read-only field renders as a grey `disabled` input, **and a script still writes it** `[C]`
+  (2026-09-28, core2): a button's «На изменение поля» script filled a read-only INPUT_TEXT on the open
+  card. So «Только для чтения» is the right flag for the fields a script fills — the user cannot type
+  into them, the script can. Set on an existing BO as a one-key `editedFields` patch
+  `{fieldId, isReadonly: true}` (mirrored into `formFields`).
 - A `FROM_BO` dropdown lists the dictionary's rows (Developer, Manager, General Manager, …), a
   `FROM_FIELD` one lists its own options — both with a «Поиск» box.
 
