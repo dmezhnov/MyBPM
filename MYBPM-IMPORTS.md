@@ -918,6 +918,9 @@ resolve like this:
       a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
 - [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.10 rule 12).
+- [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
+      table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
+      15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
 - [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
       `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`, `FILE_UPLOAD` (0.5; only a `BO_COMPOSITE` is exempt).
 - [ ] `dictionaryFields` is present on EVERY BO line — `[]` everywhere, `["CODE","LABEL"]` on a
@@ -2100,6 +2103,14 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   `BlockForeach`. Add to it with `F-ADD-K-DYN-R-D-S-boi_fields` (`argExprIds:{"adding":<expr>}`), count
   with `F-COUNT-K-DYN-R-D-S-boi_fields`, create a new instance with
   `F-CI-K-DYN-R-C-S-bo_fields` applied to a `BoRefCode` constant.
+- **A nested table** (`type:"BO"`, TABLE) is such a collection `[C]` (2026-09-29): `BlockForeach` over
+  `ЭТА ИНСТАНЦИЯ.<table>.#Значение` gives one child record per pass, and its fields are read with the same
+  two hops on the loop variable (`VAR_REF(<foreach>)` → `F-<child field>-K-DYN-S-boi_fields` → VALUE).
+  `F-COUNT-K-DYN-R-D-S-boi_fields` applied to the field REFERENCE (hop 1, no VALUE) gives the row count,
+  usable as a counted loop's `srcExprId`. **Row order is not a contract** — to walk rows by a number
+  column, do a selection pass: `ЦИКЛ COUNT раз { лучший = 10⁹; foreach строка: ЕСЛИ номер > пред И номер
+  < лучший → лучший = номер …; ЕСЛИ лучший < 10⁹ → пред = лучший; обработать }` (only `More`/`Less`/`And`,
+  rule 1). A whole number read from `INPUT_NUMBER` concatenated as `1`, not `1.000`.
 - **Reading a dictionary at run time**: `F-findByFilter-K-FIX-T-BoRefCode` applied to a `BoRefCode`
   constant returns the rows — loop over them and compare a field (`code` matching is case-sensitive).
 
