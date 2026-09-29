@@ -624,8 +624,19 @@ dropped (trap 13).
 - [ ] For a process: `validate-def` returned an empty list.
 - [ ] For rights: `load-access-group` re-read and compared, not assumed.
 - [ ] Nothing was left open: no dangling `v2/co` draft, no analysed-but-unapplied structure import.
-- [ ] The notifications your work raised were cleared: every structure import leaves an «Анализ импорта
-      завершен» under the bell (header, «События»). The red × on the «События» header deletes them all —
+- [ ] No field scrolls inside its own cell on the record card. Open a record and look at every field
+      with tall content — a `STATIC_TEXT` / `TEXTAREA` holding HTML or an `<iframe>`, a nested table, a
+      heading band: its wrapper inside the `ktd-grid-item` (e.g. `div.dff-static-text.scroll-bar`,
+      `overflow-y:auto`) must have `scrollHeight <= clientHeight`. If not, raise the field's `rows`
+      (≈29 px per row: a 34-row field is a 990 px grid item `[C]` 2026-09-29) and shift the fields below,
+      or shrink the content (the `height` of an `<iframe>` a script writes). The record window scrolling
+      as a whole is normal; a scrollbar INSIDE a field is not. Check every tab, and a table with its
+      real number of rows.
+- [ ] The notifications your work raised were cleared, whichever way they came: every structure import
+      leaves an «Анализ импорта завершен»; every non-2xx REST call from a script you clicked leaves
+      «Ошибка — Возникла ошибка при запросе в сервис …» (`MYBPM-IMPORTS.md`, RestRequest section); a
+      script's own `ScriptNotification` lands there too. They sit under the bell (header, «События»).
+      Check the count before your first write and after your last one. The red × on the «События» header deletes them all —
       `v2/user-notification/delete-notifications` (body not captured `[U]`); the grey × on one entry
       deletes that one; `v2/user-notification/count` / `load-notifications` read them `[C]` (2026-09-27).
       Clear only what your own run raised.
@@ -2216,6 +2227,45 @@ the `fieldScripts` map of `save-bo-scripts` (§5g «Wiring scripts onto a BO hea
   `RestRequest` GET → `resultCode` / `resultAsText` into the record's fields
   (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a).
 
+#### A nested table (`type:"BO"`, `viewType:"TABLE"`) on a record card `[C]` (2026-09-29, core2 / NIT)
+
+Built over the API with the R1 cycle: `generate-business-form-field {boId, fieldType:"BO", fieldBoId:<child
+BO>}`, then `viewType:"TABLE"` (+ `tabId` for a tab) on the DTO and in `editedFields`; a second save turns
+the columns on — `editedFields: [{fieldId, viewType:"TABLE", boFieldRefs:[…each with toShow:true,
+orderIndex:i]}]` (the generator returns every `boFieldRefs[].toShow:false`, trap 53). Two such fields
+onto the SAME child BO keep separate lists per record.
+
+- **On the card**: the table has «Добавить» → a picker that lists **every record of the child BO** (not
+  only this record's) with checkboxes, its own «Добавить», «ВЫБРАТЬ» / «ОТМЕНИТЬ». The picker's «Добавить»
+  opens a CREATE dialog of the child (`boiDialogType=CREATE`, `parentDraftId=<card draft>`); after
+  «СОХРАНИТЬ» the new record comes back into the picker already ticked, «ВЫБРАТЬ» adds the ticked rows to
+  the table. That is the picker mode, `isKindAddForSelect: false` (the generator's default outside a panel).
+- **«Только добавить» mode** `[C]` (2026-09-29) — the field's settings show a switch «Выбрать и добавить /
+  Только добавить» (i18n `select_and_add` / `only_add`), which writes **`isKindAddForSelect: true`**
+  (`editedFields: [{fieldId, isKindAddForSelect:true}]`). Then «Добавить» opens the child's CREATE dialog
+  at once — no picker, so existing child records can't be picked again. It is a mode of the table, not a
+  right. The UI also turns on a registry column when `tableColToShow` is `null` (`assignTableColToShow`).
+- **Row order**: before the card is saved the table shows rows in the order they were added; after
+  «СОХРАНИТЬ» and reopening it shows them sorted by the child's first column. A script must not rely on
+  either — sort it itself (`MYBPM-IMPORTS.md` §0S.7).
+- **Sorting the table** `[C]` (2026-09-29): the table reads its order from the CHILD BO —
+  `load-bo-table-sort {boId:<child>}` (params) → `defaultOrdering`. The arrow on the header and the
+  insertion order of newly added rows follow it. Set it with `save-bo-table-sort` (params `{boId:<child>,
+  fieldId, order:"ASC"|"DESC"}`), the same call as the registry header click. The read-back lagged a few
+  seconds (first answer `UNSET`, then `{fieldId, state:"ASC", archetype:"DYNAMIC"}`).
+- **Size of the child's record dialog** `[C]` (2026-09-29): the size is a setting of the child BO,
+  `save-business-object-grid-layout-position` with a **body** of `{boId, gridLayoutPosition:{id:"0", x, y,
+  w, h}}` (read: `load-business-object-grid-layout-position` params `{boId}`; `""` = never set = full
+  size). The width is `w` of 16 columns of `0.9·innerWidth`. The height is `h` rows of 30 px, capped at
+  `0.9·innerHeight`. The viewer re-centres `x = ceil((16−w)/2)`. For two fields in one row, `w:6, h:8` gives a
+  compact dialog (≈630×240 px at 1876×965): fields plus the СОХРАНИТЬ/ОТМЕНИТЬ bar.
+- **A required `INPUT_NUMBER` starts at 0** on a CREATE dialog, so it counts as filled. The red `*` and
+  the warning appear only after the user clears it. `isRequired` really is on, but nothing forces the
+  user to type a number.
+- Driving it from `javascript_tool`: `el.click()` on the picker's «Добавить» does nothing — dispatch
+  `pointerdown`/`mousedown`/`pointerup`/`mouseup`/`click` at the element's centre (§10). The CREATE
+  dialog animates in: find its inputs by their label, not by position, or the text lands in «Поиск поля».
+
 #### The tool
 
 `tools/create-bo-constructor.bun.ts` now drives all three families in one run:
@@ -2930,6 +2980,11 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   … renderer may be frozen», `document.visibilityState === "hidden"`), a new tab too, while
   `javascript_tool` keeps working (2026-09-24). Do not wait for the UI — switch to the API calls it would
   have made (§6b), or ask the user to bring the window forward.
+- **Some controls ignore `el.click()`** `[C]` (2026-09-29): the «Добавить» inside a nested table's
+  picker reacts only to a full mouse sequence. Dispatch `pointerdown`, `mousedown`, `pointerup`, `mouseup`,
+  `click` (bubbling, with `clientX/Y`) on `document.elementFromPoint(<centre>)` — this also works while
+  `screenshot` times out. Check first that the point is not covered by a `cdk-overlay-backdrop` (an open
+  «Внимание» confirm dialog sits on top and swallows the click).
 - **A `javascript_tool` result containing a URL query string or cookie-like text comes back as
   `[BLOCKED: Cookie/query string data]`** — the code DID run. Never return `location.href` or raw ids
   mixed into long strings; `save` the result through the local bridge and read the file.
