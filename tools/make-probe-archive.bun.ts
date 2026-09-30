@@ -24,6 +24,14 @@
  *         [--menu "Имя:GROUP"]... [--menu "Имя:BO@<код БО>[@Имя БО]!parent=…!kanban=…"]...
  *
  * The full `--field` grammar is «Метка:TYPE[@a][@b][#вариант|вариант][!req,uniq,readonly]»:
+ *   --field "Дата:DATE!dateOnlyPast=true"                     — ANY key of the field, `!key=value`
+ *   --field "Срок:DATE!track"                                 — «Отслеживать статус»: the date moves into a
+ *     «Статус объекта» TAB_GROUP next to a «Статус» dropdown with the options PLANNED / OVERDUE / DONE /
+ *     CANCELED — the three fields the constructor itself adds (MYBPM-UI-API.md §5h)
+ *   --field "Офис:BO@<boId>@Ofis!show=Strana|Gorod"            — the columns of a nested-object table, by
+ *     the TARGET's field codes (without it the importer shows none)
+ *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
+ *     (dotted = nested, e.g. `!params.url=https://…`; value parsed as JSON, else a string; no «,» in it)
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
  *   --field "Табельный номер:INPUT_TEXT!uniq"                 — «Уникальное поле» (isUnique)
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
@@ -99,6 +107,8 @@ const CATEGORY = flag("category", PROCESS_SPEC ? "BO_PROCESS" : "BO");
 type FieldSpec = {
   label: string; type: string; refBoId?: string; refBoCode?: string;
   options: string[]; flags: string[];
+  /** `!key=value` — any key of the archive field, dotted for a nested one (`params.url`). */
+  sets: { path: string[]; value: unknown }[];
 };
 function fieldFlags(): FieldSpec[] {
   const out: FieldSpec[] = [];
@@ -126,9 +136,17 @@ function fieldFlags(): FieldSpec[] {
     const type = first < 0 ? spec : spec.slice(0, first);
     const refBoId = first < 0 ? undefined : spec.slice(first + 1, last > first ? last : undefined);
     const refBoCode = last > first ? spec.slice(last + 1) : undefined;
-    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "camera"].includes(f));
+    // `key=value` sets ANY key of the archive field; the value is JSON when it parses, else a string.
+    const sets = flags.filter(f => f.includes("=")).map(kv => {
+      const eq = kv.indexOf("=");
+      let value: unknown = kv.slice(eq + 1);
+      try { value = JSON.parse(value as string); } catch { /* a bare string */ }
+      return { path: kv.slice(0, eq).split("."), value };
+    });
+    flags = flags.filter(f => !f.includes("="));
+    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "camera", "track"].includes(f));
     if (unknown.length) throw new Error(`unknown --field flag(s): ${unknown.join(", ")}`);
-    out.push({ label: raw.slice(0, at), type, refBoId, refBoCode, options, flags });
+    out.push({ label: raw.slice(0, at), type, refBoId, refBoCode, options, flags, sets });
   }
   return out;
 }
@@ -658,8 +676,66 @@ if (isComposite) {
       isUnique: f.flags.includes("uniq"),
       isReadonly: f.flags.includes("readonly"),
     });
+    if (f.flags.includes("track")) addTrackStatus(code, y);
+    for (const { path, value } of f.sets) {
+      // `!show=Strana|Gorod` — the COLUMNS a nested-object table shows, by the target BO's field codes.
+      // Without it the importer lists the target's fields with `toShow: false` and the table is blank.
+      if (path[0] === "show" && isRef) {
+        (dynamicFields[code] as any).boRefStruct.fieldRefs = Object.fromEntries(String(value).split("|")
+          .map((c, j) => [c, { toShow: true, orderIndex: j }]));
+        continue;
+      }
+      let o: any = dynamicFields[code];
+      for (const k of path.slice(0, -1)) o = o[k] ??= {};
+      o[path.at(-1)!] = value;
+    }
     y += rows;
   });
+}
+
+/**
+ * «Отслеживать статус» on a date field (DATE, FULL_DATE, PERIOD, PERIOD_TIME) — the three fields the
+ * constructor's `saveNeedTrackStatus` builds, shaped as a stand export writes them (2026-09-30): a
+ * TAB_GROUP wrapper with one tab «Статус объекта» and a «Статус» DROPDOWN_SINGLE, both carrying
+ * `trackedFieldCode`, and the date itself moved into that tab (`tabCodePath`, 9×3 at the left).
+ * The dropdown's option IDS must be exactly PLANNED / OVERDUE / DONE / CANCELED: the record card sets the
+ * status by those ids when the date is entered, and the calendar colours an event by them.
+ */
+function addTrackStatus(dateCode: string, y: number) {
+  const wrapCode = `${dateCode}_status`.slice(0, 30);
+  const tabCode = "Status_obekta";
+  const statusCode = `Status_${dateCode}`.slice(0, 30);
+  const tabCodePath = { tabGroupCode: wrapCode, tabCode };
+  const date: any = dynamicFields[dateCode];
+  Object.assign(date, { needTrackStatus: true, tabCodePath, gridPosition: { x: 0, y: 0, cols: 9, rows: 3 } });
+  const wrap: any = field({ code: wrapCode, label: "", type: "TAB_GROUP", x: 0, y, cols: 15, rows: 4, tableColToShow: false });
+  Object.assign(wrap, {
+    label: {}, trackedFieldCode: dateCode,
+    fieldTabs: {
+      [tabCode]: {
+        label: { rus: "Статус объекта" }, orderIndex: 0, chosenAccessRight: false, isRight: false,
+        isDefault: false, code: tabCode, newId: id(`${BO_CODE}.${wrapCode}.tab.${tabCode}`),
+      },
+    },
+  });
+  const status: any = field({ code: statusCode, label: "Статус", type: "DROPDOWN_SINGLE", x: 9, y: 0, cols: 6, rows: 3 });
+  const opts: [string, string, string][] = [
+    ["PLANNED", "Запланировано", "#0048ff"], ["OVERDUE", "Просрочено", "#d3a52f"],
+    ["DONE", "Выполнено", "#6797fa"], ["CANCELED", "Отменено", "#6797fa"],
+  ];
+  Object.assign(status, {
+    trackedFieldCode: dateCode, tabCodePath,
+    fieldOptionsStruct: {
+      optionSource: "FROM_FIELD",
+      options: Object.fromEntries(opts.map(([oid, label, color]) => [oid, {
+        fieldOption: { label, orderIndex: 0, color, code: codeOf(label), hiddenInKanban: false },
+        newOptionId: oid,
+      }])),
+      dictionaryOptionSetting: {},
+    },
+  });
+  dynamicFields[wrapCode] = wrap;
+  dynamicFields[statusCode] = status;
 }
 
 /**
@@ -853,7 +929,8 @@ lines.push({
   nativeFields,
   dictionaryFields: isDictionary ? ["CODE", "LABEL"] : [],
   actual: true,
-  isCalendarEnabled: false,
+  // `--calendar` = the registry's «Календарь» view (a BO built in the constructor gets it by default)
+  isCalendarEnabled: args.has("--calendar"),
   isMapEnabled: false,
   isGroupingEnabled: false,
   isCodeReadonly: false,
