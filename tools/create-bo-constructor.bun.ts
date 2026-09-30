@@ -25,7 +25,10 @@
 
  * A panel (`--category BO_PANEL`) is built out of NESTED OBJECTS — registry widgets:
  *     --category BO_PANEL --field "Проба UI 2026-09-18:BO@OpmGDzaQRUT27jky"
- *   (`BO@<boId>` → `generate-business-form-field {fieldType: "BO", fieldBoId: <boId>}`.)
+ *   (`BO@<boId>` → `generate-business-form-field {fieldType: "BO", fieldBoId: <boId>}`; `CO@<composite id>`
+ *   the same for a field on a composite.) A reference's «Отображение» / «Поведение» are `!key=value` with
+ *   stand ids: `!removeType=HIDE,linkedFieldId=<back field id>,copyFromFieldId=<field id>,needMarkNew=true`
+ *   (MYBPM-UI-API.md §5h «Reference fields»); the keys the API drops on an added field are re-sent below.
  *
  * Field settings («Настройки поля» in the constructor) — the full field grammar is
  *     --field "Метка:TYPE[@<boId>][#вариант|вариант|…][!req,uniq,readonly,nocol]"
@@ -249,11 +252,11 @@ if (fields.length || widgets.length || natives.length) {
     // `fieldBoId` is the NESTED-object target; a dropdown's dictionary is not passed here — the client
     // sets `refBoId` on the generated DTO instead (bundle: `toggleRefBoId` → `saveRefBoId`).
     const dto = await call<any>("generate-business-form-field",
-      { boId: created.id, fieldType: f.type, fieldBoId: f.type === "BO" ? f.refBoId : undefined });
+      { boId: created.id, fieldType: f.type, fieldBoId: f.type === "BO" || f.type === "CO" ? f.refBoId : undefined });
     dto.label = f.label;
     dto.labelMap = langMap(f.label);
     // 15 columns = full width; a plain field is 4 rows high, a nested-object table 6 (what the UI sends).
-    const rows = f.type === "BO" ? 6 : 4;
+    const rows = f.type === "BO" || f.type === "CO" ? 6 : 4;
     dto.gridPosition = { x: 0, y: i * 4, rows, cols: 15 };
     // Field settings. The UI writes exactly these keys and nothing else (`saveIsRequired`, `saveIsUnique`,
     // `saveIsReadonly`, `saveOptionSource`, `saveRefBoId`, `saveFormBoOptions`), each one also landing in
@@ -279,7 +282,8 @@ if (fields.length || widgets.length || natives.length) {
     }
     // A nested object: what the constructor adds on drop (`createFormFieldByBoId`) — without `viewType`
     // the card renders an empty box, without `boFieldRefs` a table with no columns.
-    if (f.type === "BO" && f.refBoId) {
+    // A field on a composite (CO) is added the same way; the server fills its `linkedCoSettings` array.
+    if ((f.type === "BO" || f.type === "CO") && f.refBoId) {
       set("refBoId", f.refBoId);
       set("viewType", "TABLE");
       set("boFieldRefs", await boFieldRefsOf(f.refBoId));
@@ -356,15 +360,19 @@ if (fields.length || widgets.length || natives.length) {
     addedFieldIds: added.map(f => f.fieldId),
     deletedFieldIds: [],
   });
-  // `useAsKeyInMigration` is DROPPED on a field that is being added (every other key survives) — it takes
-  // a second, one-key patch on the now existing field (MYBPM-UI-API.md §5h «Поведение» and «Интеграция»).
-  const keyFields = added.filter(f => f.useAsKeyInMigration);
+  // `useAsKeyInMigration`, `needMarkNew` and `needAddToParticipants` are DROPPED on a field that is being
+  // added — they take a second patch on the now existing field (MYBPM-UI-API.md §5h «Поведение» and
+  // «Reference fields»). All of them go in ONE patch per field: a same-field patch that omits
+  // `needMarkNew` resets it to false.
+  const LOST_ON_ADD = ["useAsKeyInMigration", "needMarkNew", "needAddToParticipants"];
+  const keyFields = added.map(f => ({ fieldId: f.fieldId, ...Object.fromEntries(LOST_ON_ADD.filter(k => f[k]).map(k => [k, true])) }))
+    .filter(p => Object.keys(p).length > 1);
   if (keyFields.length) {
     const saved = await call<any>("load-business-object-by-id", { businessObjectId: created.id });
-    for (const f of saved.formFields) if (keyFields.some(k => k.fieldId === f.fieldId)) f.useAsKeyInMigration = true;
+    for (const f of saved.formFields) Object.assign(f, keyFields.find(k => k.fieldId === f.fieldId) ?? {});
     await savePortion({
       businessObject: saved,
-      editedFields: keyFields.map(f => ({ fieldId: f.fieldId, useAsKeyInMigration: true })),
+      editedFields: keyFields,
       addedFieldIds: [],
       deletedFieldIds: [],
     });

@@ -2278,6 +2278,88 @@ needLoadFromInTables: true, useAsKeyInMigration: false}]`.
 - `FILE_UPLOAD`'s «Отображение» / «Поведение для MP» (`params.viewType` / `params.contentType`) are in
   §5i «FILE_UPLOAD display mode».
 
+#### Reference fields (`BO` / `CO`) — «Отображение» and «Поведение» `[C]` (2026-09-30, `<stand>`)
+
+Proven through the API and on records: «Проба ссылок 2026-09-30» (`P`, six `BO` fields) pointing at «Проба
+ссылок цель 2026-09-30» (`T`, which has a `BO` field «Родитель» back to `P`), group «Тест»; the same
+settings then went through an archive into «Проба ссылок архив …» and «Проба ссылок CO …» (the import is in
+`MYBPM-IMPORTS.md` §3 «Reference fields»), and `removeType` / `linkedCoSettings` were set in the constructor
+UI with the request captured. The controls are the gear → «Отображение» / «Поведение» of a `BO`/`CO` field (`app-bo-settings-behavior`; «Связь объектов» only
+appears when the referenced BO has a field pointing back).
+
+| key | control | on the record |
+|---|---|---|
+| `viewType` `TABLE` / `MULTIPLE` / `SINGLE` / `FIELDS` | «Отображение» → «Вид отображения» «Табличный / Множественный / Одиночный / Карточкой» | a table with the `boFieldRefs` columns / chips / one chip / the referenced record's fields as a form |
+| `isKindAddForSelect` | «Поведение» → «Выбор/Добавление» (`false`) vs «Только добавление» (`true`) | «Добавить» opens the CREATE dialog of the referenced BO instead of the picker |
+| `linkedFieldId` = a field of the REFERENCED BO that points back | «Поведение» → «Связь объектов» → «Заполнить поле "<label>"» (vs «Ничего не заполнять») | adding a record into this field writes the owner record into that back field; removing it from the field clears the back field `[C]` |
+| `removeType` `STRIKETHROUGH` / `HIDE` / `DISCONNECT` | «Поведение» → «При удалении объектов <BO>» «Зачеркнуть / Скрывать из списка / Разорвать связь…» | see below |
+| `needChangeParentBoByLinkedBo` (default `true` on EVERY field) | «При добавлении/изменении объекта(ов)» «Изменить бизнес объект "<BO>"» (`true`) / «Не изменять…» (`false`) | see below |
+| `copyFromFieldId` = another `BO` field of the same BO | «Отображение» → «Логика отображения значения» → «Из другого поля» | the field is filled with a COPY of that field's value on every save of the record (stored, not just shown); emptied when the source is emptied `[C]` |
+| `needMarkNew` | «Поведение» → «Помечать новые» | client code: rows with `isNew` (or state NEW) render in bold and new ones are put on TOP instead of the sort order. `isNew` came back `false` for every record in a one-user probe — the bold was not seen `[I]` |
+| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» (only when the referenced BO is kind `PERSON`) | adding MYSELF raised no notification (the self-case is probably skipped); another person was not tried — it would notify a real user `[U]` |
+| `isHeightDynamic` | «Динамическая высота» (`BO` only) | see «Tables» in `MYBPM-IMPORTS.md` §3 |
+| `linkedCoSettings` (a `CO` field) | «Поведение» → «Связь объектов <BO>/<field>» → «Объект из Составного объекта» → pick a source BO → the same «Заполнить поле» / «При удалении» radios | per source BO of the composite: see below |
+
+- **`removeType` is applied by the SERVER when it reads the field's records**
+  (`business-object-instance/load-bo-instance-selector-records-by-ids {boInstanceIds, businessObjectId,
+  fieldIds, ownerBoId, ownerBoInstanceId, ownerFieldId, draftId}`) — a record deleted with
+  `delete-bo-instance` (state `REMOVED`) is: **`HIDE`** — left out of the answer, the field looks empty;
+  **`STRIKETHROUGH`** — returned with `state: "REMOVED"`, and a TABLE view strikes the row through;
+  **`DISCONNECT`** — on this build exactly like `STRIKETHROUGH` (the row is struck, the id stays in the
+  stored value, even with `linkedFieldId` set; re-read after a minute: unchanged) `[C]`. A `SINGLE` chip
+  shows a deleted record plainly, with no mark. The stored value is never cleaned by a delete.
+- **`needChangeParentBoByLinkedBo` decides whether a change of the field is a change of the OWNER record**
+  `[C]` (UI and API): with `true` (default) choosing a record puts it into the card's draft only — the card
+  shows «Сохранить / Отменить» and closing asks «Несохранённые данные … Закрыть без сохранения?»; «ДА» =
+  `remove-draft`, nothing kept. With `false` the same `save-field-value` (`saveType: "ADD"`) is **written
+  straight into the record** — the card stays clean, closing sends `remove-draft` and the choice is kept.
+  Proven headlessly too: `create-draft` → `save-field-value` on a `false` field → `remove-draft` leaves the
+  value in the record; on a `true` field the value is gone. Without `saveType` the value replaces, with
+  `"ADD"` it is appended. Editing a referenced record elsewhere does NOT touch the owner's
+  `LAST_MODIFIED_AT` either way. Client side the flag also decides whether editing a nested record from the
+  card marks the owner card as changed (`boiChanged`).
+- **`needMarkNew` is RESET to `false` by any `editedFields` patch of the same field that does not carry
+  it** `[C]` — set `removeType` on a field after `needMarkNew` and the flag is gone; a patch of ANOTHER
+  field leaves it. Send it in every patch of that field. `needAddToParticipants` and the other keys survive
+  such patches. **The constructor UI hits this itself** `[C]`: with «Помечать новые» ticked, choosing
+  «Скрывать из списка» and «Сохранить» sent `editedFields: [{fieldId, removeType: "HIDE"}]` and the stored
+  `needMarkNew` became `false` — the checkbox is silently lost. After any constructor change of a `BO`/`CO`
+  field that has it, tick «Помечать новые» again and save (or re-import the archive).
+- **After every constructor save the UI calls `v2/business-object-instance/remove-all-for-single-view-type
+  {boId, fieldId}` for each `SINGLE` reference field, and that call TRIMS the stored value of every record to
+  its first id** `[C]` — a `MULTIPLE` field holding two records, switched to `SINGLE` by an API patch, still
+  held both; the call left one. So switching a field to «Одиночный» in the constructor drops the other
+  links of every record, irreversibly; an API or archive switch leaves them until the next constructor save
+  of that BO. The form cycle also keeps only the first id when a `SINGLE` field is given several.
+- **`needMarkNew` and `needAddToParticipants` are DROPPED on a field that is being ADDED** (like
+  `useAsKeyInMigration`) — set them in a follow-up patch. `viewType`, `removeType`, `isKindAddForSelect`,
+  `isHeightDynamic`, `linkedFieldId`, `copyFromFieldId` are kept on add. The archive import is the mirror
+  image: it keeps `needMarkNew` / `needAddToParticipants` on a created field but LOSES
+  `needChangeParentBoByLinkedBo: false` there (`MYBPM-IMPORTS.md` §3 «Reference fields»).
+- **A field referencing a composite (`CO`)** — add it like a `BO` field (`generate-business-form-field
+  {boId, fieldType: "CO", fieldBoId: <composite id>}`, then `refBoId`, `viewType`, `boFieldRefs` from the
+  composite) `[C]`. The server fills `linkedCoSettings` itself — an ARRAY, one entry per source BO of the
+  composite: `{boId: <source BO>, removeType: "STRIKETHROUGH", linkedFieldId: null, unlinkedFieldId: null,
+  linkedBo: {refBoName, fieldsForLink: [{fieldId, label}]}}`, where `fieldsForLink` = the `BO` fields of that
+  source pointing back at this BO. The constructor patch that links one sends the whole array:
+  `editedFields: [{fieldId, linkedCoSettings: [{boId, removeType: "HIDE", linkedFieldId: <back field>,
+  linkedBo: {…}}]}]`. A back field already used by a plain `BO` field (`linkedFieldId`) is greyed out here too.
+- **A `CO` value is a JSON array of `"<source BO id>-<record id>"`**, not of bare record ids —
+  `save-field-value` with bare ids answers `IllegalStoredValue … Value_CO` `[C]`. Adding records that way
+  (`saveType: "ADD"`) filled the back field of each SOURCE record with the owner; with `removeType: "HIDE"` a
+  deleted source record was left out of `load-bo-instance-selector-records-by-ids` (called with the composite
+  as `businessObjectId` and the same prefixed ids) `[C]`.
+- **Reading a reference value**: `v2/load-boi-values` answers `""` for every `BO` field; read it with
+  `instance-field-form/load-field-data` (a draft of the record) — `storedValue` = `"[\"<boiId>\", …]"` `[C]`.
+- **«Data too large» (`EsDataTooLargeException`) comes and goes** `[C]`: `validate-apply-remove-draft` and even
+  `create-draft` of this BO failed with it a few times, the same calls went through a minute later, and the
+  record that «failed» WAS saved (with its back link). It is the Elasticsearch memory breaker of the stand,
+  not the payload — retry, then check what was stored before retrying a create.
+- In the export (`MYBPM-IMPORTS.md` §3 «Reference fields») `linkedFieldId` becomes
+  `boRefStruct.linkedFieldCode` and `copyFromFieldId` becomes `copyFromFieldCode` — both by CODE — and
+  `linkedCoSettings` becomes a map `{"<source BO code>": {linkedFieldCode, removeType}}`. All three import
+  back `[C]`.
+
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
 - A required field is marked with a red `*` on the record card; saving with it empty is refused with the
