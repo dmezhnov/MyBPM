@@ -205,6 +205,67 @@ function id(where: string, value: any) {
 const bos = objs.filter(o => cls(o) === "BoStructDto");
 if (bos.length === 0 && !menuOnly) add("FATAL", "0.4", "no BoStructDto line");
 if (menuOnly) add("WARN", "5e", "menu lines only, no BO line — legal (§5e), but every boCode must already be on the stand");
+const boByCode = new Map<string, any>(bos.map(b => [String(b.code), b]));
+
+/**
+ * «Отображение» / «Поведение» of a BO / CO field (MYBPM-IMPORTS.md §3 «Reference fields») — every link is by
+ * CODE and can only be checked when the other BO travels in this archive; otherwise it must exist on the stand.
+ */
+function checkRefSettings(bo: any, key: string, f: any, ft: string) {
+  const fields = (b: any) => (b?.dynamicFields ?? {}) as Record<string, any>;
+  const target = boByCode.get(f.boRefStruct?.boInfo?.code);
+  if (f.viewType && !["TABLE", "MULTIPLE", "SINGLE", "FIELDS"].includes(f.viewType))
+    add("ERROR", "3", `${ft}: viewType "${f.viewType}" — the constructor offers TABLE / MULTIPLE / SINGLE / FIELDS`);
+  if (f.removeType && !["STRIKETHROUGH", "HIDE", "DISCONNECT"].includes(f.removeType))
+    add("ERROR", "3", `${ft}: removeType "${f.removeType}" is not STRIKETHROUGH / HIDE / DISCONNECT`);
+  if (f.needChangeParentBoByLinkedBo === false)
+    add("WARN", "3", `${ft}: needChangeParentBoByLinkedBo false is LOST when the import CREATES the field — import the archive twice`);
+  if (f.type === "CO" && f.isHeightDynamic) add("WARN", "3", `${ft}: isHeightDynamic on a CO — the constructor offers it on BO only`);
+
+  // back link: a field of the REFERENCED BO that references this BO
+  const back = f.boRefStruct?.linkedFieldCode;
+  if (back && target && f.type === "BO") {
+    const g = fields(target)[back];
+    if (!g) add("ERROR", "3", `${ft}: linkedFieldCode "${back}" is not a field of ${target.code}`);
+    else if (g.type !== "BO" && g.type !== "CO") add("ERROR", "3", `${ft}: linkedFieldCode "${back}" is a ${g.type}, must be a BO field`);
+    else if (g.type === "CO") {
+      // the other end is a CO field whose composite has THIS BO among its sources (its linkedCoSettings)
+      const co = boByCode.get(g.boRefStruct?.boInfo?.code);
+      if (co && Array.isArray(co.bos) && !co.bos.some((b: any) => b.code === bo.code))
+        add("ERROR", "3", `${ft}: linkedFieldCode "${back}" is a CO field on ${co.code}, which has no source ${bo.code}`);
+    } else if (g.boRefStruct?.boInfo?.code !== bo.code)
+      add("ERROR", "3", `${ft}: linkedFieldCode "${back}" references ${g.boRefStruct?.boInfo?.code}, not this BO`);
+    const rivals = Object.entries(fields(bo)).filter(([k, h]) => k !== key && h.type === "BO" && h.boRefStruct?.linkedFieldCode === back
+      && h.boRefStruct?.boInfo?.code === target.code);
+    if (rivals.length) add("ERROR", "3", `${ft}: back field "${back}" is also linked from ${rivals.map(([k]) => k).join(", ")} — one back field serves one field`);
+  }
+
+  const copy = f.copyFromFieldCode;
+  if (copy) {
+    const src = fields(bo)[copy];
+    if (!src) add("ERROR", "3", `${ft}: copyFromFieldCode "${copy}" is not a field of this BO`);
+    else if (src.type !== f.type) add("ERROR", "3", `${ft}: copyFromFieldCode "${copy}" is a ${src.type}, this field is a ${f.type}`);
+    else if (src.viewType !== f.viewType) add("WARN", "3", `${ft}: copies "${copy}" whose viewType ${src.viewType} differs — the constructor refuses that pair`);
+  }
+
+  const lcs = f.linkedCoSettings;
+  if (f.type === "BO" && lcs && Object.keys(lcs).length) add("ERROR", "3", `${ft}: linkedCoSettings on a BO field — only a CO field has them`);
+  if (f.type !== "CO" || !lcs) return;
+  if (Array.isArray(lcs)) { add("ERROR", "3", `${ft}: linkedCoSettings is an ARRAY (the API shape); an archive keys it by source BO CODE`); return; }
+  for (const [srcCode, s] of Object.entries<any>(lcs)) {
+    if (target && Array.isArray(target.bos) && !target.bos.some((b: any) => b.code === srcCode))
+      add("ERROR", "3", `${ft}: linkedCoSettings key "${srcCode}" is not a source BO of the composite ${target.code}`);
+    if (s.removeType && !["STRIKETHROUGH", "HIDE", "DISCONNECT"].includes(s.removeType))
+      add("ERROR", "3", `${ft}: linkedCoSettings.${srcCode}.removeType "${s.removeType}" is not STRIKETHROUGH / HIDE / DISCONNECT`);
+    const source = boByCode.get(srcCode);
+    if (s.linkedFieldCode && source) {
+      const g = fields(source)[s.linkedFieldCode];
+      if (!g) add("ERROR", "3", `${ft}: linkedCoSettings.${srcCode}.linkedFieldCode "${s.linkedFieldCode}" is not a field of ${srcCode}`);
+      else if (g.boRefStruct?.boInfo?.code !== bo.code)
+        add("ERROR", "3", `${ft}: linkedCoSettings.${srcCode}.linkedFieldCode "${s.linkedFieldCode}" references ${g.boRefStruct?.boInfo?.code}, not this BO`);
+    }
+  }
+}
 
 for (const bo of bos) {
   const tag = `BO ${bo.code ?? "?"}`;
@@ -252,11 +313,13 @@ for (const bo of bos) {
       ? (key === "PROCESS_STATUS" ? PROCESS_STATUS_ABSENT_KEYS : new Set(["tableColOrderIndex"]))
       : EMPTY_SET;
     const skipKeys = bo.category === "BO_COMPOSITE" ? COMPOSITE_ABSENT_KEYS : processSkip;
-    for (const k of FIELD_KEYS) if (!(k in f) && !skipKeys.has(k))
+    // A stand export leaves tableColOrderIndex off a field that is not ordered yet (one added through the
+    // API) and the importer stores null — so its absence is only the form-order WARN below.
+    for (const k of FIELD_KEYS) if (!(k in f) && !skipKeys.has(k) && k !== "tableColOrderIndex")
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
-        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength"].includes(k));
+        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
 
     // «Поведение» (MYBPM-IMPORTS.md «Поведение» and «Интеграция» of a field): the stand keeps every
@@ -337,6 +400,11 @@ for (const bo of bos) {
       if (type === "CO" && bi && bi.boCategory !== "BO_COMPOSITE")
         add("ERROR", "0.5", `${ft}: CO boInfo.boCategory = ${bi.boCategory}, expected BO_COMPOSITE`);
       if (!f.viewType) add("WARN", "0.5", `${ft}: ${type} without viewType (TABLE/SINGLE)`);
+      checkRefSettings(bo, key, f, ft);
+    } else {
+      if (f.linkedCoSettings && Object.keys(f.linkedCoSettings).length)
+        add("ERROR", "3", `${ft}: linkedCoSettings on a ${type} — only a CO field has them`);
+      if (f.copyFromFieldCode) add("ERROR", "3", `${ft}: copyFromFieldCode on a ${type} — only BO / CO fields copy`);
     }
     if (f.needTrackStatus === true) {
       const all = Object.values<any>(bo.dynamicFields);
@@ -386,6 +454,10 @@ for (const bo of bos) {
       }
     }
   }
+  // a native field placed on the form takes its rows in the same stack (a stand export: LAST_MODIFIED_AT at y=40)
+  if (bo.nativeFields && !Array.isArray(bo.nativeFields) && bo.category !== "BO_COMPOSITE")
+    for (const [k, n] of Object.entries<any>(bo.nativeFields))
+      if (n?.gridPosition && typeof n.gridPosition.y === "number") laid.push({ ft: `${tag}.native ${k}`, f: n, gp: n.gridPosition, box: true });
   laid.sort((a, b) => a.gp.y - b.gp.y);
   let prevY: number | null = null, prevRows = 0;
   let idx = 0;
@@ -570,8 +642,6 @@ for (const m of menus) {
   if (menuByCode.has(c)) add("ERROR", "0.5d", `menu code "${c}" repeats — the stand addresses menu items by code`);
   menuByCode.set(c, m);
 }
-const boByCode = new Map<string, any>(bos.map(b => [String(b.code), b]));
-
 menus.forEach(m => {
   const tag = `menu ${m.menuItemCode ?? "?"}`;
   for (const k of MENU_REQUIRED) if (!(k in m)) add("ERROR", "0.5d", `${tag}: key "${k}" missing`);
