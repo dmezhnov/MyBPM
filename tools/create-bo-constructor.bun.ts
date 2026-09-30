@@ -30,6 +30,12 @@
  * Field settings («Настройки поля» in the constructor) — the full field grammar is
  *     --field "Метка:TYPE[@<boId>][#вариант|вариант|…][!req,uniq,readonly,nocol]"
  *   `!req` = «Обязательное» (isRequired), `!uniq` = «Уникальное» (isUnique),
+ *   `!key=value` sets ANY key of the field DTO, dotted for a nested one — `!dateOnlyPast=true`,
+ *   `!textCase=UPPER`, `!maxLength=10`, `!params.url=https://…` (value parsed as JSON, else a string;
+ *   no «,» inside a value). The settings and their keys: MYBPM-UI-API.md §5h.
+ *   `!track` on a date field = «Отслеживать статус» with its TAB_GROUP wrapper and «Статус» dropdown (the
+ *   sequence captured from the constructor 2026-09-30; this tool's version of it has not been run yet).
+ *   A nested object `BO@<boId>` gets `viewType: TABLE` and the target's columns, as the constructor does.
  *   `!readonly` = «Только для чтения» (isReadonly; NEVER together with req — such a record cannot be
  *   saved), `!nocol` drops the registry column that req/uniq switch on by themselves.
  *   A «Выпадающий список» takes its options from a DICTIONARY — `DROPDOWN_SINGLE@<dictionary boId>`
@@ -111,6 +117,28 @@ async function savePortion(payload: object): Promise<string | null> {
 
 const langMap = (v: string) => ({ KAZ: null, ENG: null, RUS: v, QAZ: null });
 
+/**
+ * The columns of a nested-object table, built the way the constructor's `createFormFieldByBoId` builds them
+ * from the TARGET BO: every field listed, `toShow` = the target's own registry column flag; if the target
+ * has no column at all, its first field is shown; at most 5 shown, a TAB_GROUP / PROGRESS_BAR never.
+ */
+async function boFieldRefsOf(refBoId: string) {
+  const target = await call<any>("load-business-object-by-id", { businessObjectId: refBoId });
+  const fields = [...(target.formFields ?? [])]
+    .sort((a, b) => (a.gridPosition?.y ?? 0) - (b.gridPosition?.y ?? 0) || (a.gridPosition?.x ?? 0) - (b.gridPosition?.x ?? 0))
+    .sort((a, b) => a.tableColOrderIndex - b.tableColOrderIndex);
+  const anyColumn = fields.some(f => f.tableColToShow);
+  const refs: any[] = [];
+  for (const g of fields) {
+    const r = { fieldId: g.fieldId, label: g.label, toShow: !!g.tableColToShow, type: g.type, checked: false,
+      orderIndex: g.tableColOrderIndex, gridPosition: g.gridPosition };
+    if (!anyColumn && !refs.some(x => x.toShow)) r.toShow = true;
+    if (["TAB_GROUP", "PROGRESS_BAR"].includes(r.type) || refs.filter(x => x.toShow).length >= 5) r.toShow = false;
+    refs.push(r);
+  }
+  return refs;
+}
+
 type BoGroup = { id: string; name: string; code: string | null; orderIndex: number; kind: string };
 const groups = await call<BoGroup[]>("load-bo-groups");
 
@@ -151,10 +179,21 @@ const fields = flagAll("field").map(s => {
   const at2 = spec.indexOf("@");
   const type = at2 >= 0 ? spec.slice(0, at2) : spec;
   const refBoId = at2 >= 0 ? spec.slice(at2 + 1) : undefined;
-  const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol"].includes(f));
+  // `key=value` sets ANY key of the field DTO (`params.url=…` a nested one); the value is JSON when it
+  // parses (true, 12, "UPPER", {…}), else the bare string. A value cannot contain «,» (the flag separator).
+  const sets = flags.filter(f => f.includes("=")).map(parseSet);
+  flags = flags.filter(f => !f.includes("="));
+  const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "track"].includes(f));
   if (unknown.length) { console.error(`unknown field flag(s): ${unknown.join(", ")}`); process.exit(1); }
-  return { label, type, refBoId, options, flags };
+  return { label, type, refBoId, options, flags, sets };
 });
+function parseSet(kv: string): { path: string[]; value: unknown } {
+  const eq = kv.indexOf("=");
+  const raw = kv.slice(eq + 1);
+  let value: unknown = raw;
+  try { value = JSON.parse(raw); } catch { /* a bare string */ }
+  return { path: kv.slice(0, eq).split("."), value };
+}
 /** `--widget "TYPE:Метка[:код][:url]"` — a widget; `--native TYPE` — a system field. */
 const widgets = flagAll("widget").map(raw => {
   const parts: string[] = [];
@@ -228,6 +267,23 @@ if (fields.length || widgets.length || natives.length) {
     if ((f.flags.includes("req") || f.flags.includes("uniq")) && !f.flags.includes("nocol")) {
       set("tableColToShow", true);
     }
+    // `!key=value` overrides — a nested path replaces the whole top-level object in the patch, the way
+    // the client's own `saveParams` does.
+    for (const { path, value } of f.sets) {
+      if (path.length === 1) { set(path[0], value); continue; }
+      const top = structuredClone(dto[path[0]] ?? {});
+      let o: any = top;
+      for (const k of path.slice(1, -1)) o = o[k] ??= {};
+      o[path.at(-1)!] = value;
+      set(path[0], top);
+    }
+    // A nested object: what the constructor adds on drop (`createFormFieldByBoId`) — without `viewType`
+    // the card renders an empty box, without `boFieldRefs` a table with no columns.
+    if (f.type === "BO" && f.refBoId) {
+      set("refBoId", f.refBoId);
+      set("viewType", "TABLE");
+      set("boFieldRefs", await boFieldRefsOf(f.refBoId));
+    }
     if (f.type === "DROPDOWN_SINGLE" && f.refBoId) {
       set("optionSource", "FROM_BO");
       set("refBoId", f.refBoId);
@@ -244,6 +300,31 @@ if (fields.length || widgets.length || natives.length) {
     }
     added.push(dto);
     edits.push(edit);
+    // «Отслеживать статус» (`saveNeedTrackStatus`): the flag alone does nothing — the constructor also adds
+    // a TAB_GROUP wrapper and a «Статус» dropdown whose option ids are PLANNED/OVERDUE/DONE/CANCELED, and
+    // moves the date into the wrapper's tab (MYBPM-UI-API.md §5h «Six more gear flags»).
+    if (f.flags.includes("track")) {
+      const wrap = await call<any>("generate-business-form-field", { boId: created.id, fieldType: "TAB_GROUP" });
+      const tabId = (await call<string[]>("load-portion", {}, {}, "id-loader"))[0];
+      Object.assign(wrap, {
+        trackedFieldId: dto.fieldId, tabId: dto.tabId ?? null, gridPosition: { ...dto.gridPosition, cols: 15, rows: 4 },
+        tabs: [{ id: tabId, label: "Статус объекта", isActive: true, chosenAccessRight: false, orderIndex: 0,
+          isInvalid: false, isRight: false, isDefault: false, labelMap: { RUS: "Статус объекта" } }],
+      });
+      const status = await call<any>("generate-business-form-field", { boId: created.id, fieldType: "DROPDOWN_SINGLE" });
+      const options = ([["PLANNED", "Запланировано", "#0048ff"], ["OVERDUE", "Просрочено", "#d3a52f"],
+        ["DONE", "Выполнено", "#6797fa"], ["CANCELED", "Отменено", "#6797fa"]] as const)
+        .map(([id, label, color]) => ({ id, checked: false, label, color, orderIndex: 0, labelMap: { RUS: label } }));
+      Object.assign(status, {
+        label: "Статус", labelMap: langMap("Статус"), trackedFieldId: dto.fieldId, tabId,
+        gridPosition: { cols: 6, rows: 3, x: 9, y: 0 }, optionSource: "FROM_FIELD", options,
+      });
+      set("needTrackStatus", true);
+      set("tabId", tabId);
+      set("gridPosition", { cols: 9, rows: 3, x: 0, y: 0 });
+      added.push(wrap, status);
+      edits.push({ fieldId: status.fieldId, options });
+    }
   }
   // Widgets and system fields ride along in the same save — only their generator differs.
   let y = fields.length * 4;

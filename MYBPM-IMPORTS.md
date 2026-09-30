@@ -1234,6 +1234,61 @@ export switch), `removeType`, `hideLabel`, `chosenAccessRight` (individual right
 `isKindAddForSelect`, `isHeightDynamic` (tables), `tableWidth` (registry column width in px; the small
 numbers inside nested tables are in unverified units).
 
+**Dates: `dateOnlyPast` / `dateOnlyFuture`** `[C]` (2026-09-30, `<stand>`) — plain booleans on a `DATE`,
+`FULL_DATE`, `PERIOD`, `PERIOD_TIME`, `YEAR` or `YEAR_AND_MONTH` field (not `TIME`). The key names what
+is ALLOWED: `dateOnlyPast: true` = the constructor's «Будущие даты недоступны для выбора» (the picker offers
+today and earlier), `dateOnlyFuture: true` = «Прошедшие даты недоступны для выбора» (today and later). Never
+both `true` — the UI cannot produce it. Imported, exported and honoured by the record picker exactly like a
+constructor-built field; today and the current month/year stay selectable. **Only the picker enforces it** —
+the record API stores any date `[C]`; scripts and an xlsx import presumably too `[I]`. Generator: `--field "Срок:DATE!dateOnlyFuture=true"`.
+
+**Six more gear flags** `[C]` (2026-09-30, `<stand>`) — plain booleans on the field, imported, re-imported
+(an existing BO code is updated in place) and exported exactly like the constructor's, and verified on
+records of the imported BO:
+
+| key | the constructor's checkbox | on the record |
+|---|---|---|
+| `unacceptableValue: true` | «Не сохранять значение» | the value is never stored — the SERVER drops it too, so the field stays empty whatever writes it through the form cycle |
+| `hideLabel: true` | «Убрать заголовок» | the input without its label |
+| `needFreezeWhenScroll: true` | «Фиксировать при скроллинге» | the field sticks to the top of the card while it scrolls |
+| `isClickable: false` (`BO`/`CO` only; the template's default is `true`) | «Не открывать запись» | clicking a linked record warns «Вы не можете открыть запись» instead of opening it |
+| `needShowToCalendar` (date types; the template's default is `true`) | «Показывать в календаре» | `false` keeps that date field off the BO's calendar view |
+| `needTrackStatus: true` | «Отслеживать статус» | ONLY together with the two companion fields below |
+
+- **The calendar view itself is a BO-level switch**: `isCalendarEnabled: true` on the `BoStructDto`. The
+  archive template has `false` (a BO made by the constructor or `create-bo` gets `true`), so an archive
+  BO has no «Календарь» view until you set it. Generator: `--calendar`.
+- **«Отслеживать статус» = three fields**, written BY CODE the way a stand export writes them:
+  ```jsonc
+  "Srok": { "type": "DATE", "needTrackStatus": true,
+            "tabCodePath": {"tabGroupCode": "Srok_status", "tabCode": "Status_obekta"},
+            "gridPosition": {"x": 0, "y": 0, "cols": 9, "rows": 3}, … },
+  "Srok_status": { "type": "TAB_GROUP", "label": {}, "trackedFieldCode": "Srok", "tableColToShow": false,
+            "fieldTabs": {"Status_obekta": {"label": {"rus": "Статус объекта"}, "orderIndex": 0, "code": "Status_obekta",
+                          "chosenAccessRight": false, "isRight": false, "isDefault": false, "newId": "<16 chars>"}},
+            "gridPosition": {"x": 0, "y": <where the date was>, "cols": 15, "rows": 4}, … },
+  "Status_Srok": { "type": "DROPDOWN_SINGLE", "label": {"rus": "Статус"}, "trackedFieldCode": "Srok",
+            "tabCodePath": {"tabGroupCode": "Srok_status", "tabCode": "Status_obekta"},
+            "gridPosition": {"x": 9, "y": 0, "cols": 6, "rows": 3},
+            "fieldOptionsStruct": {"optionSource": "FROM_FIELD", "dictionaryOptionSetting": {}, "options": {
+              "PLANNED":  {"fieldOption": {"label": "Запланировано", "code": "Zaplanirovano", "orderIndex": 0, "color": "#0048ff", "hiddenInKanban": false}, "newOptionId": "PLANNED"},
+              "OVERDUE":  {"fieldOption": {"label": "Просрочено",    "code": "Prosrocheno",   …}, "newOptionId": "OVERDUE"},
+              "DONE":     {"fieldOption": {"label": "Выполнено",     "code": "Vypolneno",     …}, "newOptionId": "DONE"},
+              "CANCELED": {"fieldOption": {"label": "Отменено",      "code": "Otmeneno",      …}, "newOptionId": "CANCELED"}}}, … }
+  ```
+  **The option ids must be exactly `PLANNED` / `OVERDUE` / `DONE` / `CANCELED`** — the record card sets the
+  status by those ids and the calendar colours by them. **The id is the options map KEY**: a new BO got the
+  keys as its option ids even with `newOptionId` set to other values `[C]` (probe «Проба ключ статуса
+  2026-09-30», `newOptionId` = «aaaaPLANNEDaaaaa»… → ids PLANNED…), which is why a stand export — keys
+  `PLANNED`…, random `newOptionId` — round-trips intact. The key differs from `fieldOption.code` here, the
+  only place it does. A stand export shows the wrapper with its
+  stand id as `code` (the constructor leaves the wrapper's code empty); any code works. Generator:
+  `--field "Срок:DATE!track"` builds all three.
+- **A nested `BO` field's table columns** are `boRefStruct.fieldRefs` keyed by the TARGET BO's field codes:
+  `{"Strana": {"toShow": true, "orderIndex": 0}, "Gorod": {"toShow": true, "orderIndex": 1}}` (a stand export
+  adds each column's `gridPosition`). With `fieldRefs: {}` the importer lists the target's fields with
+  `toShow: false` and the table has no columns at all. Generator: `!show=Strana|Gorod`.
+
 ### Platform concepts an archive encodes
 
 - **BO = class, instance (инстанция / запись) = object.** A link/collection field holds instances of
