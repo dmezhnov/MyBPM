@@ -717,7 +717,8 @@ if (CATEGORY === "BO_PROCESS" && processStatusRefBoId) {
       defaultValueMap: { RUS: JSON.stringify([processStatusCreatedId]) },
     } : {}),
     // a real export puts the status first; here it goes under whatever `--field` already claimed
-    gridPosition: { x: 0, y: Object.keys(dynamicFields).length * 4, cols: 8, rows: 4 },
+    gridPosition: { x: 0, y: Object.values(dynamicFields).reduce((m: number, f: any) =>
+      Math.max(m, (f.gridPosition?.y ?? 0) + (f.gridPosition?.rows ?? 0)), 0), cols: 8, rows: 4 },
     fieldTabs: {}, gantTableLocations: {}, boFieldCodes: [], linkedCoSettings: {},
     questionnaires: {}, progressSteps: {}, params: {},
   };

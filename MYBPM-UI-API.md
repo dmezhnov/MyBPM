@@ -1476,20 +1476,40 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   `in-work-bo-process-version` is the same for «в работу» (not re-run here). What each exports and imports
   as: `MYBPM-IMPORTS.md` §5c (work → `workProcess`, test → `processVersions.<id>`, the rest not exported).
 - **Run ways — WHEN the process starts** (`process_run_way_settings`, a button of the process BO's
-  editor) — the `bo-process-editor2` draft family `[C]` for the calls, `[I]` for the edits:
-  `create-draft {boProcessId}` → a draftId; `load-draft-data {draftId}` → `{runWayMap: {}}` on both a work
-  and a test version of a fresh process (so empty = the default «start when a record is created»);
-  `remove-draft {draftId}` → `""`. Read off the client, not run: `update-draft` `P {draftId}`, `B` = an
-  array of `{dotPath, value}` — `runWayMap.<id>.runWay` (`ON_INSTANCE_CREATE | ON_FIELD_CHANGE |
-  SCHEDULED | ON_MIGRATION_END`), `.orderIndex`, `.changeVariantSet` (`{"ON_MANUAL_SAVE":1,…}` — also
-  `ON_IN_MIGRATION, ON_UPLOAD_XLSX, ON_CALL_API, ON_MASS_CHANGE` (field change only), `ON_PROCESS_CHANGE,
-  ON_PLUGIN_SAVE, ON_KAFKA_IN_MIGRATION`), `.processFieldId` + `.fieldIdsSet` + `.fieldValues` +
-  `.useFieldValuesSet` (ON_FIELD_CHANGE: which fields, compared with which values), `.schedule.*`
-  (SCHEDULED: `repeatType, repeatUntilType, startTime, startRepeatTime, endRepeatTime, repeatCount,
-  interval, daysOfWeek, dayOfMonth`); a new run way = `runWay: ON_INSTANCE_CREATE` + next `orderIndex` +
-  `changeVariantSet {ON_MANUAL_SAVE:1}`; `apply-draft {draftId}` commits. **The client refuses every
-  edit on a WORK version** («you_cant_change_published_bo_process_version») — run ways are set on the test
-  version and published with it. The result travels as `runWayMap` in the archive (`MYBPM-IMPORTS.md` §5c).
+  editor) — the `bo-process-editor2` draft family, all `[C]` (2026-09-30, `<stand>`):
+  `create-draft {boProcessId}` → a draftId; `load-draft-data {draftId}` → `{runWayMap: {…}}`
+  (`{}` on a fresh process = the default «run on a record of this BO when it is created»);
+  `update-draft` `P {draftId}` `B` = an ARRAY of `{dotPath, value}` → `[{type:"SET_SAVE_BUTTON_VISIBILITY"…}]`;
+  `apply-draft {draftId}` → `""` commits; `remove-draft {draftId}` → `""` drops it. One run way:
+  ```js
+  const [id] = await __c('v2/bo-process-editor/load-new-ids', {count: 1});   // any fresh id
+  await __c('v2/bo-process-editor2/update-draft', {draftId}, [
+    {dotPath: `runWayMap.${id}.runWay`,           value: 'ON_FIELD_CHANGE'},  // | ON_INSTANCE_CREATE | SCHEDULED | ON_MIGRATION_END
+    {dotPath: `runWayMap.${id}.orderIndex`,       value: 2},
+    {dotPath: `runWayMap.${id}.changeVariantSet`, value: {ON_MANUAL_SAVE: 1}},
+    {dotPath: `runWayMap.${id}.processFieldId`,   value: '<the process BO's SINGLE BO-reference field>'},
+    {dotPath: `runWayMap.${id}.fieldIdsSet`,      value: {'<target field id>': 1}},   // ON_FIELD_CHANGE only
+    {dotPath: `runWayMap.${id}.useFieldValuesSet`,value: {'<target field id>': 1}},   // optional: …
+    {dotPath: `runWayMap.${id}.fieldValues`,      value: {'<target field id>': 'три'}}, // …only when changed TO this
+  ]);
+  ```
+  A `SCHEDULED` run way has no process field; its settings go one key per update, as the client sends
+  them — `runWayMap.<id>.schedule.repeatType` (`EVERYDAY`…), `.repeatUntilType` (`NO_END_DATE |
+  REPEAT_COUNT | EXPIRATION_DATE`), `.startTime` (a real UTC instant, `"2026-09-30T12:31:00Z"`),
+  `.startRepeatTime` (a date, `"…T00:00:00Z"`), `.endRepeatTime`, `.repeatCount`, `.interval`,
+  `.daysOfWeek`, `.dayOfMonth` `[C]` (2026-09-30, stored and read back as sent). **It has not been seen
+  to fire** `[U]` — no process record 35–48 minutes after `startTime`, not even at the top of the next hour
+  (`MYBPM-IMPORTS.md` §5c `runWayMap`).
+  A `dotPath` with `value: undefined` (i.e. the key left out of the JSON) deletes, e.g.
+  `runWayMap.<id>` removes a run way. The process field must be a `type:"BO"` field of the process BO with
+  `viewType` `SINGLE` or `FIELDS` (the dialog lists no other); `fieldIdsSet` holds ids of the TARGET BO's
+  fields (the dialog offers that reference's `boFieldRefs` — an archive-built reference already lists
+  every target field there, `toShow:false`). **The client refuses every edit on a WORK version**
+  («you_cant_change_published_bo_process_version»), **the server does not**: the draft cycle above
+  applied on a version that was `isWork+isTest` and the run ways worked at once on ordinary records.
+  What they do (a target record's creation / field change creates a NEW process record pointing at it),
+  the controls, and the archive form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) —
+  `MYBPM-IMPORTS.md` §5c `runWayMap`.
 
 #### `apply-update-cmd` — a JSON-patch language over the def
 
@@ -2974,6 +2994,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   };
   await __c('import-structure/load-import-state')      // path WITHOUT /web/, with v2/ where it belongs
   ```
+  **Keep the envelope even where a plain call seems to work** `[C]` (2026-09-30): with the params in the
+  query string and a bare JSON body, `bo-process-editor2/create-draft` and `load-draft-data` answered
+  normally, but `update-draft` (whose body is an ARRAY) answered 400 «Failed to read request» on every
+  try; the same array inside `body_o1nhHUG480` went through at once.
   Never return `r.headers.get(…)` (the export's file name sits in `content-disposition` — derive a name
   yourself). A reload wipes `window.__c`: the next call fails with `ReferenceError` BEFORE it sends
   anything, so re-inject after every navigation.

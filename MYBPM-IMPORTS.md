@@ -1437,20 +1437,51 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   is neither work nor test (an old one, or a fresh «Копировать») is NOT exported. That export imported
   under a new code came back as version 1 `isWork` (the `workProcess` diagram) + version 2 `isTest` (the
   `processVersions` one), different diagrams kept apart, scripts on both, `validate-def []` on both.
-  So `processVersions` is «the test version when it differs from the work one»; with one version that is
-  both, the export writes `workProcess` only.
+  So `workProcess` = the work version and `processVersions.<id>` = the test version. **A single version
+  that is BOTH work and test is exported TWICE** `[C]` (2026-09-30) — the same diagram under `workProcess`
+  and under `processVersions.<its id>` — and that export imports as TWO identical versions, v1 `isWork` +
+  v2 `isTest` (not one `isWork+isTest` as a hand-written `workProcess`-only line gives). Harmless; drop
+  `processVersions` from a re-used export if one version is wanted.
 - `runWayMap` (in `workProcess` and in each `processVersions` entry) holds the process's **run ways** —
-  WHEN it starts. Empty = the default, start on record creation (every probe in this document ran that
-  way). The keys, read off the client bundle `[I]` — never filled, exported or imported yet:
-  `runWayMap.<id> = {runWay, orderIndex, changeVariantSet, processFieldId, fieldIdsSet, fieldValues,
-  useFieldValuesSet, schedule}`, `runWay` ∈ `ON_INSTANCE_CREATE | ON_FIELD_CHANGE | SCHEDULED |
-  ON_MIGRATION_END`, `changeVariantSet` a set (`{"<V>":1}`) of `ON_MANUAL_SAVE | ON_IN_MIGRATION |
-  ON_UPLOAD_XLSX | ON_CALL_API | ON_MASS_CHANGE | ON_PROCESS_CHANGE | ON_PLUGIN_SAVE |
-  ON_KAFKA_IN_MIGRATION`, `schedule = {repeatType (EVERYDAY | EVERY_WEEK | EVERY_MONTH | EVERY_WORKING_DAY |
-  EVERY_LAST_DAY_OF_MONTH | EVERY_LAST_WORKING_DAY_OF_MONTH), repeatUntilType (NO_END_DATE | REPEAT_COUNT |
-  EXPIRATION_DATE), startTime, startRepeatTime, endRepeatTime, repeatCount, interval, daysOfWeek,
-  dayOfMonth}`. Leave it `{}` unless you have built and exported a run way on a stand first
-  (`MYBPM-UI-API.md` §5f «Run ways»).
+  WHEN it starts `[C]` (2026-09-30, `<stand>`: built through the API, exported, re-imported under a new
+  code, each kind fired on records). Empty = the default: the process runs on a record of ITS OWN BO when
+  that record is created (every other probe in this document ran that way). **A run way starts the
+  process from ANOTHER BO**: the process BO has a single BO-reference field (`type: "BO"`,
+  `viewType: "SINGLE"` or `"FIELDS"` — the only fields the dialog offers) pointing at the target BO, and
+  an event on a TARGET record **creates a new record of the process BO** whose reference field points at
+  that target record, and runs the process on it. Adding run ways does NOT switch the default off — a
+  process record created directly still runs `[C]`. In the ARCHIVE a run way names everything BY CODE (the
+  API's ids are re-mapped on import — the process field got the new BO's field id):
+  ```json
+  "runWayMap": {
+    "<any id>": {"runWay": "ON_INSTANCE_CREATE", "orderIndex": 1,
+                 "refBoInfo": {"code": "<target BO code>", "name": "<target BO name>", "boCategory": "BO"},
+                 "processFieldCode": "<code of the process BO's reference field>",
+                 "fieldCodes": [], "useFieldValues": [], "fieldValues": {},
+                 "changeVariantSet": {"ON_MANUAL_SAVE": 1}},
+    "<any id>": {"runWay": "ON_FIELD_CHANGE", "orderIndex": 2,
+                 "refBoInfo": {"code": "<target BO code>", "name": "<target BO name>", "boCategory": "BO"},
+                 "processFieldCode": "<code of the process BO's reference field>",
+                 "fieldCodes": ["<target field code>"],
+                 "useFieldValues": ["<target field code>"],
+                 "fieldValues": {"<target field code>": "<value>"},
+                 "changeVariantSet": {"ON_MANUAL_SAVE": 1}}}
+  ```
+  - `ON_INSTANCE_CREATE` — a new target record → a new process record `[C]`.
+  - `ON_FIELD_CHANGE` — a saved change of one of `fieldCodes` (target fields) on a target record → a new
+    process record each time `[C]`; saving with no change, or with the SAME value again, starts nothing
+    `[C]` (unlike the script hook «Изменение поля», which fires on every `save-field-value`). A code listed
+    in `useFieldValues` must also be changed TO its `fieldValues` value (`"три"`: «четыре» → nothing,
+    «три» → a run) `[C]`; the value of an `INPUT_TEXT` is the plain string, other types `[U]`.
+  - `changeVariantSet` — WHICH kind of save counts. `ON_MANUAL_SAVE` (what the dialog sets by default)
+    covered both a save through the record form AND a record created by the formless API cycle
+    (`MYBPM-UI-API.md` §6a — which runs no Block IDE script, yet did start the run way) `[C]`. The other
+    members are unexercised: `ON_IN_MIGRATION | ON_UPLOAD_XLSX | ON_CALL_API | ON_MASS_CHANGE` (field
+    change only) `| ON_PROCESS_CHANGE | ON_PLUGIN_SAVE | ON_KAFKA_IN_MIGRATION`.
+  - `SCHEDULED` — no process field; `schedule = {repeatType (EVERYDAY | EVERY_WEEK | EVERY_MONTH | EVERY_WORKING_DAY | EVERY_LAST_DAY_OF_MONTH | EVERY_LAST_WORKING_DAY_OF_MONTH), repeatUntilType (NO_END_DATE | REPEAT_COUNT | EXPIRATION_DATE), startTime, startRepeatTime, endRepeatTime, repeatCount, interval, daysOfWeek, dayOfMonth}` — **`startTime` is a real UTC instant, `startRepeatTime` is a date** `[C]` (read off the client 2026-09-30: the picked local time is shifted to UTC and then printed with the pattern `yyyy-MM-dd'T'HH:mm:ss'Z'`, so the `Z` is literal but the value IS UTC; the date is the local midnight printed the same way, `…T00:00:00Z`; reading back, the dialog uses only the `HH:mm` of `startTime`). The stand ACCEPTS a scheduled run way and stores it as sent, but **it has not been seen to fire** `[U]` (2026-09-30, `<stand>`): two of them on one work version — `EVERYDAY`, `REPEAT_COUNT` 1, today's `startRepeatTime`, `startTime` 2–3 minutes ahead, once as the real UTC time and once shifted by the stand's +5 h in case the server reads it as local — created no record of the process BO and added no step to its existing records — still none 48 minutes after the first time and 35 after the second (checked 13:06Z), so not even an hourly tick at the top of the hour picked them up. The client has no call that shows a next run, so there is nothing to read back; whether the stand's scheduler runs at all, or only daily, is open (both run ways were left on the stand to re-check a day later). Its archive form is not seen yet.
+  - `ON_MIGRATION_END` — no process field and no options in the dialog; not exercised `[U]`.
+  The target BO must already be on the stand or travel in the same archive (`refBoInfo.code`). Building a
+  run way on a stand: `MYBPM-UI-API.md` §5f «Run ways».
 - **Figure and arrow ids survive the import unchanged** `[C]` — the stand's def carries the archive's own
   ids, the same determinism as `oldId` → `boId` (re-checked 2026-09-27 on 6 figures + 5 arrows). The
   **version id does not**: the stand mints its own and re-keys the scripts to it.
