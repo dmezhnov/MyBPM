@@ -1,0 +1,21 @@
+{
+  "group": "Тест",
+  "name": "Проба БП способы запуска 2026-09-30",
+  "desc": "Enter → Script a1 (пишет Отметку) → Exit; процесс ссылается полем «Цель» на БО «Проба запуска цель 2026-09-30» — проба способов запуска (runWayMap): по созданию записи цели, по изменению её поля «Статус»; собран tools/make-probe-archive.bun.ts",
+  "fields": [
+    { "key": "target", "label": "Цель", "type": "BO", "refBoId": "72OGU1Lp5~uYZRKG", "refBoCode": "Proba_zapusk_cel_2026_09_30" },
+    { "key": "mark", "label": "Отметка", "type": "FULL_DATE" }
+  ],
+  "figures": [
+    { "key": "enter", "type": "Enter", "x": 80, "y": 200 },
+    { "key": "a1", "type": "Script", "x": 240, "y": 200 },
+    { "key": "exit", "type": "Exit", "x": 400, "y": 200 }
+  ],
+  "arrows": [
+    { "key": "e0", "from": "enter", "fromSlot": "main", "to": "a1", "toSlot": "left" },
+    { "key": "a1x", "from": "a1", "fromSlot": "right", "to": "exit", "toSlot": "main" }
+  ],
+  "scripts": {
+    "a1": { "exit": "plain", "steps": [ { "setDate": ["@mark"], "plus": 0, "unit": "MINUTES" } ] }
+  }
+}
