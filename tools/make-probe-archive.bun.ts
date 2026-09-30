@@ -687,7 +687,8 @@ if (isComposite) {
       }
       let o: any = dynamicFields[code];
       for (const k of path.slice(0, -1)) o = o[k] ??= {};
-      o[path.at(-1)!] = value;
+      // the stand keeps every `params` value as a string (`"enableSequence": "true"`) — write it that way
+      o[path.at(-1)!] = path[0] === "params" && typeof value !== "string" ? String(value) : value;
     }
     y += rows;
   });

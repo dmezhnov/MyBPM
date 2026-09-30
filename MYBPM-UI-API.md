@@ -2074,7 +2074,8 @@ popover. Its checkboxes map one-to-one onto keys of the field DTO:
   enforces what `MYBPM-IMPORTS.md` §0.5 states as a rule: required + readonly cannot both be true.
 - The tab «Поведение» holds the per-type extras; for a text field they are «Ограничения вводимых
   символов» (Только заглавные / Только строчные → `textCase`) and «Ограничение длины символов»
-  (`maxLength`).
+  (`maxLength`) — the full per-type table and what each does on a record: ««Поведение» and «Интеграция» —
+  per-type settings» below.
 - A **DROPDOWN_SINGLE** popover has one extra block, «Отобразить значения», with a toggle
   «Задать вручную ⟷ Справочник» (`optionSource` `FROM_FIELD` ⟷ `FROM_BO`) and, in the `FROM_BO` state,
   the chip «Справочник: [Должность]» (`refBoId`).
@@ -2222,6 +2223,60 @@ unacceptableValue: true, hideLabel: true, needFreezeWhenScroll: true}]`, `[{fiel
 - The record picker of a nested field showed «Нет записей» until something was typed into its search
   box, then listed the target's records `[C]` (both targets tried) — type a letter before concluding the
   target is empty.
+
+#### «Поведение» and «Интеграция» — per-type settings `[C]` (2026-09-30, `<stand>`)
+
+Proven on all three routes and on records: «Проба поведения 2026-09-30» (API) and «Проба поведения архив
+2026-09-30» (archive, then one field changed in the constructor), group «Тест». In the gear popover the
+per-type settings sit under the **«Отображение» / «Поведение»** switch below the common checkboxes; the
+database settings are the popover's 4th icon (puzzle), «Интеграция через БД». The constructor saves them
+as one patch per field — captured: `editedFields: [{fieldId, textCase: "UPPER", maxLength: 7,
+needLoadFromInTables: true, useAsKeyInMigration: false}]`.
+
+| key | types | where | on the record |
+|---|---|---|---|
+| `textCase` `UPPER` / `LOWER` / `NONE` | `INPUT_TEXT` | «Поведение» → «Ограничения вводимых символов» → «Только заглавные / строчные буквы» (ticking one unticks the other; unticking = `NONE`) | the input is NOT converted: a wrong-case value gets a warning triangle «Недопустимый текстовый регистр» and blocks the save |
+| `maxLength` | `INPUT_TEXT`, `INPUT_TEXT_LANG`, `INPUT_NUMBER` (≤ 21), `TEXTAREA`, `TEXTAREA_LANG` | «Поведение» → «Ограничение длины символов» → «Включить ограничение длины» + a number (unticking = `0`) | typing stops at the limit (a `TEXTAREA`'s editor does not cut), a longer value shows «Достигнута максимальная длина символов» and blocks the save |
+| `isSeparated` | `INPUT_NUMBER` | «Отображение» → «Делить на разряды» | `1234567` shows as `1 234 567` |
+| `params.enableSequence` (`"true"`) | `INPUT_NUMBER` | «Поведение» → «Счётчик» | a new record opens with the next counter value |
+| `params.url` | `LINK` | «Поведение» → «URL» | only `call/plugin/<name>` means anything (see below) |
+| `needLoadFromInTables` | every field with the gear | puzzle → «Загружать из IN_таблиц» | database integration `[U]` |
+| `needUploadToOutTable` | same | puzzle → «Выгружать в OUT_таблицу» | `[U]` |
+| `useAsKeyInMigration` | `INPUT_TEXT`, `INPUT_EMAIL`, `INPUT_PHONE` | puzzle → «Ключевое поле в IN-миграции» | one per BO (below) |
+| `inMigrationTimezoneMinutes` | date types and `TIME` | puzzle → «Временная зона IN миграции в минутах» | `[U]` |
+
+- **The case and length rules are enforced by the SERVER, in the form cycle** (§6b): every
+  `save-field-value` answers `notValid: true` with `fieldFormCommands: [{commandType: "SHOW_FIELD_ERROR",
+  fieldId, errorMessage: "invalid_text_case" | "max_symbols_reached"}]` for EVERY field of the draft that
+  breaks a rule (not only the one just saved), and `validate-apply-remove-draft` then refuses — `formCommands:
+  [ALERT_SAVE_BUTTON_NOTIFICATION]` and the dialog «Карточка не соответствует требованиям: 1. Достигнута
+  максимальная длина символов 2. Недопустимый текстовый регистр». **The §6a cycle checks nothing**: a record
+  written through `v2/business-object-instance` stored `XYZ` in a lower-case field and 20 characters in a
+  10-character one `[C]`. The form data (`load-field-data`) carries `maxLength` but not `textCase` — the check
+  lives on the server. The case check lets digits, spaces and punctuation through and applies to Cyrillic.
+  Once the card showed the case warning on a value already fixed by retyping and refused to save; a server
+  read of the same draft was clean — a stale UI state `[I]`, retype or reopen.
+- **The counter** (`enableSequence`) is filled when a NEW draft is created (`create-draft-with-boi`, i.e.
+  opening «Добавить») — every draft takes a number, a discarded one too (the probe went 1, 2, 3, 4 with only
+  one record saved), and `business-objects/sequence-next {boId, fieldId}` hands out (and uses up) the next
+  one. A §6a record gets NO number. The value stays editable on the card. The server stores `params` values
+  as strings: an API write of `{enableSequence: true}` comes back `"true"`.
+- **`params.url` on a LINK** (client code, `openLink`): if it starts with `call/plugin/`, a click on the link
+  calls `link/call-plugin {boId, boiId, fieldId, fieldValueMap}` and downloads the files the plugin answers
+  with (`download-file…`); otherwise the click opens the field's own value (with `www.` turned into
+  `http://`). A plain URL in `params.url` does nothing `[C]` (the link opened its value); a real plugin call
+  was not run.
+- **One migration key per BO**: ticking «Ключевое поле в IN-миграции» on a second field shows «Ключевое поле
+  миграции уже преднастроено в поле "<label>"» and unticks it again `[C]` (the client checks the unsaved edits
+  and the saved BO).
+- **Through the API, `useAsKeyInMigration` is DROPPED on a field that is being ADDED** — the same save kept
+  `needLoadFromInTables` / `needUploadToOutTable` and every other key, and a second, one-key `editedFields`
+  patch on the now existing field stored it `[C]`. So set it in a follow-up save (the constructor does too:
+  the checkbox only exists on a saved field). The archive route has no such problem.
+- The constructor turns the registry column on together with `textCase`, `maxLength`, `isSeparated`,
+  `needUploadToOutTable`, `useAsKeyInMigration` (`assignTableColToShow`).
+- `FILE_UPLOAD`'s «Отображение» / «Поведение для MP» (`params.viewType` / `params.contentType`) are in
+  §5i «FILE_UPLOAD display mode».
 
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
@@ -2538,6 +2593,8 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
   `…/create-draft-with-boi` wants a real minted `draftId` and a `BoiState`
   (`ALL|ARCHIVED|REMOVED|OFFLINE|DEV`), and `v2/instance-form/validate-apply-remove-draft` is its apply.
   Use the four calls above instead **when you want NO scripts to run** — see §6b.
+  They also skip the field RULES the form cycle enforces — `textCase`, `maxLength` (§5h «Поведение») — and
+  hand out no counter number `[C]` (2026-09-30).
 
 ### 6b. The FORM cycle — the one that runs the BO's scripts `[C]` (2026-09-24, `<stand>`)
 

@@ -1289,6 +1289,34 @@ records of the imported BO:
   adds each column's `gridPosition`). With `fieldRefs: {}` the importer lists the target's fields with
   `toShow: false` and the table has no columns at all. Generator: `!show=Strana|Gorod`.
 
+**«Поведение» and «Интеграция» of a field** `[C]` (2026-09-30, `<stand>`) — plain keys on the field,
+imported and exported exactly as the constructor writes them; the per-type ones verified on records of an
+imported BO (probe «Проба поведения архив 2026-09-30»):
+
+| key | types | the constructor's control | on the record |
+|---|---|---|---|
+| `textCase: "UPPER"` / `"LOWER"` (template `"NONE"`) | `INPUT_TEXT` | «Поведение» → «Только заглавные / строчные буквы» | a wrong-case value is NOT converted — the field shows «Недопустимый текстовый регистр» and the card will not save. Digits, spaces, punctuation pass; Cyrillic is checked too |
+| `maxLength: <n>` (absent / `0` = no limit) | `INPUT_TEXT`, `INPUT_TEXT_LANG`, `INPUT_NUMBER` (≤ 21), `TEXTAREA`, `TEXTAREA_LANG` | «Поведение» → «Включить ограничение длины» + the number | the input stops at n characters; a longer value (a paste into a `TEXTAREA`, whose editor does not cut) shows «Достигнута максимальная длина символов» and the card will not save. For `INPUT_TEXT_LANG` the limit applies per language |
+| `isSeparated: true` | `INPUT_NUMBER` | «Отображение» → «Делить на разряды» | `1234567` shows as `1 234 567` (the stored value stays `"1234567"`) |
+| `params: {"enableSequence": "true"}` | `INPUT_NUMBER` | «Поведение» → «Счётчик» | a new record's field is pre-filled with the next number of a per-field counter (1, 2, …). **Every opened draft takes a number, saved or not**, so the numbers have gaps. The value stays editable |
+| `params: {"url": "call/plugin/<name>"}` | `LINK` | «Поведение» → «URL» | only a value starting with `call/plugin/` does anything: clicking the link then calls the server plugin (`link/call-plugin`) instead of opening the field's value. Any other `url` is ignored — the link opens its own value `[C from the client code; the plugin call not run]` |
+| `needLoadFromInTables: true` | every type with the gear | «Интеграция» (puzzle icon) → «Загружать из IN_таблиц» | database integration; no effect visible on a card `[U]` (needs the stand's IN tables) |
+| `needUploadToOutTable: true` | same | «Выгружать в OUT_таблицу» | same `[U]` |
+| `useAsKeyInMigration: true` | `INPUT_TEXT`, `INPUT_EMAIL`, `INPUT_PHONE` | «Ключевое поле в IN-миграции» | **at most ONE field per BO** — the constructor refuses a second one («Ключевое поле миграции уже преднастроено в поле …») `[C]`; the importer does not check it `[I]` |
+| `inMigrationTimezoneMinutes: <n>` (template `0`) | `DATE`, `FULL_DATE`, `TIME`, `YEAR`, `YEAR_AND_MONTH` | «Временная зона IN миграции в минутах» | used by the IN migration `[U]` |
+
+- **All `params` values are STRINGS on the stand** — `"enableSequence": "true"`, not `true`. The server
+  turns a JSON `true` sent through the API into `"true"`, and an export writes the string; write the string.
+- The case and length rules are checked by the **server's form cycle** (the one the card uses), so a
+  script-free API write through `v2/business-object-instance` (`MYBPM-UI-API.md` §6a) stores a wrong-case or
+  too-long value without a word `[C]`; an xlsx import presumably does too `[I]`.
+- The constructor turns on the registry column when it sets `textCase`, `maxLength`, `isSeparated`,
+  `needUploadToOutTable` or `useAsKeyInMigration` (`tableColToShow: true`); set it yourself if the
+  registry should match.
+- Generator: every key above goes through `!key=value` —
+  `--field 'Код:INPUT_TEXT!textCase=UPPER,maxLength=5'`, `--field 'Номер:INPUT_NUMBER!params.enableSequence="true"'`.
+  `FILE_UPLOAD`'s «Отображение» (`params.viewType`) and «Поведение для MP» (`params.contentType`) are in §0.5.
+
 ### Platform concepts an archive encodes
 
 - **BO = class, instance (инстанция / запись) = object.** A link/collection field holds instances of

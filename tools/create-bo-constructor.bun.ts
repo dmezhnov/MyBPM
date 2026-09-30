@@ -356,6 +356,19 @@ if (fields.length || widgets.length || natives.length) {
     addedFieldIds: added.map(f => f.fieldId),
     deletedFieldIds: [],
   });
+  // `useAsKeyInMigration` is DROPPED on a field that is being added (every other key survives) — it takes
+  // a second, one-key patch on the now existing field (MYBPM-UI-API.md §5h «Поведение» and «Интеграция»).
+  const keyFields = added.filter(f => f.useAsKeyInMigration);
+  if (keyFields.length) {
+    const saved = await call<any>("load-business-object-by-id", { businessObjectId: created.id });
+    for (const f of saved.formFields) if (keyFields.some(k => k.fieldId === f.fieldId)) f.useAsKeyInMigration = true;
+    await savePortion({
+      businessObject: saved,
+      editedFields: keyFields.map(f => ({ fieldId: f.fieldId, useAsKeyInMigration: true })),
+      addedFieldIds: [],
+      deletedFieldIds: [],
+    });
+  }
 }
 
 // 6a. A widget's code and url live in the widget's own controller, not in the BO DTO — set them after
