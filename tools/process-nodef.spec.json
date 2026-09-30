@@ -1,0 +1,20 @@
+{
+  "group": "Тест",
+  "name": "Проба БП Script без определения 2026-09-30",
+  "desc": "Enter → Script a1 (с определением, пишет Отметку) → Script a2 (БЕЗ ScriptDefStructDto в архиве) → Exit — вопрос 4d: ошибка импорта или молча сломанная фигура; собран tools/make-probe-archive.bun.ts",
+  "fields": [{"key": "mark", "label": "Отметка", "type": "FULL_DATE"}],
+  "figures": [
+    {"key": "enter", "type": "Enter", "x": 80, "y": 200},
+    {"key": "a1", "type": "Script", "x": 240, "y": 200},
+    {"key": "a2", "type": "Script", "x": 400, "y": 200},
+    {"key": "exit", "type": "Exit", "x": 560, "y": 200}
+  ],
+  "arrows": [
+    {"key": "e0", "from": "enter", "fromSlot": "main", "to": "a1", "toSlot": "left"},
+    {"key": "a12", "from": "a1", "fromSlot": "right", "to": "a2", "toSlot": "left"},
+    {"key": "a2x", "from": "a2", "fromSlot": "right", "to": "exit", "toSlot": "main"}
+  ],
+  "scripts": {
+    "a1": {"exit": "plain", "steps": [{"setDate": ["@mark"], "plus": 0, "unit": "MINUTES"}]}
+  }
+}
