@@ -252,7 +252,7 @@ for (const bo of bos) {
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
-        "defaultValueMap"].includes(k));
+        "defaultValueMap", "trackedFieldCode", "tabCodePath"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
 
     const type = f.type;
@@ -265,7 +265,10 @@ for (const bo of bos) {
     if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(c)) add("ERROR", "0.10/7", `${ft}: field code "${c}" is not latin/digits/underscore`);
     if (c.length > 30) add("ERROR", "0.10/7", `${ft}: field code is ${c.length} chars, max 30`);
     const lab = f.label?.rus;
-    if (typeof lab !== "string") add("ERROR", "0.5", `${ft}: label is not {rus: "…"}`);
+    // «Отслеживать статус» (§3 «Six more gear flags»): the constructor leaves its TAB_GROUP wrapper unlabelled
+    const trackedWrapper = type === "TAB_GROUP" && !!f.trackedFieldCode;
+    if (typeof lab !== "string" && !trackedWrapper) add("ERROR", "0.5", `${ft}: label is not {rus: "…"}`);
+    else if (typeof lab !== "string") { /* the wrapper: no label, no code rule */ }
     else {
       if (lab !== lab.trimStart()) add("WARN", "0.5", `${ft}: label has a leading space`);
       const want = translit(lab);
@@ -291,6 +294,13 @@ for (const bo of bos) {
       } else if (fo.optionSource === "FROM_FIELD") {
         const opts = fo.options ?? {};
         if (Array.isArray(opts)) add("ERROR", "5", `${ft}: options is an ARRAY, must be an object keyed by option code`);
+        else if (f.trackedFieldCode) {
+          // the «Статус» dropdown of «Отслеживать статус»: the card and the calendar key on these exact ids
+          const keys = Object.keys(opts).sort().join(",");
+          if (keys !== "CANCELED,DONE,OVERDUE,PLANNED")
+            add("ERROR", "3", `${ft}: a tracked status dropdown needs exactly the options PLANNED, OVERDUE, DONE, CANCELED (got ${keys})`);
+          // the KEY becomes the option id on import; newOptionId may be anything (a stand export has random ones)
+        }
         else for (const [ok, ov] of Object.entries<any>(opts)) {
           if (!ov.fieldOption) add("ERROR", "5", `${ft}: option "${ok}" has no fieldOption`);
           else {
@@ -310,6 +320,15 @@ for (const bo of bos) {
       if (type === "CO" && bi && bi.boCategory !== "BO_COMPOSITE")
         add("ERROR", "0.5", `${ft}: CO boInfo.boCategory = ${bi.boCategory}, expected BO_COMPOSITE`);
       if (!f.viewType) add("WARN", "0.5", `${ft}: ${type} without viewType (TABLE/SINGLE)`);
+    }
+    if (f.needTrackStatus === true) {
+      const all = Object.values<any>(bo.dynamicFields);
+      const wrap = all.find(g => g.type === "TAB_GROUP" && g.trackedFieldCode === f.code);
+      const status = all.find(g => g.type === "DROPDOWN_SINGLE" && g.trackedFieldCode === f.code);
+      if (!wrap || !status)
+        add("ERROR", "3", `${ft}: needTrackStatus without its TAB_GROUP wrapper and «Статус» dropdown (trackedFieldCode) — the flag alone does nothing`);
+      else if (f.tabCodePath?.tabGroupCode !== wrap.code || status.tabCodePath?.tabGroupCode !== wrap.code)
+        add("ERROR", "3", `${ft}: the tracked date and its «Статус» must sit in the wrapper's tab (tabCodePath.tabGroupCode = "${wrap.code}")`);
     }
     if (type === "STATIC_TEXT" && !f.staticValue?.rus) add("ERROR", "0.5", `${ft}: STATIC_TEXT without staticValue.rus`);
     if (type === "QUESTIONNAIRE" && !Object.keys(f.questionnaires ?? {}).length) add("ERROR", "0.5", `${ft}: QUESTIONNAIRE with empty questionnaires`);
@@ -331,6 +350,9 @@ for (const bo of bos) {
         else if (Array.isArray(bo.bos) && !bo.bos.some((s: any) => s.code === l.boCode))
           add("ERROR", "5b", `${ft}: boFieldCodes names "${l.boCode}" which is not declared in bos[]`);
       }
+    } else if (f.tabCodePath?.tabGroupCode) {
+      // a field inside a tab is laid out inside that tab (its own x/y from 0), not in the form's stack
+      if (!f.gridPosition) add("ERROR", "0.8", `${ft}: no gridPosition`);
     } else if (bo.category === "BO_PROCESS" && key === "PROCESS_STATUS") {
       // the constructor's own 8×4 box: no x/cols/rows rule, but it takes its rows in the stack — the stand
       // exports it at y=0 with the fields below it, the generator puts it after them
@@ -341,7 +363,7 @@ for (const bo of bos) {
       else {
         if (gp.x !== 0) add("WARN", "0.8", `${ft}: x=${gp.x}; the safe layout is x=0, cols=15`);
         if (gp.cols !== 15) add("WARN", "0.8", `${ft}: cols=${gp.cols}; the safe layout is cols=15`);
-        const wantRows = ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6 : 4;
+        const wantRows = trackedWrapper ? 4 : ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6 : 4;
         if (gp.rows !== wantRows) add("WARN", "0.8", `${ft}: rows=${gp.rows}, the constructor gives ${wantRows} to ${type}`);
         laid.push({ ft, f, gp });
       }
@@ -355,7 +377,7 @@ for (const bo of bos) {
       add("ERROR", "0.8", `${ft}: y=${gp.y}, expected ${prevY + prevRows} (previous y ${prevY} + previous rows ${prevRows})`);
     if (prevY === null && gp.y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${gp.y}`);
     prevY = gp.y; prevRows = gp.rows;
-    if (box) continue;
+    if (box || f.trackedFieldCode) continue;
     if (!(bo.category === "BO_PROCESS" && f.type === "BO") && f.tableColOrderIndex !== idx) add("WARN", "0.5", `${ft}: tableColOrderIndex=${f.tableColOrderIndex}, expected ${idx} (form order)`);
     idx++;
   }

@@ -438,7 +438,9 @@ over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do no
 
 The reverse of an import, and the only way to read the real serialization of something built by hand
 (that is how `kanbanCardTemplates` and `MenuItemStructDto` were decoded). Controller **`struct`** — a
-basket the stand keeps per user, then one download:
+basket the stand keeps per user, then one download. **The controller is `/web/struct/<method>`, NOT under
+`/web/v2`** (trap 41) — a `v2/struct/…` call answers 404 and an in-page helper that parses the body silently
+takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 
 | # | call | params / body | note |
 |---|---|---|---|
@@ -2062,6 +2064,11 @@ popover. Its checkboxes map one-to-one onto keys of the field DTO:
 | Не сохранять значение | `unacceptableValue` (the i18n key is `unacceptable_value`) |
 | Убрать заголовок | `hideLabel` |
 | Фиксировать при скроллинге | `needFreezeWhenScroll` |
+| Будущие даты недоступны для выбора (date types only) | `dateOnlyPast` |
+| Прошедшие даты недоступны для выбора (date types only) | `dateOnlyFuture` |
+| Не открывать запись (`BO` / `CO` only) | `isClickable` — **inverted**: ticked = `isClickable: false` |
+| Показывать в календаре (`DATE`, `FULL_DATE`, `PERIOD`, `PERIOD_TIME`) | `needShowToCalendar` |
+| Отслеживать статус (same types) | `needTrackStatus` — plus two NEW fields, see «Six more gear flags» below |
 
 - **Ticking «Необходимо заполнить» GREYS OUT «Только для чтения»** and the other way round — the UI
   enforces what `MYBPM-IMPORTS.md` §0.5 states as a rule: required + readonly cannot both be true.
@@ -2131,6 +2138,90 @@ carries `fieldOptionsStruct`. **An archive names the dictionary by CODE, never b
 resolves it: the probe shipped `dictionaryBoInfo.code = "Dolzh"` and the stand came back with
 `refBoId = kNfvHppcNSR6Wz@B`. `tools/make-probe-archive.bun.ts` takes the same `--field` grammar with the
 dictionary spelled as a code: `--field "Должность:DROPDOWN_SINGLE@Dolzh@Должность"`.
+
+#### Dates — «Будущие / Прошедшие даты недоступны для выбора» `[C]` (2026-09-30, `<stand>`)
+
+Two checkboxes in the gear popover of `DATE`, `FULL_DATE`, `PERIOD`, `PERIOD_TIME`, `YEAR`,
+`YEAR_AND_MONTH` (`TIME` has none). **The key names state what is ALLOWED, the labels what is
+FORBIDDEN** — they are not crossed:
+
+| checkbox | key | the picker allows |
+|---|---|---|
+| «Будущие даты недоступны для выбора» | `dateOnlyPast: true` | today and earlier |
+| «Прошедшие даты недоступны для выбора» | `dateOnlyFuture: true` | today and later |
+
+- Ticking one greys out the other; the UI never sends both `true`. The constructor save is a two-key patch
+  `editedFields: [{fieldId, dateOnlyFuture: false, dateOnlyPast: true}]` (captured 2026-09-30). The date
+  checkboxes do NOT add a registry column.
+- **Proven on all three routes, and on the record card for all six types**: API (`generate-business-form-field`
+  + the key on the DTO and in `editedFields`), archive (plain booleans on the field, round-trip through
+  the export) and the constructor. On a record the nz picker disables whole cells: a day for
+  `DATE`/`FULL_DATE`/`PERIOD`/`PERIOD_TIME` (both ends of a range), a month for `YEAR_AND_MONTH`, a
+  year for `YEAR`. **Today — and the current month / year — stays selectable in both modes.**
+- **It is a CLIENT-side restriction only.** The server stores a forbidden date without a word through both
+  record cycles — §6a (`save-boi-value`) and §6b (`save-field-value` + `validate-apply-remove-draft`,
+  `notValid:false`) — and the card then shows it as is (a past-only field reading 15.05.2027). So an API
+  client writes any date, and a script or an Excel import almost certainly does too `[I]` (not run); enforce
+  the rule in a «Сохранение» script if it must hold.
+- Probes left on `<stand>`, group «Тест»: «Проба дат 2026-09-30» (API, 8 fields — every date type with
+  one flag) and «Проба дат архив 2026-09-30» (archive, then one flag flipped in the constructor).
+- Accelerators: both `tools/create-bo-constructor.bun.ts` and `tools/make-probe-archive.bun.ts` take
+  `--field "Дата:DATE!dateOnlyPast=true"` — the generic `!key=value` flag sets ANY key of the field
+  (dotted for a nested one, `!params.url=…`; the value is parsed as JSON, else kept as a string).
+
+#### Six more gear flags — what each does on a record `[C]` (2026-09-30, `<stand>`)
+
+Proven on all three routes (API, archive, constructor) and on records: «Проба флажков 2026-09-30» (API,
+then flipped in the constructor) and «Проба флажков архив 2026-09-30» (archive, imported twice), group
+«Тест». The constructor saves each tick as a one-key patch — `editedFields: [{fieldId,
+unacceptableValue: true, hideLabel: true, needFreezeWhenScroll: true}]`, `[{fieldId, isClickable: false}]`,
+`[{fieldId, needShowToCalendar: false}]` (captured).
+
+| flag | effect on the record | enforced by |
+|---|---|---|
+| `unacceptableValue` «Не сохранять значение» | the field can be typed into, but its value is NEVER stored: after a save it is empty. **The server drops it as well** — a `save-field-value` of the §6b form cycle leaves it `null` even in the draft (`load-field-data`), and in the saved record | client AND server |
+| `hideLabel` «Убрать заголовок» | the card shows the input without its label (in the constructor the label row appears only on hover) | client |
+| `needFreezeWhenScroll` «Фиксировать при скроллинге» | the field sticks to the top of the card while the rest scrolls under it (a `position: sticky` wrapper `div.isSticky`). The constructor writes the flag to EVERY field whose rows overlap this field's row band, and any move of the field (`savePosition`) resets it to `false` | client |
+| `isClickable: false` «Не открывать запись» | clicking a linked record in a `BO`/`CO` table shows the warning **«Вы не можете открыть запись»** instead of opening it; with `true` (the default) the record opens | client |
+| `needShowToCalendar` «Показывать в календаре» | which date fields the BO's «Календарь» view places a record on (one event per field, on that field's date). A field with `false` puts nothing there | client |
+| `needTrackStatus` «Отслеживать статус» | see below | client |
+
+- **`needShowToCalendar` is `true` on EVERY freshly generated field** — `generate-business-form-field`
+  sets it on a text field too, and a BO created by `create-bo` has `isCalendarEnabled: true`. The client
+  logic (bundle): if at least one date field has the flag, only the flagged ones reach the calendar;
+  otherwise all date fields do `[I]` (the second branch not run). The calendar's event title printed
+  «Имя :» / «Статус :» — a field label with an empty value; the card template (`calendarCardTemplates`)
+  was not set up `[U]`.
+- **«Отслеживать статус» is three fields, not a flag.** Ticking it in the constructor calls
+  `generate-business-form-field` twice more and saves (one «Сохранить»):
+  1. a `TAB_GROUP` wrapper with `trackedFieldId = <the date field>`, label `null`, one tab «Статус
+     объекта», placed where the date field was (15×4);
+  2. a `DROPDOWN_SINGLE` «Статус» (a second one is «Статус2», …) with `trackedFieldId = <the date field>`,
+     inside that tab at x=9 (6×3), `optionSource: FROM_FIELD` and **four options whose ids are fixed
+     strings** — `PLANNED` «Запланировано», `OVERDUE` «Просрочено», `DONE` «Выполнено», `CANCELED`
+     «Отменено» (the save sends them in `editedFields[].options` of the dropdown);
+  3. the date field itself: `{needTrackStatus: true, tabId: <the new tab>, gridPosition: {x:0,y:0,cols:9,rows:3}}`.
+  Unticking deletes the wrapper and moves the date field back out. **A bare `needTrackStatus: true`
+  (API, no wrapper, no dropdown) is stored and does nothing** — the server builds none of it.
+- **What it does on a record**: when the tracked date is entered on the card, the CLIENT sets «Статус» by
+  option id — a date after now → `PLANNED`, before now → `OVERDUE` (a `DATE` is compared at 23:00 of that
+  day; a period by its END). The value is stored like any dropdown value (`"PLANNED"`, displayValue
+  «Запланировано»), shows as a registry column, and **colours the calendar event**: PLANNED `#2F80ED`,
+  OVERDUE `#ee5252`, DONE `#27ae60`, CANCELED `#BEBEBE`. `DONE` / `CANCELED` are set by hand. Nothing on the
+  server moves a PLANNED record to OVERDUE when the day passes `[U]` (not observed; the logic is in the
+  client's date component only). A tracked wrapper/dropdown has no settings, hint, integration or delete
+  icons in the constructor.
+- **A nested `BO` field built through the API needs what the constructor adds on drop**
+  (`createFormFieldByBoId`): `viewType: "TABLE"` and `boFieldRefs` built from the target BO's fields
+  (`{fieldId, label, toShow: <target's tableColToShow>, type, checked: false, orderIndex:
+  <tableColOrderIndex>, gridPosition}`; if the target has no registry column, its first field gets
+  `toShow`; at most 5 shown, `TAB_GROUP`/`PROGRESS_BAR` never). With `viewType: null` the card renders the
+  field as an empty box — no table, no «Добавить». `tools/create-bo-constructor.bun.ts` now builds both, and
+  `--field "Срок:DATE!track"` there replays the captured «Отслеживать статус» sequence — that code path has not
+  been run yet `[U]`; the archive generator's `!track` is proven.
+- The record picker of a nested field showed «Нет записей» until something was typed into its search
+  box, then listed the target's records `[C]` (both targets tried) — type a letter before concluding the
+  target is empty.
 
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
@@ -3094,6 +3185,20 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 - **A `javascript_tool` result containing a URL query string or cookie-like text comes back as
   `[BLOCKED: Cookie/query string data]`** — the code DID run. Never return `location.href` or raw ids
   mixed into long strings; `save` the result through the local bridge and read the file.
+- **Open a record card by URL** `[C]` (2026-09-30): `/business-objects/viewing-list/bo/<boId>/list-view?fieldId=list&boId=<boId>&boiId=<boiId>&draftId=&menuItemId=list&businessObjectId=<boId>&boiDialogType=EDIT&boiViewType=FORM&boiState=ALL`
+  — the registry with that record open in its dialog (the page mints its own draft). The shorter
+  `/viewing-list/bo/<boId>/list-view` (no `/business-objects`) is NOT a route — it lands on «Главная».
+- **Never reuse the `/business-objects/viewing-single/panel?…` URL for an ordinary BO** `[C]` (2026-09-30):
+  with `isPanel=false` and a real `boiId` the page rewrote itself to the home PANEL's `boiId` and
+  `isPanel=true` — and the BO got a new empty record under that same id. It was left in place (deleting a
+  record whose id is also the panel's own was not worth the risk).
+- **Reading a date picker without screenshots** `[C]` (2026-09-30): the card's pickers are
+  `nz-date-picker` / `nz-range-picker` / `nz-year-picker` elements; `mousedown` + `click` + `focus` on
+  their `input` opens a `.ant-picker-dropdown`, whose `td.ant-picker-cell-in-view` cells carry `title`
+  (`30-9-2026`) and `ant-picker-cell-disabled`; `.ant-picker-header-next-btn` pages on. **Dropdowns of
+  earlier pickers stay in the DOM** — record the set of dropdowns before the click and read only the new
+  one, or you read a stale calendar. Run the loop fire-and-forget (`window.__r`) — eight pickers exceed
+  the 45-s `javascript_tool` limit.
 
 ## 11. Traps and defects — the short list
 
