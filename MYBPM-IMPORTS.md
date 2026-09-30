@@ -869,7 +869,8 @@ resolve like this:
   of the dictionary's `CREATED` row** — ask for that row id too (§0.2a). Without the default no record
   of the process can be saved (§5c);
 - the id was NOT supplied → **ship the process WITHOUT `PROCESS_STATUS`** and say so in one line. The
-  archive imports and the process works as a diagram `[C]` (every probe was built that way); the status
+  archive imports and the process RUNS on records — Enter to Exit on ordinary and on DEV records `[C]`
+  (2026-09-30, §5c); what is missing is only the «Статус процесса» field itself. The status
   field is then added in the constructor, or the id is read off the stand with `load-bo-dictionary-list`
   (0.2a) and the archive re-shipped.
 - **Never substitute a local dropdown «Статус» for it** — that is an ordinary field with a similar name,
@@ -1440,6 +1441,12 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   (`F-Zayavka-K-DYN-S-boi_fields`), so the body is portable; `targetArrowId` is an `arrows` key of the
   same line. Ticking «Скрипты» in the export basket is NOT needed — the process's script defs come out
   with the structure `[C]`.
+- **A Script / Switch figure WITHOUT its `ScriptDefStructDto` is a silent trap** `[C]` (2026-09-30, core2):
+  the analysis reports nothing, the import applies, `validate-def` answers `[]` — and on the first record the
+  figure turns `FAILED` with «Скрипт не определен» (`script.not.found`, `NoScriptWithId ScriptId=<figure id>`),
+  the process stops there and never reaches its Exit. It does NOT run empty. Every Script / Switch figure
+  needs its def line, even a one-exit figure with no acts (`tools/validate-archive.bun.ts` flags it as an
+  ERROR).
 - **A Form step names its record field by CODE**: `FigureFormStruct {x, y, fieldCode: "<code of a
   BO-reference field of this process>"}` — the stand resolves it to the field's id (`fieldId` in the
   editor) `[C]`. Such a field is exported as a single picker: `type: "BO"`, `viewType: "SINGLE"`,
@@ -1457,6 +1464,11 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
   процесса", boCategory: "BO_DICTIONARY"}`, `fieldRefs.label.toShow`, `oldRefBoId` = the stand's
   «Статус процесса» dictionary — `<company-a>` `Q0zI~z9Ra2R7Q3yd`) — an archive must ship that field itself.
+- **…but the PROCESS runs without it** `[C]` (2026-09-30, `<stand>`): an archive with no `PROCESS_STATUS`
+  line (Enter → Script → Script → Exit, both defs shipped) imported, the BO came in with no status field at
+  all (`formFields` / `load-bo-fields-for-drag` list only the archive's own field), `validate-def []`, and
+  the process went Enter → Exit on an ordinary record AND on a DEV record. So the status field is what
+  the record SHOWS, not what drives the process — shipping without it costs the status, not the run.
 - **…and it must carry its DEFAULT VALUE, or no record of the process can be saved** `[C]` (2026-09-27,
   `<stand>`). The field is required; the constructor defaults it to the dictionary row `CREATED`
   («Только что создан»). Shipped without a default, every `validate-apply-remove-draft` of a process
