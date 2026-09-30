@@ -479,8 +479,8 @@ basket the stand keeps per user, then one download:
 
 #### R5 — Access rights on a BO
 
-Controller `v2/business-objects`. Do this AFTER an archive import, because an archive that carries access
-DTOs **wipes the group rights** set by hand (`MYBPM-IMPORTS.md` §8).
+Controller `v2/business-objects`. An archive that carries an access DTO REPLACES these rights with its own
+(group ids included); an archive without one leaves them alone (`MYBPM-IMPORTS.md` §8, `[C]` 2026-09-30).
 
 1. `load-access-group` — `P {"businessObjectId":…}` → an object with one entry per action:
    `all, useAll, view, edit, create, delete, archive, export, duplicate, add`. Each action carries
@@ -595,8 +595,9 @@ dropped (trap 13).
    no dialog to cancel; the only undo is deletion.
 6. **One structure import per company at a time**, and only `apply-import` writes — everything before it
    is a dry run you should read.
-7. **Do not ship an `AccessStructDto` in an archive unless asked**: the import applies it and wipes
-   group rights that were set by hand. Re-tick them (R5) after any import that carried one.
+7. **Do not ship an `AccessStructDto` in an archive unless asked**: the import applies it and REPLACES the
+   rights that were set by hand (groups included — `orgUnitIds` of THIS stand arrive, `[C]` 2026-09-30).
+   A structure-only archive leaves the stand's rights untouched.
 8. **Re-read after every write.** The platform answers 200 for `save-business-form-field` (writes
    nothing), for an empty kanban template save (writes nothing) and for a rights popup that decided
    nothing changed.
@@ -763,9 +764,12 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
   and the API are stitched together.
 - Also seen on the controller: `load-field-access-author-person-list`. Dictionary options:
   `load-dictionary-bo-field-options {boId}`.
-- After an archive import that carried access DTOs, **re-tick group rights** — they were wiped
-  (`MYBPM-IMPORTS.md` §8). A later UI reading also showed «Из поля → Содержимое поля» unchecked for a BO's
-  view, either not kept by import or wiped by a re-import — re-check it by hand or via the API.
+- **Group rights travel in an archive** `[C]` (2026-09-30, build S4.24.25.643): view → one group, edit →
+  another, exported with «Права доступа», reset to «всем», the export imported → both groups back. (The
+  2026-09 note «import wipes group rights» came from an older build and did not reproduce.) An archive
+  WITHOUT an access DTO left the rights untouched. The export also writes each mentioned group as an
+  `ExportStructInstanceDto` (`boCode:"PersonGroup"`). A later UI reading once showed «Из поля →
+  Содержимое поля» unchecked after a re-import — re-check `fromFields` after an import that carried rights.
 
 ## 4. Sidebar menu — controller `v2/menu-item`
 
@@ -857,6 +861,12 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
   `save-menu-item-chosen-access-right` params `{menuItemId, chosenAccessRight:true}` (the UI sends it after
   saving). Only `view` matters for navigation.
 - **WRONG** (fails with `NoBoWithId` for menu items): `v2/business-objects/load|save-business-menu-access-group`.
+- **They travel in an archive** `[C]` (2026-09-30): the item's `MenuItemStructDto` gets `chosenAccessRight:true`
+  + `accessGroup` (the `AccessStructDto` action shape, `orgUnitIds:["G-<id>"]`); an import put a group
+  back on an item reset to «всем» (`MYBPM-IMPORTS.md` §0.5d, §5e). The calendar and timeline views of
+  `boPages` travel too — the timeline as `timelineFieldCode` (a `PERIOD` field's code) — `[C]` same day;
+  set them over the API with `save-menu-item-bo-pages` params `{menuItemId}`, body = the whole `boPages`
+  (`timelineFieldId` = a field of `v2/timeline/load-fields {boId}` — the BO's `PERIOD`/`PERIOD_TIME` fields).
 - `[U]`: whether group-level menu rights cascade to child items (set both), and whether users really see
   only permitted items (never checked under a restricted user).
 
@@ -1080,7 +1090,16 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 - `load-bo-id-by-code {boCode}` → the BO id. On the API-imported probe it returned exactly the archive's
   `oldId` — confirms again that **the archive's `oldId` becomes the stand's BO id** `[C]`.
 - `load-business-object-name {boId}` → the BO's name; `load-bo-groups {}` → all 14 `<company-a>` groups with
-  `{id,name,code,orderIndex,kind}` (the way to prove an import renamed nothing);
+  `{id,name,code,orderIndex,kind}` (the way to prove an import renamed nothing — **groups are matched by
+  `code`; a group line without `code` renames one fixed group**, `MYBPM-IMPORTS.md` §0.3/§8). Undo a rename
+  with `save-business-object-group`, body = that group object with the old `name` / `orderIndex` (answers
+  `""`); a rollback does NOT restore it `[C]` (2026-09-30);
+- `import-structure/load-import-file-records` — body `{paging:{offset,limit}}` (without `paging`: NPE) → the
+  import log, newest first, `{id,fileName,description,imported_at,status,canRollback,…}`;
+- **`apply-import` can answer an ERROR** instead of `{type:"APPLIED"}` — then the import stays `ANALYZED`
+  and the `processId` never runs; test the answer for `errorType` before polling (seen: «Нет скриптов для
+  экспорта у БО с кодом …» — scripts onto an existing BO with an empty script module, `MYBPM-IMPORTS.md`
+  §5d). `cancel-import {importId}` then closes it (`CANCELED`);
 - `load-bo-fields-for-drag {boId}` → the BO's fields as `{label,type,…}`; **`code` comes back `null`** here,
   so it identifies fields by label only `[C]`.
 - `load-bo-id-by-kind`, `load-bo-fields-by-ids`, `load-bo-dictionary-list`, `verify-business-object-code`,
@@ -1508,7 +1527,7 @@ emit the same thing from the same spec, and the result imported and run:
    `isScriptsExport` / `hasScript` to `false` for a process BO. Shapes: `MYBPM-IMPORTS.md` §5c — Form =
    `FigureFormStruct {fieldCode}` (a CODE, portable), a test-only process sits under
    `processVersions.<version id>` with no `workProcess`.
-2. **Generate**: `bun tools/make-probe-archive.bun.ts --process-spec tools/process-probe.spec.json --code
+2. **Generate**: `bun tools/make-probe-archive.bun.ts --group-code <код группы> --process-spec tools/process-probe.spec.json --code
    <Code> --name "<Имя>" --process-status '<Статус процесса dict id>:<CREATED row id>'` → group, 2 script
    defs, BO, versions line; `tools/validate-archive.bun.ts` now checks the process part (Form `fieldCode`
    is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is
@@ -2128,7 +2147,8 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
 
 | type | keys |
 |---|---|
-| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP`, `CHECKLIST` | `optionSource` `FROM_BO` + `refBoId` (dictionary) or `FROM_FIELD` + `options[]` (§5h) |
+| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` | `optionSource` `FROM_BO` + `refBoId` (dictionary) or `FROM_FIELD` + `options[]` (§5h) |
+| `CHECKLIST` | **`defaultValue`** = the items as a JSON STRING `[{"label":"Пункт","checked":false},…]` + `isAppendable: true`, both mirrored into `editedFields` — that is what the constructor sends when an item is typed under the field (`[C]` 2026-09-30); `options` are not read |
 | `QUESTIONNAIRE` | `questionnaires[]` — the generator already returns two rows, one `isColumn: true`, one `false`; set their `label`/`labelMap` |
 | `PROGRESS_BAR` | `progressSteps[]` = `{id (v2/id-loader), orderIndex, label, code, labelMap}` |
 | `TAB_GROUP` | `tabs[]` = `{id, label, isActive, chosenAccessRight, orderIndex, isInvalid, isRight, isDefault, labelMap}` |
@@ -2248,7 +2268,8 @@ onto the SAME child BO keep separate lists per record.
 - **Row order**: before the card is saved the table shows rows in the order they were added; after
   «СОХРАНИТЬ» and reopening it shows them sorted by the child's first column. A script must not rely on
   either — sort it itself (`MYBPM-IMPORTS.md` §0S.7).
-- **Sorting the table** `[C]` (2026-09-29): the table reads its order from the CHILD BO —
+- **Sorting the table** `[C]` (2026-09-29; travels in an archive as the child's `sortFieldCode` /
+  `sortFieldOrder`, `MYBPM-IMPORTS.md` §2, `[C]` 2026-09-30): the table reads its order from the CHILD BO —
   `load-bo-table-sort {boId:<child>}` (params) → `defaultOrdering`. The arrow on the header and the
   insertion order of newly added rows follow it. Set it with `save-bo-table-sort` (params `{boId:<child>,
   fieldId, order:"ASC"|"DESC"}`), the same call as the registry header click. The read-back lagged a few
@@ -2284,12 +2305,13 @@ through the controllers above. Verified by exporting the result: the six widget 
 `ecp_sms_k` / `knopka_k` (+ url) / `iframe_k` (+ url) / `captcha_k` / `cur_date_k` / `cur_user_k`, and
 `nativeFields` with the three system fields.
 
-#### What the archive route cannot do
+#### The archive route carries all of it — checklist items included
 
-A «Чек лист» keeps its items on the field (`options` + `optionSource`), but a structure export writes no
-`fieldOptionsStruct` for it and an import brings none — the items must be typed in the constructor `[C]`
-(checked twice: a checklist with two items exported empty, and an archive carrying items imported empty).
-Everything else — all 27 types with their settings, all six system fields, all ten widgets with their
+A «Чек лист» keeps its items in the field's **`defaultValue`** (a JSON string of `{label, checked}`), and
+that key travels: exported, then imported with other items, they showed up on a new record's form, the
+`checked:true` one ticked `[C]` (2026-09-30). The 2026-09-18 note «items are lost» looked for them in
+`options` / `fieldOptionsStruct`, which a checklist does not use (an import ignores that struct on a
+checklist and even resets the field's `optionSource` to `null`). Everything else — all 27 types with their settings, all six system fields, all ten widgets with their
 codes and urls — survives the archive round trip unchanged.
 
 ## 6. Records: Excel import and export
@@ -3098,8 +3120,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 41. **Controller `struct` is NOT under `/web/v2`** `[C]` (2026-09-18) — it is `/web/struct/...`
     (export basket, export-company-structure). A `/web/v2/struct/...` call answers 404 and, if you then
     export anyway, you silently get whatever the basket held from the previous session. §5.
-42. **A «Чек лист» loses its items in an archive** `[C]` (2026-09-18) — the export writes no
-    `fieldOptionsStruct` for `CHECKLIST` and the import brings none. §5i.
+42. **A «Чек лист» keeps its items in `defaultValue`, not in `options`** `[C]` (2026-09-30) — a JSON
+    string `[{label,checked}]`, written by the constructor together with `isAppendable:true`; it travels in
+    an archive. `options` + `FROM_FIELD` on a checklist are dead keys (the form ignores them, the import
+    ignores `fieldOptionsStruct`). The 2026-09-18 «loses its items» was a wrong-key reading. §5i.
 43. **A newly created BO cannot be sorted by a text field** `[C]` (2026-09-19, `<stand>`/`<COMPANY_A>`) — the
     Elasticsearch mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so the registry's own query
     answers `EsException` «Text fields are not optimised …». It hits the registry AND the kanban, and it
@@ -3158,6 +3182,11 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `push-step-forcibly` does, on the Form's outgoing arrow. And the releasing save must CHANGE a value of
     that record — a save with nothing changed releases nothing (2026-09-27). §5f «Running a process on a
     record».
+55. **An archive group line without `code` renames an existing BO group** `[C]` (2026-09-30) — even when
+    its `name` is another existing group's; all such lines collapse into that one group; rollback does not
+    undo the rename. Always ship `code` (§5 «Verifying an import»).
+56. **The timeline view («Диаграмма Ганта») shows «Your license key is not valid to work with this
+    version»** at its bottom on `<stand>` `[C]` (2026-09-30) — a banner of the Gantt library; the view works.
 
 ## 12. Open questions
 
