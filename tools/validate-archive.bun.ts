@@ -235,6 +235,10 @@ for (const bo of bos) {
   // in any order, so the layout is checked in y order after the loop.
   const laid: { ft: string; f: any; gp: any; box?: boolean }[] = [];
   const entries = Object.entries(df as Record<string, any>);
+  // The constructor allows ONE «Ключевое поле в IN-миграции» per BO; the importer was not seen to check it.
+  const migrationKeys = entries.filter(([, f]) => f?.useAsKeyInMigration).map(([k]) => k);
+  if (migrationKeys.length > 1)
+    add("ERROR", "3", `${tag}: useAsKeyInMigration on ${migrationKeys.length} fields (${migrationKeys.join(", ")}) — the constructor allows one per BO`);
   for (const [key, f] of entries) {
     const ft = `${tag}.${key}`;
     if (f.code !== key) add("FATAL", "0.10/5", `${ft}: dynamicFields key "${key}" != field code "${f.code}"`);
@@ -252,8 +256,21 @@ for (const bo of bos) {
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
-        "defaultValueMap", "trackedFieldCode", "tabCodePath"].includes(k));
+        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
+
+    // «Поведение» (MYBPM-IMPORTS.md «Поведение» and «Интеграция» of a field): the stand keeps every
+    // params value as a STRING, and each per-type key only means something on its own types.
+    for (const [k, v] of Object.entries(f.params ?? {}))
+      if (typeof v !== "string") add("WARN", "3", `${ft}: params.${k} is ${typeof v}; the stand stores params values as strings ("${v}")`);
+    if (f.textCase && f.textCase !== "NONE" && f.type !== "INPUT_TEXT")
+      add("WARN", "3", `${ft}: textCase on a ${f.type} — only INPUT_TEXT has it`);
+    if (f.maxLength && !["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_NUMBER", "TEXTAREA", "TEXTAREA_LANG"].includes(f.type))
+      add("WARN", "3", `${ft}: maxLength on a ${f.type} — the constructor offers it only on text and number types`);
+    if (f.type === "INPUT_NUMBER" && f.maxLength > 21)
+      add("WARN", "3", `${ft}: maxLength ${f.maxLength} on a number — the constructor caps it at 21`);
+    if (f.useAsKeyInMigration && !["INPUT_TEXT", "INPUT_EMAIL", "INPUT_PHONE"].includes(f.type))
+      add("WARN", "3", `${ft}: useAsKeyInMigration on a ${f.type} — only INPUT_TEXT / INPUT_EMAIL / INPUT_PHONE have it`);
 
     const type = f.type;
     if (NOT_A_FIELD_TYPE.has(type))
