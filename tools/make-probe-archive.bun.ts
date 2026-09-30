@@ -31,6 +31,12 @@
  *   --field "Офис:BO@<boId>@Ofis!show=Strana|Gorod"            — the columns of a nested-object table, by
  *     the TARGET's field codes (without it the importer shows none)
  *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
+ *   --field "Табл:BO@<boId>@Cel!boRefStruct.linkedFieldCode=Roditel,removeType=HIDE,needMarkNew=true" — the
+ *     «Отображение» / «Поведение» of a reference (MYBPM-IMPORTS.md §3 «Reference fields»): back field, removeType
+ *     (STRIKETHROUGH / HIDE / DISCONNECT), viewType (TABLE / MULTIPLE / SINGLE / FIELDS), isKindAddForSelect,
+ *     copyFromFieldCode=<another BO field>; a CO field links per SOURCE BO of its composite:
+ *     --field "Состав:CO@<coId>@Sostav!linkedCoSettings.<source code>.linkedFieldCode=Back,linkedCoSettings.<source code>.removeType=HIDE"
+ *     needChangeParentBoByLinkedBo=false is lost when the import CREATES the field — import the archive twice
  *     (dotted = nested, e.g. `!params.url=https://…`; value parsed as JSON, else a string; no «,» in it)
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
  *   --field "Табельный номер:INPUT_TEXT!uniq"                 — «Уникальное поле» (isUnique)
@@ -418,7 +424,9 @@ function field(o: {
     boRefStruct: o.refBoCode
       ? { boInfo: { code: o.refBoCode, name: o.label, boCategory: o.refBoCategory ?? "BO" }, fieldRefs: {} }
       : { fieldRefs: {} },
-    ...(o.refBoId ? { oldRefBoId: o.refBoId, viewType: o.viewType ?? "TABLE", isHeightDynamic: true } : {}),
+    // «Динамическая высота» exists only on a BO field — the constructor offers none on a CO (MYBPM-UI-API.md §5h)
+    ...(o.refBoId ? { oldRefBoId: o.refBoId, viewType: o.viewType ?? "TABLE" } : {}),
+    ...(o.refBoId && o.type === "BO" ? { isHeightDynamic: true } : {}),
     label: o.labelAll ?? { rus: o.label },
     staticValue: o.staticValue ? { rus: o.staticValue } : {},
     isUnique: o.isUnique ?? false,

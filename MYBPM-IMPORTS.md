@@ -1317,6 +1317,40 @@ imported BO (probe «Проба поведения архив 2026-09-30»):
   `--field 'Код:INPUT_TEXT!textCase=UPPER,maxLength=5'`, `--field 'Номер:INPUT_NUMBER!params.enableSequence="true"'`.
   `FILE_UPLOAD`'s «Отображение» (`params.viewType`) and «Поведение для MP» (`params.contentType`) are in §0.5.
 
+**Reference fields (`BO` / `CO`) — their settings in an archive** `[C]` (2026-09-30, `<stand>`: exported, then
+imported into NEW BOs and re-imported into the same ones, every row checked on records). Every key sits on the
+field in `dynamicFields`; the field links are by CODE:
+
+| key in the archive | constructor control | import | on the record `[C]` |
+|---|---|---|---|
+| `viewType` `"TABLE"` / `"MULTIPLE"` / `"SINGLE"` / `"FIELDS"` | «Вид отображения» | `[C]` | table / chips / one chip / the record's fields as a form. A `SINGLE` field keeps only the FIRST id of a value it is given |
+| `isKindAddForSelect: true` | «Только добавление» | `[C]` | «Добавить» creates a referenced record instead of picking one |
+| `boRefStruct.linkedFieldCode: "<code>"` (NOT a top-level key) — the code of a field of the REFERENCED BO that points back | «Связь объектов» → «Заполнить поле» | `[C]`, also when the two BOs reference each other inside the same archive (any line order) | adding a record fills its back field with the owner record; removing it clears it. The export writes it on BOTH ends of the pair; one back field serves only ONE field (the constructor greys the others out: «Невозможно - уже существует связь с полем …») |
+| `copyFromFieldCode: "<code>"` — another `BO` field of the same BO | «Логика отображения значения» → «Из другого поля» | `[C]` | the field gets a stored copy of that field's value on every save |
+| `removeType` `"STRIKETHROUGH"` (template) / `"HIDE"` / `"DISCONNECT"` | «При удалении объектов» | `[C]` | a deleted referenced record is struck through in a table / hidden / on this build struck through too — the id is never removed from the value |
+| `needChangeParentBoByLinkedBo` (template `true`, and on EVERY field of an export) | «Изменить / Не изменять бизнес объект» | **`false` is LOST on a field the import CREATES** (stored `true`); a second import of the same archive, which UPDATES the field, stores `false` `[C]` | `true`: adding a record is a change of the owner card (saved with it); `false`: written into the record at once, even if the card is then closed without saving |
+| `needMarkNew: true` | «Помечать новые» | `[C]` (kept on a created field, unlike the API) | new rows in bold and on top `[I]` |
+| `needAddToParticipants: true` (only for a field referencing a `PERSON` BO) | «Добавлять в участники и уведомлять» | `[C]` | `[U]` |
+| `isHeightDynamic: true` (exported only when true) | «Динамическая высота» | `[C]` | see «Tables» below |
+| `linkedCoSettings` — on a `CO` field only, see below | «Связь объектов» → «Объект из Составного объекта» | `[C]` | as `linkedFieldCode` / `removeType`, per source BO of the composite |
+
+- **Need `needChangeParentBoByLinkedBo: false`? Import the archive TWICE** — the first import creates the field
+  with `true`, the second one (same file, nothing changed) updates it to `false`. Or set it afterwards in the
+  constructor / through the API (`MYBPM-UI-API.md` §5h «Reference fields»).
+- **A field referencing a composite (`type: "CO"`)** carries `linkedCoSettings` as a MAP keyed by the CODE of a
+  source BO of that composite, one entry per source you link:
+  ```json
+  "linkedCoSettings": {"<source BO code>": {"linkedFieldCode": "<back field of that source BO>", "removeType": "HIDE"}}
+  ```
+  The back field (a `BO` field of the source BO pointing at THIS BO) carries `boRefStruct.linkedFieldCode` = the
+  code of the `CO` field. A plain `BO` field has `linkedCoSettings: {}`. Adding a composite record to the field
+  fills the back field of the SOURCE record; `HIDE` hid a deleted source record `[C]`. The three lines —
+  source BO, composite, owner BO — can travel in one archive (source first, then composite, then owner).
+- A `CO` field's `fieldRefs` entries carry only `toShow` (no `gridPosition`).
+- Details, the API/constructor traps (`needMarkNew` reset by a patch that omits it — the constructor itself does
+  this — keys dropped on an added field, `remove-all-for-single-view-type`) and the «Data too large» toast:
+  `MYBPM-UI-API.md` §5h «Reference fields».
+
 ### Platform concepts an archive encodes
 
 - **BO = class, instance (инстанция / запись) = object.** A link/collection field holds instances of
