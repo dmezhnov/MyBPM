@@ -126,7 +126,7 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 
 | Ask for | Why guessing fails silently | Fallback if the user declines to supply it |
 |---|---|---|
-| The **BO group name**, character for character, as it stands on the target | the importer matches groups BY NAME; when nothing matches it **renames an existing group** instead of creating one (§8) — the customer's group list is destroyed, and the BOs may not appear at all | ask for an explicit confirmation of the default `Бизнес-объект`; ship exactly ONE group line with the confirmed name and say which name went in |
+| The **BO group**: the `code` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group** (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code` (a group whose `code` is `null` cannot be targeted — say so); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a business process — the stand's **«Статус процесса» dictionary id AND the id of its `CREATED` row** (both are in `formFields[code=PROCESS_STATUS]` of any constructor-built process: `refBoId` / `defaultValue`, `MYBPM-UI-API.md` §5f) | the dictionary id is an `oldRefBoId` like any other; without the row id the required status field has no default and **every record of the process is refused on save** — the import itself still reports success (§5c) | ship the process WITHOUT `PROCESS_STATUS` (§0.9) and say so |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` fed `FROM_BO` — the **dictionary CODE** | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
@@ -192,28 +192,36 @@ it; 0.2a applies only when a **stand id or a stand code** is what is missing.
 
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
 reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
-shipped unless the user asked for one (§0.10 rule 10 — it wipes `orgUnitIds`).
+shipped unless the user asked for one (§0.10 rule 10 — it REPLACES the rights set on the stand).
 
 Where the user reads these off a stand (routes in `MYBPM-UI-API.md` §0U, recipe R4): `load-bo-groups` → the group
 names, `load-bo-records-by-group-id` → the BOs of a group with their codes and ids,
 `load-bo-id-by-code` → an id for a known code, `load-bo-dictionary-list` → the dictionaries. By hand: the
 constructor's BO list, and the id sits in the URL `…/business-objects/editing/<boId>/object-editing`.
 
-### 0.3 Line 1 — the BO group (copy verbatim, change `name` and the two ids)
+### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code` and the two ids)
 
 ```json
-{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoGroupStructDto","oldId":"3H84o9iM@G4jaOL3","name":"Бизнес-объект","orderIndex":1110000,"kind":"MANUAL","newId":"ca3w3BgmzJGmWO7q"}
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoGroupStructDto","oldId":"3H84o9iM@G4jaOL3","name":"Проба группа","code":"Proba_gruppa","orderIndex":1110000,"kind":"MANUAL","newId":"ca3w3BgmzJGmWO7q"}
 ```
 
-- `name` **must equal, character for character, a group that already exists on the stand.** The importer
-  matches groups by name, and when nothing matches it **renames an existing group** instead of creating
-  one — that is a real defect that destroys the customer's group list (§8). Never ship a group name you
-  have not seen on the stand.
+- **Every group line carries a `code` — the importer matches groups BY `code`, not by name** `[C]`
+  (2026-09-30, build S4.24.25.643, §8): a `code` that exists on the stand puts the BOs into that group
+  and changes nothing else; a `code` the stand does not have CREATES a new group (its id = the line's
+  `newId`, its name = `name`). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
+  it** — whatever `name` says, even the exact name of another existing group. That is the defect that
+  destroys the customer's group list (§8). Never ship a group line without `code`.
+- To put the BOs into an EXISTING group, copy its `code` from `load-bo-groups` (0.2a). Many stand groups
+  have `code: null` — such a group cannot be targeted by an archive; ask the user for a group that has a
+  code, or ship a new group with a new code.
 - The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
-- `kind` is always `MANUAL`; `orderIndex` may stay `1110000`.
-- **One group line per archive.** Multi-group archives are broken (§8).
+- `kind` is always `MANUAL`; `orderIndex` is the group's place in the list (a new group takes it; a
+  matched group is not moved `[I]`).
+- **Several group lines in one archive work** when every one of them has a `code` `[C]` (two groups, one
+  existing and one new, each BO landed in its own group). Without codes they collapse into the one fixed
+  group (§8).
 
 ### 0.4 Line 2 — the business object
 
@@ -381,7 +389,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Год / Год и месяц | `YEAR` / `YEAR_AND_MONTH` | — |
 | Выпадающий список | `DROPDOWN_SINGLE` | `fieldOptionsStruct` (§5) |
 | Единичный выбор | `RADIO_BUTTON_GROUP` | `fieldOptionsStruct`, same two shapes |
-| Чек лист | `CHECKLIST` | **none — the items are NOT carried by an archive** (below) |
+| Чек лист | `CHECKLIST` | **`defaultValue`** = the items as a JSON string, + `isAppendable: true` (below) |
 | Опросник | `QUESTIONNAIRE` | `questionnaires` |
 | Прогресс-бар | `PROGRESS_BAR` | `progressSteps` |
 | Вкладки | `TAB_GROUP` | `fieldTabs` |
@@ -461,9 +469,14 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
   not matter). In both «Множественный» and «Плиточный» a script sees the field's value as `File[]` `[C]` —
   the same script compiled unchanged after the switch, and a script-written PNG then showed as a tile
   thumbnail on the card.
-- `CHECKLIST` — **a known gap `[C]`**: the items live on the field (`options` + `optionSource` in the
-  constructor DTO), but a structure export writes NO `fieldOptionsStruct` for a checklist and an import
-  cannot bring them either. The field arrives empty and the items have to be typed in the constructor.
+- `CHECKLIST` — **the items are the field's `defaultValue`, NOT `fieldOptionsStruct`** `[C]` (2026-09-30,
+  build S4.24.25.643, export → edit → import → the items shown on a new record's form): a JSON array
+  written as a STRING, `"defaultValue": "[{\"label\":\"Пункт 1\",\"checked\":false},{\"label\":\"Пункт 2\",\"checked\":true}]"`
+  (`checked:true` = the item starts ticked and struck through). Set `"isAppendable": true` as well — the
+  constructor turns it on together with the first item («можно добавлять пункты» on the record). A
+  `fieldOptionsStruct` on a checklist is IGNORED by the import (and even resets the stand field's
+  `optionSource` to `null`); the old note «items are not carried by an archive» was wrong — it looked
+  for the items in the wrong key.
 
 Cell heights the constructor itself assigns: 4 rows for a plain field, **6** for `BO` / `CO` / `LINK` /
 `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for `STATIC_TEXT` /
@@ -656,14 +669,15 @@ write all twelve keys. What each view needs besides its flag:
 |------|------|-------------------------------|--------|
 | list (registry) | `isListEnabled`, `listIndex` | nothing | `[C]` |
 | kanban | `isKanbanEnabled`, `kanbanIndex` | `kanbanFieldCode` = code of a `DROPDOWN_SINGLE` of the BO (the columns) AND that field's card template in the BO's `kanbanCardTemplates` (0.5c) | `[C]` |
-| calendar | `isCalendarEnabled`, `calendarIndex` | presumably the BO's `isCalendarEnabled` / `calendarCardTemplates` and a date field | `[U]` |
-| timeline | `isTimelineEnabled`, `timelineIndex` | presumably the BO's `timelineTemplates`; the applied item came back with a `timelineFieldId: null` the archive never sent, so a field is probably involved | `[U]` |
+| calendar | `isCalendarEnabled`, `calendarIndex` | the BO's `isCalendarEnabled: true` and a date field (`FULL_DATE` with `needShowToCalendar`) — nothing on the item | `[C]` 2026-09-30 |
+| timeline («Диаграмма Ганта») | `isTimelineEnabled`, `timelineIndex` | **`timelineFieldCode`** = code of a `PERIOD` / `PERIOD_TIME` field of the BO (the import resolves it into the item's `timelineFieldId`); the BO needs nothing else — a timeline template exists by itself for every such field | `[C]` 2026-09-30 |
 | map | `isMapEnabled`, `mapIndex` | presumably the BO's `isMapEnabled` and a location field | `[U]` |
 | grouping | `isGroupingEnabled`, `groupingIndex` | presumably the BO's `isGroupingEnabled` | `[U]` |
 
-Only list and kanban were ever shipped. **Do not switch on a `[U]` view in an archive** — if the user
-asks for a calendar / timeline / map / grouping, say it is not verified and ship the list (plus a kanban
-if asked). The kanban variant of `boPages` (kanban first tab, list second):
+List, kanban, calendar and timeline are proven (calendar and timeline: an item with both views built through
+the API, exported, reset to list only, re-imported — both views back and both render, 2026-09-30).
+**Do not switch on a `[U]` view in an archive** — if the user asks for a map or grouping, say it is not
+verified and ship the rest. The kanban variant of `boPages` (kanban first tab, list second):
 
 ```text
 "boPages":{"isKanbanEnabled":true,"kanbanIndex":1,
@@ -700,7 +714,10 @@ Rules:
   when the user describes an icon by meaning («домик», «деньги», «люди»), pick the closest name from
   0.5e and SAY which one you took. Never compose a name from memory of the Phosphor icon set: the stand
   ships only part of it (`phosphor:seal-check`, `ranking`, `toolbox`, `gavel` do not exist there).
-- Do not set `chosenAccessRight: true` — whether menu access rights travel with this line is `[U]` (§5e).
+- Menu access rights travel `[C]` (2026-09-30, §5e): `chosenAccessRight: true` plus an `accessGroup` key —
+  the same shape as `AccessStructDto.boAccessStruct` (`denyAll`, per action `{denyAll, participants,
+  fromFields, orgUnitIds:["G-<group id>"]}`, only `view` matters for navigation). Without `accessGroup`
+  keep `chosenAccessRight: false`.
 - **A `menuItemCode` that already exists on the stand is an EDIT of that item, not a new one** `[C]`
   (§5e): the import overwrites its name, order, views and filter in place, keeping its id. So a menu
   code of your own must be new to the stand — never reuse a code seen on the stand unless the user asked
@@ -861,7 +878,8 @@ resolve like this:
 
 ### 0.10 Hard rules — violating any one of these breaks the import
 
-1. **One** `BoGroupStructDto`, its `name` copied verbatim from a group that exists on the stand.
+1. Every `BoGroupStructDto` carries a `code` — the stand matches groups BY `code`; a line without one
+   RENAMES a fixed stand group (0.3, §8). Several group lines are fine when each has its own `code`.
 2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
 3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
 4. Every line carries its `"@class"` with the full package
@@ -873,8 +891,9 @@ resolve like this:
 7. Codes ≤ 30 characters, latin, from the table in 0.6.
 8. Ids are 16 chars over `A-Za-z0-9@~`, deterministic, and the three equalities of 0.7 hold.
 9. `isRequired` + `isReadonly` both true = an unsaveable record.
-10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **wipes `orgUnitIds`**, i.e. it
-    erases group rights set by hand on the stand (§7, §8).
+10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **replaces** the rights set by
+    hand on the stand with the archive's (§7, §8). Its `orgUnitIds` are `G-<group id>` of the TARGET
+    stand — ids from another stand grant nothing.
 11. Records (instance data) do NOT go into this archive — they are an xlsx, **Part III** of this document.
 12. A `STATIC_TEXT` heading must not repeat any field label of the same BO (0.5). «Контакты» as a
     heading над полем «Контакты» breaks the Excel import of records (Part III, §19): the header row is
@@ -910,7 +929,8 @@ resolve like this:
 - [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
       `fieldOption`, its `label` a plain string (0.5).
 - [ ] Every code is the WHOLE label transliterated, not its first word (0.6).
-- [ ] The group name exists on the target stand — confirmed by the user, not assumed (0.2a).
+- [ ] Every group line has a `code`: an existing group's code confirmed by the user, or a new code for a
+      group the archive creates (0.2a, 0.3).
 - [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
       an EARLIER line of this same archive (0.2a).
 - [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
@@ -939,10 +959,12 @@ resolve like this:
 
 ### 0.12 Building and delivering
 
-Ready-made generator, already verified on a live stand — prefer it over writing a new builder:
+Ready-made generator, already verified on a live stand — prefer it over writing a new builder.
+`--group-code` is required (0.3): an existing group's `code` from `load-bo-groups`, or a new code plus
+`--group-name "<Имя>"` to CREATE a group:
 
 ```
-bun tools/make-probe-archive.bun.ts --code Cookbook_demo --name "Демо из кукбука" \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Cookbook_demo --name "Демо из кукбука" \
     --field "Наименование:INPUT_TEXT" --field "Сумма:INPUT_NUMBER" --field "Активен:CHECKBOX"
 ```
 
@@ -954,7 +976,7 @@ A BO plus a sidebar item that opens it — plain navigation, list view only (0.5
 byte-identical to the 0.5d template and passes `tools/validate-archive.bun.ts`):
 
 ```
-bun tools/make-probe-archive.bun.ts --code Zayavki --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Zayavki --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
     --menu "Заявки:BO@Zayavki@Заявки!code=Zayavki_menu!order=950000"
 ```
 
@@ -965,7 +987,7 @@ sidebar group, all in one archive — the exact command whose result was applied
 (0.5c, 0.5d):
 
 ```
-bun tools/make-probe-archive.bun.ts --code Proba_menu_bo_20260922 --name "Проба меню БО 2026-09-22" \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Proba_menu_bo_20260922 --name "Проба меню БО 2026-09-22" \
     --field "Наименование:INPUT_TEXT!req" --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово" \
     --kanban "Статус:HEADER=Наименование" \
     --menu "Проба меню 2026-09-22:GROUP!code=Proba_menu_20260922!order=950000" \
@@ -976,7 +998,7 @@ The generator covers ALL 27 field types, the six system fields and all ten widge
 the archive below was generated, imported through the API and read back field by field):
 
 ```
-bun tools/make-probe-archive.bun.ts --code Proba_vseh_tipov --name "Проба все типы" --with-metadata \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Proba_vseh_tipov --name "Проба все типы" --with-metadata \
     --field "Выпадающий список:DROPDOWN_SINGLE@Dolzh@Должность" \
     --field "Единичный выбор:RADIO_BUTTON_GROUP#Да|Нет" \
     --field "Опросник:QUESTIONNAIRE#Колонка 1|^Строка 1" \
@@ -1100,7 +1122,11 @@ bos boTabs printForms name recordName staticValue description orderIndex dynamic
 dictionaryFields actual isCalendarEnabled isMapEnabled isGroupingEnabled isCodeReadonly
 chosenAccessRight kanbanCardTemplates timelineTemplates calendarCardTemplates signatures buttons
 iframes currentDates captcha currentUser`. The last six are the widget maps (§0.5b), `nativeFields`
-holds the system fields (§0.5a).
+holds the system fields (§0.5a). Build S4.24.25.643 also writes, after `instanceViewType`, the registry's
+default sort **`sortFieldCode`** (a field CODE) + **`sortFieldOrder`** (`ASC`|`DESC`) — absent while the
+sort is unset. They travel both ways `[C]` (2026-09-30: `Chislo DESC` set through the API came out in the
+export; an archive with `Data ASC` set the stand's `load-bo-table-sort` to that field and order). The same
+setting orders a nested table of this BO on another card (`MYBPM-UI-API.md` §5i).
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
@@ -1156,7 +1182,7 @@ personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQA
 | Год / Год и месяц | `YEAR` / `YEAR_AND_MONTH` | |
 | Выпадающий список | `DROPDOWN_SINGLE` | `optionSource` FROM_BO (dictionary) or FROM_FIELD (local list) |
 | Единичный выбор | `RADIO_BUTTON_GROUP` | the same `fieldOptionsStruct`; renders as chips, read in scripts through `.#Значение` (§12) |
-| Чек лист | `CHECKLIST` | items live on the field but are NOT exported/imported (§0.5) |
+| Чек лист | `CHECKLIST` | items = the field's `defaultValue` (a JSON string `[{label,checked}]`), exported and imported `[C]` (§0.5) |
 | Опросник | `QUESTIONNAIRE` | `questionnaires` = columns + rows in one map |
 | Прогресс-бар | `PROGRESS_BAR` | `progressSteps`; sits in the «Виджеты» palette section but is a normal field |
 | Вкладки | `TAB_GROUP` | `fieldTabs`; also from the «Виджеты» section |
@@ -1524,9 +1550,8 @@ only 3 of the 10 BOs carried scripts.
   prefix is the version's own id and DIFFERS between the two versions — the same body `KDppzVnPAm0m1FIj`
   appears as `soNeVGRXpXjR~D6A-KDppzVnPAm0m1FIj` under `workScripts` and `iRBrFcK7TvONKo~3-…` under
   `testScripts`. Match a def to a hook by the part AFTER the last `-`.
-- `methodScriptIds` was `[]` on all three BOs `[U]` — how a BO's own methods («Глобальные методы» are a
-  different screen) are listed has never been seen. The import probe below shows the consequence: a body
-  that CALLS a local method arrives broken, because the method itself does not travel.
+- `methodScriptIds` lists the BO's own (local) methods — it was `[]` in that sample only because those BOs
+  had none. **Local methods DO travel** `[C]` (2026-09-30, below «Local methods travel»).
 
 ### `ScriptDefStructDto` = a Part II script minus the clipboard envelope
 
@@ -1612,14 +1637,38 @@ Rewriting that one string to `F-Kod-K-DYN-S-boi_fields` and re-importing left 2 
 `F-addError-K-FIX-T-BoiFieldRefCode`), which are platform-wide and travel unchanged. **Retarget every
 `K-DYN` actId when you move a script between BOs**, and translate afterwards: nothing else tells you.
 
-#### Local methods do NOT travel
+#### Local methods travel — when the archive carries them `[C]` (2026-09-30, build S4.24.25.643)
 
-The 2 errors that survived are both the missing method the body calls
-(`ExprCall{funcName:"is_var"}` → `exprCall_funcName__notFound`, «Не найдена плашка МЕТОД с именем is_var»).
-`methodScriptIds` was `[]` in the source export and `[]` on the stand after the import — consistent with
-the `[U]` above: **an archive carries hook and field scripts, not the BO's own methods**, and a body that
-calls one arrives broken. Create the method first (`v2/bo-scripts-editor/create-local-method`, §5g) or
-choose a body that calls none.
+The 2 errors that survived above are both the missing method the body calls
+(`ExprCall{funcName:"is_var"}` → `exprCall_funcName__notFound`, «Не найдена плашка МЕТОД с именем is_var»)
+— because the SOURCE export had `methodScriptIds: []`, i.e. that archive simply did not contain the
+method. (Earlier this was written up as «methods do not travel»; that was wrong.) A local method is one
+more script of the version: its id goes into `methodScriptIds`, its body into a `ScriptDefStructDto` like
+any hook, and its def starts with a `BlockFixMethodStruct` instead of the entry point:
+
+```json
+{"@class":"…dto.ScriptDefStructDto","compositeId":"<ver>-<methodId>","blocks":{
+  "<hat>":{"@class":"…process.block.BlockFixMethodStruct","x":20.0,"y":20.0,"methodName":"perenos_metod","downBlockId":"<exit>","params":{}},
+  "<exit>":{"@class":"…process.block.BlockExitStruct","exitType":"FROM_METHOD"}},"expressions":{}}
+{"@class":"…dto.BoScriptVersionsStructDto","ownerBoInfo":{"code":"…","name":"…","boCategory":"BO"},
+ "testScripts":{"onOpenFormScriptId":"<hookId>","methodScriptIds":["<methodId>"],"fieldScripts":{},
+                "scriptDefIds":["<ver>-<hookId>","<ver>-<methodId>"]}}
+```
+
+Proof: a method + an «Открытие» hook calling it (`BlockAssign` whose `leftExprId` is an
+`ExprCallStruct{funcName:"perenos_metod", useArgNames:false, args:{}}`) were built through the API, exported,
+re-owned onto a NEW BO code and imported — the new BO had the method in `list-local-methods`, the hook wired,
+and `translate-script` of the method `success:true`. (The hook itself was not translated after the import:
+the one `translate-script` of that hook on the source BO coincided with a ~30-s 502 of the stand, trap 29.)
+A method with parameters carries them in `params` of the hat; argument keys at the call site are the
+parameter ids (§13), so keep both sides in the same archive.
+
+**Trap — scripts onto an EXISTING BO whose script module is empty** `[C]`: `apply-import` answers
+`IllegalStateException` «V7iuUY20Kn :: Нет скриптов для экспорта у БО с кодом: "<code>"» (the import's
+rollback snapshot tries to export the BO's current scripts and finds none), the import stays `ANALYZED`
+and the `processId` you passed never runs — a poll loop on it spins until its timeout. Seen after the
+BO's only local method had been deleted. Import scripts into a NEW BO (or one that already has a script)
+and check the `apply-import` answer for `errorType` before polling.
 
 #### Generated bodies on every trigger — the trigger probe `[C]` (2026-09-24, `<stand>`)
 
@@ -1658,8 +1707,11 @@ an int imports fine), `boPages` (BO items only), `chosenAccessRight`, `needCount
 `needHideInMobApp`, `bracketFilter` (BO items only), `menuItemType`. The line has **no id of any kind** —
 not the menu item's own, not the BO's, not the parent's.
 
-- `menuItemType`: `GROUP` | `BO` confirmed; the stand's own items also use `ANALYTIC`, `BO_MANAGER`,
-  `COMPANY_MANAGER`, `SETTINGS`, `REPORT`, `OTHER` — never shipped in an archive `[U]`.
+- `menuItemType`: `GROUP` | `BO` confirmed. The client enum is `BO_MANAGER COMPANY_MANAGER BO SETTINGS
+  ANALYTIC REPORT GROUP PROCEDURES` (there is no `OTHER`). The UI itself creates only `BO` and `GROUP`
+  items; `ANALYTIC`, `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` are the built-in items, one of each per
+  company; `REPORT` belongs to operative reports, which have their own export basket
+  (`MYBPM-UI-API.md` R4a). None of those was shipped in an archive `[U]`.
 - `menuItemCode` is the menu item's `code` on the stand (`v2/menu-item/load-nav-items` returns it as
   `code`; the sidebar kebab «Изменить код» edits it). Items made in the UI get a transliteration plus a
   random tail (`GruppatqrXI0InJC5abW8w`) or the transliteration alone (`Kanban_iz_arhiva__proba_`), so a
@@ -1743,11 +1795,14 @@ roots as before).
 — the rules are in 0.12 «Rollback» (the full run: `MYBPM-UI-API.md` §5 «Rollback trap»): the preview of B/C lists `restoreItems` (`action:
 "RESTORE"`, the BO and the menu line) and no `deleteItems`; only A's preview had `deleteItems`.
 
-Open `[U]`: whether menu access rights travel —
-every exported item had `chosenAccessRight: false`, so the access group of an item with `true` (the
-built-in «Системные» is one) has never been seen in an export; a non-empty `bracketFilter` on import;
-what the calendar / timeline / map / grouping views of `boPages` need (only list and kanban were ever
-shipped, 0.5d); where else a kanban can be switched on besides a menu item (0.5c).
+**Menu access rights travel** `[C]` (2026-09-30, build S4.24.25.643): an item with view limited to one
+group exports `chosenAccessRight: true` + `accessGroup` (`{denyAll:true, all:{…}, view:{denyAll:true,
+orgUnitIds:["G-<id>"]}, …}` — the `AccessStructDto` action shape) and one `ExportStructInstanceDto` per
+group (`boCode:"PersonGroup"`); after the item was reset to «всем» the import put the group back.
+**Calendar and timeline views travel** `[C]` (same day): `boPages` in the export carries
+`timelineFieldCode` (the `PERIOD` field's CODE) instead of `timelineFieldId`, the import resolves it.
+
+Open `[U]`: a non-empty `bracketFilter` on import; the map / grouping views of `boPages`; where else a kanban can be switched on besides a menu item (0.5c).
 
 ## 6. References between BOs
 
@@ -1811,47 +1866,59 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   value; an explicit flag overwrites it. Evidence: dropping the `code` key from `fieldRefs` left «Код»
   ticked, writing `{"toShow": false}` unticked it. **Rule: to hide or disable something, write the flag
   as `false`; never drop the key. Write field-level flags explicitly on every field.**
-- Fields/tabs removed from the archive survive on the stand and must be deleted by hand in the
-  constructor — `[I]`, not verified.
+- **Nothing is ever deleted by an import** `[C]` (2026-09-30, build S4.24.25.643): an archive without a
+  field that the stand BO has leaves the field in place (the pre-apply diff has only «added» / «changed»
+  categories, and the import client has no delete path at all). Remove fields and tabs in the constructor
+  or through the API (`deletedFieldIds` of `save-business-object-portion`, `MYBPM-UI-API.md` R1).
+  Tabs were not re-probed separately — same mechanism `[I]`.
 - Structure import does not touch instance values — belief consistent with everything seen `[I]`.
-- **Import APPLIES `AccessStructDto`** `[C]`: `denyAll`, `author`, `fromFields` and field rules all arrive
-  (a tab «Системные» was hidden in all 6 BOs).
-- **Import CLEARS `orgUnitIds`** `[C]` — a diff of the shipped archive against a stand export taken right
-  after import showed every action and field rule with empty ids, although the archive carried ids of THIS
-  stand's groups. Consequences: **group rights cannot be shipped**; after such an import a restricted
-  action reads «Выборочно, никто»; and **every re-import of an archive that contains access DTOs re-wipes
-  groups set by hand**. Org units / work groups are not carried by the archive at all (no group DTO).
-- Whether an archive WITHOUT `AccessStructDto` leaves stand rights untouched is `[U]` (check: set rights,
-  re-import, re-read).
+- **Import APPLIES `AccessStructDto`, group ids included** `[C]` (2026-09-30, build S4.24.25.643): a BO's
+  view given to one group and edit to another through the API, exported with «Права доступа», then reset
+  to «всем», then that export imported → both groups were back on their actions. `denyAll`, `author`,
+  `fromFields` and field rules arrive too (2026-09-18: a tab «Системные» hidden in all 6 BOs). The
+  earlier finding «import CLEARS `orgUnitIds`» (an older build, 2026-09) did not reproduce and is
+  superseded; ids are `G-<group id>` of the TARGET stand, so an archive built on another stand grants
+  nothing to groups.
+- **An archive WITHOUT `AccessStructDto` leaves the stand's rights untouched** `[C]` (same day: groups set
+  on the BO survived an import of a structure-only archive). So a structure-only archive is the safe way to
+  update a BO whose rights were set by hand; an archive WITH the DTO replaces them.
+- An export with rights also carries one `ExportStructInstanceDto` per group it mentions
+  (`boCode:"PersonGroup"`, `kind:"PERSON_GROUP"`, `fieldMap.name.storedValue` = the group name,
+  `sources[].accessRightsInstanceSource`) — the group RECORD, not only its id `[C]`. Whether the import
+  creates a missing group from it on another stand is `[U]`.
 - Getting group ids for an archive: set probe rights on one BO with a DIFFERENT group per action
   (view/edit/delete/archive/export), export the structure, map ids by action (worked first try); or call
   `load-org-unit-record-list`. Archive ids are `G-<id>`, API ids have no prefix.
 - BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — and an empty one is
   exactly why «kanban does not work for imported BOs». Fill it: §0.5c, `MYBPM-UI-API.md` §7.
 
-### BO groups on import — open defect `[C] symptom, [U] cause`
+### BO groups on import — matched by `code` `[C]` (2026-09-30, build S4.24.25.643, `<stand>`)
 
-Symptom (`<company-c>`, 2026-09-16): an archive with 2 groups («Цели и задачи» + 6 BOs, «Справочники» + 11
-dictionaries, every `boGroupOldId` correct) put **all** BOs into «Справочники» on the stand.
+Six probe imports on `<stand>`, each rolled back, the stand's group list compared before and after:
 
-- Every real stand export contains exactly ONE `BoGroupStructDto`; multi-group archives are untested
-  territory. Stand group lines may carry a `code` (e.g. `Gruppa__4JQ2dcoS5cuymsOys`).
-- Probe (2 groups × 1 BO): A without a group `code`, B with it, C = one group + 1 BO. Importing A and B:
-  none of the probe BOs appeared, and the EXISTING group «Справочники» was **renamed** to «Проба А2» (the
-  last group of archive A); B apparently did nothing; C was never imported. Probe archives were deleted —
-  rebuild from this description if the question is reopened.
-- Working hypothesis `[U]`: the importer maps the archive's group onto ONE existing stand group (renaming
-  it) instead of creating groups by `oldId`, and with several groups only the last one applies. Why the
-  probe BOs were not created is unknown (candidate: they had no `AccessStructDto`).
-- **Practical risk: any import may RENAME an existing BO group** — hand-arranged groups can be lost.
-- **Does NOT fire for a single group whose `name` equals an existing stand group** `[C]` (`<company-a>`,
-  2026-09-18): a 1-group/1-BO archive naming the group «Бизнес-объект» (the group already on the stand)
-  created the BO **inside that group**, and the two BOs already there kept their group and its name.
-  This is the safe recipe for a probe import: **one** `BoGroupStructDto`, its `name` copied verbatim from
-  an existing stand group. Checked afterwards in the constructor (`MYBPM-UI-API.md` §5): all 14 `<company-a>`
-  groups kept their names. Combined with the `oldId` instability above, the working hypothesis is now that
-  the importer matches groups **by name** and falls back to renaming when no name matches `[I]`.
-- To resume: collect the import result messages, the current list of groups, and a fresh stand export.
+| archive group line | result |
+|---|---|
+| no `code`, new name | the stand group «Бизнес-объект» was **renamed** to the new name, BO put into it |
+| no `code`, new name, unique `orderIndex` | the same group renamed AND moved to that `orderIndex` |
+| no `code`, `name` = another existing group («Tests») | the same «Бизнес-объект» renamed to «Tests» — two groups «Tests» |
+| two lines, no codes | both BOs in the same renamed group (the name of the LAST line) |
+| `code` = an existing group's code | BO in that group, nothing renamed |
+| `code` new to the stand | a NEW group created — id = the line's `newId`, `code` kept |
+| two lines, one existing code + one new code | each BO in its own group, one group created, nothing renamed |
+
+- **Groups are matched by `code`.** A line without `code` is written onto ONE fixed stand group (here
+  «Бизнес-объект», the group with the largest `orderIndex`; why that one is `[U]`) — name and
+  `orderIndex` are overwritten. The name is NOT a key: the 2026-09-18 «safe recipe» (copy an existing
+  group's name) worked only because the name copied was that same fixed group's own name.
+- The 2026-09-16 `<company-c>` symptom (two groups → all BOs in «Справочники», renamed) is this same
+  behaviour: its group lines had no `code`.
+- **Rollback deletes the imported BOs and a group the import CREATED, but does NOT undo a rename** — the
+  rollback preview lists no `restoreItems` for the group. Repair by hand: `v2/business-objects/
+  save-business-object-group` with the group object of `load-bo-groups` and the old `name` / `orderIndex`
+  (`MYBPM-UI-API.md` §5).
+- Stand groups made in the UI mostly have `code: null` (13 of 14 on `<stand>`); an archive can reach only
+  a group that has a code. Giving an existing group a code is `save-business-object-group` with `code`
+  (+ `verify-business-object-group-code`) `[I]`, never tried.
 
 ---
 
@@ -3820,8 +3887,10 @@ Archive:
 2. `0000001.mybpm` is JSONL — never parse the whole member.
 3. An export contains only what was selected, and only as of that moment.
 4. Import MERGES: to unset something write the flag `false`, never drop the key.
-5. Import WIPES `orgUnitIds` — group rights cannot be shipped and are re-wiped on every re-import.
-6. Import may RENAME an existing BO group; multi-group archives misplace BOs (open defect).
+5. An `AccessStructDto` REPLACES the stand rights, group ids included (`G-<id>` of the target stand); an
+   archive without it leaves them alone (§8, 2026-09-30 — the old «import wipes `orgUnitIds`» is superseded).
+6. A group line WITHOUT `code` renames one fixed stand group and all BOs land there; groups are matched
+   by `code`, never by name (§0.3, §8). Rollback does not undo the rename.
 7. `removeType: STRIKETHROUGH` is on every field and means nothing.
 8. `oldRefBoId` never equals the target's `oldId` — not a bug.
 9. Built-in codes `Person` / `Department` / `PersonGroup` are reserved; a clash fails the whole import.
@@ -3868,6 +3937,11 @@ Scripts:
     dead on ordinary records until `in-work-bo-script-version`.
 29. **«Закрытие» writes into the saved RECORD, not into the draft being discarded** `[C]` — and it does not
     run on save. Do not use it to «undo» the form; do not expect it after СОХРАНИТЬ.
+30. **An import of scripts onto an existing BO with an EMPTY script module fails** `[C]` — `apply-import`
+    answers «Нет скриптов для экспорта у БО с кодом …», the import stays `ANALYZED`, its process never
+    runs (§5d «Local methods travel»). Check the `apply-import` answer before polling.
+31. **One `translate-script` coincided with a ~30-s 502 of the whole stand** `[U]` cause (2026-09-30: a
+    hook whose only statement calls a local method, `BlockAssign` + `ExprCall`, args `{}`). Not repeated.
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
@@ -3875,8 +3949,6 @@ here; the rules themselves are §0X.4.
 
 ## 18. Open questions
 
-- Whether a `CHECKLIST`'s items can travel in an archive at all — an export writes no `fieldOptionsStruct`
-  for them and an import brings none (2026-09-18, `MYBPM-UI-API.md` trap 42).
 - What a signature's `fieldCodes` / `printFormCodes` and a button's `fieldCodes` bind to.
 - BO groups: what the importer really does with `BoGroupStructDto` (see §8).
 - Whether an archive WITHOUT `AccessStructDto` leaves stand rights untouched.
