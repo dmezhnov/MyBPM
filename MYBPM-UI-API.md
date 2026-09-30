@@ -640,6 +640,10 @@ dropped (trap 13).
       Check the count before your first write and after your last one. The red × on the «События» header deletes them all —
       `v2/user-notification/delete-notifications` (body not captured `[U]`); the grey × on one entry
       deletes that one; `v2/user-notification/count` / `load-notifications` read them `[C]` (2026-09-27).
+      **Headless, no UI** `[C]` (2026-09-30): `load-notifications` `B {paging: {offset: 0, limit: 50}}` (without
+      `paging` → NullPointerException) lists `[{row: {id, header, body, happenedAt}}]`; `delete-notification`
+      `P {notificationId}` deletes ONE (answers empty, `count` drops by one) — delete exactly the ids your run
+      raised. The client also has `delete-all-notifications` (no args) — it wipes the user's others too.
       Clear only what your own run raised.
 
 ### 0U.7 Where the rest is
@@ -1512,7 +1516,9 @@ identical (`validate-def` clean, Enter → Exit rendered on screen).
 - **The importer does NOT create `PROCESS_STATUS`** `[C]`: the process imported without it has only the
   archive's own fields, while every constructor-made process has it. Ship it in `dynamicFields`
   (`--process-status <refBoId>:<CREATED row id>`) **together with its `defaultValue`** — see the next
-  block. Whether a process RUNS without that field at all is `[U]`.
+  block. **A process without that field still RUNS** `[C]` (2026-09-30): Enter → Script → Script → Exit
+  imported with no `PROCESS_STATUS` went to its Exit on an ordinary and on a DEV record — the field gives
+  the record its status, it does not drive the process (`MYBPM-IMPORTS.md` §5c).
 
 #### The same configured process through an ARCHIVE — export, generate, import, run `[C]` (2026-09-27, `<stand>`)
 
@@ -1539,6 +1545,11 @@ emit the same thing from the same spec, and the result imported and run:
    branches reached on DEV records AND on ordinary records (`"state":"ALL"` in the run spec) — the
    imported version reads `isWork: true, isTest: true`.
 
+- **A Script / Switch figure shipped without its `ScriptDefStructDto` passes every check and then FAILS**
+  `[C]` (2026-09-30): analysis clean, apply fine, `validate-def []`; on the first record `load-process-steps`
+  shows that figure `FAILED` with «Скрипт не определен» (`script.not.found`, `NoScriptWithId`) and the process
+  stops — it does not «run empty». Every Script / Switch needs its def line, even with no acts
+  (`validate-archive` reports it as an ERROR; format in `MYBPM-IMPORTS.md` §5c).
 - **The first import ran NOTHING — `PROCESS_STATUS` without a default blocks every record** `[C]`. The
   field is `isRequired`; the constructor defaults it to the «Статус процесса» row `CREATED`. Imported
   without a default, `validate-apply-remove-draft` on a new process record answers **200** with the form
@@ -2970,6 +2981,13 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   `window.__pending = run(list).then(r => window.__pendingDone = r)` and return immediately, then poll
   `window.__res` / `window.__pendingDone` in later calls. Combined with the «page state survives between
   calls» fact above, that is the way to drive a multi-minute job through this tool.
+- **Drive the API from `https://<stand>/favicon.ico`, not from the app** `[C]` (2026-09-30): the stand root
+  redirects to the LAST opened route, and a record panel there re-creates its draft and reloads by itself —
+  an in-page job started from it vanished mid-run (the import applied, the watch never reported), and after
+  one more load the tab froze (`Page.captureScreenshot` timed out). The favicon URL is the same origin, so
+  `localStorage` (the token) and `fetch('/web/…')` work, and nothing on it reloads. Use the app only for what
+  needs the UI. The client bundle is readable from there too — `fetch('/')` → the `runtime.*.js` chunk map →
+  grep the chunks for a controller path to learn a call's shape without clicking.
 - **The BO-group list is CDK-virtualised**: a group below the fold is not in the DOM at all, `find`
   answers «no matching elements» and `computer scroll` over the page does nothing. Scroll the container
   itself — `document.querySelector('.cdk-drop-list.scroll-bar').scrollTop = …` — then take a screenshot

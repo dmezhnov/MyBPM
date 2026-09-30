@@ -455,7 +455,7 @@ for (const bo of bos) {
           }
           if ((t === "Script" || t === "Switch") &&
               !objs.some(o => cls(o) === "ScriptDefStructDto" && String(o.compositeId).endsWith(`-${fid}`)))
-            add("WARN", "5c", `${dt}: ${t} ${fid} has no ScriptDefStructDto "<version>-${fid}" — it runs empty`);
+            add("ERROR", "5c", `${dt}: ${t} ${fid} has no ScriptDefStructDto "<version>-${fid}" — the import and validate-def stay silent, but on a record the figure FAILS «Скрипт не определен» and the process stops there`);
         }
         const arrows = wp.arrows ?? {};
         if (!wp.arrows) add("WARN", "5c", `${dt}: no arrows`);
@@ -488,7 +488,7 @@ for (const bo of bos) {
       Object.values<any>(df).some(f => f.boRefStruct?.boInfo?.code === "PROCESS_STATUS");
     // §0.9: shipping the process WITHOUT PROCESS_STATUS is the prescribed answer when the
     // stand's «Статус процесса» id was not supplied — so this is a WARN, not an ERROR.
-    if (!hasStatus) add("WARN", "5c/0.9", `${tag}: no PROCESS_STATUS — legal only if the stand's «Статус процесса» id was unavailable, and it must be said out loud`);
+    if (!hasStatus) add("WARN", "5c/0.9", `${tag}: no PROCESS_STATUS — the process still runs, but records get no «Статус процесса»; legal only if the stand's dictionary id was unavailable, and it must be said out loud`);
   }
 }
 
