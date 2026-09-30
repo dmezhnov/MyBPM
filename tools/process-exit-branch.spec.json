@@ -1,0 +1,37 @@
+{
+  "group": "Бизнес-объект",
+  "name": "Проба БП выход в ветке 2026-09-30",
+  "desc": "Enter → SingleToParallel → (A: Пауза = сейчас + 6 мин → Timer(Пауза) → Script A2 → Point → Exit A) ‖ (B: Пауза B = сейчас + 1 мин → Timer(Пауза B) → Script B2: Пауза = сейчас + 1 мин + «Обновить таймер для процесса» → Exit B) — Exit B кончает только свою ветку, «Обновить таймер» переносит стоящий Таймер A, Point проходит как шаг; собран tools/process-builder.ts",
+  "fields": [{"key": "pause", "label": "Пауза", "type": "FULL_DATE"}, {"key": "pauseB", "label": "Пауза B", "type": "FULL_DATE"}],
+  "figures": [
+    {"key": "enter", "type": "Enter", "x": 80, "y": 200},
+    {"key": "fork", "type": "SingleToParallel", "x": 200, "y": 200, "slots": 2},
+    {"key": "a1", "type": "Script", "x": 340, "y": 120},
+    {"key": "timer", "type": "Timer", "x": 500, "y": 120, "field": "pause"},
+    {"key": "a2", "type": "Script", "x": 660, "y": 120},
+    {"key": "pt", "type": "Point", "x": 740, "y": 160},
+    {"key": "exitA", "type": "Exit", "x": 820, "y": 120},
+    {"key": "b1", "type": "Script", "x": 340, "y": 290},
+    {"key": "timerB", "type": "Timer", "x": 500, "y": 290, "field": "pauseB"},
+    {"key": "b2", "type": "Script", "x": 660, "y": 290},
+    {"key": "exitB", "type": "Exit", "x": 820, "y": 290}
+  ],
+  "arrows": [
+    {"key": "e0", "from": "enter", "fromSlot": "main", "to": "fork", "toSlot": "in"},
+    {"key": "f1", "from": "fork", "fromSlot": "out1", "to": "a1", "toSlot": "left"},
+    {"key": "f2", "from": "fork", "fromSlot": "out2", "to": "b1", "toSlot": "left"},
+    {"key": "a1t", "from": "a1", "fromSlot": "right", "to": "timer", "toSlot": "left"},
+    {"key": "ta2", "from": "timer", "fromSlot": "right", "to": "a2", "toSlot": "left"},
+    {"key": "a2p", "from": "a2", "fromSlot": "right", "to": "pt", "toSlot": "angle_180"},
+    {"key": "ptx", "from": "pt", "fromSlot": "angle_0", "to": "exitA", "toSlot": "main"},
+    {"key": "b1t", "from": "b1", "fromSlot": "right", "to": "timerB", "toSlot": "left"},
+    {"key": "tb2", "from": "timerB", "fromSlot": "right", "to": "b2", "toSlot": "left"},
+    {"key": "b2x", "from": "b2", "fromSlot": "right", "to": "exitB", "toSlot": "main"}
+  ],
+  "scripts": {
+    "a1": {"exit": "plain", "steps": [{"setDate": ["@pause"], "plus": 6, "unit": "MINUTES"}]},
+    "a2": {"exit": "plain"},
+    "b1": {"exit": "plain", "steps": [{"setDate": ["@pauseB"], "plus": 1, "unit": "MINUTES"}]},
+    "b2": {"exit": "plain", "steps": [{"setDate": ["@pause"], "plus": 1, "unit": "MINUTES"},{"updateTrap": ["@pause"]}]}
+  }
+}

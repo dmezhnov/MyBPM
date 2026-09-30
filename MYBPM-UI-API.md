@@ -1594,7 +1594,9 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   listing the process's date fields; one click writes `Set figures.<id>.fieldId = "<fieldId>"` and closes
   it. Nothing else to set — the due time IS that field's value when the process enters the Timer.
   A Timer without a field validates clean. Run-time behaviour (empty / past / future date, a field
-  changed while it stands, `#Обновить таймер для процесса`): `MYBPM-IMPORTS.md` §16 «A Timer».
+  changed while it stands, `#Обновить таймер для процесса`): `MYBPM-IMPORTS.md` §16 «A Timer». In short:
+  the Timer reads its field once, on entry; a later change of the field (form save OR script) does not move
+  it, and only `#Обновить таймер для процесса` on that field right after the change does `[C]` (2026-09-30).
 - **SingleToParallel / ParallelToSingle** `[C]` (2026-09-27, probe «Проба БП параллель 2026-09-27»
   `klMcOWWPP~QYQY8g`) — the palette writes `{x, y, type:"SingleToParallel", outSlotsCount:2}` /
   `{x, y, type:"ParallelToSingle", inSlotsCount:2}` (slot-drag: 3; the palette also adds `orientation`,
@@ -1608,8 +1610,25 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   `left`/`right`/`top`/`bottom`, nothing to configure. In the archive it is `FigureTerminatorStruct {x, y}`.
   Run: **it ends the whole process** — a Timer standing in the other parallel branch turns `PASSED` with
   no next step the moment the Terminator is passed, and that branch's later figures never run
-  (`MYBPM-IMPORTS.md` §16 «A Terminator ends the WHOLE process»). That an Exit inside one branch ends only
-  that branch is `[I]` (not run).
+  (`MYBPM-IMPORTS.md` §16 «A Terminator ends the WHOLE process»). **An Exit ends only its own branch**
+  `[C]` (2026-09-30, probe «Проба БП выход в ветке 2026-09-30» `OmesDS5B4QycUWMo`): a process may hold
+  several Exits (`validate-def` → `[]`), and after one branch passes its Exit the other still stands on
+  its Timer and later reaches its own Exit (`MYBPM-IMPORTS.md` §16 «An Exit inside one branch»).
+- **Point** `[C]` (2026-09-30, probe «Проба БП выход в ветке 2026-09-30» `OmesDS5B4QycUWMo`) — not in
+  the palette: right-click an arrow → **«Вставить точку»** (bundle `insertPoint`). One command
+  `CUT_ARROW_WITHIN_POINT` `[C]` (sent by hand through `apply-update-cmd`, `validate-def` → `[]`):
+
+  ```
+  Set figures.<pt> = {type:"Point", x, y}
+  Set arrows.<old>.finishFigureId = <pt>, .finishSlotName = "angle_<a+180>", .labelDeltaX = 0, .labelDeltaY = 0
+  Set arrows.<new> = {name: <old name>, startFigureId: <pt>, startSlotName: "angle_<a>",
+                      finishFigureId: <old target>, finishSlotName: <old target slot>, labelDeltaX: 0, labelDeltaY: 0}
+  ```
+
+  (`a` = the arrow's direction at that spot, snapped to 45°; eight slots `angle_0` … `angle_315`: a
+  left-to-right arrow came in at `angle_180` and left at `angle_0`). Dragging from a Point that
+  has no outgoing arrow starts a new arrow. At run time it passes instantly as its own step
+  (`MYBPM-IMPORTS.md` §16 «A Point»); in an archive it is `FigurePointStruct {x, y}`.
 - **Arrow name** — double-click the arrow → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
@@ -1653,6 +1672,7 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   | Form | as Script minus `bottom`, plus `timerCreate`, `timerOpenForm`, `timerTouchDraft` | `up` (absent!) |
   | Timer | as Script | `up` (absent!) |
   | Terminator | `left`, `right`, `top`, `bottom` | `top` |
+  | Point | `angle_0`, `angle_45` … `angle_315` | `top` (absent!) — added 2026-09-30 |
   | SingleToParallel | `in`, `out1`…`outN` (`outSlotsCount`) | missing → `in`; wrong → not read further |
   | ParallelToSingle | `out`, `in1`…`inN` (`inSlotsCount`) | missing → `in` (absent!); wrong → not read further |
 

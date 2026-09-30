@@ -1502,6 +1502,9 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   `FigureParallelToSingleStruct {x, y, inSlotsCount: N}`, `FigureTerminatorStruct {x, y}` (nothing else —
   the editor's `fieldId:""` does not travel); arrows keep the slot names `in` / `out1…outN` and
   `in1…inN` / `out`. Runs: §16 «Parallel branches» and «A Terminator ends the WHOLE process».
+  **A Point** (a bend on an arrow) is `FigurePointStruct {x, y}` `[C]` (2026-09-30, read off an export,
+  then imported and run); its arrows use the slots `angle_0`, `angle_45` … `angle_315` (degrees, 0 =
+  right, 180 = left). §16 «A Point».
 
 ## 5d. Scripts inside the archive (`BoScriptVersionsStructDto` + `ScriptDefStructDto`) `[C]` (2026-09-18, sample `MyBPM-export-<company-b>-v4.24.25.614-2026-09-15T16-55-04.mybpm.zip`)
 
@@ -3829,7 +3832,11 @@ unless marked otherwise.
   таймер для процесса` is NOT needed before a Timer** — the run above fired without it, contrary to an
   older library's rule «every script before a Timer must call it». What it is for, per the platform's own
   description: after changing the date of a Timer that is ALREADY standing, call it on that field to
-  move the schedule `[I]` (not run). Calling it right before the Timer is harmless (fired on time).
+  move the schedule — `[C]` (2026-09-30, see «An Exit inside one branch» below: a parallel branch set the
+  standing Timer's field from now + 6 min to now + 1 min and called it → the Timer fired at ~2.5 min; the
+  control run with the same assignment WITHOUT the call fired at the ORIGINAL ~6 min). A script's
+  assignment alone does not move a standing Timer, exactly like a save from the form. Calling it right
+  before the Timer is harmless (fired on time).
 - **Parallel branches** `[C]` (2026-09-27, `<stand>`, probe «Проба БП параллель 2026-09-27», built through
   the API from `tools/process-parallel.spec.json`: Enter → SingleToParallel → (A: Script sets Пауза = now
   + 1 min → Timer(Пауза) → Script A2) ‖ (B: Script B) → ParallelToSingle → Exit; one DEV run). A
@@ -3850,10 +3857,30 @@ unless marked otherwise.
   special: the cut Timer is just `PASSED`, `nextProcessSteps: []`, no diagnostic message. (The
   record's `PROCESS_STATUS` after it is NOT readable this way — `load-boi-values` answers `""` for any
   reference field of a process record, a record ended by an Exit included.) Use it for «stop everything»
-  (e.g. a cancel branch); that an Exit ends only ITS branch is `[I]` (not run) — with a join, just lead
-  the branch into the join. A first variant with an instant B (`tools/process-terminator.spec.json`:
+  (e.g. a cancel branch); an Exit ends only ITS branch (next point). A first variant with an instant B (`tools/process-terminator.spec.json`:
   Script → Terminator, no Timer) did the same — A's Timer, entered 30 ms after the Terminator, was closed
   at once.
+- **An Exit inside one branch ends only that branch** `[C]` (2026-09-30, `<stand>`, API probe «Проба БП
+  выход в ветке 2026-09-30» from `tools/process-exit-branch.spec.json`, two DEV runs): Enter →
+  SingleToParallel → (A: Script sets Пауза = now + 6 min → Timer(Пауза) → Script A2 → Exit A) ‖ (B: Script
+  sets Пауза B = now + 1 min → Timer(Пауза B) → Script B2 → Exit B). A process may have SEVERAL Exits —
+  `validate-def` is clean with two, no join needed. When B passed Exit B (~80–100 s), A's Timer went on
+  STANDING; later A2 and Exit A passed as well — so, unlike a Terminator, an Exit closes only the branch
+  that reached it, and the other branches run to their own end. B2 was also the reschedule test of «A
+  Timer» above: run 1 (B2 = Пауза := now + 1 min + `#Обновить таймер для процесса`) → A's Timer
+  `WAITING` at 140 s, `PASSED` at 160 s; run 2 (the same B2 without the call) → A's Timer fired at 377 s,
+  the original due time.
+- **A Point is a bend on an arrow, nothing more** `[C]` (2026-09-30, same probe, API and archive): the
+  editor makes it with «Вставить точку» in an arrow's context menu, which CUTS the arrow in two — the old
+  arrow now ends at the Point, a new one leads from the Point to the old target. At run time it is a step
+  of its own that passes in the same instant (`PASSED`, one prev and one next step, no script, no
+  delay): the figure behind it runs as if the arrow were whole. Use it only to route arrows on the
+  diagram. Shapes: §5c (archive), `MYBPM-UI-API.md` §5f «Point» (editor).
+- **The same three facts through an ARCHIVE** `[C]` (2026-09-30): `tools/process-exit-branch.spec.json`
+  (with the Point) → `make-probe-archive.bun.ts --process-spec … --process-status …` → import into the
+  group «Тест» → one ORDINARY record: Exit B at 68 s with A's Timer still standing, A's Timer
+  rescheduled by `#Обновить таймер для процесса` and fired by 149 s (not at 6 min), then A2 → Point →
+  Exit A. The act id `F-updateTrapDate-K-FIX-T-BoiFieldRefCode` is FIX, so it travels as is.
 - **A configured process from a spec, headlessly** `[C]` (2026-09-27): `tools/process-builder.ts` builds
   fields + figures + named arrows + Script/Switch bodies (the JSON above, generated) through the
   constructor API and runs both Switch branches on test records; it passed at the first try. This is the
