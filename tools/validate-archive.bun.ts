@@ -231,8 +231,9 @@ for (const bo of bos) {
   if (Array.isArray(df)) { add("FATAL", "0.10/5", `${tag}: dynamicFields is an ARRAY, must be an object keyed by field code`); continue; }
 
   const labels = new Set<string>();
-  let prevY: number | null = null, prevRows = 0;
-  let idx = 0;
+  // The stacking rule is about the y values, not about the key order: a stand's own export lists the map
+  // in any order, so the layout is checked in y order after the loop.
+  const laid: { ft: string; f: any; gp: any; box?: boolean }[] = [];
   const entries = Object.entries(df as Record<string, any>);
   for (const [key, f] of entries) {
     const ft = `${tag}.${key}`;
@@ -331,7 +332,9 @@ for (const bo of bos) {
           add("ERROR", "5b", `${ft}: boFieldCodes names "${l.boCode}" which is not declared in bos[]`);
       }
     } else if (bo.category === "BO_PROCESS" && key === "PROCESS_STATUS") {
-      // the constructor's own 8×4 box — not part of the §0.8 stacking rule
+      // the constructor's own 8×4 box: no x/cols/rows rule, but it takes its rows in the stack — the stand
+      // exports it at y=0 with the fields below it, the generator puts it after them
+      if (f.gridPosition) laid.push({ ft, f, gp: f.gridPosition, box: true });
     } else {
       const gp = f.gridPosition;
       if (!gp) add("ERROR", "0.8", `${ft}: no gridPosition`);
@@ -340,13 +343,20 @@ for (const bo of bos) {
         if (gp.cols !== 15) add("WARN", "0.8", `${ft}: cols=${gp.cols}; the safe layout is cols=15`);
         const wantRows = ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6 : 4;
         if (gp.rows !== wantRows) add("WARN", "0.8", `${ft}: rows=${gp.rows}, the constructor gives ${wantRows} to ${type}`);
-        if (prevY !== null && gp.y !== prevY + prevRows)
-          add("ERROR", "0.8", `${ft}: y=${gp.y}, expected ${prevY + prevRows} (previous y ${prevY} + previous rows ${prevRows})`);
-        if (prevY === null && gp.y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${gp.y}`);
-        prevY = gp.y; prevRows = gp.rows;
+        laid.push({ ft, f, gp });
       }
-      if (!(bo.category === "BO_PROCESS" && type === "BO") && f.tableColOrderIndex !== idx) add("WARN", "0.5", `${ft}: tableColOrderIndex=${f.tableColOrderIndex}, expected ${idx} (form order)`);
     }
+  }
+  laid.sort((a, b) => a.gp.y - b.gp.y);
+  let prevY: number | null = null, prevRows = 0;
+  let idx = 0;
+  for (const { ft, f, gp, box } of laid) {
+    if (prevY !== null && gp.y !== prevY + prevRows)
+      add("ERROR", "0.8", `${ft}: y=${gp.y}, expected ${prevY + prevRows} (previous y ${prevY} + previous rows ${prevRows})`);
+    if (prevY === null && gp.y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${gp.y}`);
+    prevY = gp.y; prevRows = gp.rows;
+    if (box) continue;
+    if (!(bo.category === "BO_PROCESS" && f.type === "BO") && f.tableColOrderIndex !== idx) add("WARN", "0.5", `${ft}: tableColOrderIndex=${f.tableColOrderIndex}, expected ${idx} (form order)`);
     idx++;
   }
 
