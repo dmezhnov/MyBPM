@@ -6,12 +6,15 @@
  * Attempt 1 deliberately ships only 2 JSONL lines (BoGroupStructDto + BoStructDto), WITHOUT
  * CompanyMetadataStructDto, to settle whether that line is mandatory ([U] in MYBPM-IMPORTS.md §1).
  *
- * The group is named after an EXISTING group on the target stand: the importer is known to RENAME
- * an existing group instead of creating one (MYBPM-IMPORTS.md §8), so renaming it onto itself is a
- * no-op. Group `oldId` is NOT stable — every export of the same stand group carries a different
- * oldId/newId — so it only has to tie the two lines of this archive together.
+ * The group line always carries a `code`: the importer matches groups BY `code` (MYBPM-IMPORTS.md 0.3,
+ * §8) — an existing code puts the BO into that group, a new code CREATES a group named `--group-name`.
+ * A line without `code` would RENAME one fixed stand group, so the generator never writes one.
+ * `--group-code` is required; take an existing group's code from `load-bo-groups`. Group `oldId` is
+ * NOT stable — every export of the same stand group carries a different oldId/newId — so it only has
+ * to tie the lines of this archive together.
  *
- * Usage:  bun tools/make-probe-archive.bun.ts [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
+ * Usage:  bun tools/make-probe-archive.bun.ts --group-code CODE [--group-name NAME]
+ *         [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
  *         [--category BO|BO_DICTIONARY|BO_COMPOSITE|BO_PANEL|BO_PROCESS] [--field "Метка:TYPE"]...
  *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>]
  *         [--process-spec <spec.json>]   (a CONFIGURED process — the spec of tools/process-builder.ts)
@@ -63,8 +66,6 @@ const COMPANY_METADATA = {
   departmentBoId: "b@hLtBKNqBseRbj9",
   personGroupBoId: "ARXWYNE8Kl8O6GZe",
 };
-
-const GROUP_NAME = "Бизнес-объект"; // must match a group that ALREADY exists on the target stand
 
 /** `--code X` / `--name Y` override the defaults; ids are derived from the code, so a new code = a new BO. */
 function flag(name: string, fallback: string): string {
@@ -493,7 +494,11 @@ function field(o: {
   };
 }
 
-const groupOldId = id(`group.${GROUP_NAME}`);
+/** `--group-code` — the group is matched BY CODE; `--group-name` names it only when the code is new. */
+const GROUP_CODE = flag("group-code", "");
+if (!GROUP_CODE) throw new Error("--group-code is required: an existing group's code (load-bo-groups) or a new one");
+const GROUP_NAME = flag("group-name", GROUP_CODE);
+const groupOldId = id(`group.${GROUP_CODE}`);
 
 const lines: object[] = [];
 
@@ -505,9 +510,10 @@ lines.push({
   "@class": `${PKG}.BoGroupStructDto`,
   oldId: groupOldId,
   name: GROUP_NAME,
+  code: GROUP_CODE,
   orderIndex: 1110000.0,
   kind: "MANUAL",
-  newId: id(`group.new.${GROUP_NAME}`),
+  newId: id(`group.new.${GROUP_CODE}`),
 });
 
 /**

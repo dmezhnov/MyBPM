@@ -175,8 +175,13 @@ const menuOnly = menus.length > 0 && !objs.some(o => cls(o) === "BoStructDto");
 // ---------------------------------------------------------------- groups (§0.3, §0.10 rule 1)
 const groups = objs.filter(o => cls(o) === "BoGroupStructDto");
 if (groups.length === 0 && !menuOnly) add("FATAL", "0.3", "no BoGroupStructDto line");
-if (groups.length > 1) add("FATAL", "0.10/1", `${groups.length} BoGroupStructDto lines; multi-group archives are broken (§8)`);
+const groupCodes = new Set<string>();
 for (const g of groups) {
+  // §0.3: groups are matched BY code; a line without one renames a fixed stand group (§8)
+  if (typeof g.code !== "string" || !g.code)
+    add("FATAL", "0.10/1", `group "${g.name}" has no code — the importer renames a fixed stand group instead (§8)`);
+  else if (groupCodes.has(g.code)) add("ERROR", "0.3", `group code "${g.code}" repeats`);
+  else groupCodes.add(g.code);
   if (g.kind !== "MANUAL") add("ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL`);
   if (!ID_RE.test(String(g.oldId))) add("ERROR", "0.7", `group oldId "${g.oldId}" is not 16 chars over A-Za-z0-9@~`);
   if (!g.newId) add("WARN", "0.3", "group has no newId");
@@ -184,7 +189,7 @@ for (const g of groups) {
 }
 
 if (objs.some(o => cls(o) === "AccessStructDto"))
-  add("ERROR", "0.10/10", "archive ships an AccessStructDto — import wipes orgUnitIds; never ship one unasked");
+  add("ERROR", "0.10/10", "archive ships an AccessStructDto — import replaces the stand's rights with the archive's; never ship one unasked");
 
 // ---------------------------------------------------------------- ids unique (§0.7)
 const idSeen = new Map<string, string>();
@@ -210,8 +215,8 @@ for (const bo of bos) {
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
   if (!CATEGORIES.has(bo.category)) add("FATAL", "0.9", `${tag}: category "${bo.category}" is not one of ${[...CATEGORIES].join("/")}`);
-  if (groups.length === 1 && bo.boGroupOldId !== groups[0].oldId)
-    add("FATAL", "0.10/8", `${tag}: boGroupOldId "${bo.boGroupOldId}" != group oldId "${groups[0].oldId}"`);
+  if (groups.length && !groups.some(g => g.oldId === bo.boGroupOldId))
+    add("FATAL", "0.10/8", `${tag}: boGroupOldId "${bo.boGroupOldId}" matches no group line oldId`);
 
   const code = String(bo.code ?? "");
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(code)) add("ERROR", "0.10/7", `${tag}: BO code "${code}" is not latin/digits/underscore`);
