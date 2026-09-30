@@ -1095,7 +1095,8 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
   `oldId` — confirms again that **the archive's `oldId` becomes the stand's BO id** `[C]`.
 - `load-business-object-name {boId}` → the BO's name; `load-bo-groups {}` → all 14 `<company-a>` groups with
   `{id,name,code,orderIndex,kind}` (the way to prove an import renamed nothing — **groups are matched by
-  `code`; a group line without `code` renames one fixed group**, `MYBPM-IMPORTS.md` §0.3/§8). Undo a rename
+  `code`; a group line without `code` renames one fixed group, and a line WITH an existing code still
+  overwrites that group's `name` and `orderIndex` with its own** `[C]` (2026-09-30), `MYBPM-IMPORTS.md` §0.3/§8). Undo a rename
   with `save-business-object-group`, body = that group object with the old `name` / `orderIndex` (answers
   `""`); a rollback does NOT restore it `[C]` (2026-09-30);
 - `import-structure/load-import-file-records` — body `{paging:{offset,limit}}` (without `paging`: NPE) → the
@@ -1466,8 +1467,29 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   around a figure, `UP`/`RIGHT`/`DOWN`/`LEFT` internally).
 - **The diagram editor has NO draft and NO СОХРАНИТЬ** `[C]` — unlike the composite's `v2/co`.
   `apply-update-cmd` writes into the version at once; undo/redo are server-side
-  (`bo-process-editor/undo`). The `create-draft` family of `bo-process-editor2` is about something else
-  (versions) and was not needed for any of the four routes `[U]`.
+  (`bo-process-editor/undo`). The `create-draft` family of `bo-process-editor2` is the RUN WAYS dialog,
+  not the diagram (below).
+- **Versions** `[C]` (2026-09-30): `copy-bo-process-version {boId, boProcessId}` (answers `""`) adds a new
+  version, a copy of that one with the SAME figure ids, `isWork:false, isTest:false`;
+  `in-test-bo-process-version` makes it THE test version — the old `isWork+isTest` one keeps only
+  `isWork` — and `load-dev-bo-process-id` now returns it (the editable, DEV-record version).
+  `in-work-bo-process-version` is the same for «в работу» (not re-run here). What each exports and imports
+  as: `MYBPM-IMPORTS.md` §5c (work → `workProcess`, test → `processVersions.<id>`, the rest not exported).
+- **Run ways — WHEN the process starts** (`process_run_way_settings`, a button of the process BO's
+  editor) — the `bo-process-editor2` draft family `[C]` for the calls, `[I]` for the edits:
+  `create-draft {boProcessId}` → a draftId; `load-draft-data {draftId}` → `{runWayMap: {}}` on both a work
+  and a test version of a fresh process (so empty = the default «start when a record is created»);
+  `remove-draft {draftId}` → `""`. Read off the client, not run: `update-draft` `P {draftId}`, `B` = an
+  array of `{dotPath, value}` — `runWayMap.<id>.runWay` (`ON_INSTANCE_CREATE | ON_FIELD_CHANGE |
+  SCHEDULED | ON_MIGRATION_END`), `.orderIndex`, `.changeVariantSet` (`{"ON_MANUAL_SAVE":1,…}` — also
+  `ON_IN_MIGRATION, ON_UPLOAD_XLSX, ON_CALL_API, ON_MASS_CHANGE` (field change only), `ON_PROCESS_CHANGE,
+  ON_PLUGIN_SAVE, ON_KAFKA_IN_MIGRATION`), `.processFieldId` + `.fieldIdsSet` + `.fieldValues` +
+  `.useFieldValuesSet` (ON_FIELD_CHANGE: which fields, compared with which values), `.schedule.*`
+  (SCHEDULED: `repeatType, repeatUntilType, startTime, startRepeatTime, endRepeatTime, repeatCount,
+  interval, daysOfWeek, dayOfMonth`); a new run way = `runWay: ON_INSTANCE_CREATE` + next `orderIndex` +
+  `changeVariantSet {ON_MANUAL_SAVE:1}`; `apply-draft {draftId}` commits. **The client refuses every
+  edit on a WORK version** («you_cant_change_published_bo_process_version») — run ways are set on the test
+  version and published with it. The result travels as `runWayMap` in the archive (`MYBPM-IMPORTS.md` §5c).
 
 #### `apply-update-cmd` — a JSON-patch language over the def
 
@@ -1533,7 +1555,7 @@ emit the same thing from the same spec, and the result imported and run:
    `isScriptsExport` / `hasScript` to `false` for a process BO. Shapes: `MYBPM-IMPORTS.md` §5c — Form =
    `FigureFormStruct {fieldCode}` (a CODE, portable), a test-only process sits under
    `processVersions.<version id>` with no `workProcess`.
-2. **Generate**: `bun tools/make-probe-archive.bun.ts --group-code <код группы> --process-spec tools/process-probe.spec.json --code
+2. **Generate**: `bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --process-spec tools/process-probe.spec.json --code
    <Code> --name "<Имя>" --process-status '<Статус процесса dict id>:<CREATED row id>'` → group, 2 script
    defs, BO, versions line; `tools/validate-archive.bun.ts` now checks the process part (Form `fieldCode`
    is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is

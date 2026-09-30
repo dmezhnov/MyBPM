@@ -126,7 +126,7 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 
 | Ask for | Why guessing fails silently | Fallback if the user declines to supply it |
 |---|---|---|
-| The **BO group**: the `code` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group** (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code` (a group whose `code` is `null` cannot be targeted — say so); for a new one mint a new `code` and say that a group will be CREATED |
+| The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted — say so); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a business process — the stand's **«Статус процесса» dictionary id AND the id of its `CREATED` row** (both are in `formFields[code=PROCESS_STATUS]` of any constructor-built process: `refBoId` / `defaultValue`, `MYBPM-UI-API.md` §5f) | the dictionary id is an `oldRefBoId` like any other; without the row id the required status field has no default and **every record of the process is refused on save** — the import itself still reports success (§5c) | ship the process WITHOUT `PROCESS_STATUS` (§0.9) and say so |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` fed `FROM_BO` — the **dictionary CODE** | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
@@ -199,16 +199,19 @@ names, `load-bo-records-by-group-id` → the BOs of a group with their codes and
 `load-bo-id-by-code` → an id for a known code, `load-bo-dictionary-list` → the dictionaries. By hand: the
 constructor's BO list, and the id sits in the URL `…/business-objects/editing/<boId>/object-editing`.
 
-### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code` and the two ids)
+### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code`, `orderIndex` and the two ids)
 
 ```json
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoGroupStructDto","oldId":"3H84o9iM@G4jaOL3","name":"Проба группа","code":"Proba_gruppa","orderIndex":1110000,"kind":"MANUAL","newId":"ca3w3BgmzJGmWO7q"}
 ```
 
 - **Every group line carries a `code` — the importer matches groups BY `code`, not by name** `[C]`
-  (2026-09-30, build S4.24.25.643, §8): a `code` that exists on the stand puts the BOs into that group
-  and changes nothing else; a `code` the stand does not have CREATES a new group (its id = the line's
-  `newId`, its name = `name`). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
+  (2026-09-30, build S4.24.25.643, §8): a `code` that exists on the stand puts the BOs into that group;
+  a `code` the stand does not have CREATES a new group (its id = the line's `newId`, its name = `name`).
+  **A matched group still takes the line's `name` AND `orderIndex`** `[C]` (2026-09-30): two archives
+  with `code` = an existing group's code but `name` = that code and `orderIndex` 1110000 renamed the stand
+  group «Тест» to «Group__FMRhhpzx» and moved it from 100000 to the bottom of the list. So for an
+  EXISTING group copy all three — `code`, `name`, `orderIndex` — from `load-bo-groups` (0.2a). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
   it** — whatever `name` says, even the exact name of another existing group. That is the defect that
   destroys the customer's group list (§8). Never ship a group line without `code`.
 - To put the BOs into an EXISTING group, copy its `code` from `load-bo-groups` (0.2a). Many stand groups
@@ -217,8 +220,8 @@ constructor's BO list, and the id sits in the URL `…/business-objects/editing/
 - The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
-- `kind` is always `MANUAL`; `orderIndex` is the group's place in the list (a new group takes it; a
-  matched group is not moved `[I]`).
+- `kind` is always `MANUAL`; `orderIndex` is the group's place in the list — a new group takes it, and
+  a matched group is MOVED to it `[C]` (above), so repeat the stand's own value.
 - **Several group lines in one archive work** when every one of them has a `code` `[C]` (two groups, one
   existing and one new, each BO landed in its own group). Without codes they collapse into the one fixed
   group (§8).
@@ -881,6 +884,8 @@ resolve like this:
 
 1. Every `BoGroupStructDto` carries a `code` — the stand matches groups BY `code`; a line without one
    RENAMES a fixed stand group (0.3, §8). Several group lines are fine when each has its own `code`.
+   A line for an EXISTING group repeats that group's `name` and `orderIndex` exactly — the import
+   overwrites both (0.3).
 2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
 3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
 4. Every line carries its `"@class"` with the full package
@@ -961,11 +966,12 @@ resolve like this:
 ### 0.12 Building and delivering
 
 Ready-made generator, already verified on a live stand — prefer it over writing a new builder.
-`--group-code` is required (0.3): an existing group's `code` from `load-bo-groups`, or a new code plus
-`--group-name "<Имя>"` to CREATE a group:
+`--group-code`, `--group-name` and `--group-order` are required (0.3): for an existing group copy its
+`code`, `name` and `orderIndex` from `load-bo-groups` (the import overwrites the last two), for a new
+group choose a new code, a name and a place:
 
 ```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Cookbook_demo --name "Демо из кукбука" \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Cookbook_demo --name "Демо из кукбука" \
     --field "Наименование:INPUT_TEXT" --field "Сумма:INPUT_NUMBER" --field "Активен:CHECKBOX"
 ```
 
@@ -977,7 +983,7 @@ A BO plus a sidebar item that opens it — plain navigation, list view only (0.5
 byte-identical to the 0.5d template and passes `tools/validate-archive.bun.ts`):
 
 ```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Zayavki --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Zayavki --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
     --menu "Заявки:BO@Zayavki@Заявки!code=Zayavki_menu!order=950000"
 ```
 
@@ -988,7 +994,7 @@ sidebar group, all in one archive — the exact command whose result was applied
 (0.5c, 0.5d):
 
 ```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Proba_menu_bo_20260922 --name "Проба меню БО 2026-09-22" \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Proba_menu_bo_20260922 --name "Проба меню БО 2026-09-22" \
     --field "Наименование:INPUT_TEXT!req" --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово" \
     --kanban "Статус:HEADER=Наименование" \
     --menu "Проба меню 2026-09-22:GROUP!code=Proba_menu_20260922!order=950000" \
@@ -999,7 +1005,7 @@ The generator covers ALL 27 field types, the six system fields and all ten widge
 the archive below was generated, imported through the API and read back field by field):
 
 ```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --code Proba_vseh_tipov --name "Проба все типы" --with-metadata \
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Proba_vseh_tipov --name "Проба все типы" --with-metadata \
     --field "Выпадающий список:DROPDOWN_SINGLE@Dolzh@Должность" \
     --field "Единичный выбор:RADIO_BUTTON_GROUP#Да|Нет" \
     --field "Опросник:QUESTIONNAIRE#Колонка 1|^Строка 1" \
@@ -1424,6 +1430,27 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   A `workProcess` line imports as `isWork+isTest` instead (below). To ship a process that runs on
   ordinary records, move the diagram from `processVersions.<id>` to `workProcess`. Re-importing the
   `processVersions` form again adds version 2 as `isTest` and demotes version 1 to neither.
+- **A process with BOTH a work and a separate test version exports both, and the import rebuilds both**
+  `[C]` (2026-09-30, `<stand>`): the work version goes into `workProcess`, the test version into
+  `processVersions.<its version id>` — each with its own `ScriptDefStructDto` lines, whose `compositeId`
+  is `<that version's id>-<figure id>` (`scriptsDefIds` of each diagram lists its own). A version that
+  is neither work nor test (an old one, or a fresh «Копировать») is NOT exported. That export imported
+  under a new code came back as version 1 `isWork` (the `workProcess` diagram) + version 2 `isTest` (the
+  `processVersions` one), different diagrams kept apart, scripts on both, `validate-def []` on both.
+  So `processVersions` is «the test version when it differs from the work one»; with one version that is
+  both, the export writes `workProcess` only.
+- `runWayMap` (in `workProcess` and in each `processVersions` entry) holds the process's **run ways** —
+  WHEN it starts. Empty = the default, start on record creation (every probe in this document ran that
+  way). The keys, read off the client bundle `[I]` — never filled, exported or imported yet:
+  `runWayMap.<id> = {runWay, orderIndex, changeVariantSet, processFieldId, fieldIdsSet, fieldValues,
+  useFieldValuesSet, schedule}`, `runWay` ∈ `ON_INSTANCE_CREATE | ON_FIELD_CHANGE | SCHEDULED |
+  ON_MIGRATION_END`, `changeVariantSet` a set (`{"<V>":1}`) of `ON_MANUAL_SAVE | ON_IN_MIGRATION |
+  ON_UPLOAD_XLSX | ON_CALL_API | ON_MASS_CHANGE | ON_PROCESS_CHANGE | ON_PLUGIN_SAVE |
+  ON_KAFKA_IN_MIGRATION`, `schedule = {repeatType (EVERYDAY | EVERY_WEEK | EVERY_MONTH | EVERY_WORKING_DAY |
+  EVERY_LAST_DAY_OF_MONTH | EVERY_LAST_WORKING_DAY_OF_MONTH), repeatUntilType (NO_END_DATE | REPEAT_COUNT |
+  EXPIRATION_DATE), startTime, startRepeatTime, endRepeatTime, repeatCount, interval, daysOfWeek,
+  dayOfMonth}`. Leave it `{}` unless you have built and exported a run way on a stand first
+  (`MYBPM-UI-API.md` §5f «Run ways»).
 - **Figure and arrow ids survive the import unchanged** `[C]` — the stand's def carries the archive's own
   ids, the same determinism as `oldId` → `boId` (re-checked 2026-09-27 on 6 figures + 5 arrows). The
   **version id does not**: the stand mints its own and re-keys the scripts to it.
@@ -1917,9 +1944,10 @@ Six probe imports on `<stand>`, each rolled back, the stand's group list compare
 | no `code`, new name, unique `orderIndex` | the same group renamed AND moved to that `orderIndex` |
 | no `code`, `name` = another existing group («Tests») | the same «Бизнес-объект» renamed to «Tests» — two groups «Tests» |
 | two lines, no codes | both BOs in the same renamed group (the name of the LAST line) |
-| `code` = an existing group's code | BO in that group, nothing renamed |
+| `code` = an existing group's code, `name` / `orderIndex` = the group's own | BO in that group, nothing renamed |
+| `code` = an existing group's code, another `name` / `orderIndex` | BO in that group, the group RENAMED and MOVED to the line's values (2026-09-30, two process probes) |
 | `code` new to the stand | a NEW group created — id = the line's `newId`, `code` kept |
-| two lines, one existing code + one new code | each BO in its own group, one group created, nothing renamed |
+| two lines, one existing code + one new code | each BO in its own group, one group created, nothing renamed (the existing line carried the group's own name) |
 
 - **Groups are matched by `code`.** A line without `code` is written onto ONE fixed stand group (here
   «Бизнес-объект», the group with the largest `orderIndex`; why that one is `[U]`) — name and
@@ -1927,6 +1955,8 @@ Six probe imports on `<stand>`, each rolled back, the stand's group list compare
   group's name) worked only because the name copied was that same fixed group's own name.
 - The 2026-09-16 `<company-c>` symptom (two groups → all BOs in «Справочники», renamed) is this same
   behaviour: its group lines had no `code`.
+- **A code-matched line is NOT a safe pointer** — it rewrites the group's `name` and `orderIndex` to its
+  own. Only a line that repeats both exactly leaves the group as it was.
 - **Rollback deletes the imported BOs and a group the import CREATED, but does NOT undo a rename** — the
   rollback preview lists no `restoreItems` for the group. Repair by hand: `v2/business-objects/
   save-business-object-group` with the group object of `load-bo-groups` and the old `name` / `orderIndex`
