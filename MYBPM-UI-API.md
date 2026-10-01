@@ -2675,7 +2675,7 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
 | `QUESTIONNAIRE` | `questionnaires[]` — the generator already returns two rows, one `isColumn: true`, one `false`; set their `label`/`labelMap` |
 | `PROGRESS_BAR` | `progressSteps[]` = `{id (v2/id-loader), orderIndex, label, code, labelMap}` |
 | `TAB_GROUP` | `tabs[]` = `{id, label, isActive, chosenAccessRight, orderIndex, isInvalid, isRight, isDefault, labelMap}` |
-| `FILE_UPLOAD` | `viewType` SINGLE/MULTIPLE, `params.contentType` ALL/FOR_CAMERA |
+| `FILE_UPLOAD` | `params` `{viewType: SINGLE/MULTIPLE/TILE, contentType: ALL/FOR_CAMERA/IMAGE/DOCUMENT}` (both keys inside `params`, §5i) |
 | `STATIC_TEXT` | `staticValueMap.RUS` = the HTML |
 | `BO` / `CO` | `fieldBoId` on the generator call (BO) or `refBoId` on the DTO (CO), `viewType` TABLE/SINGLE |
 
@@ -2715,6 +2715,14 @@ the radio on «Одиночный». Two rules follow:
 - **In MULTIPLE and TILE mode the field's `#Значение` is `File[]`** (TILE `[C]`: the script compiled
   unchanged after the switch): a script that assigned one file stops
   compiling with `blockAssign_arrayAssignNoArray` (`MYBPM-IMPORTS.md` §12a, RestResponse notes).
+- **«Поведение для MP» = `params.contentType`, mobile app only** `[C]` (2026-10-01, <stand>). Enum `ALL` /
+  `IMAGE` / `DOCUMENT` / `FOR_CAMERA`; the gear checkbox «Только камера» writes only `FOR_CAMERA` ↔ `ALL`
+  (`saveParams` → the same `editedFields` patch with the whole `params`), so it overwrites an `IMAGE` /
+  `DOCUMENT` set over the API or an archive. Over the API (`params` on an added field) all four were stored;
+  they survive a stand export and a copy import. **On the web nothing changes**: all four render
+  `<input type=file accept="*">` without `capture`, and a `.txt` uploaded through `v2/file/upload` and
+  saved by the §6a cycle was stored in the `FOR_CAMERA`, `IMAGE` and `DOCUMENT` fields alike — the server
+  does not check the file kind. The mobile behaviour itself is `[U]`.
 
 #### GEO_POINT («Карта») is the platform's own map, not Yandex `[C]` (2026-09-28)
 
@@ -3152,7 +3160,7 @@ driven alone). Every hook ran server-side; the answers carry the script's field 
 | open NEW | `v2/instance-form-create-draft/create-draft-with-boi` | P `{boId, boiState:"ALL", isReadMode:false}` B `{}` → `{draftId, boiId}` | «Открытие» |
 | open EXISTING | `v2/instance-form-create-draft/create-draft` | P `{boId, boiId, draftId:null}` B `{}` → bare `"<draftId>"` | «Открытие» |
 | change a field | `v2/instance-field-form/save-field-value` | B `{draftId, boId, boInstanceId, values:[{fieldId, value}]}` | «Изменение поля» of that field |
-| save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]` | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
+| save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]`; **no `CLOSE_DIALOG_SAVE` = NOT saved** — e.g. an empty required field answered only `[CAN_ENABLE_CANCEL_BUTTON]`, no error command, record unchanged `[C]` (2026-10-01) | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
 | close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created |
 | read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
 | read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`). **`tabId:null` returns only the fields OUTSIDE tabs**; the fields of a `TAB_GROUP` tab come back only with that tab's id in `tabId` `[C]` (2026-09-28) | — |

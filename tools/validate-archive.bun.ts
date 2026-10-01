@@ -518,8 +518,13 @@ for (const bo of bos) {
     if (type === "PROGRESS_BAR" && !Object.keys(f.progressSteps ?? {}).length) add("ERROR", "0.5", `${ft}: PROGRESS_BAR with empty progressSteps`);
     if (type === "TAB_GROUP" && !Object.keys(f.fieldTabs ?? {}).length) add("ERROR", "0.5", `${ft}: TAB_GROUP with empty fieldTabs`);
     if (type === "FILE_UPLOAD") {
-      if (!f.viewType) add("WARN", "0.5", `${ft}: FILE_UPLOAD without viewType SINGLE/MULTIPLE`);
-      if (!f.params?.contentType) add("WARN", "0.5", `${ft}: FILE_UPLOAD without params.contentType ALL/FOR_CAMERA`);
+      // the display mode lives in params.viewType; the top-level viewType is ignored (UI-API §5i)
+      const pv = f.params?.viewType;
+      if (pv === undefined) add("WARN", "0.5", `${ft}: FILE_UPLOAD without params.viewType SINGLE/MULTIPLE/TILE`);
+      else if (!["SINGLE", "MULTIPLE", "TILE"].includes(pv)) add("ERROR", "0.5", `${ft}: FILE_UPLOAD params.viewType "${pv}" is not SINGLE/MULTIPLE/TILE`);
+      const ct = f.params?.contentType;
+      if (ct === undefined) add("WARN", "0.5", `${ft}: FILE_UPLOAD without params.contentType ALL/FOR_CAMERA`);
+      else if (!["ALL", "IMAGE", "DOCUMENT", "FOR_CAMERA"].includes(ct)) add("ERROR", "0.5", `${ft}: FILE_UPLOAD params.contentType "${ct}" is not ALL/IMAGE/DOCUMENT/FOR_CAMERA`);
     }
 
     // layout (§0.8) — a composite has no form at all (§5b)
