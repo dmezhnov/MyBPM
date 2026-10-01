@@ -1,8 +1,8 @@
 // A mock MyBPM stand used to VERIFY §0U of MYBPM-UI-API.md.
 //
-//   bun tools/mock-stand.bun.ts tool.jsonl     # then drive a client at http://127.0.0.1:8080
+//   PORT=8080 bun tools/mock-stand.bun.ts tool.jsonl     # then drive a client at http://127.0.0.1:$PORT
 //
-// Drive `tools/create-bo-constructor.bun.ts` (stand-verified) and `tools/follow-cookbook-stand.py`
+// Drive `tools/create-bo-constructor.bun.ts` (stand-verified) and `tools/follow-cookbook-stand.bun.ts`
 // (written from §0U alone) through the same recipe against it, then diff the two request files:
 // they must agree on every path, every parameter and every body, including the JSON inside `jsonPart`.
 // The Bun tool hardcodes `https://`, so test it through a copy with the scheme rewritten to `http://`.
@@ -24,7 +24,7 @@ function answer(path: string, params: any, body: any): any {
 }
 
 Bun.serve({
-  port: 8080,
+  port: Number(Bun.env.PORT ?? 8080),
   async fetch(req) {
     const url = new URL(req.url);
     const payload: any = await req.json().catch(() => ({}));
@@ -33,4 +33,4 @@ Bun.serve({
     return new Response(JSON.stringify(answer(url.pathname, payload.params_Lr1oSgwPR8 ?? {}, payload.body_o1nhHUG480 ?? {})), { headers: { "Content-Type": "application/json" } });
   },
 });
-console.log("mock stand up on 8080");
+console.log(`mock stand up on ${Bun.env.PORT ?? 8080}`);
