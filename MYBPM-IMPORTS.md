@@ -260,14 +260,15 @@ everything after it on that line — the shipped line must be pure minified JSON
   "nativeFields": {},
   "dictionaryFields": [],
   "actual": true,
-  "isCalendarEnabled": false,
-  "isMapEnabled": false,
+  "isCalendarEnabled": false,              ← registry views (§2 «BO views»); a map also needs the
+  "isMapEnabled": false,                     kanban card template of every dropdown, grouping renders nothing
   "isGroupingEnabled": false,
   "isCodeReadonly": false,
   "chosenAccessRight": false,
   "isTouchEnabled": true,                  ← «Помечать новые (непросмотренные) записи»
   "hideAddButtonFromRegistry": false,      ← true = no create button in the registry
-  "kanbanCardTemplates": {},                ← leave empty UNLESS the BO needs a kanban — then 0.5c
+  "kanbanCardTemplates": {},                ← empty ONLY when the BO has no DROPDOWN_SINGLE; otherwise one
+                                              template per dropdown (0.5c), or kanban AND map die
   "timelineTemplates": {},
   "calendarCardTemplates": {"header":{},"content":{},"footer":{},"headerDelFieldCodes":{},"contentFieldCodes":{},"footerDelFieldCodes":{}},
   "signatures": {},
@@ -791,6 +792,10 @@ A kanban is TWO things, and since 2026-09-22 the archive can carry BOTH:
 - the **card template**, which lives ON THE BO in `kanbanCardTemplates`. **Ship it, or the kanban view
   dies with «cardTemplate is null»** — that is the whole of the old «kanban is broken for imported BOs».
   It belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here.
+  **Give EVERY `DROPDOWN_SINGLE` one, even when nobody asked for a kanban** `[C]` (2026-10-01): without it the
+  BO's MAP view and the constructor's kanban editor die the same way once a record exists (§2 «BO views»). A
+  BO already broken so is repaired by re-importing its line with the template (keep the `kanbanFields` wrapper —
+  without it the import is APPLIED and changes nothing); `save-kanban-card-template` does not repair it.
 - the **switch that shows the board**, with its column field. The one place verified so far is a SIDEBAR
   MENU ITEM (`boPages.isKanbanEnabled` + the column field) — a menu line of the SAME archive does it by
   code, `boPages.kanbanFieldCode` (0.5d, §5e); the alternative is
@@ -902,8 +907,8 @@ write all twelve keys. What each view needs besides its flag:
 | kanban | `isKanbanEnabled`, `kanbanIndex` | `kanbanFieldCode` = code of a `DROPDOWN_SINGLE` of the BO (the columns) AND that field's card template in the BO's `kanbanCardTemplates` (0.5c) | `[C]` |
 | calendar | `isCalendarEnabled`, `calendarIndex` | the BO's `isCalendarEnabled: true` and a date field (`FULL_DATE` with `needShowToCalendar`) — nothing on the item | `[C]` 2026-09-30 |
 | timeline («Диаграмма Ганта») | `isTimelineEnabled`, `timelineIndex` | **`timelineFieldCode`** = code of a `PERIOD` / `PERIOD_TIME` field of the BO (the import resolves it into the item's `timelineFieldId`); the BO needs nothing else — a timeline template exists by itself for every such field | `[C]` 2026-09-30 |
-| map | `isMapEnabled`, `mapIndex` | presumably the BO's `isMapEnabled` and a location field | `[U]` |
-| grouping | `isGroupingEnabled`, `groupingIndex` | presumably the BO's `isGroupingEnabled` | `[U]` |
+| map | `isMapEnabled`, `mapIndex` | the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card template for every dropdown (0.5c) — proven in the BO registry (§2 «BO views»), not yet through a menu item | `[U]` on the item |
+| grouping | `isGroupingEnabled`, `groupingIndex` | nothing works: the registry grouping view is 404 on the server (§2 «BO views») — never enable it | `[C]` dead |
 
 List, kanban, calendar and timeline are proven (calendar and timeline: an item with both views built through
 the API, exported, reset to list only, re-imported — both views back and both render, 2026-09-30).
@@ -1158,6 +1163,10 @@ resolve like this:
     (`boFieldCodes` / `boFieldRefs` with `toShow: true`). This is a rule from the platform team
     (2026-09-28). Without a column the registry answers `AccessDenied` and lists nothing; without a
     shown field the reference renders empty (`MYBPM-UI-API.md` §0U.5 rule 11, traps 48 and 53).
+16. **Every `DROPDOWN_SINGLE` of a BO has a kanban card template** — `kanbanCardTemplates.<dropdown code> =
+    {"kanbanFields": {"<a field code>": {"cardOrderIndex": 0, "locationType": "HEADER", "archetype": "DYNAMIC"}}}`,
+    even when no kanban was asked for. Without it the BO's map, kanban and kanban editor die with «cardTemplate
+    is null» once a record exists (0.5c, §2 «BO views», trap 32).
 
 ### 0.11 Self-check before shipping
 
@@ -1433,6 +1442,35 @@ API, exported, imported as a copy, then re-imported four times.
   untick such a tab (its checkbox is disabled until the BO is in the company messenger list), so do not ship
   them unless the company uses that messenger.
 - Stand side of these keys: `MYBPM-UI-API.md` §5k.
+
+### BO views in the archive — `isCalendarEnabled`, `isMapEnabled`, `isGroupingEnabled`, `groupingInfo` `[C]` (2026-10-01, `<stand>`)
+
+The registry views «Календарь», «Карта», «Группировка» of the BO itself. Proven on probe BOs: switched over the API,
+exported, imported as a copy, re-imported with the flags off and on again, and looked at with records.
+
+| key | where | what it does |
+|---|---|---|
+| `isCalendarEnabled` | BO | «Календарь» in the registry's view chooser; events on the date fields (`needShowToCalendar`, §3) |
+| `isMapEnabled` | BO | «Карта» — one marker per record at its `GEO_POINT` value; the marker popup shows the KANBAN card fields |
+| `isGroupingEnabled` | BO | «Группировка» — see the warning below |
+| `groupingInfo` | each field | `{"nodeTreeActive": true, "nodeTreeLevel": 0}` = a tree level (a `BO`/`CO` field with `viewType` `SINGLE`/`MULTIPLE`), `{"colToShow": true, "colOrderIndex": 0, "nodeTreeActive": false}` = a column; `{}` = not used |
+
+- All four round-trip: the export writes them, a copy import sets them, **a re-import with `false` / `{}` resets
+  them** (and with `true` / the map sets them again). Ship the stand's values on every re-import.
+- **A map needs a kanban card template for EVERY `DROPDOWN_SINGLE` of the BO** — not only for a kanban. An archive BO
+  with a dropdown and an empty `kanbanCardTemplates` loses its map, its kanban view and the constructor's kanban
+  editor to «cardTemplate is null» as soon as it holds a record (0.5c). Give each dropdown a template
+  (`"<dropdown code>": {"kanbanFields": {"<name field code>": {"cardOrderIndex": 0, "locationType": "HEADER",
+  "archetype": "DYNAMIC"}}}`); its fields are what the map popup shows.
+- **Grouping renders nothing on this build** — the registry «Группировка» calls server methods that answer 404
+  (`MYBPM-UI-API.md` §5l, trap 62). The flag and `groupingInfo` store and travel; do not promise a user a grouping view.
+- **The calendar's event-title fields do NOT travel** — no key in the export; a re-import leaves the stand's titles,
+  a new BO gets a default. Set them on the stand (`v2/calendar/save-calendar-view-titles`, `MYBPM-UI-API.md` §5l). The
+  calendar hover card is `calendarCardTemplates` (travels, `MYBPM-UI-API.md` §5i).
+- Nothing checks that a map has a `GEO_POINT` or a grouping a reference field — the flag is accepted either way.
+- Generator: `tools/make-probe-archive.bun.ts --calendar --map --grouping`, a level by
+  `--field "Связь:BO@<boId>@Code!viewType=SINGLE,groupingInfo.nodeTreeActive=true,groupingInfo.nodeTreeLevel=0"`.
+  Stand side: `MYBPM-UI-API.md` §5l.
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
@@ -2515,7 +2553,8 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   `hasError` and load the BO. When you delete a field from an archive, delete it from every
   `kanbanCardTemplates.*.kanbanFields` too.
 - BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — and an empty one is
-  exactly why «kanban does not work for imported BOs». Fill it: §0.5c, `MYBPM-UI-API.md` §7.
+  exactly why «kanban does not work for imported BOs», and why their MAP view fails too (§2 «BO views»). Fill it
+  for every dropdown: §0.5c, 0.10 rule 16, `MYBPM-UI-API.md` §7.
 
 ### BO groups on import — matched by `code` `[C]` (2026-09-30, build S4.24.25.643, `<stand>`)
 
@@ -4596,6 +4635,12 @@ Scripts:
     runs (§5d «Local methods travel»). Check the `apply-import` answer before polling.
 31. **One `translate-script` coincided with a ~30-s 502 of the whole stand** `[U]` cause (2026-09-30: a
     hook whose only statement calls a local method, `BlockAssign` + `ExprCall`, args `{}`). Not repeated.
+32. **A `DROPDOWN_SINGLE` without a kanban card template kills the map and the kanban** `[C]` (2026-10-01) — an
+    archive BO with `kanbanCardTemplates: {}` and a dropdown answers «cardTemplate is null» in its «Карта» view,
+    its kanban and the constructor's kanban editor once it holds a record. Ship a template per dropdown (0.5c);
+    a re-import with one repairs the BO.
+33. **The registry «Группировка» is dead** `[C]` (2026-10-01) — the server answers 404 to its data calls;
+    `isGroupingEnabled` / `groupingInfo` store and travel but nothing renders (§2 «BO views»).
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered

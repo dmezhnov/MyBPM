@@ -652,7 +652,7 @@ dropped (trap 13).
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field**, §5j BO header settings, §5k card tabs · §6 Excel records: the routes (the FILE FORMAT is
+type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown.
@@ -3184,6 +3184,62 @@ its participants, FILES = a file list with «Загрузить файл», PRIN
   has one connected; the company switch is `messenger/settings/save-messenger-bo-settings` (company-wide, not
   touched).
 
+### 5l. BO views — «Календарь», «Карта», «Группировка» `[C]` (2026-10-01, `<stand>`)
+
+Three registry views are switched on the BO itself. Proven on probe BOs built by archive, switched over the API,
+through the constructor toggles and by archive (export, copy import, re-import), with records looked at in each
+view. Format side: `MYBPM-IMPORTS.md` §2 «BO views in the archive».
+
+| view | UI place | API (`v2/business-objects/…`, PARAMS half, answer `""`) | archive key |
+|---|---|---|---|
+| calendar | constructor view «Календарь» → toggle «Включить календарь» | `save-is-calendar-enabled {boId, isCalendarEnabled}` | `isCalendarEnabled` |
+| map | constructor view «Карта» → toggle «Включить карту» | `save-is-map-enabled {boId, isMapEnabled}` | `isMapEnabled` |
+| grouping | `…/editing/<boId>/grouping-editing` → toggle «Включить группировку» | `save-is-grouping-enabled {boId, isGroupingEnabled}` | `isGroupingEnabled` |
+
+- Read back: `load-bo-calendar-enabled` / `load-bo-map-enabled` / `load-bo-grouping-enabled {boId}` → `true|false`,
+  or the three keys of `load-business-object-by-id`. **The loaders lag a few seconds** — right after a switch they
+  still answered the old value, ~8 s later the new one.
+- **Nothing is validated**: map and grouping were accepted on a BO without a `GEO_POINT` and without a reference
+  field (the editor only shows a «disabled» text in that case).
+- The registry's view chooser (top right, «Список ▾») lists «Календарь» / «Карта» / «Группировка» exactly for the
+  enabled flags; switching one off removes it from the chooser.
+
+**Calendar.** The event title is the «Настройка отображения заголовка» chips: `v2/calendar/save-calendar-view-titles
+{boId, titles: [{id: <fieldId>, name: <label>}]}` (PARAMS half; the whole list each time), read by
+`v2/calendar/load-calendar-view-settings {boId}` → `{titles, template}`. With «Дата» and «Статус» chosen the event
+read «Статус : Новый, Дата : 05.10.2026». A new BO starts with one title (the name field, or another field — the
+default is not stable). **The titles do NOT travel in the archive** — no key in the export; a re-import leaves the
+stand's titles alone, a copy gets its own default. The hover card is `calendarCardTemplates` (§5i, travels).
+Which dates place an event: `needShowToCalendar` (§5h).
+
+**Map.** The registry «Карта» is a Leaflet map of the BO's `GEO_POINT` values, one marker per record («2 из 2»).
+Points come from `v2/geo/load-bracket-boi-points` (body = the registry bracket filter `{boId, dynamicFilters,
+nativeFilters, brackets, search, paging:{offset, limit, hasNext}, ordering, state}`) → `[{boiId, coordinate:{lat, lon},
+fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the KANBAN card template's fields**. So:
+- **A BO with a `DROPDOWN_SINGLE` that has no kanban card template cannot show its map** `[C]`: as soon as it holds a
+  record, `load-bracket-boi-points` answers NullPointerException «cardTemplate is null» and the map stays empty;
+  the kanban view and the constructor's kanban editor die with the same error. A BO built in the constructor gets
+  the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.5c), and
+  every archive BO with a dropdown imported without one was broken this way (trap 61).
+- `v2/kanban/save-kanban-card-template` does NOT repair it (it fills another store, §7). **A re-import with
+  `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor came back, records kept.
+- A BO with a GEO_POINT and no dropdown at all: points load (`[]` with no records); not looked at with records `[I]`.
+
+**Grouping.** The levels and columns are per FIELD, `groupingInfo {colToShow, colOrderIndex, nodeTreeActive,
+nodeTreeLevel}` (`nodeTreeActive` + `nodeTreeLevel` 0.. = a tree level, `colToShow` + `colOrderIndex` = a table
+column), saved by `v2/boi-grouping/save-business-object-grouping-fields` with a BODY `{businessObjectId, fieldList:
+[{fieldId, archetype: "DYNAMIC", groupingInfo}]}` (only the listed fields change); the constructor tree is
+`load-business-object-grouping-tree {boId}`. A tree level must be a `BO` / `CO` field with `viewType` `SINGLE` or
+`MULTIPLE`.
+- **The constructor page has no button** — the view chooser does not list it. **Loading
+  `…/editing/<boId>/grouping-editing` directly gives a blank page**; it renders only when reached inside the app:
+  open another editor page of the BO, then `history.pushState({}, '', '/business-objects/editing/<boId>/grouping-editing');
+  dispatchEvent(new PopStateEvent('popstate', {state: {}}))`. Its toggle writes `isGroupingEnabled` like the API.
+- **The registry «Группировка» is dead on this build** `[C]`: the view calls
+  `v2/boi-grouping/load-bo-instance-grouping-table` and `load-bo-instance-grouping-root` — both **404** on the
+  server; only `load-bo-instance-grouping-search` answers (`{nodes: [], hasNext: true}`). The view shows an empty
+  tree. Do not offer grouping to a user; the flag and the levels store and travel, nothing renders them.
+
 ## 6. Records: Excel import and export
 
 Records (instances) are imported as **Excel files into a BO registry** (registry kebab → импорт/экспорт
@@ -3357,9 +3413,10 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
 - `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
   writes exactly this for a NEW BO; add `--menu "…:BO@<code>@<name>!kanban=<dropdown code>"` and the
   same archive also switches the board on in a sidebar item. Ship it with R3.
-- For a BO that is ALREADY on the stand: its line comes out of the struct export of R4a, the key can be
-  added and the line re-imported — **that path was never run `[U]`**; the verified route is a new BO
-  through the archive, and the only other writer is the constructor UI (below).
+- For a BO that is ALREADY on the stand: its line comes out of the struct export of R4a, the key is
+  added and the line re-imported — **this works** `[C]` (2026-10-01: it repaired two archive BOs whose kanban and
+  map died with «cardTemplate is null», §5l); keep the `kanbanFields` wrapper — without it the import is APPLIED
+  and changes nothing. The other writer is the constructor UI (below).
 
 Verified end to end: archive with `kanbanCardTemplates` → `apply-import` → `load-kanban-template` returns
 a `cardTemplate`, `load-kanban-card-template` returns header/content/footer, the board renders its three
@@ -3923,7 +3980,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 6. A menu icon must come from §4 «Menu icon catalogue» (`phosphor:*` or `menu-item:*`); the server and the
    importer accept any string, and a wrong one leaves the sidebar item without an icon.
 7. A kanban needs `kanbanCardTemplates` ON THE BO, and only the archive (or the constructor UI) can
-   write it — `save-kanban-card-template` fills a store the view never reads (§7).
+   write it — `save-kanban-card-template` fills a store the view never reads (§7). The MAP view needs it too:
+   give every dropdown of an archive BO a template (§5l, trap 61).
 8. Excel: every cell must be `inlineStr`; a numeric cell turned `103` into «103.0» and broke a lookup.
 9. Excel headers must have frozen rows or a double bottom border in column A, else the whole file is
    rejected.
@@ -4116,6 +4174,12 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 60. **The direct code setters validate nothing** `[C]` (2026-10-01) — `save-business-object-code` /
     `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
     not migrate scripts that use the old code. §5j.
+61. **An archive BO with a dropdown and no kanban card template has no map** `[C]` (2026-10-01) — once it holds a
+    record, `v2/geo/load-bracket-boi-points` (the «Карта» view), the kanban view and the kanban editor all answer
+    NullPointerException «cardTemplate is null». `save-kanban-card-template` does not repair it; a re-import with
+    `kanbanCardTemplates.<dropdown code>.kanbanFields` does. §5l.
+62. **The registry «Группировка» is not implemented server-side** `[C]` (2026-10-01) — its data calls
+    `load-bo-instance-grouping-table` / `-root` are 404, the view stays empty whatever is configured. §5l.
 
 ## 12. Open questions
 
