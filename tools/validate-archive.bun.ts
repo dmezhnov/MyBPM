@@ -575,6 +575,25 @@ for (const bo of bos) {
         for (const c of Object.keys(v.fieldCodes))
           if (!known.has(c)) add("ERROR", "0.5b", `${ft}: fieldCodes names "${c}", no field of this BO has that code`);
       }
+      if (v.type === "SIGNATURE") {
+        // round-tripped on core2 2026-10-01: everything by CODE; printFormCodes / massPrintFormCodes values are 1
+        const dyn = bo.dynamicFields ?? {};
+        for (const c of Object.keys(v.fieldCodes ?? {}))
+          if (!(c in dyn)) add("ERROR", "0.5b", `${ft}: fieldCodes names "${c}", no dynamic field of this BO has that code`);
+        for (const c of Object.keys(v.massFieldCodes ?? {})) {
+          if (!(c in dyn)) add("ERROR", "0.5b", `${ft}: massFieldCodes names "${c}", no dynamic field of this BO has that code`);
+          else if (dyn[c].type !== "BO") add("ERROR", "0.5b", `${ft}: massFieldCodes "${c}" is ${dyn[c].type} — mass signing goes through a BO field`);
+        }
+        if (v.signingPhoneCode != null) {
+          if (!(v.signingPhoneCode in dyn)) add("ERROR", "0.5b", `${ft}: signingPhoneCode "${v.signingPhoneCode}" is not a field of this BO`);
+          else if (dyn[v.signingPhoneCode].type !== "INPUT_PHONE") add("ERROR", "0.5b", `${ft}: signingPhoneCode "${v.signingPhoneCode}" is ${dyn[v.signingPhoneCode].type}, the stand offers only INPUT_PHONE fields`);
+        }
+        const pfCodes = new Set((bo.printForms ?? []).map((f: any) => f.printFormCode));
+        for (const c of Object.keys(v.printFormCodes ?? {}))
+          if (!pfCodes.has(c)) add("ERROR", "0.5b", `${ft}: printFormCodes names "${c}", not a printForms[].printFormCode of this BO`);
+        if (Object.keys(v.massPrintFormCodes ?? {}).length)
+          add("WARN", "0.5b", `${ft}: massPrintFormCodes did NOT survive an import on core2 (2026-10-01) — check it on the stand after applying`);
+      }
       if (v.type === "IFRAME" && typeof v.url === "string" && /^http:/i.test(v.url))
         add("ERROR", "0.5b", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
       if (v.type === "CURRENT_USER") {
@@ -594,6 +613,16 @@ for (const bo of bos) {
     }
     if (map === "currentUser" && Object.keys(w).length > 1)
       add("ERROR", "0.5b", `${tag}.${map}: ${Object.keys(w).length} CURRENT_USER widgets — the platform allows one per BO`);
+  }
+
+  // ------------------------------------------------ print forms (§0.5b «Print forms»)
+  const files = new Set(objs.filter((o) => cls(o) === "ExportStructFileDto").map((o) => o.fileId));
+  for (const [i, f] of (Array.isArray(bo.printForms) ? bo.printForms : []).entries()) {
+    const pt = `${tag}.printForms[${i}]`;
+    if (!f.printFormCode) add("ERROR", "0.5b", `${pt}: no printFormCode`);
+    if (f.fileType !== "PDF" && f.fileType !== "DOCX") add("ERROR", "0.5b", `${pt}: fileType "${f.fileType}", must be PDF or DOCX`);
+    if (!files.has(f.fileId)) add("ERROR", "0.5b", `${pt}: no ExportStructFileDto line with fileId "${f.fileId}" — the template .docx travels in the archive`);
+    id(pt, f.newId);
   }
 
   // ------------------------------------------------ per-category (§0.9)

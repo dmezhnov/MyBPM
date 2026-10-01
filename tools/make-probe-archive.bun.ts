@@ -22,6 +22,7 @@
  *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>]
  *         [--process-spec <spec.json>]   (a CONFIGURED process — the spec of tools/process-builder.ts)
  *         [--menu "Имя:GROUP"]... [--menu "Имя:BO@<код БО>[@Имя БО]!parent=…!kanban=…"]...
+ *         [--print-form "Имя:код:file.docx[:PDF|DOCX]"]...
  *
  * The full `--field` grammar is «Метка:TYPE[@a][@b][#вариант|вариант][!req,uniq,readonly]»:
  *   --field "Дата:DATE!dateOnlyPast=true"                     — ANY key of the field, `!key=value`
@@ -200,6 +201,9 @@ function nativeFlags(): string[] {
  * instead: `SINGLE` / `TABLE`, optionally `/<code>,<code>…` = the CODES of the «Пользователи» fields to
  * show, in that order (e.g. `CURRENT_USER:Текущий пользователь:cur:SINGLE/surname,email`). Without it the
  * widget gets `TABLE` + `fieldRefs: {}`, which the stand turns into «Фамилия» + «Имя» (MYBPM-IMPORTS.md §0.5b).
+ * For SIGNATURE the 4th part is its settings, «;»-separated: the codes of the fields to sign, then
+ * `phone=<code of an INPUT_PHONE field>`, `pf=<print form code>,…` (from `--print-form`) and
+ * `mass=<code of a BO field>,…` (e.g. `SIGNATURE:ЭЦП/SMS:podpis:Tekst,Otvet;phone=Telefon;pf=Dogovor`).
  */
 function widgetFlags(): { type: string; label: string; code: string; url?: string }[] {
   const out: { type: string; label: string; code: string; url?: string }[] = [];
@@ -919,6 +923,29 @@ for (const t of natives) {
   };
 }
 
+/**
+ * PRINT FORMS — `--print-form "<Имя>:<код>:<file.docx>[:PDF|DOCX]"`, repeatable. The BO lists them in
+ * `printForms`, and the .docx template itself travels in the archive as an `ExportStructFileDto` line
+ * (base64 `content`), written BEFORE the BoStructDto as a stand export does; the import uploads it as a new
+ * file (MYBPM-IMPORTS.md §0.5b «Print forms»). The last part is the output type, PDF by default.
+ */
+const printForms: { name: string; printFormCode: string; fileId: string; fileType: string; orderIndex: number; newId: string }[] = [];
+const printFormFiles: object[] = [];
+for (let i = 0; i < Bun.argv.length; i++) {
+  if (Bun.argv[i] !== "--print-form") continue;
+  const [name, code, path, type = "PDF"] = (Bun.argv[i + 1] ?? "").split(":");
+  if (!name || !code || !path?.endsWith(".docx")) throw new Error(`--print-form expects "Имя:код:file.docx[:PDF|DOCX]", got ${JSON.stringify(Bun.argv[i + 1])}`);
+  if (type !== "PDF" && type !== "DOCX") throw new Error(`--print-form type must be PDF or DOCX, got ${type}`);
+  const bytes = new Uint8Array(await Bun.file(path).arrayBuffer());
+  const fileId = createHash("sha256").update(`${BO_CODE}.pf.${code}`).digest("hex").slice(0, 24).toUpperCase();
+  printForms.push({ name, printFormCode: code, fileId, fileType: type, orderIndex: printForms.length, newId: id(`${BO_CODE}.pf.${code}`) });
+  printFormFiles.push({
+    "@class": `${PKG}.ExportStructFileDto`, fileId, name: path.split("/").pop(),
+    content: bytes.toBase64(),
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+}
+
 /** WIDGETS — one map per family; the key is the widget's code, which the stand shows in scripts. */
 const widgetMaps: Record<string, Record<string, object>> = {
   signatures: {}, buttons: {}, iframes: {}, captcha: {}, currentDates: {}, currentUser: {},
@@ -936,6 +963,36 @@ function currentUserSettings(spec?: string): { viewType: string; fieldRefs: Reco
   const codes = cols.split(",").map((c) => c.trim()).filter(Boolean);
   return { viewType, fieldRefs: Object.fromEntries(codes.map((c, i) => [c, { toShow: true, orderIndex: i }])) };
 }
+/** SIGNATURE: "Tekst,Otvet;phone=Telefon;pf=Dogovor;mass=Regiony" → the four maps + signingPhoneCode. */
+function signatureSettings(spec?: string): object {
+  const out: any = { fieldCodes: {}, massFieldCodes: {}, printFormCodes: {}, massPrintFormCodes: {} };
+  if (!spec) return out;
+  const own = (code: string, what: string) => {
+    const f: any = dynamicFields[code];
+    if (!f) throw new Error(`SIGNATURE ${what} «${code}» is not a field code of this BO`);
+    return f;
+  };
+  for (const part of spec.split(";").map((x) => x.trim()).filter(Boolean)) {
+    const eq = part.indexOf("=");
+    const key = eq < 0 ? "fields" : part.slice(0, eq);
+    const vals = (eq < 0 ? part : part.slice(eq + 1)).split(",").map((x) => x.trim()).filter(Boolean);
+    if (key === "fields") for (const c of vals) { own(c, "field"); out.fieldCodes[c] = { ownerFieldArchetype: "DYNAMIC", fieldCodes: [] }; }
+    else if (key === "mass") for (const c of vals) {
+      if (own(c, "mass field").type !== "BO") throw new Error(`SIGNATURE mass field «${c}» must be a BO field`);
+      out.massFieldCodes[c] = { ownerFieldArchetype: "DYNAMIC", fieldCodes: [] };
+    }
+    else if (key === "phone") {
+      if (own(vals[0], "phone").type !== "INPUT_PHONE") throw new Error(`SIGNATURE phone «${vals[0]}» must be an INPUT_PHONE field`);
+      out.signingPhoneCode = vals[0];
+    }
+    else if (key === "pf") for (const c of vals) {
+      if (!printForms.some((f) => f.printFormCode === c)) throw new Error(`SIGNATURE pf «${c}» is not a --print-form code`);
+      out.printFormCodes[c] = 1;
+    }
+    else throw new Error(`SIGNATURE settings: unknown key «${key}» (fields / phone= / pf= / mass=)`);
+  }
+  return out;
+}
 let widgetY = nativeY;
 for (const w of widgets) {
   const map = WIDGET_MAP[w.type];
@@ -947,10 +1004,10 @@ for (const w of widgets) {
     code: w.code,
     type: w.type,
     newId: id(`${BO_CODE}.widget.${w.code}`),
-    ...(w.url && map !== "currentUser" ? { url: w.url } : {}),
+    ...(w.url && map !== "currentUser" && map !== "signatures" ? { url: w.url } : {}),
     ...(map === "currentDates" ? { widgetType: w.type } : {}),
     ...(map === "currentUser" ? currentUserSettings(w.url) : {}),
-    ...(map === "signatures" ? { fieldCodes: {}, massFieldCodes: {}, printFormCodes: {}, massPrintFormCodes: {} } : {}),
+    ...(map === "signatures" ? signatureSettings(w.url) : {}),
     ...(map === "buttons" ? { fieldCodes: {} } : {}),
   };
 }
@@ -984,6 +1041,9 @@ for (const k of kanbans) {
   kanbanCardTemplates[columnCode] = { kanbanFields };
 }
 
+// a print form's template precedes the BO, as in a stand export
+lines.push(...printFormFiles);
+
 lines.push({
   "@class": `${PKG}.BoStructDto`,
   oldId: id(`bo.${BO_CODE}`),
@@ -994,7 +1054,7 @@ lines.push({
   instanceViewType: "FORM",
   bos: sources,
   boTabs: {},
-  printForms: [],
+  printForms,
   name: { rus: BO_NAME },
   recordName: { rus: BO_NAME },
   staticValue: {},
