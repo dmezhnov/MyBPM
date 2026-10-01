@@ -231,8 +231,10 @@ constructor's BO list, and the id sits in the URL `…/business-objects/editing/
 ### 0.4 Line 2 — the business object
 
 Copy this whole object, minify it to one line, and change only the six `←` marked places. Every other
-key must be present with exactly this value — the importer MERGES, so a missing key silently keeps
-whatever the stand already had, and an unknown key is a guess that can break the analysis (§8).
+key must be present with exactly this value — a missing key is NOT «keep what the stand has»: a re-import
+without `isTouchEnabled`, `hideAddButtonFromRegistry`, `instanceViewType` and `description` RESET them to
+`true` / `false` / `FORM` / `null` `[C]` (2026-10-01, §2 «BO header settings»), and an unknown key is a guess
+that can break the analysis (§8).
 
 **The `←` notes in the blocks below are annotations, NOT part of the file.** Strip each `←` and
 everything after it on that line — the shipped line must be pure minified JSON.
@@ -245,12 +247,12 @@ everything after it on that line — the shipped line must be pure minified JSON
   "category": "BO",                         ← BO | BO_DICTIONARY | BO_PANEL | BO_COMPOSITE | BO_PROCESS (0.9)
   "kind": "GENERAL",
   "boGroupOldId": "3H84o9iM@G4jaOL3",       ← = oldId of line 1, character for character
-  "instanceViewType": "FORM",
+  "instanceViewType": "FORM",               ← FORM = a record opens as a dialog, TAB = as a page tab
   "bos": [],
   "boTabs": {},
   "printForms": [],
   "name":       {"rus": "Демо из кукбука"}, ← display name
-  "recordName": {"rus": "Демо из кукбука"}, ← same text
+  "recordName": {"rus": "Демо из кукбука"}, ← same text (shown nowhere; the constructor keeps it = name)
   "staticValue": {},
   "description": "",
   "orderIndex": 47480000,
@@ -263,6 +265,8 @@ everything after it on that line — the shipped line must be pure minified JSON
   "isGroupingEnabled": false,
   "isCodeReadonly": false,
   "chosenAccessRight": false,
+  "isTouchEnabled": true,                  ← «Помечать новые (непросмотренные) записи»
+  "hideAddButtonFromRegistry": false,      ← true = no create button in the registry
   "kanbanCardTemplates": {},                ← leave empty UNLESS the BO needs a kanban — then 0.5c
   "timelineTemplates": {},
   "calendarCardTemplates": {"header":{},"content":{},"footer":{},"headerDelFieldCodes":{},"contentFieldCodes":{},"footerDelFieldCodes":{}},
@@ -1363,7 +1367,7 @@ does not block applying, and `load-import-errors` can come back empty while the 
 A `BoStructDto` of 4.24.25.632 has these keys: `oldId code category kind boGroupOldId instanceViewType
 bos boTabs printForms name recordName staticValue description orderIndex dynamicFields nativeFields
 dictionaryFields actual isCalendarEnabled isMapEnabled isGroupingEnabled isCodeReadonly
-chosenAccessRight kanbanCardTemplates timelineTemplates calendarCardTemplates signatures buttons
+chosenAccessRight isTouchEnabled hideAddButtonFromRegistry kanbanCardTemplates timelineTemplates calendarCardTemplates signatures buttons
 iframes currentDates captcha currentUser`. The last six are the widget maps (§0.5b), `nativeFields`
 holds the system fields (§0.5a). A key whose value is `null` on the stand is left out: a panel built in
 the constructor has no `instanceViewType` at all `[C]` (two stand exports of panels, 2026-09-18 and
@@ -1372,6 +1376,29 @@ default sort **`sortFieldCode`** (a field CODE) + **`sortFieldOrder`** (`ASC`|`D
 sort is unset. They travel both ways `[C]` (2026-09-30: `Chislo DESC` set through the API came out in the
 export; an archive with `Data ASC` set the stand's `load-bo-table-sort` to that field and order). The same
 setting orders a nested table of this BO on another card (`MYBPM-UI-API.md` §5i).
+
+### BO header settings in the archive `[C]` (2026-10-01, `<stand>`)
+
+Six BO-level keys of the header and its gear popover, proven on a probe set over the API, exported, imported
+as a copy under a new code, then re-imported with every value flipped:
+
+| key | values | what it does |
+|---|---|---|
+| `name` | `{rus: …}` | the BO's name (sidebar, registry title, the record name when no field has `titleToShow`) |
+| `recordName` | `{rus: …}` | stored and exported, shown NOWHERE — not even as the fallback record name; the constructor's name input overwrites it with the name |
+| `description` | string | the header text under the name |
+| `instanceViewType` | `FORM` \| `TAB` | a record opens as a dialog / as a page tab |
+| `isTouchEnabled` | boolean, new BO `true` | «Помечать новые (непросмотренные) записи»; gates the unread-counter option of a menu item `[I]` |
+| `hideAddButtonFromRegistry` | boolean, new BO `false` | the registry has no create button (Excel import and the API still create) |
+
+- All six round-trip: the export writes them, a copy import set them, a re-import of the same `oldId` with
+  other values UPDATED all of them.
+- **A re-import WITHOUT a key resets it** — `isTouchEnabled` → `true`, `hideAddButtonFromRegistry` →
+  `false`, `instanceViewType` → `FORM`, `description` → `null`, although the stand had set
+  `false`/`true`/`TAB`/text a minute before. Ship every key of §0.4 on every re-import.
+- `code`: a re-import of the same `oldId` under another code renames the BO's code (`MYBPM-UI-API.md` «Checking the result of a
+  structure import», «Fields are matched by newId») — without the stand's usage analysis, so scripts naming the old code break.
+- Stand-side setting of each key: `MYBPM-UI-API.md` §5j.
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
@@ -1688,7 +1715,7 @@ flagged field on a BO without `boTabs.HISTORY`.
 (the title of its card, `load-bo-components` → `name`) is the DISPLAY values of the fields with
 `titleToShow: true`, joined by single spaces in `titleOrderIndex` order (0, 1, …); an empty field is skipped
 («вкладка снова 5» while the phone was empty, then «+7 (701) 123-45-67 вкладка снова 5» — the phone formatted as on
-the card, a `FULL_DATE` as «01.10.2026 14:31»). No field flagged → the name is the BO's `recordName`. Any field
+the card, a `FULL_DATE` as «01.10.2026 14:31»). No field flagged → the name is the BO's `name` — NOT its `recordName` `[C]` (§2 «BO header settings»). Any field
 except `TAB_GROUP` and widgets can be a part, a system field (`CREATED_AT`) included. Constructor: the
 record-name field chooser in the form header. In the archive both keys sit on the field in `dynamicFields`
 (the exporter omits `titleOrderIndex` on fields that are not flagged); a copy import brought the flags and the
