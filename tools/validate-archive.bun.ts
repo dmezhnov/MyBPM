@@ -56,7 +56,9 @@ const BO_KEYS = ["@class", "oldId", "code", "category", "kind", "boGroupOldId", 
 // keys newer builds write; older exports lack them. A re-import WITHOUT them resets the stand to the default
 // (verified on core2 2026-10-01: isTouchEnabled → true, hideAddButtonFromRegistry → false)
 const BO_KEYS_NEW = ["isTouchEnabled", "hideAddButtonFromRegistry"];
-const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder"];
+const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder", "messengerFieldCode", "whatsAppFieldCode"];
+// the record card's rail tabs (MYBPM-IMPORTS.md §2 «BO card tabs»)
+const BO_TAB_TYPES = new Set(["CHAT", "PEOPLE", "FILES", "HISTORY", "PRINT_FORM", "TELEGRAM", "WHATSAPP"]);
 
 // §0.5 — the full key set of a dynamic field
 const FIELD_KEYS = ["code", "newId", "archetype", "kind", "boRefStruct", "label", "staticValue",
@@ -330,6 +332,27 @@ for (const bo of bos) {
     add("WARN", "0.4", `${tag}: key "${k}" missing — a re-import of an existing BO resets it to the default`);
   const unknownBo = Object.keys(bo).filter(k => ![...BO_KEYS, ...BO_KEYS_NEW, ...BO_KEYS_OPTIONAL].includes(k));
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
+
+  // §2 «BO card tabs»: boTabs is a map TYPE → orderIndex; a re-import only adds and renumbers, never removes
+  if (bo.boTabs !== undefined) {
+    if (!bo.boTabs || typeof bo.boTabs !== "object" || Array.isArray(bo.boTabs))
+      add("ERROR", "2", `${tag}: boTabs must be a map {"<TYPE>": <orderIndex>}, got ${JSON.stringify(bo.boTabs)}`);
+    else {
+      const nums = new Map<number, string>();
+      for (const [type, n] of Object.entries(bo.boTabs)) {
+        if (!BO_TAB_TYPES.has(type)) add("ERROR", "2", `${tag}: boTabs type "${type}" is not one of ${[...BO_TAB_TYPES].join("/")}`);
+        if (typeof n !== "number") add("ERROR", "2", `${tag}: boTabs.${type} = ${JSON.stringify(n)}, expected an orderIndex number`);
+        else if (nums.has(n)) add("WARN", "2", `${tag}: boTabs.${type} and boTabs.${nums.get(n)} share orderIndex ${n}`);
+        else nums.set(n, type);
+        if (type === "TELEGRAM" || type === "WHATSAPP")
+          add("WARN", "2", `${tag}: boTabs.${type} imports unchecked and cannot be unticked in the constructor unless the company messenger lists this BO`);
+      }
+    }
+  }
+  // §2 «BO card tabs»: the Telegram / WhatsApp link field, by field code; a re-import without them keeps the stand's
+  for (const k of ["messengerFieldCode", "whatsAppFieldCode"])
+    if (bo[k] != null && !(bo.dynamicFields && bo[k] in bo.dynamicFields))
+      add("WARN", "2", `${tag}: ${k} "${bo[k]}" is no dynamicFields code of this BO`);
 
   if (!CATEGORIES.has(bo.category)) add("FATAL", "0.9", `${tag}: category "${bo.category}" is not one of ${[...CATEGORIES].join("/")}`);
   if (groups.length && !groups.some(g => g.oldId === bo.boGroupOldId))
