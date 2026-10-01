@@ -563,6 +563,20 @@ for (const bo of bos) {
       if (!v.gridPosition) add("WARN", "0.5b", `${ft}: widget without gridPosition`);
       if (v.type === "BUTTON" && v.url === undefined) add("WARN", "0.5b", `${ft}: BUTTON without url`);
       if (v.type === "IFRAME" && v.url === undefined) add("WARN", "0.5b", `${ft}: IFRAME without url`);
+      if (v.type === "BUTTON" && typeof v.url === "string" && v.url.trim()) {
+        // what each url does on the record card was clicked through on core2, 2026-10-01
+        if (/^(client\/)?(save-current-boi|create-boi\/)/.test(v.url))
+          add("WARN", "0.5b", `${ft}: url "${v.url}" does nothing on the record card — leave url empty and put the logic into the button's field script`);
+        else if (!v.url.startsWith("call/plugin/"))
+          add("WARN", "0.5b", `${ft}: url "${v.url}" does nothing — a button never navigates; only empty (script) or call/plugin/<server plugin> act`);
+      }
+      if (v.type === "BUTTON" && v.fieldCodes && typeof v.fieldCodes === "object") {
+        const known = new Set([...Object.keys(bo.dynamicFields ?? {}), ...Object.keys(bo.nativeFields ?? {})]);
+        for (const c of Object.keys(v.fieldCodes))
+          if (!known.has(c)) add("ERROR", "0.5b", `${ft}: fieldCodes names "${c}", no field of this BO has that code`);
+      }
+      if (v.type === "IFRAME" && typeof v.url === "string" && /^http:/i.test(v.url))
+        add("ERROR", "0.5b", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
     }
   }
 
