@@ -178,7 +178,7 @@ function fieldFlags(): FieldSpec[] {
       return { path: kv.slice(0, eq).split("."), value };
     });
     flags = flags.filter(f => !f.includes("="));
-    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "camera", "track"].includes(f));
+    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "tile", "camera", "track"].includes(f));
     if (unknown.length) throw new Error(`unknown --field flag(s): ${unknown.join(", ")}`);
     out.push({ label: raw.slice(0, at), type, refBoId, refBoCode, options, flags, sets });
   }
@@ -443,7 +443,7 @@ function field(o: {
   steps?: string[];
   /** «Вкладки» (TAB_GROUP) — the tab labels, in order. */
   tabs?: string[];
-  /** «Загрузка файла» — SINGLE / MULTIPLE, and `params.contentType` ALL / FOR_CAMERA. */
+  /** «Загрузка файла» — `params.viewType` SINGLE / MULTIPLE / TILE, and `params.contentType` ALL / FOR_CAMERA (mobile app only). */
   viewType?: string;
   params?: Record<string, unknown>;
 }) {
@@ -726,8 +726,14 @@ if (isComposite) {
       questionnaire: f.type === "QUESTIONNAIRE"
         ? { columns: hash.filter(v => !v.startsWith("^")), rows: hash.filter(v => v.startsWith("^")).map(v => v.slice(1)) }
         : undefined,
-      viewType: f.type === "FILE_UPLOAD" ? (f.flags.includes("multiple") ? "MULTIPLE" : "SINGLE") : undefined,
-      params: f.type === "FILE_UPLOAD" ? { contentType: f.flags.includes("camera") ? "FOR_CAMERA" : "ALL" } : undefined,
+      viewType: f.type === "FILE_UPLOAD" ? (f.flags.includes("multiple") || f.flags.includes("tile") ? "MULTIPLE" : "SINGLE") : undefined,
+      // the display mode the card reads is params.viewType; the top-level one is ignored (MYBPM-UI-API.md §5i)
+      params: f.type === "FILE_UPLOAD"
+        ? {
+          viewType: f.flags.includes("tile") ? "TILE" : f.flags.includes("multiple") ? "MULTIPLE" : "SINGLE",
+          contentType: f.flags.includes("camera") ? "FOR_CAMERA" : "ALL",
+        }
+        : undefined,
       isRequired: f.flags.includes("req"),
       isUnique: f.flags.includes("uniq"),
       isReadonly: f.flags.includes("readonly"),
