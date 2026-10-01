@@ -521,6 +521,27 @@ keyed by the native type, which is also the field's code and its `nativeFieldId`
 `generate-business-form-field-by-native` answers with an empty body `[C]`. Each system field may be placed
 **once** per BO.
 
+**What travels for a system field** `[C]` (2026-10-01, `<stand>`; export of a BO with all six natives,
+then a copy imported as a new BO with changed settings):
+
+| key in `nativeFields.<TYPE>` | export writes it | import applies it |
+|---|---|---|
+| `label` (rename), `hideLabel` | yes | yes |
+| `viewType` `TABLE`/`SINGLE` + `boRefStruct.fieldRefs.<code of a «Пользователи» field>.toShow` (`CREATED_BY`, `LAST_MODIFIED_BY` only) | yes, by field CODE (`surname`, `name`, `adGuid`, `Position__Object_`…) | yes |
+| `chosenAccessRight` | yes | yes — but see the lock |
+| `needUploadToOutTable` | **no** (`false` even when the stand has `true`) | **no** |
+| `needLoadFromInTables`, `inMigrationTimezoneMinutes`, `isRequired` | — (the stand never stores them on a native) | no |
+| `isReadonly` | — | irrelevant: a native is always read-only |
+
+- **The lock does NOT travel.** The export puts it into the `AccessStructDto` under
+  `fieldAccessStructMap.<NATIVE_TYPE>`; the import ignores that entry (also tried keyed by the native's
+  `newId` and by `N-<TYPE>` — nothing), while a dynamic field's lock in the same archive is applied. Since
+  `chosenAccessRight: true` IS applied, the imported BO shows an orange lock over rights that are «всем».
+  So leave `chosenAccessRight: false` on natives in an archive and set native rights over the API after the
+  import (`MYBPM-UI-API.md` §5i «System fields (natives) — settings»).
+- The constructor offers no settings on `CREATED_AT`, `LAST_MODIFIED_AT`, `OPEN_COUNT`,
+  `IN_MIGRATION_UPDATED_AT` beyond the label; `CREATED_BY` / `LAST_MODIFIED_BY` add the view and columns.
+
 ### 0.5b Widgets — six maps of their own
 
 «Виджеты» are neither `dynamicFields` nor `nativeFields`: each family has its own map in `BoStructDto`,
