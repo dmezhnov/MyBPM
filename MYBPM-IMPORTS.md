@@ -585,6 +585,40 @@ through `save-bo-scripts`, run by a real click, 2026-09-28. In an archive it is
 `fieldScripts: {"<button code>": {"afterChangeScriptId": …}}` (§5d), keyed like any field — `[I]`, not
 yet imported.
 
+**CURRENT_USER («Текущий пользователь») round-trips through an archive** `[C]` (2026-10-01, core2 / NIT).
+The widget was set up in the constructor and over the API, exported, re-imported under a new BO code
+with every setting changed, and read back through `v2/widget-current-user` and `load-business-object-by-id`.
+Everything came back: the code, `viewType`, the columns and the lock.
+
+```text
+"currentUser": {"Tek_polz": {"label": {"rus": "Текущий пользователь"},
+  "gridPosition": {"x":0,"y":38,"cols":15,"rows":6},
+  "code": "Tek_polz", "type": "CURRENT_USER", "newId": "<16 chars>",
+  "viewType": "SINGLE",
+  "fieldRefs": {"surname": {"toShow": true, "orderIndex": 0},
+                "email":   {"toShow": true, "orderIndex": 1},
+                "name":    {"toShow": false, "orderIndex": 2147483647}, …}}}
+```
+
+- **What the widget is**: on a record card it shows the person who OPENS the card, never the author. A
+  record stores no value for it. To record who created or changed a record, use the system fields
+  `CREATED_BY` / `LAST_MODIFIED_BY` (§0.5a).
+- `viewType` is `TABLE` or `SINGLE`, nothing else.
+- `fieldRefs` is keyed by the CODES of the «Пользователи» (Person) BO's fields. The export lists all of
+  them; hidden ones have `toShow: false` and `orderIndex: 2147483647`. On the stand used,
+  «Фамилия» = `surname`, «Имя» = `name`, «Почта» = `email`, «Роль» = `accessLevel`, «Должность» =
+  `position`. Codes may differ on another stand: read them from an export of that stand.
+- **`fieldRefs: {}` and no `viewType` are safe**: the imported widget came out `TABLE` with
+  «Фамилия» + «Имя» shown, the server's own default. **A partial map is enough too**: a generated
+  `{"surname": {"toShow": true, "orderIndex": 0}, "accessLevel": {"toShow": true, "orderIndex": 1}}`
+  imported as exactly «Фамилия», «Роль», and the 31 unlisted fields hidden.
+  `tools/make-probe-archive.bun.ts --widget "CURRENT_USER:<label>:<code>:SINGLE/surname,email"` writes it
+  that way. Without the 4th part it writes `TABLE` + `{}`.
+- The widget's **lock** travels as a normal `fieldAccessStructMap.<widget code>` entry of the
+  `AccessStructDto` (§7). Shipping an `AccessStructDto` replaces the BO's rights (§0.10 rule 10), so do it
+  only for a BO the archive creates, or when asked.
+- One CURRENT_USER per BO.
+
 ### 0.5c Kanban — the card template travels in the archive `[C]` (2026-09-19, `<stand>`)
 
 A kanban is TWO things, and since 2026-09-22 the archive can carry BOTH:
@@ -849,6 +883,15 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
   - everything else is simply unique inside the archive.
 - Field ids use `newId` (not `oldId`); the BO and the group use `oldId` (the group also carries a
   `newId`, any unique value).
+- **A re-import matches the BO by `oldId` and its fields by `newId`, NOT by code** `[C]` (2026-10-01,
+  core2). An archive whose BO `oldId` was already imported, but whose field `newId`s were all fresh, was
+  analysed with no error and no conflict, and applied. It **added** nine fields to that BO, next to the
+  nine it already had, with the **same codes**: two «Текст» with code `Tekst`, two buttons `Plagin`, and so
+  on. It also **rewrote the BO's `code` and name** to the archive's. Each imported field takes its `newId` as
+  its real `fieldId`. So: keep a field's `newId` fixed between imports of the same BO (derive it from a seed,
+  as above). When you copy an archive to make a NEW BO, change the BO's `oldId` as well as its `code`.
+  Change the field `newId`s too: what happens when a new BO's `newId` equals a field id of ANOTHER BO is `[U]`.
+  A stand export is safe to copy this way, since its ids are freshly minted (§2).
 
 ### 0.8 Layout in one rule
 
