@@ -41,6 +41,9 @@
  *     settings»): records open as a page tab (instanceViewType TAB), no create button in the registry
  *     (hideAddButtonFromRegistry), «Помечать новые» off (isTouchEnabled false); both booleans are always written,
  *     since a re-import without them resets the stand to the defaults
+ *   --bo-order <n>                                            — the BO's place in its sidebar group (orderIndex, default
+ *     47480000 = the §0.4 template); a re-import MOVES an existing BO to the archive's group and this place, and BOs
+ *     sharing one value cannot be reordered between each other by drag (MYBPM-IMPORTS.md §2 «BO place in the sidebar»)
  *   --history                                                 — the record card's «История» tab (boTabs.HISTORY);
  *     a field is logged only with it AND "!isHistoryTracking=true" (MYBPM-IMPORTS.md §3 «Field flags»)
  *   --tabs CHAT,PEOPLE,FILES,PRINT_FORM                       — the card's rail tabs in that order (boTabs, numbered
@@ -590,6 +593,8 @@ const GROUP_NAME = flag("group-name", "");
 const GROUP_ORDER = Number(flag("group-order", ""));
 if (!GROUP_CODE || !GROUP_NAME || !Number.isFinite(GROUP_ORDER) || !flag("group-order", ""))
   throw new Error("--group-code, --group-name and --group-order are all required: copy code, name and orderIndex of an existing group from load-bo-groups (the import overwrites name and orderIndex), or choose them for a new group");
+const BO_ORDER = Number(flag("bo-order", "47480000"));
+if (!Number.isFinite(BO_ORDER)) throw new Error("--bo-order must be a number");
 const groupOldId = id(`group.${GROUP_CODE}`);
 
 const lines: object[] = [];
@@ -1107,7 +1112,7 @@ lines.push({
   recordName: { rus: BO_NAME },
   staticValue: {},
   description: "",
-  orderIndex: 47480000.0,
+  orderIndex: BO_ORDER,
   dynamicFields,
   nativeFields,
   dictionaryFields: isDictionary ? ["CODE", "LABEL"] : [],

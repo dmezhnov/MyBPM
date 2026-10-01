@@ -330,6 +330,12 @@ for (const bo of bos) {
   }
   for (const k of BO_KEYS_NEW) if (!(k in bo))
     add("WARN", "0.4", `${tag}: key "${k}" missing — a re-import of an existing BO resets it to the default`);
+  // §2 «BO place in the sidebar»: orderIndex is the BO's place in its group; null/missing lands it on top,
+  // and the template value is shared by every archive BO, so a drag between two of them is lost on reload
+  if ("orderIndex" in bo && (bo.orderIndex === null || typeof bo.orderIndex !== "number"))
+    add("ERROR", "0.4", `${tag}: orderIndex = ${JSON.stringify(bo.orderIndex)} — the BO lands with a null place on top of its group`);
+  else if (bo.orderIndex === 47480000)
+    add("WARN", "2", `${tag}: orderIndex 47480000 is the template value every archive BO shares — the user cannot drag this BO between two others with it; give it its own place`);
   const unknownBo = Object.keys(bo).filter(k => ![...BO_KEYS, ...BO_KEYS_NEW, ...BO_KEYS_OPTIONAL].includes(k));
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
