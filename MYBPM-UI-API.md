@@ -1151,6 +1151,10 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 - **The stand keeps the archive's `oldId` as the BO id** `[C]` — the probe BO generated with
   `oldId: "Zyvu00@DV5VPL69g"` got exactly that id in the registry URL. So deterministic generator ids are
   also the stand's ids, and a re-import of the same archive addresses the same BO.
+- **Fields are matched by `newId`, not by code** `[C]` (2026-10-01). A second archive with the same BO
+  `oldId` but fresh field `newId`s passed the analysis with no error and no conflict. It then ADDED a second
+  copy of every field to that BO, with the same codes, and rewrote the BO's code and name. To copy a BO,
+  change its `oldId` and the field `newId`s, not only its `code` (`MYBPM-IMPORTS.md` §0.7).
 - What an imported BO looks like straight away `[C]`: registry columns = the fields with
   `tableColToShow:true`, in `tableColOrderIndex` order; «Добавить» opens the form with the archive's
   `gridPosition` widths honoured (15 cols = full width, 5 cols ≈ a third); the platform appends a colon to
@@ -2653,7 +2657,7 @@ a call that puts them into the body answers 200 and writes nothing:
 | IFRAME | `v2/iframe` | `save-iframe-code {boId, iframeId, code}`, `save-iframe-url {…, url}` | `load-iframe-code` / `load-iframe-url` |
 | CAPTCHA | `v2/captcha` | `save-captcha-code {boId, captchaId, code}` | `load-captcha-code` |
 | CURRENT_* (date family) | `v2/current-date` | `save-current-date-code {boId, currentDateId, code}` | `load-current-date-code` |
-| CURRENT_USER | `v2/widget-current-user` | `save-current-user-code {boId, currentUserId, code}` | `load-current-user-code` |
+| CURRENT_USER | `v2/widget-current-user` | `save-current-user-code {boId, currentUserId, code}` (asynchronous, ~3 s), `save-access-group {boId, currentUserFieldId}` + the group as body | `load-current-user-code` / `load-access-group` / `load-bo-id` (→ the «Пользователи» BO id) |
 
 **An IFRAME shows one fixed url per BO, and the record is NOT passed to it** `[C]` (bundle, 2026-09-28,
 chunk `6621` `DffIframeComponent`). The card calls `load-iframe-url {boId, iframeId}` and puts the answer
@@ -2713,6 +2717,39 @@ is read by its PREFIX:
   ids that `load-button-field-ids` returns `[C]`.
 - A button has its own lock: `v2/button/load-access-group {boId, buttonId}` answers
   `{all, view, edit, create, …}` with `accessForAll: true` by default. `save-access-group` was not tried `[U]`.
+
+#### The CURRENT_USER widget («Текущий пользователь») — settings `[C]` (2026-10-01, core2 / NIT)
+
+Probe «Проба виджетов 2026-10-01». The widget was added over the API, set up in the constructor, over
+the API and by an archive, then checked on a record card.
+
+- **What it shows: the person who OPENS the card, not the record's author.** The card component
+  (`app-widget-current-user`, chunk `950`) asks `v2/widget-current-user/load-bo-id` for the «Пользователи»
+  BO and shows `[authInfo.personId]`, read-only, through the ordinary nested-record selector. **A record
+  stores nothing for it**: `v2/load-boi-values` of a saved record has no entry for the widget's
+  `fieldId`. Do not use it to record who created or changed a record. Use the natives `CREATED_BY` /
+  `LAST_MODIFIED_BY` for that.
+- **The DTO** from `generate-business-form-widget {widgetType:"CURRENT_USER"}` is `type:"BO"`,
+  `boFieldArchetype:"WIDGET"`, `widgetType:"CURRENT_USER"`, `refBoId` = «Пользователи», `isReadonly:true`,
+  `viewType:"TABLE"`, and `boFieldRefs` = every field of «Пользователи» (33 on that stand) with
+  `toShow:true` only on «Фамилия» (orderIndex 0) and «Имя» (1). One per BO: the palette removes it
+  once it is placed. The server gives it a code from the label at the first save (`Tekuschiyi_polzovatel`).
+- **Its settings are the three below plus the lock. There is no field script and no «Поведение» tab:**
+
+| setting | constructor (gear) | API |
+|---|---|---|
+| view | «Вид отображения»: «Табличный» / «Одиночный» (`TABLE` / `SINGLE` only) | `viewType` on the field DTO, `save-business-object-portion` (§5b), mirrored in `editedFields` |
+| columns | «Выбрать поля для отображения» (checkbox list with order numbers). **Shown only for «Одиночный»**; in «Табличный» columns are switched in the table body | `boFieldRefs[].toShow` + `orderIndex` on the DTO, same save |
+| code | shown as read-only text, **no change-code control** in this build | `v2/widget-current-user/save-current-user-code {boId, currentUserId, code}` (params). **Asynchronous** like `save-iframe-url`: an immediate `load-current-user-code` returns the OLD code, a read 3 s later the new one. `load-business-object-by-id` keeps `code: null` |
+| lock | the lock icon on the row | `v2/widget-current-user/load-access-group` / `save-access-group {boId, currentUserFieldId}` (params) + the access group as the body. Default `accessForAll: true` everywhere |
+
+- **Switching to «Одиночный» in the constructor immediately calls**
+  `v2/business-object-instance/remove-all-for-single-view-type {boId, fieldId}`. That is the call that
+  trims existing records' values down to one. For this widget there are no stored values, so it is harmless.
+  The UI save that follows sends the DTO with `viewType:"SINGLE"` and the ticked `boFieldRefs`.
+- All four survive an export and an import (`MYBPM-IMPORTS.md` §0.5b, «CURRENT_USER round-trips»):
+  `currentUser.<code>` carries `viewType` and `fieldRefs` keyed by the «Пользователи» field CODES, and the
+  lock is a normal `fieldAccessStructMap.<widget code>` entry of the `AccessStructDto`.
 
 #### A nested table (`type:"BO"`, `viewType:"TABLE"`) on a record card `[C]` (2026-09-29, core2 / NIT)
 

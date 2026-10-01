@@ -577,7 +577,23 @@ for (const bo of bos) {
       }
       if (v.type === "IFRAME" && typeof v.url === "string" && /^http:/i.test(v.url))
         add("ERROR", "0.5b", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
+      if (v.type === "CURRENT_USER") {
+        // round-tripped on core2 2026-10-01: TABLE/SINGLE only; fieldRefs keyed by «Пользователи» field CODES
+        if (v.viewType !== undefined && v.viewType !== "TABLE" && v.viewType !== "SINGLE")
+          add("ERROR", "0.5b", `${ft}: viewType "${v.viewType}" — CURRENT_USER takes only TABLE or SINGLE`);
+        const refs = v.fieldRefs ?? {};
+        if (typeof refs !== "object" || Array.isArray(refs)) add("ERROR", "0.5b", `${ft}: fieldRefs must be a map {<Person field code>: {toShow, orderIndex}}`);
+        else {
+          for (const [c, r] of Object.entries<any>(refs))
+            if (typeof r?.toShow !== "boolean") add("ERROR", "0.5b", `${ft}: fieldRefs.${c}.toShow must be true/false`);
+          const vals = Object.values<any>(refs);
+          if (vals.length && !vals.some((r) => r?.toShow === true))
+            add("WARN", "0.5b", `${ft}: fieldRefs hides every column — leave it {} for the default «Фамилия» + «Имя»`);
+        }
+      }
     }
+    if (map === "currentUser" && Object.keys(w).length > 1)
+      add("ERROR", "0.5b", `${tag}.${map}: ${Object.keys(w).length} CURRENT_USER widgets — the platform allows one per BO`);
   }
 
   // ------------------------------------------------ per-category (§0.9)

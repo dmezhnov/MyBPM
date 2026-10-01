@@ -196,7 +196,10 @@ function nativeFlags(): string[] {
  * `--widget "TYPE:Метка[:код][:url]"`, repeatable — a WIDGET («Виджеты» in the palette). Each family
  * has its OWN map in the archive: SIGNATURE→`signatures`, BUTTON→`buttons`, IFRAME→`iframes`,
  * CAPTCHA→`captcha`, CURRENT_*→`currentDates`, CURRENT_USER→`currentUser` (MYBPM-IMPORTS.md §3b).
- * `url` is accepted by BUTTON and IFRAME only.
+ * `url` is accepted by BUTTON and IFRAME only. For CURRENT_USER the 4th part is the view and the columns
+ * instead: `SINGLE` / `TABLE`, optionally `/<code>,<code>…` = the CODES of the «Пользователи» fields to
+ * show, in that order (e.g. `CURRENT_USER:Текущий пользователь:cur:SINGLE/surname,email`). Without it the
+ * widget gets `TABLE` + `fieldRefs: {}`, which the stand turns into «Фамилия» + «Имя» (MYBPM-IMPORTS.md §0.5b).
  */
 function widgetFlags(): { type: string; label: string; code: string; url?: string }[] {
   const out: { type: string; label: string; code: string; url?: string }[] = [];
@@ -925,6 +928,14 @@ const WIDGET_MAP: Record<string, string> = {
   CURRENT_DATE: "currentDates", CURRENT_DAY: "currentDates", CURRENT_MONTH: "currentDates",
   CURRENT_DAY_AND_MONTH: "currentDates", CURRENT_YEAR: "currentDates", CURRENT_USER: "currentUser",
 };
+/** CURRENT_USER: "SINGLE/surname,email" → viewType + fieldRefs keyed by «Пользователи» field codes. */
+function currentUserSettings(spec?: string): { viewType: string; fieldRefs: Record<string, object> } {
+  if (!spec) return { viewType: "TABLE", fieldRefs: {} };
+  const [viewType, cols = ""] = spec.split("/");
+  if (viewType !== "TABLE" && viewType !== "SINGLE") throw new Error(`CURRENT_USER view must be TABLE or SINGLE, got ${viewType}`);
+  const codes = cols.split(",").map((c) => c.trim()).filter(Boolean);
+  return { viewType, fieldRefs: Object.fromEntries(codes.map((c, i) => [c, { toShow: true, orderIndex: i }])) };
+}
 let widgetY = nativeY;
 for (const w of widgets) {
   const map = WIDGET_MAP[w.type];
@@ -936,9 +947,9 @@ for (const w of widgets) {
     code: w.code,
     type: w.type,
     newId: id(`${BO_CODE}.widget.${w.code}`),
-    ...(w.url ? { url: w.url } : {}),
+    ...(w.url && map !== "currentUser" ? { url: w.url } : {}),
     ...(map === "currentDates" ? { widgetType: w.type } : {}),
-    ...(map === "currentUser" ? { viewType: "TABLE", fieldRefs: {} } : {}),
+    ...(map === "currentUser" ? currentUserSettings(w.url) : {}),
     ...(map === "signatures" ? { fieldCodes: {}, massFieldCodes: {}, printFormCodes: {}, massPrintFormCodes: {} } : {}),
     ...(map === "buttons" ? { fieldCodes: {} } : {}),
   };
