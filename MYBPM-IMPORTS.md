@@ -531,7 +531,7 @@ keyed by the widget's CODE `[C]` (2026-09-18, exported and re-imported):
 | `SIGNATURE` | ЭЦП / СМС | `signatures` | `fieldCodes`, `massFieldCodes`, `printFormCodes`, `massPrintFormCodes` (all may be `{}`), `signingPhoneCode` — see «SIGNATURE round-trips» below |
 | `BUTTON` | Кнопка | `buttons` | `url`, `fieldCodes` (`{"<field code>": "<archetype>"}`) |
 | `IFRAME` | Блок IFrame | `iframes` | `url` |
-| `CAPTCHA` | Блок captcha | `captcha` | — |
+| `CAPTCHA` | Блок captcha | `captcha` | — (code only; a captcha blocks API saves, see «CAPTCHA round-trips» below) |
 | `CURRENT_DATE` `CURRENT_DAY` `CURRENT_MONTH` `CURRENT_DAY_AND_MONTH` `CURRENT_YEAR` | Текущая дата / день / месяц / день и месяц / год | `currentDates` | `widgetType` repeats the type |
 | `CURRENT_USER` | Текущий пользователь | `currentUser` | `viewType: "TABLE"`, `fieldRefs` |
 
@@ -660,6 +660,31 @@ the phone, the print forms and the lock came back:
 - Generator: `--widget "SIGNATURE:ЭЦП/SMS:Podpis:Tekst,Otvet;phone=Telefon;pf=Dogovor;mass=Regiony"`.
   The 4th part holds the codes of the fields to sign, then optional `phone=`, `pf=` and `mass=`. The
   validator checks every code against the BO.
+
+**CAPTCHA («Блок captcha») round-trips through an archive — and BLOCKS every save that changes a record**
+`[C]` (2026-10-01, core2 / NIT). The widget was added over the API, given a code and a lock, exported,
+re-imported as a copy under a new BO code with the captcha code renamed, and read back through
+`v2/captcha`. The code and the lock came back.
+
+```text
+"captcha": {"Kapcha": {"label": {"rus": "Блок captcha"},
+  "gridPosition": {"x":0,"y":54,"cols":15,"rows":6},
+  "code": "Kapcha", "type": "CAPTCHA", "newId": "<16 chars>"}}
+```
+
+- The entry has **no setting of its own** beyond the code. The map key and `code` are the same code.
+  Without one the server derives `Blok_captcha` from the label.
+- The **lock** (who sees the widget, VIEW only) travels as `fieldAccessStructMap.<captcha code>` of the
+  `AccessStructDto` (§7). «Только участники» exported as `"view": {"denyAll": true, "participants": true, …}`.
+  An `AccessStructDto` replaces the BO's rights (§0.10 rule 10).
+- **The server enforces it.** With a CAPTCHA on the BO, `validate-apply-remove-draft` of a draft that
+  CHANGED a value, or of a NEW record, answers `CaptchaNotVerified` («Капча не верифицирована») until the
+  captcha of that draft is solved on the card. A draft with no changes still saves. The four-call record
+  cycle (`apply-and-remove-draft`) is refused the same way. So **a BO with a
+  captcha cannot take records from the record API (`MYBPM-UI-API.md` §6a) or any headless client**.
+  Whether Block IDE scripts and the xlsx import are blocked too is `[U]`. Put a captcha only on a BO that
+  people fill in by hand.
+- `CAPTCHA` may repeat on a BO (the palette keeps offering it). Height 6 rows.
 
 **Print forms (`printForms`) travel WITH their .docx template** `[C]` (2026-10-01, core2 / NIT). A BO lists
 them as

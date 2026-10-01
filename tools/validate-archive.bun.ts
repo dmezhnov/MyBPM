@@ -594,6 +594,9 @@ for (const bo of bos) {
         if (Object.keys(v.massPrintFormCodes ?? {}).length)
           add("WARN", "0.5b", `${ft}: massPrintFormCodes did NOT survive an import on core2 (2026-10-01) — check it on the stand after applying`);
       }
+      if (v.type === "CAPTCHA")
+        // core2 2026-10-01: both record-API cycles answer CaptchaNotVerified for a changed or new record
+        add("WARN", "0.5b", `${ft}: a CAPTCHA makes the server refuse every save that changes a record until a person solves it — no record API, no headless client`);
       if (v.type === "IFRAME" && typeof v.url === "string" && /^http:/i.test(v.url))
         add("ERROR", "0.5b", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
       if (v.type === "CURRENT_USER") {
