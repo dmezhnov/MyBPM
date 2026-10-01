@@ -1641,6 +1641,21 @@ and its records logged `UPDATE_FIELD` (old → new display value) for the flagge
 `--field "Поле:INPUT_TEXT!isHistoryTracking=true"` plus `--history` (writes `boTabs`); the validator warns about a
 flagged field on a BO without `boTabs.HISTORY`.
 
+**«Название записи» — `titleToShow` + `titleOrderIndex`** `[C]` (2026-10-01, `<stand>`) — the record's NAME
+(the title of its card, `load-bo-components` → `name`) is the DISPLAY values of the fields with
+`titleToShow: true`, joined by single spaces in `titleOrderIndex` order (0, 1, …); an empty field is skipped
+(«вкладка снова 5» while the phone was empty, then «+7 (701) 123-45-67 вкладка снова 5» — the phone formatted as on
+the card, a `FULL_DATE` as «01.10.2026 14:31»). No field flagged → the name is the BO's `recordName`. Any field
+except `TAB_GROUP` and widgets can be a part, a system field (`CREATED_AT`) included. Constructor: the
+record-name field chooser in the form header. In the archive both keys sit on the field in `dynamicFields`
+(the exporter omits `titleOrderIndex` on fields that are not flagged); a copy import brought the flags and the
+order back and its new record was named from them. **A system field is the exception**: the import APPLIES
+`nativeFields.<TYPE>.titleToShow: true` (+ `titleOrderIndex`), but the EXPORT writes `titleToShow: false` and no
+order for it even when it is on — a re-exported archive loses it, so set it in the archive by hand. Changing the
+flags renames the EXISTING records asynchronously (~3 s); editing a record renames it at once. Generator:
+`--field "Номер:INPUT_TEXT!titleToShow=true,titleOrderIndex=0"`; the validator warns about a flag without an
+order, a shared order, and a flag on a `TAB_GROUP`.
+
 ### Platform concepts an archive encodes
 
 - **BO = class, instance (инстанция / запись) = object.** A link/collection field holds instances of
