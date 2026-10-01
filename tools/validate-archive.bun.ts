@@ -441,6 +441,8 @@ for (const bo of bos) {
       const fo = f.fieldOptionsStruct;
       if (!fo) add("ERROR", "0.5", `${ft}: ${type} without fieldOptionsStruct (§5)`);
       else if (fo.optionSource === "FROM_BO") {
+        if (type === "RADIO_BUTTON_GROUP")
+          add("ERROR", "3", `${ft}: a RADIO_BUTTON_GROUP cannot take a dictionary — the import drops it (refBoId null), the card shows no buttons, and the stand's re-export of the field crashes the analysis; use DROPDOWN_SINGLE or a local list (§3 «Единичный выбор»)`);
         if (!fo.dictionaryBoInfo?.code) add("ERROR", "5", `${ft}: FROM_BO without dictionaryBoInfo.code`);
         if (fo.dictionaryBoInfo?.boCategory && fo.dictionaryBoInfo.boCategory !== "BO_DICTIONARY")
           add("ERROR", "5", `${ft}: dictionaryBoInfo.boCategory = ${fo.dictionaryBoInfo.boCategory}, expected BO_DICTIONARY`);
@@ -464,6 +466,14 @@ for (const bo of bos) {
             if (ov.fieldOption.code !== ok) add("ERROR", "5", `${ft}: option key "${ok}" != fieldOption.code "${ov.fieldOption.code}"`);
           }
           id(`${ft}.option ${ok}`, ov.newOptionId);
+        }
+        // the import makes newOptionId the option's id and copies defaultValue verbatim (§3 «Единичный выбор»)
+        if (!f.trackedFieldCode && f.defaultValue != null && f.defaultValue !== "" && !Array.isArray(opts)) {
+          const byId = Object.entries<any>(opts).find(([, ov]) => ov.newOptionId === f.defaultValue);
+          if (!byId) {
+            const byCode = opts[f.defaultValue];
+            add("ERROR", "3", `${ft}: defaultValue "${f.defaultValue}" is no option's newOptionId — the import copies it as is, so the default points at nothing${byCode ? ` (it is an option CODE; write ${byCode.newOptionId})` : " (a stand export writes the SOURCE stand's option id here — replace it with the newOptionId of the option meant)"}`);
+          }
         }
       } else add("ERROR", "5", `${ft}: optionSource "${fo.optionSource}" is neither FROM_BO nor FROM_FIELD`);
     }
