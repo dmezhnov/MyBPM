@@ -2655,7 +2655,7 @@ a call that puts them into the body answers 200 and writes nothing:
 | SIGNATURE | `v2/signature` | `save-signature-code {boId, signatureId, code}` (asynchronous, ~2 s), `save-signature-settings` (BODY, below), `save-access-group {boId, signatureId}` + the group as body (asynchronous) | `load-signature-code` / `load-signature-settings` / `load-access-group` |
 | BUTTON | `v2/button` | `save-button-code {boId, buttonId, code}`, `save-button-url {…, url}`, `save-button-field-ids {…, fieldIds}`, `save-access-group {boId, buttonId}` + the group as body | `load-button-code` / `load-button-url` / `load-button-field-ids` (→ an array of field ids) / `load-access-group` |
 | IFRAME | `v2/iframe` | `save-iframe-code {boId, iframeId, code}`, `save-iframe-url {…, url}` | `load-iframe-code` / `load-iframe-url` |
-| CAPTCHA | `v2/captcha` | `save-captcha-code {boId, captchaId, code}` | `load-captcha-code` |
+| CAPTCHA | `v2/captcha` | `save-captcha-code {boId, captchaId, code}` (asynchronous, ~2 s; the code is NOT validated, a Cyrillic one is stored), `save-access-group {boId, captchaId}` + the group as body | `load-captcha-code` / `load-access-group`; on the card `generate` / `validate` (see «The CAPTCHA widget» below) |
 | CURRENT_* (date family) | `v2/current-date` | `save-current-date-code {boId, currentDateId, code}` | `load-current-date-code` |
 | CURRENT_USER | `v2/widget-current-user` | `save-current-user-code {boId, currentUserId, code}` (asynchronous, ~3 s), `save-access-group {boId, currentUserFieldId}` + the group as body | `load-current-user-code` / `load-access-group` / `load-bo-id` (→ the «Пользователи» BO id) |
 
@@ -2750,6 +2750,41 @@ the API and by an archive, then checked on a record card.
 - All four survive an export and an import (`MYBPM-IMPORTS.md` §0.5b, «CURRENT_USER round-trips»):
   `currentUser.<code>` carries `viewType` and `fieldRefs` keyed by the «Пользователи» field CODES, and the
   lock is a normal `fieldAccessStructMap.<widget code>` entry of the `AccessStructDto`.
+
+#### The CAPTCHA widget («Блок captcha») — settings and what it does to saves `[C]` (2026-10-01, core2 / NIT)
+
+Probe «Проба виджетов 2026-10-01». The widget was added over the API, given a code and a lock over the API,
+opened on a record card, exported, re-imported as a copy and removed again.
+
+- **The DTO** from `generate-business-form-widget {widgetType:"CAPTCHA"}`: `type:null`,
+  `widgetType:"CAPTCHA"`, label «Блок captcha», `code:null` (also after the save, like every widget but
+  BUTTON). The server derives the code `Blok_captcha`. It may repeat on a BO. Height 6 rows.
+- **Settings: the code and the lock, nothing else.** The gear holds only the code (bundle, chunk `2245`:
+  the change-code dialog calls `saveCaptchaCode`). The constructor canvas did not render for DOM reading
+  in this session, so the UI side is read off the bundle only.
+  - code: `v2/captcha/save-captcha-code {boId, captchaId, code}`, **asynchronous**: the old code is
+    still read back 1 s later, the new one after 2 s. **The server does not check the code**: `"Текст"`
+    was stored as is, so check the code yourself against the rules of `MYBPM-IMPORTS.md` §0.6.
+  - lock: `v2/captcha/load-access-group` / `save-access-group {boId, captchaId}` (params) + the access
+    group as the body. Only `view` is used, and the default is `accessForAll: true`.
+- **On the card** (dialog card, chunk `760` `DffCaptchaComponent`): an image, an input and «Подтвердить».
+  It is shown at once. Another card component (chunk `3369`) shows it only after the first value change.
+  - image: `GET /web/v2/captcha/generate?draftId=<draft>` with the `token` header → a PNG of 160×50 with
+    five characters. **It is a GET with a query string**: a POST answers `405 Method Not Allowed`.
+  - check: `POST v2/captcha/validate {draftId, code}` (params) → `true` / `false`. On `false` the card
+    fetches a new image right away. On `true` the button turns into «Подтверждено» and a «Вы прошли
+    верификацию» line appears. The captcha belongs to the DRAFT.
+- **The server enforces it** (`CustomBoCaptchaValidator.validateOnSave`):
+  `v2/instance-form/validate-apply-remove-draft` answers `{"errorType":"CaptchaNotVerified",
+  "message":"… :: Капча не верифицирована"}` for a draft that CHANGED a value and for a NEW record,
+  until the captcha of that draft was validated. A draft with no changes saves. The same was confirmed on
+  the imported copy. **The four-call cycle of §6a is blocked the same way**: `apply-and-remove-draft`
+  answered `CaptchaNotVerified` and no record was created. **So the record API (§6a), the headless form cycle (§6b) and every client that has
+  no human to read the image cannot save records of a BO with a captcha.** Whether scripts and the xlsx
+  import are blocked too is `[U]`. Removing the widget (`deletedFieldIds`) made saving work again at once.
+- The positive path (a solved captcha, then a save) was NOT run: solving the image is left to a person.
+- Archive: `captcha.<code>` + `fieldAccessStructMap.<code>`, both survive (`MYBPM-IMPORTS.md` §0.5b,
+  «CAPTCHA round-trips»).
 
 #### The SIGNATURE widget («ЭЦП / СМС») — settings `[C]` (2026-10-01, core2 / NIT)
 
@@ -2951,6 +2986,8 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
   `…/create-draft-with-boi` wants a real minted `draftId` and a `BoiState`
   (`ALL|ARCHIVED|REMOVED|OFFLINE|DEV`), and `v2/instance-form/validate-apply-remove-draft` is its apply.
   Use the four calls above instead **when you want NO scripts to run** — see §6b.
+  **Neither cycle can save a BO that has a CAPTCHA widget**: both answer `CaptchaNotVerified` (§5i «The
+  CAPTCHA widget») `[C]` (2026-10-01).
   They also skip the field RULES the form cycle enforces — `textCase`, `maxLength` (§5h «Поведение») — and
   hand out no counter number `[C]` (2026-09-30).
 
