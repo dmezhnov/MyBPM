@@ -2360,6 +2360,58 @@ appears when the referenced BO has a field pointing back).
   `linkedCoSettings` becomes a map `{"<source BO code>": {linkedFieldCode, removeType}}`. All three import
   back `[C]`.
 
+#### «С фильтром» and «Зависимость полей» of a `BO` field `[C]` (2026-09-30/10-01, `<stand>`)
+
+Probes, group «Тест»: «Проба зависимости регион / город / филиал / заказ 2026-09-30» (API + constructor UI; the
+city has `Регион` → region and a CHECKBOX «Активен», the branch has `Регион`, the order has `Регион`, `Город`,
+`Филиал`, «Активный город», «Активный город API») and their import «… архив 2026-09-30».
+
+**How the picker gets its records.** Every view (table, chips, single) asks
+`v2/business-object-instance/load-bracket-ref-boi-table` body `{boId, boiId, draftId, fieldId, refBoId, search,
+paging, ordering, boiIds, brackets, state:"ALL"}` (`boId`/`boiId`/`fieldId` = the OWNER record and field). The
+server itself (`brackets: []`) applies the field's own filter and **leaves out the records already chosen in
+this field** (saved value); anything else comes only from `brackets` the client sends.
+
+**«С фильтром» (`bracketFilterId`)** — gear → «Отображение» → «С фильтром: Заполните» → a filter builder over
+the referenced BO's fields. Works in the UI, through the API and after an import `[C]`: the picker of «Активный
+город» (filter «Активен = да») listed only the active cities.
+- Constructor capture (one save of the BO): the portion carries `editedFields: [{fieldId, bracketFilterId}]`, then
+  `v2/bracket-filter/save` body `{id, boId: <REFERENCED BO>, brackets: [{id, parentId:"", parentTreeIds:[],
+  connectionType:"AND", notType:"DEFAULT", dynamicFilters:[{id, fieldId, label, type:"CHECKBOX", value:"true",
+  options:[], businessFields:[], businessObjectId:null, chipsMode:false, numberTo:0, numberFrom:0,
+  selectedBois:[], boiIds:[], isCurrentUser:false, isEmptyValue:false, fromFields:[]}], nativeFilters:[],
+  brackets:[]}]}`. Ids of brackets/filters are client-made 8-character strings.
+- **API route**: `v2/bracket-filter/load-from-field` params `{boId, fieldId}` CREATES the field's filter record
+  (type `BUSINESS_FIELD`) and returns its `id` → `v2/bracket-filter/save` with that `id` → patch the field
+  `{fieldId, bracketFilterId: id}`. **Trap**: `v2/business-objects/load-bo-filter {boId, fieldId}` (what the
+  constructor's builder reads) also returns an `id`, but persists nothing — saving under it answers
+  `NoBracketFilterWithId`, and a patch with that id is stored as `null`.
+- The server does NOT enforce the filter on save: a §6a record cycle stored an inactive city in the field `[C]`.
+- Export/import: `MYBPM-IMPORTS.md` §3 «Reference fields — «С фильтром» and «Зависимость полей» in an archive».
+
+**«Зависимость полей»** — gear → «Поведение» → «Поле зависимого» (`relMainInnerFieldId`, a `BO` field of the
+REFERENCED BO) / «Зависимость от» (`relFieldId`, a `BO` field of THIS BO) / «Внутреннее поле зависимости»
+(`relInnerFieldId`, a field of the `relFieldId` field's BO). Meaning: offer only the records whose main-inner field
+equals the value of «Зависимость от» (or of that value's inner field).
+- Set through the API as a one-field patch `{fieldId, relMainInnerFieldId, relFieldId, relInnerFieldId}` — the
+  constructor then shows it `[C]`. Clearing goes with `needDeleteRel…FieldId: true` (constructor code).
+- The server builds the filter correctly: `v2/business-object-instance/load-field-relation-bracket-filter` params
+  `{boId, boiId, fieldId, draftId}` returns `{brackets:[{dynamicFilters:[{fieldId:<main inner>, type:"BO",
+  boiIds:[<value of «Зависимость от» in the DRAFT>]}]}]}`; with an inner field the `boiIds` are that value's inner
+  field (city «Г3 юг» → region Р2 → only branch «Ф2 юг») `[C]`. Passed as `brackets` to
+  `load-bracket-ref-boi-table` it filters `[C]`.
+- **In the UI it does NOT filter on this build** `[C]` (TABLE and MULTIPLE views, region set and saved): the
+  picker lists every city. The table selector (chunk 1954) fetches the relation filter but its
+  `tap(()=>this.setFieldRelationFilter)` never calls the function; the popover (chunk 9839) calls it, yet the
+  request still went out with `brackets: []`. The client only blocks the picker («relation_field_is_empty»)
+  for the card-style view when «Зависимость от» is empty. Treat the relation as a client defect: if the
+  restriction matters, use a script or a «С фильтром» filter instead.
+- The server does not enforce it on save either: region Р1 + southern city + northern branch saved `[C]`.
+- An archive carries only `relMainInnerFieldCode` — set `relFieldId` / `relInnerFieldId` after the import with
+  the patch above (`MYBPM-IMPORTS.md` §3).
+- Side effect seen on the constructor save: the UI also called `save-business-form-field` and made Имя / Регион /
+  Город registry columns (`tableColToShow`) — mind the Elasticsearch sort defect (§7) for a filled text column.
+
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
 - A required field is marked with a red `*` on the record card; saving with it empty is refused with the
