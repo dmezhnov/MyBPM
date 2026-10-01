@@ -1501,6 +1501,29 @@ re-imported without `orderIndex`.
   none), and «Дублировать» — the stand's clone is a separate call; an archive copy is the archive route to the same
   result (copy the export, new `code` and `name`, fresh `oldId`/`newId`s).
 
+### Company settings that name a BO — none travel `[C]` (2026-10-01, `<stand>`)
+
+Some company-wide «Настройки» pages keep lists of BOs. They are stored per company, keyed by the BO's STAND id, and
+**an archive carries none of them**: a stand export of a BO that is on every list below (exported with structure,
+rights and scripts) has no key for any of them, and a re-import of that BO leaves all of them in place.
+
+| setting | what it does to the BO |
+|---|---|
+| «Физическое удаление» | a rule that deletes the BO's live records for good, N days after creation and/or when a dropdown field changes to a value |
+| «Оффлайн режим» — view / edit lists | the BO is available in the mobile offline mode |
+| «Мессенджеры» → «Выбор бизнес-объекта» (Telegram / WhatsApp) | adds the messenger's tab to the record card (`boTabs`) |
+| «Мессенджеры» → chat registry | the BO becomes the chat registry and **is renamed «Реестр чатов» by the server** |
+
+So after importing BOs that need any of these, set them on the target stand — `MYBPM-UI-API.md` §5n has the calls;
+the BO ids come from the stand after the import (§0.2a). Two side effects cross back into the archive's world:
+- a BO allowed for a messenger gets its TELEGRAM / WHATSAPP tab on the stand, and the next export of that BO carries
+  it in `boTabs` (§2 «BO card tabs») — so a re-import of that export re-adds the tab even where the messenger list
+  does not name the BO;
+- the chat registry rename lands in the next export's `name` / `recordName` / `description`; conversely a re-import
+  of the BO's own archive puts the archive's name back while the BO stays the registry.
+
+«Мобильное приложение» looks like it has a BO list (`importBoAllow`) but all its lists are org units, not BOs.
+
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
 `y5VYjeIOYlfTFjLk` exported as `i6Vrk~4xojztuSlb`, then as `pCzbqJxw1OuEbhvM`). Deterministic ids are
