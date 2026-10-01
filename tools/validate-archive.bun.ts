@@ -191,6 +191,9 @@ for (const g of groups) {
   if (typeof g.name !== "string" || !g.name) add("FATAL", "0.3", "group has no name");
 }
 
+for (const o of objs) if (cls(o) === "AccessStructDto")
+  for (const k of Object.keys(o.fieldAccessStructMap ?? {})) if (k in NATIVE_TYPES)
+    add("WARN", "0.5a", `AccessStructDto: the lock of native ${k} is ignored by the import — set it over the API after the import`);
 if (objs.some(o => cls(o) === "AccessStructDto"))
   add("ERROR", "0.10/10", "archive ships an AccessStructDto — import replaces the stand's rights with the archive's; never ship one unasked");
 
@@ -517,6 +520,13 @@ for (const bo of bos) {
   if (bo.nativeFields && !Array.isArray(bo.nativeFields) && bo.category !== "BO_COMPOSITE")
     for (const [k, n] of Object.entries<any>(bo.nativeFields))
       if (n?.gridPosition && typeof n.gridPosition.y === "number") laid.push({ ft: `${tag}.native ${k}`, f: n, gp: n.gridPosition, box: true });
+  // so does every widget (§0.5b) — a stand export with widgets between the fields has the gaps they fill
+  if (bo.category !== "BO_COMPOSITE")
+    for (const map of ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"])
+      if (bo[map] && !Array.isArray(bo[map]))
+        for (const [k, w] of Object.entries<any>(bo[map]))
+          if (w?.gridPosition && typeof w.gridPosition.y === "number" && !w.tabCodePath?.tabGroupCode)
+            laid.push({ ft: `${tag}.${map}.${k}`, f: w, gp: w.gridPosition, box: true });
   laid.sort((a, b) => a.gp.y - b.gp.y);
   let prevY: number | null = null, prevRows = 0;
   let idx = 0;
@@ -549,6 +559,10 @@ for (const bo of bos) {
     if (n.archetype !== "NATIVE") add("ERROR", "0.5a", `${ft}: archetype "${n.archetype}", must be NATIVE`);
     if (key in NATIVE_TYPES && n.type !== NATIVE_TYPES[key]) add("ERROR", "0.5a", `${ft}: type "${n.type}", the platform fixes ${NATIVE_TYPES[key]}`);
     id(ft, n.newId);
+    // verified on core2 2026-10-01: the import applies chosenAccessRight but never the native's rights
+    if (n.chosenAccessRight === true) add("WARN", "0.5a", `${ft}: chosenAccessRight on a native — the import shows the orange lock but does not apply its rights; set them over the API after the import`);
+    for (const k of ["needUploadToOutTable", "needLoadFromInTables"]) if (n[k] === true) add("WARN", "0.5a", `${ft}: ${k} on a native is not applied by the import`);
+    if (n.inMigrationTimezoneMinutes) add("WARN", "0.5a", `${ft}: inMigrationTimezoneMinutes on a native is never stored`);
   }
 
   // ------------------------------------------------ widgets (§0.5b)
