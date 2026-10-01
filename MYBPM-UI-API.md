@@ -2649,7 +2649,7 @@ a call that puts them into the body answers 200 and writes nothing:
 | widget | controller | set | read |
 |---|---|---|---|
 | SIGNATURE | `v2/signature` | `save-signature-code {boId, signatureId, code}` | `load-signature-code` |
-| BUTTON | `v2/button` | `save-button-code {boId, buttonId, code}`, `save-button-url {…, url}`, `save-button-field-ids {…, fieldIds}` | `load-button-code` / `load-button-url` |
+| BUTTON | `v2/button` | `save-button-code {boId, buttonId, code}`, `save-button-url {…, url}`, `save-button-field-ids {…, fieldIds}`, `save-access-group {boId, buttonId}` + the group as body | `load-button-code` / `load-button-url` / `load-button-field-ids` (→ an array of field ids) / `load-access-group` |
 | IFRAME | `v2/iframe` | `save-iframe-code {boId, iframeId, code}`, `save-iframe-url {…, url}` | `load-iframe-code` / `load-iframe-url` |
 | CAPTCHA | `v2/captcha` | `save-captcha-code {boId, captchaId, code}` | `load-captcha-code` |
 | CURRENT_* (date family) | `v2/current-date` | `save-current-date-code {boId, currentDateId, code}` | `load-current-date-code` |
@@ -2660,7 +2660,10 @@ chunk `6621` `DffIframeComponent`). The card calls `load-iframe-url {boId, ifram
 into `<iframe src>` unchanged, with no placeholders and no record or draft ids. A page inside learns which
 record it sits on only when it is served from the stand's own origin: then it can read the parent
 document. A cross-origin page gets only the stand's origin as its referrer. The settings dialog refuses
-an `http:` url on an `https:` stand (protocol error). A cell smaller than 1366×768 renders the page scaled
+an `http:` url on an `https:` stand (protocol error), **and so does the server** `[C]` (2026-10-01, core2):
+`save-iframe-url` with an `http://…` url answers `""` and keeps the old value, so an API client gets no
+error either — read the url back. **`save-iframe-url` is asynchronous**: a `load-iframe-url` right after
+it still returns the OLD url, the new one shows ~1.5 s later; `save-button-url` is immediate. A cell smaller than 1366×768 renders the page scaled
 from 1920×1080, and a click opens it full screen (90vw × 90vh).
 
 The `<widget>Id` is the widget field's `fieldId`. **`load-business-object-by-id` returns `code: null` for
@@ -2681,13 +2684,35 @@ the `fieldScripts` map of `save-bo-scripts` (§5g «Wiring scripts onto a BO hea
   `save-field-value` does for any field (§6b). Each click fires it again, and its field writes come back
   in `fieldFormCommands` and show on the open form at once. Verified with a real mouse click on the form
   and headlessly with `save-field-value {values:[{fieldId:<button id>, value:""}]}`.
-- **The button's `url` decides the rest, and an EMPTY url is the script-only button.** A url that starts with
-  `call/plugin/` also calls `v2/button/call-button-plugin {boId, boiId, fieldId, draftId}`. The url
-  `client/save-current-boi` also saves the record. Any other url, or none, does nothing more than the
-  script.
+- **The script is the only thing a button reliably does; leave its `url` EMPTY.** What each url does on the
+  record card is in the next section. In short: `call/plugin/…` needs a plugin installed on the server.
+  `client/save-current-boi` and `create-boi/…` do nothing on the card. Any other url does nothing either.
 - Worked example: BO «Тест Яндекс API» on core2 / NIT. Four buttons, each with its own field script:
   `RestRequest` GET → `resultCode` / `resultAsText` into the record's fields
   (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a).
+
+#### What a BUTTON's `url` does on the record card `[C]` (2026-10-01, core2 / NIT, build of that day)
+
+Probe BO «Проба виджетов 2026-10-01», four buttons clicked on a record card while the XHR log was
+recorded, then checked against the bundle. The card draws a button with
+`mybpm-ng-widget-button` (chunk `5660`). A click runs `load-button-url` + `load-button-field-ids` +
+`save-field-value(<button>, "")`, and the last call fires the button's field script. After that the url
+is read by its PREFIX:
+
+| url | what happens on the card |
+|---|---|
+| empty | nothing more. **This is the working button: a script on «Изменение поля» does the job** |
+| `call/plugin/<name>/…` | `v2/button/call-button-plugin {boId, boiId, fieldId, draftId}`. `<name>` is a **plugin registered on the server**, not something you write. An unknown name answers HTTP 400 «No such plugin `<name>`» and a red toast. The card sends **no** field values: the plugin reads the record itself |
+| `client/save-current-boi` | **nothing — the record is NOT saved.** The handler emits on `BoiEventHandlerService.saveBoiSubject`, and no component of this build subscribes to `saveBoi$` (searched in all 204 chunks). Two clicks: no `validate-apply`, the typed value stayed unsaved, the dialog stayed open |
+| `create-boi/<toFieldCode>/<from->to, …>`, `client/create-boi/…` | **nothing on the card.** Only the «dff» button component handles it (chunk `5584`; chunk `8782` only logs it), and the record card does not use that component. Which screen uses `5584` is `[U]`. Per its code `[I]` it opens a create dialog for the BO behind the BO/CO field `<toFieldCode>`, copies the listed values (`Текст->Название`), and puts the new record into that field |
+| anything else (`https://…` too) | nothing. A button never navigates |
+
+- **«Поля для отправки» = `save-button-field-ids` = the archive's `fieldCodes`.** The card does not send
+  them anywhere. They are meant for the server plugin. In an archive they are a map
+  `{"<field code>": "<archetype>"}` (`MYBPM-IMPORTS.md` §0.5b). An import turns it back into the field
+  ids that `load-button-field-ids` returns `[C]`.
+- A button has its own lock: `v2/button/load-access-group {boId, buttonId}` answers
+  `{all, view, edit, create, …}` with `accessForAll: true` by default. `save-access-group` was not tried `[U]`.
 
 #### A nested table (`type:"BO"`, `viewType:"TABLE"`) on a record card `[C]` (2026-09-29, core2 / NIT)
 
@@ -3615,6 +3640,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 48. **A registry with NO columns answers `AccessDenied`, not an empty table** `[C]` (2026-09-19) — «У Вас
     недостаточно прав на поля, которые выведены в реестр» on a BO whose every field has
     `accessForAll: true`. Check `tableColToShow` before believing a rights problem. §7.
+    **The fix is not instant** `[C]` (2026-10-01): right after the `editedFields` patch that turns a column
+    on, the registry still answers `AccessDenied`. It lists the rows a few seconds later. Wait, then
+    re-read before you conclude the patch failed.
 47. **A field that is not a registry column cannot be read back from the registry** `[C]` (2026-09-19) —
     `load-bo-instance-bracket-table` puts only `tableColToShow` fields into a row's `values[]`, and the
     full-text `search` does not find their values either `[I]`. Flip `tableColToShow: true` with a
