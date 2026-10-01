@@ -32,6 +32,8 @@
  *   --field "Офис:BO@<boId>@Ofis!show=Strana|Gorod"            — the columns of a nested-object table, by
  *     the TARGET's field codes (without it the importer shows none)
  *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
+ *   --field "Номер:INPUT_TEXT!titleToShow=true,titleOrderIndex=0" — a part of the record name (card title),
+ *     joined by spaces in titleOrderIndex order (MYBPM-IMPORTS.md §3 «Field flags» «Название записи»)
  *   --history                                                 — the record card's «История» tab (boTabs.HISTORY);
  *     a field is logged only with it AND "!isHistoryTracking=true" (MYBPM-IMPORTS.md §3 «Field flags»)
  *   --field "Табл:BO@<boId>@Cel!boRefStruct.linkedFieldCode=Roditel,removeType=HIDE,needMarkNew=true" — the

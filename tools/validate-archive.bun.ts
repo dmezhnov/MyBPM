@@ -369,7 +369,7 @@ for (const bo of bos) {
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
-        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode", "bracketFilter", "readFromRegistry"].includes(k));
+        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode", "bracketFilter", "readFromRegistry", "titleOrderIndex"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
 
     // «Поведение» (MYBPM-IMPORTS.md «Поведение» and «Интеграция» of a field): the stand keeps every
@@ -484,6 +484,16 @@ for (const bo of bos) {
     if (f.isHistoryTracking === true && !(bo.boTabs && !Array.isArray(bo.boTabs) && "HISTORY" in bo.boTabs))
       add("WARN", "3", `${ft}: isHistoryTracking without the BO's boTabs.HISTORY — the change is never logged`);
     if (f.isHistoryTracking === true && type === "TAB_GROUP") add("WARN", "3", `${ft}: isHistoryTracking on a TAB_GROUP — the constructor never offers it`);
+    // «Название записи» (§3 «Field flags»): the record name = display values of the titleToShow fields by titleOrderIndex
+    if (f.titleToShow === true) {
+      if (type === "TAB_GROUP") add("WARN", "3", `${ft}: titleToShow on a TAB_GROUP — the constructor never offers it`);
+      if (typeof f.titleOrderIndex !== "number") add("WARN", "3", `${ft}: titleToShow without titleOrderIndex — the name parts have no defined order`);
+      else {
+        const same = [...Object.values<any>(bo.dynamicFields), ...Object.values<any>(bo.nativeFields ?? {})]
+          .filter(g => g !== f && g.titleToShow === true && g.titleOrderIndex === f.titleOrderIndex);
+        if (same.length) add("WARN", "3", `${ft}: titleOrderIndex ${f.titleOrderIndex} is shared with another titleToShow field`);
+      }
+    }
     if (f.needTrackStatus === true) {
       const all = Object.values<any>(bo.dynamicFields);
       const wrap = all.find(g => g.type === "TAB_GROUP" && g.trackedFieldCode === f.code);

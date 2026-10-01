@@ -2532,6 +2532,24 @@ cycle (§6b) and through the card.
   reads «Без значения». Event types: `CREATE_BOI ADD_PARTICIPANT DEL_PARTICIPANT UPDATE_FIELD RESTORE_BOI
   ARCHIVE_BOI UNZIP_BOI REMOVE_BOI`.
 
+#### «Название записи» — `titleToShow` / `titleOrderIndex` `[C]` (2026-10-01, `<stand>`)
+
+- **What it is**: the record's name = the title of its card = `v2/business-objects/v2/load-bo-components`
+  `P {boId, boiId, boiDialogType: "EDIT"}` → `name` (beside `recordName` = the BO's «название записи»). It is
+  the DISPLAY values of the fields with `titleToShow: true`, joined by single spaces in `titleOrderIndex` order;
+  empty fields are skipped; no flagged field → `name` = `recordName`. Phone formatted («+7 (701) 123-45-67»),
+  `FULL_DATE` as «01.10.2026 14:31». Every field except `TAB_GROUP` and widgets qualifies, natives included.
+- **Setting it**: `v2/business-objects/save-bo-fields-for-bo-name` — `P {boId}`, BODY = an ARRAY of the field DTOs
+  (from `load-business-object-by-id` → `formFields`) with `titleToShow` / `titleOrderIndex` changed; answers
+  empty. The constructor (record-name chooser in the form header, `boNameSelectField`) sends ALL selected fields
+  with the new one at `titleOrderIndex = count`; unselecting sends just that field with `titleToShow: false` (its
+  old `titleOrderIndex` stays stored). The flags read back in `formFields` (`null` = never set).
+- **When the name changes**: existing records are renamed ASYNCHRONOUSLY ~3 s after the flags change (order swap
+  and unflagging both measured); a record save renames that record at once.
+- **Archive**: the keys travel on `dynamicFields` (export, copy import → same flags and order, new record named
+  from them). For a NATIVE the import applies `nativeFields.<TYPE>.titleToShow` but the export writes `false`
+  (see `MYBPM-IMPORTS.md` «Field flags» «Название записи»).
+
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
 - A required field is marked with a red `*` on the record card; saving with it empty is refused with the
