@@ -53,7 +53,7 @@ Two rules that apply to every recipe:
   says which call to make and which field to compare. The stand answers HTTP 200 to a great many things
   it did not do (§0U.2).
 
-*(`tools/follow-cookbook-stand.py` in this folder is a client written from this section and nothing else —
+*(`tools/follow-cookbook-stand.bun.ts` in this folder is a client written from this section and nothing else —
 both the proof that the section is sufficient and a worked example of R1/R4. Its request stream is
 identical, payload for payload, to the stand-verified `tools/create-bo-constructor.bun.ts`.)*
 
