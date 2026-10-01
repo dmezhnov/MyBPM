@@ -48,6 +48,8 @@
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
  *   --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово"    — «Задать вручную» (FROM_FIELD)
  *   --field "Статус:DROPDOWN_SINGLE#Новый=BLUE|Готово=GREEN"  — the same with option colours (kanban columns)
+ *   --field "Ответ:RADIO_BUTTON_GROUP#Да|*Нет"                — `*` = the option chosen in advance (defaultValue =
+ *     its newOptionId); a radio group takes a local list only, never a dictionary
  *   --field "Чек:CHECKLIST#Пункт 1|+Пункт 2!isSelectOnly=true,isAppendable=false" — items go to defaultValue
  *     (`+` = ticked), isAppendable defaults to true as in the constructor
  *   --field "Вкладки:TAB_GROUP#Шаг 1|>Справа!params.needDisableTabs=true" — `>` = a tab at the right end
@@ -516,6 +518,7 @@ function field(o: {
           // keyed by the option's own transliterated code, each entry carrying its own new id
           // «Красный=RED» — the option's colour (RED GREEN YELLOW BLUE ORANGE PURPLE …), else none
           options: Object.fromEntries(o.options.map((spec, i) => {
+            spec = spec.replace(/^\*/, ""); // «*Нет» = the default option, see below
             const eq = spec.lastIndexOf("=");
             const label = eq > 0 ? spec.slice(0, eq) : spec;
             const color = eq > 0 ? spec.slice(eq + 1) : null;
@@ -735,6 +738,13 @@ if (isComposite) {
       defaultValue: JSON.stringify(hash.map(h => ({ label: h.replace(/^\+/, ""), checked: h.startsWith("+") }))),
       isAppendable: true,
     });
+    // «*Нет»: the default option. defaultValue is an option ID, and the import turns newOptionId into the id
+    // (MYBPM-IMPORTS.md §3 «Единичный выбор») — so the default is that option's newOptionId, never its code.
+    const def = ["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? hash.find(h => h.startsWith("*")) : undefined;
+    if (def) {
+      const raw = def.slice(1), eq = raw.lastIndexOf("=");
+      (dynamicFields[code] as any).defaultValue = id(`${BO_CODE}.${code}.${codeOf(eq > 0 ? raw.slice(0, eq) : raw)}`);
+    }
     if (f.flags.includes("track")) addTrackStatus(code, y);
     let inTab = false;
     for (const { path, value } of f.sets) {

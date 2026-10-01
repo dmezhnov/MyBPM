@@ -2486,7 +2486,7 @@ cycle (§6b) and through the card.
 | `TAB_GROUP` | settings (offered only with ≤ 1 tab) | `params.needDisableTabs` «Отключить вкладки» | the tab strip is hidden; the fields of the tab show as plain form fields |
 | `TAB_GROUP` | tab strip in the body | `tabs[].isRight` | the tab sits at the right end of the strip |
 | `TEXTAREA`, `TEXTAREA_LANG` | settings, 16 checkboxes «Включить настройку '…'» | `params.buttonTypes` = JSON TEXT of an array (`{fieldId, params:{buttonTypes:"[\"bold\",\"table\",\"codeview\",\"height\",\"italic\"]"}}`) | the editor toolbar shows exactly those buttons. Members: `style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height`; absent = the default ten `bold underline italic fontsize color ul ol table link picture` |
-| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` | option chip in the body / kanban editor | `options[].color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour; the record card shows the option uncoloured |
+| `DROPDOWN_SINGLE` | option chip in the body / kanban editor | `options[].color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour; the record card shows the option uncoloured. A `RADIO_BUTTON_GROUP` stores a colour too, and it shows nowhere — no kanban is built on a radio |
 
 - **The gear differs per type.** A checklist's block: «Обязателен один пункт», «Обязательны все пункты»,
   «Добавляемый», «Только для чтения», «Выбор без редактирования», «Не сохранять значение», «Убрать
@@ -2511,6 +2511,37 @@ cycle (§6b) and through the card.
   `{stepId,…}` array or a hex colour sent as the value make `load-field-data` fail for the whole draft
   (trap 50) and validate answers `incorrect_value`. The card has no control for it — a script or this
   API colours the steps.
+
+#### «Единичный выбор» — `RADIO_BUTTON_GROUP` `[C]` (2026-10-01, `<stand>`)
+
+Three radio groups added over the API to probe «Проба виджетов 2026-10-01» (group «Тест»), records made
+through the §6a cycle and looked at on the card, the constructor opened, the BO exported and imported back
+as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the archive side).
+
+- **Over the API** it is the dropdown recipe of R1 with a local list: on the DTO of
+  `generate-business-form-field {boId, fieldType:"RADIO_BUTTON_GROUP"}` set `optionSource:"FROM_FIELD"`,
+  `refBoId:null`, `options:[{instanceId:null, id, label, labelMap, color, code:null, orderIndex, hiddenInKanban:false}]`
+  (ids from `v2/id-loader/load-portion`) and, for an option chosen in advance, `defaultValue: "<option id>"` —
+  all stored on ADD; option codes come back generated from the labels (`Da`, `Net`, `Mozhet_byt`).
+- **The gear** of a radio group has only the common block: «Необходимо заполнить», «Только для чтения», «Не
+  сохранять значение», «Убрать заголовок», «Фиксировать при скроллинге» — no source switch (dictionary) and no
+  «Уникальное». The options are edited in the field body (add / rename / delete / code / tick = default).
+- **Default**: a new record's draft carries the `defaultValue` option (`load-field-data` → `storedValue` =
+  the option id) and the card shows it ticked; existing records are not filled.
+- **Required**: `validate-apply-remove-draft` answers `ALERT_SAVE_BUTTON_NOTIFICATION validate_required_title`
+  while nothing is ticked; the card shows the red star.
+- **A dictionary does not work on a radio.** `optionSource:"FROM_BO"` + `refBoId` IS stored, but
+  `load-field-data` returns `options: []`, the card shows the label and no buttons, and the constructor
+  renders it as a local list and silently adds one empty option to it (not saved unless you press СОХРАНИТЬ).
+  A value written over the record API (`"0.0"`, the dictionary row's option id) is stored and the registry
+  even shows its label — only the card cannot. Use `DROPDOWN_SINGLE` for a dictionary.
+- **No kanban on a radio**: `v2/kanban/load-kanban-fields` (PARAMS `{boId}`) lists only the BO's
+  `DROPDOWN_SINGLE` fields — empty for a BO whose only lists are radio groups — and the constructor enables
+  the «Канбан» tab only when the BO has a dropdown. So `options[].color` of a radio shows nowhere.
+- The server validates nothing about the value: `save-field-value` with a string that is no option id is
+  stored, and the registry shows the raw string. On the card a ticked radio cannot be unticked (the client
+  control only sets — bundle chunk 7490).
+- The registry column shows the option's label.
 
 #### «История» — `isHistoryTracking` and the BO tab `HISTORY` `[C]` (2026-10-01, `<stand>`)
 
@@ -2638,7 +2669,8 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
 
 | type | keys |
 |---|---|
-| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` | `optionSource` `FROM_BO` + `refBoId` (dictionary) or `FROM_FIELD` + `options[]` (§5h) |
+| `DROPDOWN_SINGLE` | `optionSource` `FROM_BO` + `refBoId` (dictionary) or `FROM_FIELD` + `options[]` (§5h) |
+| `RADIO_BUTTON_GROUP` | `optionSource: "FROM_FIELD"` + `options[]` only — a dictionary is stored but never shown (§5h «Единичный выбор») |
 | `CHECKLIST` | **`defaultValue`** = the items as a JSON STRING `[{"label":"Пункт","checked":false},…]` + `isAppendable: true`, both mirrored into `editedFields` — that is what the constructor sends when an item is typed under the field (`[C]` 2026-09-30); `options` are not read |
 | `QUESTIONNAIRE` | `questionnaires[]` — the generator already returns two rows, one `isColumn: true`, one `false`; set their `label`/`labelMap` |
 | `PROGRESS_BAR` | `progressSteps[]` = `{id (v2/id-loader), orderIndex, label, code, labelMap}` |
@@ -3947,6 +3979,16 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     undo the rename. Always ship `code` (§5 «Verifying an import»).
 56. **The timeline view («Диаграмма Ганта») shows «Your license key is not valid to work with this
     version»** at its bottom on `<stand>` `[C]` (2026-09-30) — a banner of the Gantt library; the view works.
+57. **An import can be `APPLIED` while the BO it should create does not exist** `[C]` (2026-10-01) — the
+    apply process ended `hasError: true, errorState: "ONLY_INTERMEDIATE_ERRORS"` («no field with code: …»
+    from `kanbanCardTemplates` naming a removed field), `load-import-errors` was empty, the import record
+    said `APPLIED` and `rollbackAvailable`. An import whose analysis had ended `INTERNAL_ERROR` could also be
+    applied — `APPLIED`, nothing created, rollback preview empty. Check `poll.hasError`, read
+    `v2/process-indicator/load-state {processId}` → `phases.*.errors`, then load the BO; roll the import back.
+58. **A stand export breaks the default option of every list** `[C]` (2026-10-01) — `defaultValue` of a
+    `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` is exported as the source stand's option id while the options get
+    fresh `newOptionId`s, which become their ids on import; the copy's default then points at nothing. Rewrite
+    it to the matching `newOptionId` (`MYBPM-IMPORTS.md` §3 «Единичный выбор»).
 
 ## 12. Open questions
 
