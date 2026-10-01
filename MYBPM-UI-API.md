@@ -1299,7 +1299,8 @@ pointing at «Проба UI 2026-09-18» (`OpmGDzaQRUT27jky`):
   BOs; dragging one in calls **`generate-business-form-field {boId, fieldType: "BO", fieldBoId: <BO id>}`**
   — the `fieldBoId` parameter that had been `[U]` until now. The saved field is
   `type:"BO", viewType:"TABLE", isKindAddForSelect:true, refBoId:<BO id>, gridPosition.rows:6`
-  (`readFromRegistry` comes back `null` even though the client sends `true`).
+  (`readFromRegistry` comes back `null` even though the client sends `true` — `null` IS «on», see §5h
+  «Читать из реестра»).
   `generate-business-form-widget {widgetType}` is NOT the panel's builder: its enum is
   `SIGNATURE|BUTTON|IFRAME|CAPTCHA|CURRENT_DATE|CURRENT_DAY|CURRENT_MONTH|CURRENT_DAY_AND_MONTH|
   CURRENT_YEAR|CURRENT_USER` — ordinary form widgets of any BO.
@@ -1500,7 +1501,8 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   REPEAT_COUNT | EXPIRATION_DATE`), `.startTime` (a real UTC instant, `"2026-09-30T12:31:00Z"`),
   `.startRepeatTime` (a date, `"…T00:00:00Z"`), `.endRepeatTime`, `.repeatCount`, `.interval`,
   `.daysOfWeek`, `.dayOfMonth` `[C]` (2026-09-30, stored and read back as sent). **It has not been seen
-  to fire** `[U]` — no process record 35–48 minutes after `startTime`, not even at the top of the next hour
+  to fire** `[U]` — no process record 35–48 minutes after `startTime`, not even at the top of the next hour,
+  and still none about 16 hours later (2026-10-01 04:02Z), after both start times had passed
   (`MYBPM-IMPORTS.md` §5c `runWayMap`).
   A `dotPath` with `value: undefined` (i.e. the key left out of the JSON) deletes, e.g.
   `runWayMap.<id>` removes a run way. The process field must be a `type:"BO"` field of the process BO with
@@ -2411,6 +2413,49 @@ equals the value of «Зависимость от» (or of that value's inner fi
   the patch above (`MYBPM-IMPORTS.md` §3).
 - Side effect seen on the constructor save: the UI also called `save-business-form-field` and made Имя / Регион /
   Город registry columns (`tableColToShow`) — mind the Elasticsearch sort defect (§7) for a filled text column.
+
+#### «Читать из реестра» (`readFromRegistry`) of a panel's `BO` field `[C]` (2026-10-01, `<stand>`)
+
+Probes: «Проба чтения из реестра 2026-10-01» (API + constructor) and «Проба чтения из реестра архив
+2026-10-01» (archive), both `BO_PANEL` over one plain BO with four records.
+
+- **What it does.** Gear → «Поведение» → checkbox «Читать из реестра», shown **only in a panel**
+  (`showSettingsReadFromRegistry = ownerBoIsPanel`). ON (the default) — the widget is the WHOLE registry
+  of the referenced BO (every record, through the field's own `bracketFilter` if it has one); a record
+  added anywhere shows up there after a reload. OFF — an ordinary reference table: it holds only the
+  records put into THIS field, «Добавить» picks / creates them (`isKindAddForSelect`, whose switch
+  «Выбор/Добавление» appears only while the checkbox is OFF), and they are saved in the panel's record
+  with the panel's own «СОХРАНИТЬ». ON also limits «Вид отображения» to «Табличный» / «Множественный».
+- **`null` means ON** `[C]`. The constructor reads `readFromRegistry ?? true`, and a field with `null`
+  showed the registry. The server stores `null` for a field added with `readFromRegistry:true` (the key
+  is dropped when a field is ADDED — by the drag of the UI and by `addedFieldIds` + `editedFields` of the
+  API alike), so only `false` and a later explicit `true` are ever stored.
+- **API** — `save-business-object-portion` with `editedFields: [{fieldId, readFromRegistry: false|true}]`
+  on an EXISTING field; both directions stored `[C]`.
+- **Defect: the constructor cannot switch it back ON** `[C]`. Ticking the box sends
+  `{fieldId, readFromRegistry: true, defaultValue: "", deleteDefaultValue: true}`, and with that exact
+  triple the server leaves `false` (tried twice from the UI, once from the API). `readFromRegistry:true`
+  alone, or with only one of the two other keys, IS stored. So turn it on through the API with the bare
+  key; the UI shows the box ticked until the next reload.
+- **A panel's record is per user** `[C]` (client: `checkBoiExists(boId, personId)` then
+  `createBoiById(boId, personId)`): its `boiId` IS the viewer's `personId`, created on the first visit.
+  So what an OFF field holds is each user's own list `[I]` (one login only). Open a panel by
+  `/business-objects/viewing-single/panel?businessObjectId=<panel boId>` — the page adds the rest;
+  `/viewing-list/panel/<boId>` falls through to «Главная». The first visit of a fresh panel answered
+  «Data too large» and hung on skeletons; a reload rendered it.
+- **A `BO` field added through the API needs `boFieldRefs`** `[C]`: with `[]` (what
+  `generate-business-form-field` returns) the registry widget is EMPTY and the page toasts «target is
+  marked non-null but is null». The UI's drag fills one entry per field of the target BO —
+  `{fieldId, label, toShow, type, checked:false, orderIndex, gridPosition}`, `toShow` from the target's
+  `tableColToShow` (the first field if none, at most 5, never TAB_GROUP / PROGRESS_BAR); send the same in
+  `editedFields`. The drag also sets `viewType:"TABLE"` and `isKindAddForSelect:true`, which the API
+  route must set itself.
+- **Archive** — the export writes `"readFromRegistry": false` and OMITS the key when it is `null`; an
+  import stores exactly what it gets — no key → `null` (registry), `false`, `true` — and the imported
+  panel behaved like the constructor one `[C]` (`MYBPM-IMPORTS.md` §5a).
+- Outside a panel the gear has no such checkbox; a form field's runtime still reads
+  `readFromRegistry ?? isPanel`, so `true` on an ordinary BO's field would probably render it as a
+  registry too `[U]` — never tried.
 
 #### What the settings actually DO on a record (runtime, verified in the UI)
 

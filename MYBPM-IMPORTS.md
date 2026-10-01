@@ -839,7 +839,7 @@ All four are still the SAME two lines of 0.3 + 0.4; only `category` and a few ke
 |---|---|---|
 | Бизнес-объект | `BO` | nothing — the template as is |
 | Справочник | `BO_DICTIONARY` | the value of `dictionaryFields` **changes** to `["CODE","LABEL"]` (the key itself is on every BO, see below), and `dynamicFields` **starts** with the two system fields below; extra fields may follow |
-| Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
+| Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ and `boRefStruct.fieldRefs` (the columns, at least one `toShow: true`) — it shows the whole registry; for a list the user fills instead add `"readFromRegistry": false` and drop `isReadonly` (§5a) — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
 | Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code — no id exists here, so this kind is never degraded to a plain `BO`** (0.2a). The code is resolved against the lines of THIS archive first and otherwise on the stand, so the sources may travel in the same archive, in any order (§5b). Every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) — **every `fieldCode` must exist in that source BO or the import dies with `INTERNAL_ERROR`** (§5b) — and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
 | Бизнес-процесс | `BO_PROCESS` | a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself |
 
@@ -1129,7 +1129,9 @@ bos boTabs printForms name recordName staticValue description orderIndex dynamic
 dictionaryFields actual isCalendarEnabled isMapEnabled isGroupingEnabled isCodeReadonly
 chosenAccessRight kanbanCardTemplates timelineTemplates calendarCardTemplates signatures buttons
 iframes currentDates captcha currentUser`. The last six are the widget maps (§0.5b), `nativeFields`
-holds the system fields (§0.5a). Build S4.24.25.643 also writes, after `instanceViewType`, the registry's
+holds the system fields (§0.5a). A key whose value is `null` on the stand is left out: a panel built in
+the constructor has no `instanceViewType` at all `[C]` (two stand exports of panels, 2026-09-18 and
+2026-10-01), while one that came in by import carries the `FORM` it was given. Build S4.24.25.643 also writes, after `instanceViewType`, the registry's
 default sort **`sortFieldCode`** (a field CODE) + **`sortFieldOrder`** (`ASC`|`DESC`) — absent while the
 sort is unset. They travel both ways `[C]` (2026-09-30: `Chislo DESC` set through the API came out in the
 export; an archive with `Data ASC` set the stand's `load-bo-table-sort` to that field and order). The same
@@ -1488,7 +1490,17 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   field of the target BO with `toShow` / `orderIndex` / `gridPosition`, i.e. the widget's column layout —
   and `bracketFilter` (`{boCode, fieldCode, brackets{…}}`), which is what turns a registry into «Мои
   встречи»: `nativeFilters{type:"CREATED_BY", isCurrentUser:true}` OR a `dynamicFilters` entry on a
-  Person field with `isCurrentUser: true`. Both are `[U]` for hand-built archives — never round-tripped.
+  Person field with `isCurrentUser: true`. A hand-built `fieldRefs` (codes of the target's fields, `toShow`,
+  `orderIndex`) imports and gives the widget its columns `[C]` (2026-10-01); a `bracketFilter` on a `BO` field
+  travels too (§3 «Reference fields — «С фильтром»…» `[C]`), the `isCurrentUser` variant was not re-run `[U]`.
+- **`readFromRegistry` — registry or a picked list** `[C]` (2026-10-01, `<stand>`: a panel exported, and a
+  panel with three widgets imported). Absent / `null` / `true` = the widget shows the WHOLE registry of the
+  referenced BO (the default — the export omits the key then); `false` = an ordinary reference table that
+  holds only the records put into it, saved in the panel's record, which is per user (its id is the
+  viewer's `personId`). The import keeps each of the three values as given. Give every widget
+  `boRefStruct.fieldRefs` with at least one `toShow: true` (the generator's `!show=<codes>`): a widget with
+  no columns renders empty. Through the constructor the box can be turned OFF but not back ON (a server
+  defect) — `MYBPM-UI-API.md` §5h «Читать из реестра».
 
 ## 5b. Composite objects (составные объекты) `[C]` (2026-09-18, sample `TestComposite.mybpm.zip`)
 
@@ -1619,7 +1631,7 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
     (`MYBPM-UI-API.md` §6a — which runs no Block IDE script, yet did start the run way) `[C]`. The other
     members are unexercised: `ON_IN_MIGRATION | ON_UPLOAD_XLSX | ON_CALL_API | ON_MASS_CHANGE` (field
     change only) `| ON_PROCESS_CHANGE | ON_PLUGIN_SAVE | ON_KAFKA_IN_MIGRATION`.
-  - `SCHEDULED` — no process field; `schedule = {repeatType (EVERYDAY | EVERY_WEEK | EVERY_MONTH | EVERY_WORKING_DAY | EVERY_LAST_DAY_OF_MONTH | EVERY_LAST_WORKING_DAY_OF_MONTH), repeatUntilType (NO_END_DATE | REPEAT_COUNT | EXPIRATION_DATE), startTime, startRepeatTime, endRepeatTime, repeatCount, interval, daysOfWeek, dayOfMonth}` — **`startTime` is a real UTC instant, `startRepeatTime` is a date** `[C]` (read off the client 2026-09-30: the picked local time is shifted to UTC and then printed with the pattern `yyyy-MM-dd'T'HH:mm:ss'Z'`, so the `Z` is literal but the value IS UTC; the date is the local midnight printed the same way, `…T00:00:00Z`; reading back, the dialog uses only the `HH:mm` of `startTime`). The stand ACCEPTS a scheduled run way and stores it as sent, but **it has not been seen to fire** `[U]` (2026-09-30, `<stand>`): two of them on one work version — `EVERYDAY`, `REPEAT_COUNT` 1, today's `startRepeatTime`, `startTime` 2–3 minutes ahead, once as the real UTC time and once shifted by the stand's +5 h in case the server reads it as local — created no record of the process BO and added no step to its existing records — still none 48 minutes after the first time and 35 after the second (checked 13:06Z), so not even an hourly tick at the top of the hour picked them up. The client has no call that shows a next run, so there is nothing to read back; whether the stand's scheduler runs at all, or only daily, is open (both run ways were left on the stand to re-check a day later). Its archive form is not seen yet.
+  - `SCHEDULED` — no process field; `schedule = {repeatType (EVERYDAY | EVERY_WEEK | EVERY_MONTH | EVERY_WORKING_DAY | EVERY_LAST_DAY_OF_MONTH | EVERY_LAST_WORKING_DAY_OF_MONTH), repeatUntilType (NO_END_DATE | REPEAT_COUNT | EXPIRATION_DATE), startTime, startRepeatTime, endRepeatTime, repeatCount, interval, daysOfWeek, dayOfMonth}` — **`startTime` is a real UTC instant, `startRepeatTime` is a date** `[C]` (read off the client 2026-09-30: the picked local time is shifted to UTC and then printed with the pattern `yyyy-MM-dd'T'HH:mm:ss'Z'`, so the `Z` is literal but the value IS UTC; the date is the local midnight printed the same way, `…T00:00:00Z`; reading back, the dialog uses only the `HH:mm` of `startTime`). The stand ACCEPTS a scheduled run way and stores it as sent, but **it has not been seen to fire** `[U]` (2026-09-30, `<stand>`): two of them on one work version — `EVERYDAY`, `REPEAT_COUNT` 1, today's `startRepeatTime`, `startTime` 2–3 minutes ahead, once as the real UTC time and once shifted by the stand's +5 h in case the server reads it as local — created no record of the process BO and added no step to its existing records — still none 48 minutes after the first time and 35 after the second (checked 13:06Z), so not even an hourly tick at the top of the hour picked them up; re-checked about 16 hours later (2026-10-01 04:02Z, after both start times — including the +5 h one — had long passed): still the same 7 records. The client has no call that shows a next run, so there is nothing to read back; on this stand a scheduled run way never fired at all; whether that is the build or the stand's configuration (a scheduler that is switched off) is open — **do not rely on `SCHEDULED`; start such a process from a script or by hand**. Its archive form is not seen yet.
   - `ON_MIGRATION_END` — no process field and no options in the dialog; not exercised `[U]`.
   The target BO must already be on the stand or travel in the same archive (`refBoInfo.code`). Building a
   run way on a stand: `MYBPM-UI-API.md` §5f «Run ways».

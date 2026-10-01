@@ -298,7 +298,11 @@ for (const bo of bos) {
   const tag = `BO ${bo.code ?? "?"}`;
   id(tag, bo.oldId);
 
-  for (const k of BO_KEYS) if (!(k in bo)) add("ERROR", "0.4", `${tag}: key "${k}" missing — import MERGES, a missing key keeps the stand's old value`);
+  for (const k of BO_KEYS) if (!(k in bo)) {
+    // a panel the stand built itself has instanceViewType null, and the export omits a null key
+    if (k === "instanceViewType" && bo.category === "BO_PANEL") continue;
+    add("ERROR", "0.4", `${tag}: key "${k}" missing — import MERGES, a missing key keeps the stand's old value`);
+  }
   const unknownBo = Object.keys(bo).filter(k => !BO_KEYS.includes(k));
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
@@ -346,7 +350,7 @@ for (const bo of bos) {
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
-        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode", "bracketFilter"].includes(k));
+        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode", "bracketFilter", "readFromRegistry"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
 
     // «Поведение» (MYBPM-IMPORTS.md «Поведение» and «Интеграция» of a field): the stand keeps every
@@ -557,7 +561,14 @@ for (const bo of bos) {
   if (bo.category === "BO_PANEL") {
     for (const [key, f] of entries) {
       if (f.type !== "BO") { add("ERROR", "5a", `${tag}.${key}: a panel holds only type "BO" registry widgets, got ${f.type}`); continue; }
-      if (f.isReadonly !== true) add("WARN", "5a", `${tag}.${key}: a panel widget carries isReadonly: true`);
+      // readFromRegistry: absent/null/true = the whole registry, false = a picked list kept in the panel record
+      if ("readFromRegistry" in f && f.readFromRegistry !== null && typeof f.readFromRegistry !== "boolean")
+        add("ERROR", "5a", `${tag}.${key}: readFromRegistry must be true, false or absent, got ${JSON.stringify(f.readFromRegistry)}`);
+      if (f.readFromRegistry === false) {
+        if (f.isReadonly === true) add("WARN", "5a", `${tag}.${key}: readFromRegistry false with isReadonly true — the picked list cannot be filled`);
+      } else if (f.isReadonly !== true) add("WARN", "5a", `${tag}.${key}: a registry widget of a panel carries isReadonly: true`);
+      if (!Object.values(f.boRefStruct?.fieldRefs ?? {}).some((r: any) => r?.toShow === true))
+        add("WARN", "5a", `${tag}.${key}: no boRefStruct.fieldRefs entry with toShow: true — the widget renders without columns, empty`);
       if (f.isKindAddForSelect !== true) add("WARN", "5a", `${tag}.${key}: a panel widget carries isKindAddForSelect: true`);
     }
   }
