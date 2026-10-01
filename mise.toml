@@ -1,6 +1,5 @@
 [tools]
 bun = "latest"
-python = "latest"
 
 [tasks.skills-check]
 description = "Check that every heading a SKILL.md routes to still exists in its document"
@@ -25,17 +24,17 @@ description = "Pack each skill with its document into dist/skills/<name>.zip for
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
+import { zip } from "./tools/zip.ts";
 await $`mise run skills-check`;
 const skills = [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]];
 await $`rm -rf dist/skills`;
 for (const [name, doc] of skills) {
-  const stage = `dist/skills/stage/${name}`;
-  await Bun.write(`${stage}/SKILL.md`, Bun.file(`skills/${name}/SKILL.md`));
-  await Bun.write(`${stage}/${doc}`, Bun.file(doc));
-  await $`python3 tools/zipdir.py dist/skills/stage dist/skills/${name}.zip ${name}`;
+  const entries = [];
+  for (const [inZip, src] of [[`${name}/SKILL.md`, `skills/${name}/SKILL.md`], [`${name}/${doc}`, doc]])
+    entries.push({ name: inZip, data: await Bun.file(src).bytes() });
+  await Bun.write(`dist/skills/${name}.zip`, zip(entries));
   console.log(`dist/skills/${name}.zip`);
 }
-await $`rm -rf dist/skills/stage`;
 '''
 
 [tasks.test]
@@ -43,13 +42,12 @@ description = "Everything CI runs before a release: skill anchors, every tool pa
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
+import { unzip } from "./tools/zip.ts";
 await $`mise run skills-check`;
 for (const f of new Bun.Glob("tools/*.ts").scanSync()) await $`bun build --target=bun --no-bundle ${f}`.quiet();
-const py = [...new Bun.Glob("tools/*.py").scanSync()];
-await $`python3 -m py_compile ${py}`;
 await $`mise run skills-zip`;
 for (const [name, doc] of [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]]) {
-  const list = await $`python3 -m zipfile -l dist/skills/${name}.zip`.text();
+  const list = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name);
   for (const want of [`${name}/SKILL.md`, `${name}/${doc}`]) {
     if (!list.includes(want)) { console.error(`dist/skills/${name}.zip: no ${want}`); process.exit(1); }
   }

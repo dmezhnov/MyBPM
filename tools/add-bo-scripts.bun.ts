@@ -25,8 +25,7 @@
  *   bun tools/add-bo-scripts.bun.ts <in.mybpm.zip> <out.mybpm.zip> --bo-code C --bo-name N --bodies bodies.json
  */
 import { createHash } from "node:crypto"; // sha256 keeps the generated ids reproducible; Bun.hash is not a digest
-import { mkdtempSync } from "node:fs";    // Bun has no mktemp helper
-import { tmpdir } from "node:os";         // platform temp root
+import { unzip, zip } from "./zip.ts";
 
 const argv = Bun.argv.slice(2);
 const flag = (n: string, d?: string) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
@@ -50,19 +49,16 @@ function id16(seed: string): string {
   for (let i = 0; i < 16; i++) s += alphabet[h[i] % alphabet.length];
   return s;
 }
-const zipdir = `${import.meta.dir}/zipdir.py`;
-async function unzipTo(zip: string, dir: string) {
-  await Bun.$`python3 -c ${"import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])"} ${zip} ${dir}`.quiet();
+// An archive is one folder `data-<stamp>/` holding `0000001.mybpm` (the JSONL) and `metadata.mybpm`.
+async function readJsonl(path: string): Promise<{ inner: string; text: string }> {
+  const entry = unzip(new Uint8Array(await Bun.file(path).arrayBuffer())).find((e) => e.name.endsWith("/0000001.mybpm"));
+  if (!entry) throw new Error(`${path}: no <folder>/0000001.mybpm inside`);
+  return { inner: entry.name.slice(0, entry.name.lastIndexOf("/")), text: new TextDecoder().decode(entry.data) };
 }
 
 // ---- the source bodies
 let srcText = "";
-if (from) {
-  const srcDir = mkdtempSync(`${tmpdir()}/mybpm-src-`);
-  await unzipTo(from, srcDir);
-  const srcInner = (await Bun.$`ls ${srcDir}`.text()).trim().split("\n")[0];
-  srcText = await Bun.file(`${srcDir}/${srcInner}/0000001.mybpm`).text();
-}
+if (from) srcText = (await readJsonl(from)).text;
 // `--rename-act old=new` retargets every `K-DYN` act (§5d) from the source field code to the target one.
 for (const r of flagAll("rename-act")) {
   const [a, b] = r.split("=");
@@ -128,15 +124,14 @@ const versions = {
 };
 
 // ---- rebuild: the same inner folder, the extra lines, objectCount bumped
-const work2 = mkdtempSync(`${tmpdir()}/mybpm-out-`);
-await unzipTo(inZip, work2);
-const inner = (await Bun.$`ls ${work2}`.text()).trim().split("\n")[0];
-const jsonl = `${work2}/${inner}/0000001.mybpm`;
-const lines = (await Bun.file(jsonl).text()).split("\n").filter(Boolean);
+const { inner, text } = await readJsonl(inZip);
+const lines = text.split("\n").filter(Boolean);
 lines.push(JSON.stringify(versions), ...defLines.map((d) => JSON.stringify(d)));
-await Bun.write(jsonl, lines.join("\n") + "\n");
-await Bun.write(`${work2}/${inner}/metadata.mybpm`, `objectCount-${lines.length}`);
-await Bun.$`python3 ${zipdir} ${work2} ${outZip} ${inner}`.quiet();
+const enc = new TextEncoder();
+await Bun.write(outZip, zip([
+  { name: `${inner}/0000001.mybpm`, data: enc.encode(lines.join("\n") + "\n") },
+  { name: `${inner}/metadata.mybpm`, data: enc.encode(`objectCount-${lines.length}`) },
+]));
 
 console.log(outZip);
 console.log(`  lines: ${lines.length}; versionId ${verId}`);
