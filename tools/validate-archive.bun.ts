@@ -222,6 +222,33 @@ function checkRefSettings(bo: any, key: string, f: any, ft: string) {
     add("WARN", "3", `${ft}: needChangeParentBoByLinkedBo false is LOST when the import CREATES the field — import the archive twice`);
   if (f.type === "CO" && f.isHeightDynamic) add("WARN", "3", `${ft}: isHeightDynamic on a CO — the constructor offers it on BO only`);
 
+  // «Зависимость полей»: only boRefStruct.relMainInnerFieldCode travels; relFieldCode is resolved in the
+  // REFERENCED BO (a wrong field) and the inner key is ignored (MYBPM-IMPORTS.md §3, 2026-10-01)
+  const main = f.boRefStruct?.relMainInnerFieldCode;
+  if (main && target) {
+    const g = fields(target)[main];
+    if (!g) add("ERROR", "3", `${ft}: relMainInnerFieldCode "${main}" is not a field of ${target.code}`);
+    else if (g.type !== "BO" && g.type !== "CO") add("ERROR", "3", `${ft}: relMainInnerFieldCode "${main}" is a ${g.type}, must be a BO/CO field`);
+  }
+  if (f.boRefStruct && "relFieldCode" in f.boRefStruct)
+    add("ERROR", "3", `${ft}: boRefStruct.relFieldCode is resolved in the REFERENCED BO and stores a wrong field — drop it and set relFieldId through the API after the import`);
+  for (const k of ["relInnerFieldCode"]) if (f.boRefStruct && k in f.boRefStruct)
+    add("WARN", "3", `${ft}: boRefStruct.${k} is ignored by the import — set relInnerFieldId through the API`);
+  for (const k of ["relFieldCode", "relInnerFieldCode", "relMainInnerFieldCode"]) if (k in f)
+    add("WARN", "3", `${ft}: top-level ${k} is ignored by the import (relMainInnerFieldCode belongs in boRefStruct)`);
+
+  // «С фильтром»: bracketFilter = {boCode: REFERENCED BO, fieldCode: this field, brackets: map}
+  const bf = f.bracketFilter;
+  if (bf) {
+    if (bf.boCode !== f.boRefStruct?.boInfo?.code) add("ERROR", "3", `${ft}: bracketFilter.boCode "${bf.boCode}" must be the referenced BO "${f.boRefStruct?.boInfo?.code}"`);
+    if (bf.fieldCode !== key) add("ERROR", "3", `${ft}: bracketFilter.fieldCode "${bf.fieldCode}" must be this field "${key}"`);
+    if (Array.isArray(bf.brackets)) add("ERROR", "3", `${ft}: bracketFilter.brackets is an ARRAY (the API shape) — in an archive it is a map keyed by 8-char ids`);
+    else for (const [bk, b] of Object.entries<any>(bf.brackets ?? {})) {
+      for (const [dk, d] of Object.entries<any>(b.dynamicFilters ?? {}))
+        if (target && !fields(target)[d.fieldCode]) add("ERROR", "3", `${ft}: bracketFilter ${bk}/${dk} fieldCode "${d.fieldCode}" is not a field of ${target.code}`);
+    }
+  }
+
   // back link: a field of the REFERENCED BO that references this BO
   const back = f.boRefStruct?.linkedFieldCode;
   if (back && target && f.type === "BO") {
@@ -319,7 +346,7 @@ for (const bo of bos) {
       add("ERROR", "0.5", `${ft}: key "${k}" missing from the field template`);
     const extra = Object.keys(f).filter(k => !FIELD_KEYS.includes(k) &&
       !["oldRefBoId", "viewType", "isHeightDynamic", "fieldOptionsStruct", "tableWidth", "defaultValue",
-        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode"].includes(k));
+        "defaultValueMap", "trackedFieldCode", "tabCodePath", "maxLength", "copyFromFieldCode", "bracketFilter"].includes(k));
     if (extra.length) add("WARN", "0.5", `${ft}: keys outside the template: ${extra.join(", ")}`);
 
     // «Поведение» (MYBPM-IMPORTS.md «Поведение» and «Интеграция» of a field): the stand keeps every

@@ -1351,6 +1351,30 @@ field in `dynamicFields`; the field links are by CODE:
   this — keys dropped on an added field, `remove-all-for-single-view-type`) and the «Data too large» toast:
   `MYBPM-UI-API.md` §5h «Reference fields».
 
+**Reference fields — «С фильтром» and «Зависимость полей» in an archive** (2026-09-30/10-01, `<stand>`: four probe
+BOs region / city / branch / order exported, imported as NEW BOs, then re-imported twice with hand-edited keys):
+
+- **A record filter on the field TRAVELS** `[C]`. Key `bracketFilter` on the field (absent when there is none):
+  ```json
+  "bracketFilter": {"boCode": "<code of the REFERENCED BO>", "fieldCode": "<this field's code>",
+    "brackets": {"vjFiE0eJ": {"parentTreeIds": {}, "order": 0, "connectionType": "AND", "notType": "DEFAULT",
+      "dynamicFilters": {"ajW7xfc8": {"fieldCode": "Aktiven", "type": "CHECKBOX", "value": "true",
+        "numberFrom": 0, "numberTo": 0, "isCurrentUser": false, "isEmptyValue": false, "boiIds": {}, "fromFieldCodes": {}}},
+      "nativeFilters": {}}}}
+  ```
+  Maps keyed by 8-character ids (the same shape as a menu item's `bracketFilter`, §5e); a filter's `fieldCode` is
+  a field of the REFERENCED BO. The import creates a new filter record with the codes resolved to the new BO's
+  field ids, and the picker of the imported field showed only the matching records `[C]`. A filter with
+  `boiIds` (a filter on a BO field by concrete records) was not tried `[U]` — record ids do not travel.
+- **The field relation does NOT travel whole** `[C]`. The export writes only
+  `boRefStruct.relMainInnerFieldCode` («Поле зависимого» — a `BO` field of the REFERENCED BO), and that one
+  imports. «Зависимость от» (`relFieldId`, a field of THIS BO) and «Внутреннее поле» (`relInnerFieldId`) are not
+  exported at all. Hand-written keys: `boRefStruct.relFieldCode` IS read but resolved in the REFERENCED BO, so it
+  stores a wrong field (or nothing); `boRefStruct.relInnerFieldCode` and top-level `relFieldCode` /
+  `relInnerFieldCode` / `relMainInnerFieldCode` are ignored. **Never write `relFieldCode`; after the import set
+  `relFieldId` / `relInnerFieldId` through the API or the constructor** (`MYBPM-UI-API.md` §5h ««С фильтром» and
+  «Зависимость полей» of a `BO` field») — and know that on this build the relation does not filter the picker in the UI anyway.
+
 ### Platform concepts an archive encodes
 
 - **BO = class, instance (инстанция / запись) = object.** A link/collection field holds instances of
