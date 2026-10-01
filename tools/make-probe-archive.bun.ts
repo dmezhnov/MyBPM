@@ -32,6 +32,8 @@
  *   --field "Офис:BO@<boId>@Ofis!show=Strana|Gorod"            — the columns of a nested-object table, by
  *     the TARGET's field codes (without it the importer shows none)
  *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
+ *   --history                                                 — the record card's «История» tab (boTabs.HISTORY);
+ *     a field is logged only with it AND "!isHistoryTracking=true" (MYBPM-IMPORTS.md §3 «Field flags»)
  *   --field "Табл:BO@<boId>@Cel!boRefStruct.linkedFieldCode=Roditel,removeType=HIDE,needMarkNew=true" — the
  *     «Отображение» / «Поведение» of a reference (MYBPM-IMPORTS.md §3 «Reference fields»): back field, removeType
  *     (STRIKETHROUGH / HIDE / DISCONNECT), viewType (TABLE / MULTIPLE / SINGLE / FIELDS), isKindAddForSelect,
@@ -1053,7 +1055,8 @@ lines.push({
   boGroupOldId: groupOldId,
   instanceViewType: "FORM",
   bos: sources,
-  boTabs: {},
+  // `--history` = the card's «История» tab; without it no isHistoryTracking field is ever logged
+  boTabs: args.has("--history") ? { HISTORY: 1 } : {},
   printForms,
   name: { rus: BO_NAME },
   recordName: { rus: BO_NAME },

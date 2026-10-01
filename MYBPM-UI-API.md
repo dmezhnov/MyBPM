@@ -2512,6 +2512,26 @@ cycle (§6b) and through the card.
   (trap 50) and validate answers `incorrect_value`. The card has no control for it — a script or this
   API colours the steps.
 
+#### «История» — `isHistoryTracking` and the BO tab `HISTORY` `[C]` (2026-10-01, `<stand>`)
+
+- **Two switches, both needed.** Per field `isHistoryTracking: true` (a one-key `editedFields` patch through
+  `save-business-object-portion`, mirrored into `formFields`; constructor: tab bar on the right of the form →
+  «История» → its gear → «Отслеживать изменение полей», a checkbox per field, `changeFieldHistoryTracking` →
+  `upsertFieldToEdit`) AND per BO the tab itself: `businessObject.boTabs: [{type: "HISTORY", orderIndex: 1}]` in
+  the same portion (switch off = `boTabs` without it + `delBoTabs: ["HISTORY"]`). Tab types `CHAT PEOPLE FILES
+  HISTORY PRINT_FORM` (+ `TELEGRAM`/`WHATSAPP` for BOs linked to a messenger). In an archive the same is
+  `boTabs: {"HISTORY": 1}` (a map) — see `MYBPM-IMPORTS.md` «Field flags».
+- **Measured on one record**: no tab, no flag → journal empty; tab only → field edits not logged; tab + flag on
+  «Текст» → only «Текст» logged, the unflagged «Ответ» edited in the same save is not; flag but tab removed →
+  the edit is NOT written at all (turning the tab back on does not reveal it). With the tab on, a NEW record
+  also logs `CREATE_BOI` and `ADD_PARTICIPANT` without any flag.
+- **Reading the journal**: `v2/boi-event/load-event-page` with `P {boId, boiId, pageId: null}` — PARAMS half
+  (a body answers 400 «Required parameter 'boId' is not present»). Answer `{nextPageId, events: [{id, type,
+  happenedAt, happenedAtStr, happenedBy: {id, name, …}, oldAndNewValues: {fieldId, label, type,
+  oldDisplayValue, newDisplayValue, oldStoredValue, newStoredValue}, …}]}`, oldest first; an empty old value
+  reads «Без значения». Event types: `CREATE_BOI ADD_PARTICIPANT DEL_PARTICIPANT UPDATE_FIELD RESTORE_BOI
+  ARCHIVE_BOI UNZIP_BOI REMOVE_BOI`.
+
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
 - A required field is marked with a red `*` on the record card; saving with it empty is refused with the
