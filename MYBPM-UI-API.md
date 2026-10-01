@@ -652,7 +652,7 @@ dropped (trap 13).
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL) · §6 Excel records: the routes (the FILE FORMAT is
+type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown.
@@ -3304,6 +3304,60 @@ Works on clones, archive BOs and constructor BOs alike. Dragging a row into anot
 - The iframe page itself is the Angular route `/iframe/:createBoToken/bo` (`IframeModule`), which calls
   `load-create-bo-token-record`, stores the token, then opens the ordinary record form in CREATE mode.
 
+### 5n. Company settings that name a BO — physical removal, offline, messengers `[C]` (2026-10-01, `<stand>`)
+
+«Настройки» (`/settings?settingsOpenPageUrl=<page>`) holds a few company-wide pages whose lists name BOs. None of
+them is part of the BO: they are stored per company, keyed by the BO's stand id, **no archive carries them** (an
+export of the BO with structure + rights + scripts has no trace of any of them, and a re-import of the BO leaves them
+in place — `MYBPM-IMPORTS.md` §2 «Company settings that name a BO»). Set them on the target stand after the import,
+by API or UI. Every save is a BODY, every answer `""`; a loader reflects the save at once.
+
+| page (`settingsOpenPageUrl`) | load | save | per-BO content |
+|---|---|---|---|
+| «Физическое удаление» (`physical-remove`) | `v2/company/load-physical-remove-settings` | `v2/company/save-physical-remove-settings` B `{boSettings:[…]}` — the WHOLE list, what is left out is dropped | one rule per BO, below |
+| «Оффлайн режим» (`offline`) | `offline/settings/all-offline-mod-settings` | `offline/settings/save-offline-mod-settings` B `{offlineModActive, dayNumbersUntilReset, nestedLevel, maxCountOfflineInstances, addOfflineAllow, deleteOfflineAllow, addViewBoAllow, deleteViewBoAllow, addEditBoAllow, deleteEditBoAllow}` — add/delete deltas | `viewBoAllow` «Список бизнес объектов для просмотра», `editBoAllow` «… на создание/редактирование»; items `{boRecord:{id,name}, displayName}` |
+| «Мессенджеры» → «Использование» (`messenger`) | `messenger/settings/load-messenger-bo-settings` P `{messengerType}` | `messenger/settings/save-messenger-bo-settings` P `{messengerType}` B `{isActive, boAllow, delBoAllow, userAllow, delUserAllow}` — deltas | `boAllow` «Выбор бизнес-объекта», items `{id, name}` |
+| «Мессенджеры» → chat registry | `messenger/settings/load-messenger-chat-registry-settings` P `{messengerType}` | `messenger/settings/save-messenger-chat-registry-settings` P `{messengerType}` B `{chatRegistryBoRecord:{id,name}\|null, isCreateUnique}` | one BO per messenger, below |
+
+`messengerType` is `TELEGRAM` or `WHATSAPP`. The record `name` you send is cosmetic — the loaders always return the
+BO's current name.
+
+**Physical removal** — one entry per BO: `{record:{id,name}, daysAfterCreation, daysAfterCreationEnabled,
+afterChangeFields:[{id, fieldId, fieldLabel, newValue, newDisplayValue}]}`. The page warns «Внимание, актуальные
+записи будут удалены безвозвратно!»: live records are deleted for good «Спустя N дней с момента создания» (when
+enabled) and/or «При изменении значения поля <F> на <V>». Only `DROPDOWN_SINGLE` fields are offered
+(`v2/business-objects/load-bo-field-records P {boId}` filtered by type; options from `load-bo-field-options P {boId,
+fieldId}`); `newValue` is the option id, the condition `id` is any 10-char client id. The UI lists only `GENERAL` BOs
+that are not panels. A rule saved by API shows in the UI unchanged. **The removal is NOT immediate** `[C]`: with a rule «Статус → Удалить» on two of three records and, from 17:03Z, also «Спустя 0 дней» enabled, all three records were still live (`state:"ALL"` `totalHits` 3, none `REMOVED`) about 25 minutes later; the purge runs on a server schedule whose period is unknown `[U]` — do not test a rule on records you need, and expect no visible effect right after saving.
+
+**Offline** — the two BO lists are shown only while «Включить использование оффлайн режима» is ticked (the page
+reads the stored lists even when the mode is off, and the API stores them with `offlineModActive:false`). «ОТМЕНИТЬ»
+on that page reloads the whole page. The two delete deltas take the BO as `{id, name}` — sending the shape the loader returns (`{boRecord:{id,name}, displayName}`) fails with a `NullPointerException` («offlineModSettings_viewBoAllow__del(... String boId==null ...)») `[C]`. `addOfflineAllow` («Разрешено использовать оффлайн режим») is a list of ORG
+UNITS, not BOs.
+
+**Messenger «Выбор бизнес-объекта» (`boAllow`) ADDS the messenger's tab to the BO's card** — `boTabs` gets
+`{type:"TELEGRAM"|"WHATSAPP", orderIndex:5}` at once, and `delBoAllow` removes that tab again. That is the
+server-side link between this page and §5k; it works with the messenger switched off (`isActive:false`).
+
+**The chat registry BO is RENAMED by the server** `[C]` — `save-messenger-chat-registry-settings` with a BO rewrites
+that BO's `name`, `recordName` (all four languages: «Реестр чатов» / «Chat registry» / «Чат тізімі» / «Chat tızımı»)
+and `description` («Реестр чатов»); fields, code and tabs stay. And **it cannot be unset**: the UI's «unselect» sends
+`chatRegistryBoRecord:null`, the server answers `""` and keeps the old BO. `isCreateUnique:true` together with a BO is
+refused («You can not register exists ChatRegistryBo and create unique ChatRegistryBo at the same time»); alone it
+asks the server to create its own registry BO (not run). The UI's picker lists only
+`messenger/settings/load-chat-registry-business-objects` — empty on `<stand>` — so an ordinary BO can be made the
+registry only through the API. A re-import of the registry BO puts the archive's name back; the registry pointer
+stays. Trap 66.
+
+**Not per BO, despite the inventory names** `[C]` (read from the client, 2026-10-01): «Мобильное приложение»
+(`v2/company/all-mobile-settings` / `save-mobile-settings`) — all seven lists, `importBoAllow` included, are ORG-UNIT
+lists (who may take screenshots, copy, import, download…), not BO lists.
+
+**Not run** `[U]`: «Телефония» (`v2/telephony/settings/load-telephony-bo-settings P {type}` — `callOpenBoRecord`, the BO
+a call opens, plus field lists) and «IN/OUT Миграция» (`kafka_migration/settings/load-{in,out}-migration-settings`,
+allowed BOs) need a configured telephony provider / Kafka; on `<stand>` the provider is `null` (`all-telephony-settings`
+→ NPE «Провайдер телефонии отсутствует»).
+
 ## 6. Records: Excel import and export
 
 Records (instances) are imported as **Excel files into a BO registry** (registry kebab → импорт/экспорт
@@ -4252,6 +4306,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 65. **Opening a create-record iframe URL plants `create_bo_token` in your own browser** `[C]` (2026-10-01) — the
     token goes into localStorage `LOCAL_Screate_bo_token` and an interceptor adds the header to every request of the
     stand's origin until the key is removed. §5m.
+66. **Making a BO the messenger chat registry renames it, for good** `[C]` (2026-10-01) — the server rewrites its
+    name, record name and description to «Реестр чатов» in all four languages, and the registry pointer cannot be
+    cleared (`chatRegistryBoRecord:null` is ignored). Never point it at a working BO to try it out. §5n.
 
 ## 12. Open questions
 
@@ -4260,6 +4317,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - Whether menu rights cascade from a group item to its children, and what a restricted user really sees.
 - What `save-business-form-field` is actually for, since it does not create fields.
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
+- §5n: how to clear a messenger chat registry once set (the API ignores `null`); why Telegram's `isConnected` turned
+  `true` on `<stand>` during the 2026-10-01 run (no field values, WhatsApp stayed `false`); the per-BO telephony and
+  Kafka migration lists (need a provider / Kafka).
 - **Still unexecuted in §5g**: whether `create-local-method` /
   `create-company-global-method` really create a method headlessly (`load-script-def`,
   `translate-script`, `apply-update-cmd`, `paste` and the catalogue calls are `[C]` since 2026-09-18/24). A
