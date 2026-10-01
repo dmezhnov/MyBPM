@@ -2875,6 +2875,37 @@ POST v2/signature/save-signature-settings     BODY (not params):
 - **The archive form** (`signatures.<code>`) and what survives an import: `MYBPM-IMPORTS.md` §0.5b «SIGNATURE
   round-trips». In short, everything travels by CODE except `massPrintFormCodes`.
 
+#### System fields (natives) — settings `[C]` (2026-10-01, `<stand>`)
+
+All six natives added over the API to one probe BO (`generate-business-form-field-by-native` + the §5b
+portion save), set over the API, looked at on a record card and in the constructor, exported and imported
+as a copy. A native's `fieldId` = its `code` = the native type (`CREATED_BY`, …) — use it wherever an
+API takes a `fieldId`.
+
+**Constructor** (gear on a native): tab 1 shows the native's name and, ONLY for `CREATED_BY` /
+`LAST_MODIFIED_BY`, «Вид отображения» Табличный / Одиночный (the columns are chosen like on any `BO`
+field); the other four have nothing there. Then the info tab (id, system type, code — the code cannot be
+changed), the lock (operations VIEW and EDIT only), «Интеграция» (IN / OUT checkboxes, the time-zone box
+for the `FULL_DATE` natives), the script tab and delete. No «Необходимо заполнить» / «Только для чтения»
+block.
+
+| setting | API (`editedFields` patch) | on the card |
+|---|---|---|
+| `label` / `labelMap` (rename) | kept | the new label |
+| `hideLabel` | kept (no constructor control for natives) | label hidden, value shown |
+| `viewType` `TABLE` / `SINGLE` + `boFieldRefs[].toShow` (`CREATED_BY`, `LAST_MODIFIED_BY`) | kept | TABLE = a table with the chosen columns of «Пользователи»; SINGLE = a chip with the first chosen column (e.g. the job title) |
+| `needUploadToOutTable` | kept | — |
+| `needLoadFromInTables`, `inMigrationTimezoneMinutes`, `isRequired` | **silently dropped** (read back `null`), also as one-key patches | — |
+| `isReadonly` | meaningless: every native ALWAYS reads back `isReadonly: true`, `readonly: true`; `false` does not stick | read-only |
+| lock | `load-field-access-group` / `save-field-access-group` with `fieldId: "<NATIVE_TYPE>"`, then `save-bo-field-chosen-access-right` — kept | — |
+
+- `OPEN_COUNT` grows by one on every card open (7 → 8 seen); `IN_MIGRATION_UPDATED_AT` is empty unless an
+  IN migration wrote the record.
+- **The archive does NOT carry a native's lock**: the export writes it (`AccessStructDto.fieldAccessStructMap.
+  <NATIVE_TYPE>`), the import ignores it — and still sets `chosenAccessRight: true`, so the copy shows an
+  orange lock over rights that are «всем». A dynamic field's lock in the same archive arrives. After an
+  import, set native locks with `save-field-access-group` (`MYBPM-IMPORTS.md` §0.5a «What travels»).
+
 #### Print forms (`v2/print-form`) over the API `[C]` (2026-10-01, core2 / NIT)
 
 A print form is a .docx template on a BO. It is what a SIGNATURE's «Документы для подписания» lists. Every
