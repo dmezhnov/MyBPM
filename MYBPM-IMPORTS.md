@@ -131,7 +131,7 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 | The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted — say so); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a business process — the stand's **«Статус процесса» dictionary id AND the id of its `CREATED` row** (both are in `formFields[code=PROCESS_STATUS]` of any constructor-built process: `refBoId` / `defaultValue`, `MYBPM-UI-API.md` §5f) | the dictionary id is an `oldRefBoId` like any other; without the row id the required status field has no default and **every record of the process is refused on save** — the import itself still reports success (§5c) | ship the process WITHOUT `PROCESS_STATUS` (§0.9) and say so |
-| For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` fed `FROM_BO` — the **dictionary CODE** | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
+| For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 
 **Every id literal printed in this section is `<company-a>`'s, not yours** `[C]`. Copying one out of an
 example IS inventing an id — 0.2a forbids it exactly the same way, and it fails in the same silent manner.
@@ -393,7 +393,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Период / Период со временем | `PERIOD` / `PERIOD_TIME` | — |
 | Год / Год и месяц | `YEAR` / `YEAR_AND_MONTH` | — |
 | Выпадающий список | `DROPDOWN_SINGLE` | `fieldOptionsStruct` (§5) |
-| Единичный выбор | `RADIO_BUTTON_GROUP` | `fieldOptionsStruct`, same two shapes |
+| Единичный выбор | `RADIO_BUTTON_GROUP` | `fieldOptionsStruct` — the LOCAL shape only (a dictionary is lost on import, §3 «Единичный выбор») |
 | Чек лист | `CHECKLIST` | **`defaultValue`** = the items as a JSON string, + `isAppendable: true` (below) |
 | Опросник | `QUESTIONNAIRE` | `questionnaires` |
 | Прогресс-бар | `PROGRESS_BAR` | `progressSteps` |
@@ -435,7 +435,7 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
 - `CO` — the same, with `"boCategory": "BO_COMPOSITE"` and the composite's id (which itself often starts
   with «@», e.g. `@feclOAWUnwXFQ8c` — parse such a spec from the right).
 - `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` — one extra key, `fieldOptionsStruct`, in exactly one of the
-  two shapes below. Copy the literal; §5 explains them.
+  two shapes below — a `RADIO_BUTTON_GROUP` only the first, the local list. Copy the literal; §5 explains them.
 
   A LOCAL list («Задать вручную») — **`options` is an OBJECT keyed by the option's own code, never an
   ARRAY**, and every entry wraps its payload in `fieldOption`:
@@ -449,6 +449,10 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
   The map key repeats `fieldOption.code`, the code is the option's label transliterated by 0.6, and
   **`fieldOption.label` is a PLAIN STRING** — not `{"rus": …}`, the one label in the whole file that is
   not a language map. `orderIndex` steps 0, 10000, 20000…; `newOptionId` is a fresh id by 0.7.
+  **`newOptionId` becomes the option's id on the stand**, so an option chosen in advance — the field's
+  `defaultValue` — is written as that `newOptionId`: `"defaultValue": "<the newOptionId of «В работе»>"`.
+  Not the code, not an id copied from a stand export — both are stored as they are and point at nothing
+  (§3 «Единичный выбор»).
 
   A DICTIONARY — named BY CODE, so it needs no stand id; this is the one cross-object reference 0.2a
   does not block:
@@ -1414,7 +1418,7 @@ personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQA
 | Период / Период со временем | `PERIOD` / `PERIOD_TIME` | **«Период» is a field type, not a dictionary** |
 | Год / Год и месяц | `YEAR` / `YEAR_AND_MONTH` | |
 | Выпадающий список | `DROPDOWN_SINGLE` | `optionSource` FROM_BO (dictionary) or FROM_FIELD (local list) |
-| Единичный выбор | `RADIO_BUTTON_GROUP` | the same `fieldOptionsStruct`; renders as chips, read in scripts through `.#Значение` (§12) |
+| Единичный выбор | `RADIO_BUTTON_GROUP` | a LOCAL `fieldOptionsStruct` only (no dictionary); renders as radio buttons, read in scripts through `.#Значение` (§12) |
 | Чек лист | `CHECKLIST` | items = the field's `defaultValue` (a JSON string `[{label,checked}]`), exported and imported `[C]` (§0.5) |
 | Опросник | `QUESTIONNAIRE` | `questionnaires` = columns + rows in one map |
 | Прогресс-бар | `PROGRESS_BAR` | `progressSteps`; sits in the «Виджеты» palette section but is a normal field |
@@ -1617,7 +1621,7 @@ every key below imported as a NEW BO; records of both checked on the card). Ever
 | `TAB_GROUP` | `params.showAsStepper: "true"` | travels, but **changes nothing on a card on this build** |
 | `TAB_GROUP` | `fieldTabs.<code>.isRight: true` | the tab sits at the right end of the strip |
 | `TEXTAREA`, `TEXTAREA_LANG` | `params.buttonTypes` = JSON TEXT of an array, `"[\"bold\",\"italic\",\"table\",\"codeview\"]"` | the editor toolbar shows exactly those buttons, from `style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height`; no key = the default ten `bold underline italic fontsize color ul ol table link picture` |
-| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` | `fieldOptionsStruct.options.<code>.fieldOption.color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour (the card shows the option uncoloured) |
+| `DROPDOWN_SINGLE` | `fieldOptionsStruct.options.<code>.fieldOption.color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour (the card shows the option uncoloured). On a `RADIO_BUTTON_GROUP` the colour travels too but shows nowhere: a kanban is built only on a `DROPDOWN_SINGLE` |
 
 - `params` values are strings, as everywhere (`"true"`, not `true`).
 - The option, questionnaire, step and tab codes in the archive are kept as written by the import (an API ADD,
@@ -1628,6 +1632,37 @@ every key below imported as a NEW BO; records of both checked on the card). Ever
 - The generator writes all of these: `--field "Чек:CHECKLIST#Пункт 1|+Пункт 2!isSelectOnly=true,isAppendable=false"`
   (`+` = ticked), `"Вкладки:TAB_GROUP#Шаг 1|>Справа"` (`>` = right), `"Поле:INPUT_TEXT!tab=<код вкладок>/<код
   вкладки>"`, `"Статус:DROPDOWN_SINGLE#Красный=RED|Синий=BLUE"`, `'Текст:TEXTAREA!params.buttonTypes=["bold","table"]'`.
+
+**«Единичный выбор» — `RADIO_BUTTON_GROUP`, and the default option of any list** `[C]` (2026-10-01, `<stand>`,
+probe «Проба виджетов 2026-10-01» + three copies imported from its export, rolled back)
+
+- **A radio group is a LOCAL list only.** Its `fieldOptionsStruct` takes the `FROM_FIELD` shape of 0.5. A
+  dictionary (`FROM_BO` + `dictionaryBoInfo`) is useless on it everywhere: the import drops it (the new
+  field has `refBoId: null` — the same archive's `DROPDOWN_SINGLE` with the same dictionary was bound
+  correctly), the record card shows the label and NO buttons, and the constructor shows an empty local list.
+  Worse, the stand then exports that field WITHOUT `fieldOptionsStruct`, and **such a line crashes the
+  analysis** — `status: "INTERNAL_ERROR"`, «Cannot read field "options" because "fieldStruct.fieldOptionsStruct"
+  is null» in `analyzeRadioButtonGroupField`. Need a dictionary as the source? Use `DROPDOWN_SINGLE`.
+- **The default option** is the field's `defaultValue` = an option ID, i.e. the option's `newOptionId` in an
+  archive. The import copies `defaultValue` as it is — it never translates a code or an old id. On a new
+  record's draft the field then holds exactly that string: the right `newOptionId` → the option is ticked;
+  the code (`"Net"`) or a foreign id → a value that matches no option. The default fills only NEW records;
+  existing ones stay empty.
+- **A stand export breaks every list default.** It writes `defaultValue` as the option's id ON THE SOURCE
+  STAND, but gives the options fresh random `newOptionId`s — so importing an export as a new BO leaves the
+  default pointing at nothing. Seen on both `RADIO_BUTTON_GROUP` and `DROPDOWN_SINGLE`. Before importing an
+  export, replace each such `defaultValue` with the `newOptionId` of the option it meant (look the option up
+  on the source stand by id → its code → the archive option with that key). Re-importing onto the SAME BO
+  was not tried `[U]`.
+- **Required** (`isRequired: true`): the server refuses a record with no option ticked
+  (`validate_required_title`); the card shows the red star. «Уникальное» does not exist for this type.
+- **No kanban, no colour.** A kanban column can only be a `DROPDOWN_SINGLE` (the stand lists no radio
+  among the kanban fields, and exports `kanbanCardTemplates` only for dropdowns); `fieldOption.color` on a
+  radio is stored and travels, and is seen nowhere.
+- On the card a radio cannot be cleared once an option is ticked (the client control only sets, bundle).
+  The server itself checks nothing: a record API value that is no option id is stored and shown raw.
+- `isRequiredAll` is written `false` by the constructor the moment an empty radio group appears on the
+  canvas (it auto-adds one empty option) — harmless, ignore it.
 
 **«История» — `isHistoryTracking` + the BO's `boTabs.HISTORY`** `[C]` (2026-10-01, `<stand>`) — the record
 card's «История» tab logs a change of a field ONLY when BOTH are set: the field's `isHistoryTracking: true`
@@ -2403,6 +2438,13 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
 - Getting group ids for an archive: set probe rights on one BO with a DIFFERENT group per action
   (view/edit/delete/archive/export), export the structure, map ids by action (worked first try); or call
   `load-org-unit-record-list`. Archive ids are `G-<id>`, API ids have no prefix.
+- **«APPLIED» does not mean the BO was created** `[C]` (2026-10-01): an apply whose process ends
+  `hasError: true, errorState: "ONLY_INTERMEDIATE_ERRORS"` still sets the import to `APPLIED`, yet the BO
+  may be missing — the case seen: `kanbanCardTemplates` naming a field code the archive no longer has
+  («no field with code: …»). `load-import-errors` stays empty; the message is only in
+  `v2/process-indicator/load-state {processId}` → `phases.*.errors`. After every apply check the poll's
+  `hasError` and load the BO. When you delete a field from an archive, delete it from every
+  `kanbanCardTemplates.*.kanbanFields` too.
 - BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — and an empty one is
   exactly why «kanban does not work for imported BOs». Fill it: §0.5c, `MYBPM-UI-API.md` §7.
 
