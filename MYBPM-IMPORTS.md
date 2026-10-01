@@ -81,7 +81,9 @@ Rules, all `[C]`:
   root.
 - The member names `0000001.mybpm` and `metadata.mybpm` are fixed.
 - `metadata.mybpm` contains the single ASCII string `objectCount-<N>` where **N = the number of lines**
-  in `0000001.mybpm`. No trailing newline, no JSON, no quotes. Get N wrong and the import fails.
+  in `0000001.mybpm`. No trailing newline, no JSON, no quotes. Keep N exact. (One mismatch seen
+  `[C]` 2026-10-01: `objectCount-6` over 5 lines imported and applied cleanly, so a too-HIGH N is not
+  checked; a too-low N was never tried `[U]`.)
 - `0000001.mybpm` is **JSONL**: one DTO per line, each line a complete JSON object, `\n` between lines
   and one `\n` at the end. It is NOT a JSON array — do not wrap it in `[ ]`, do not pretty-print it.
   Each line must be minified onto a single line.
@@ -463,6 +465,11 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
   `{"<16-char id>": {"code":"Novyyi","label":"Новый","orderIndex":0}, …}`
 - `TAB_GROUP` — `"fieldTabs"` keyed by the tab code:
   `{"Obschee": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"Obschee","newId":"<16 chars>"}}`
+  Fields on a tab carry `tabCodePath: {tabGroupCode, tabCode}` — both CODES. **A TAB_GROUP must have a
+  code** `[C]` (2026-10-01): a group created over the API without a label gets code `""`, and a stand
+  export then DROPS the group itself and its tab rules, writing the group's id into its fields'
+  `tabGroupCode` (the archive cannot be imported back). Give the group a code before exporting
+  (`MYBPM-UI-API.md` «Tabs (`TAB_GROUP`) over the API»). Per-tab locks → §7.
 - `FILE_UPLOAD` — `"viewType": "MULTIPLE"` («несколько файлов») and `"params": {"contentType": "ALL"}`
   (`FOR_CAMERA` = «только фото с камеры»). The constructor's «Отображение» radio (Одиночный /
   Множественный / Плиточный) lives in **`params.viewType`** (`MYBPM-UI-API.md` §5i «FILE_UPLOAD display
@@ -2317,13 +2324,22 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   action carries `denyAll`, `orgUnitIds: ["G-<groupId>", …]`, `authorsField{author, …}`,
   `fromFields{<personFieldCode>: same flags}`, `participants`.
 - Field rules: `fieldAccessStructMap[fieldCode]` (only `view` + `edit` are meaningful per field).
-  Tab rules: `fieldAccessStructMap["Vkladki"].tabAccessStructMap[tabCode].view`.
+  Tab rules: `fieldAccessStructMap[<TAB_GROUP code>].tabAccessStructMap[<tab code>]` — the same nine
+  actions, only `view` + `edit` meaningful. **Tab rules round-trip** `[C]` (2026-10-01, core2): the
+  «Секрет» tab locked to one group for view + edit over the API, exported, copied as a new BO and
+  imported — the copy came back with exactly that lock on that tab, the other tab open to all, and
+  the field still on its tab. «никому» (`view.denyAll:true`, empty `orgUnitIds`) also imports.
+  Both keys are CODES; `validate-archive` checks that they name a real `TAB_GROUP` and its tab.
+  Whether the tab is really hidden for a non-admin user was not seen (the stand account is an
+  admin and sees the tab either way) `[U]`.
 - Semantics, read off `<company-b>` rather than documented `[I]`: `denyAll:false` = «всем»;
   `denyAll:true` + empty `orgUnitIds` + all-false `authorsField` = «никому»; `denyAll:true` + ids and/or
   `author:true` = «только этим». The struct's **top-level** `denyAll` is a "custom rights are set" flag,
   not a global deny (every `<company-b>` BO has it true while its actions stay open).
-- `chosenAccessRight:true` marks fields/tabs with individual rights; tabs imported with `false` were still
-  hidden → probably a UI-only flag `[I]`.
+- `chosenAccessRight:true` marks fields/tabs with individual rights. **It is only the orange lock in the
+  constructor** `[C]` (2026-10-01): a tab imported with `chosenAccessRight:false` and a «никому» rule
+  still got that rule, and the flag came back `false` as written. Write it `true` wherever you ship a
+  rule so the constructor shows the lock.
 - `participants` and `authorsField.fieldCodes` were never seen filled — semantics unknown `[U]`.
 - Stand exports write `fromFields` for EVERY Person-ref field in EVERY action; it is a real setting, not a
   blind default (the stand kept `author=false` where the archive wrote false).

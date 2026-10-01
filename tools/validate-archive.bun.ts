@@ -194,6 +194,19 @@ for (const g of groups) {
 for (const o of objs) if (cls(o) === "AccessStructDto")
   for (const k of Object.keys(o.fieldAccessStructMap ?? {})) if (k in NATIVE_TYPES)
     add("WARN", "0.5a", `AccessStructDto: the lock of native ${k} is ignored by the import — set it over the API after the import`);
+// tab rules (§7): fieldAccessStructMap.<TAB_GROUP code>.tabAccessStructMap.<tab code> — both looked up by code
+for (const o of objs) if (cls(o) === "AccessStructDto") {
+  const bo = objs.find(b => cls(b) === "BoStructDto" && b.code === o.boCode);
+  if (!bo) continue;
+  for (const [k, v] of Object.entries<any>(o.fieldAccessStructMap ?? {})) {
+    const tabs = v?.tabAccessStructMap;
+    if (!tabs || !Object.keys(tabs).length) continue;
+    const g = bo.dynamicFields?.[k];
+    if (g?.type !== "TAB_GROUP") { add("ERROR", "7", `AccessStructDto: tabAccessStructMap under "${k}", which is not a TAB_GROUP of ${bo.code}`); continue; }
+    for (const t of Object.keys(tabs)) if (!(t in (g.fieldTabs ?? {})))
+      add("ERROR", "7", `AccessStructDto: tab rule "${k}.${t}" names no tab of that TAB_GROUP (tab codes: ${Object.keys(g.fieldTabs ?? {}).join(", ")})`);
+  }
+}
 if (objs.some(o => cls(o) === "AccessStructDto"))
   add("ERROR", "0.10/10", "archive ships an AccessStructDto — import replaces the stand's rights with the archive's; never ship one unasked");
 
@@ -498,6 +511,10 @@ for (const bo of bos) {
           add("ERROR", "5b", `${ft}: boFieldCodes names "${l.boCode}" which is not declared in bos[]`);
       }
     } else if (f.tabCodePath?.tabGroupCode) {
+      // a group with an empty code is exported with its id here and dropped itself (§0.5 TAB_GROUP)
+      const grp = bo.dynamicFields?.[f.tabCodePath.tabGroupCode];
+      if (grp?.type !== "TAB_GROUP") add("ERROR", "0.5", `${ft}: tabCodePath.tabGroupCode "${f.tabCodePath.tabGroupCode}" is not a TAB_GROUP of this BO`);
+      else if (!(f.tabCodePath.tabCode in (grp.fieldTabs ?? {}))) add("ERROR", "0.5", `${ft}: tabCodePath.tabCode "${f.tabCodePath.tabCode}" is not a tab of ${f.tabCodePath.tabGroupCode}`);
       // a field inside a tab is laid out inside that tab (its own x/y from 0), not in the form's stack
       if (!f.gridPosition) add("ERROR", "0.8", `${ft}: no gridPosition`);
     } else if (bo.category === "BO_PROCESS" && key === "PROCESS_STATUS") {
