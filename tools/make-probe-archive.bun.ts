@@ -32,6 +32,9 @@
  *   --field "Офис:BO@<boId>@Ofis!show=Strana|Gorod"            — the columns of a nested-object table, by
  *     the TARGET's field codes (without it the importer shows none)
  *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
+ *   --map / --grouping                                        — the «Карта» / «Группировка» views (isMapEnabled /
+ *     isGroupingEnabled); a grouping level is a field key: "Связь:BO@<boId>@Code!viewType=SINGLE,
+ *     groupingInfo.nodeTreeActive=true,groupingInfo.nodeTreeLevel=0" (MYBPM-IMPORTS.md §2 «BO views»)
  *   --field "Номер:INPUT_TEXT!titleToShow=true,titleOrderIndex=0" — a part of the record name (card title),
  *     joined by spaces in titleOrderIndex order (MYBPM-IMPORTS.md §3 «Field flags» «Название записи»)
  *   --tab-view / --hide-add / --no-touch                      — BO header settings (MYBPM-IMPORTS.md §2 «BO header
@@ -278,7 +281,8 @@ function coFieldFlags(): { label: string; type: string; links: { boCode: string;
  * `--kanban "<Метка выпадающего списка>:HEADER=<Метка>[,…];CONTENT=…;FOOTER=…"`, repeatable — the CARD
  * TEMPLATE of a kanban whose COLUMNS are that dropdown's options. Without it an imported BO carries
  * `kanbanCardTemplates: {}` and the kanban view dies with «cardTemplate is null» (MYBPM-UI-API.md §7):
- * the menu item's `isKanbanEnabled` alone is not enough, the template lives on the BO.
+ * the menu item's `isKanbanEnabled` alone is not enough, the template lives on the BO. A dropdown without
+ * `--kanban` still gets a one-field template (header = the first INPUT_TEXT), since the MAP needs it as well.
  * A name that is a known NATIVE type (CREATED_BY, …) goes onto the card as `archetype: "NATIVE"`;
  * everything else is a dynamic field and is matched by label (or by code, if the label is already one).
  */
@@ -1068,6 +1072,15 @@ for (const k of kanbans) {
   }
   kanbanCardTemplates[columnCode] = { kanbanFields };
 }
+// every other DROPDOWN_SINGLE gets a minimal template too: without one the BO's map, kanban view and kanban
+// editor die with «cardTemplate is null» once it holds a record (MYBPM-IMPORTS.md 0.5c, MYBPM-UI-API.md §5l)
+if (CATEGORY === "BO" || CATEGORY === "BO_DICTIONARY") {
+  const headerCode = Object.entries<any>(dynamicFields).find(([, f]) => f.type === "INPUT_TEXT")?.[0];
+  for (const [code, f] of Object.entries<any>(dynamicFields)) {
+    if (f.type !== "DROPDOWN_SINGLE" || kanbanCardTemplates[code]) continue;
+    kanbanCardTemplates[code] = { kanbanFields: { [headerCode ?? code]: { cardOrderIndex: 0, locationType: "HEADER", archetype: "DYNAMIC" } } };
+  }
+}
 
 // a print form's template precedes the BO, as in a stand export
 lines.push(...printFormFiles);
@@ -1101,8 +1114,9 @@ lines.push({
   actual: true,
   // `--calendar` = the registry's «Календарь» view (a BO built in the constructor gets it by default)
   isCalendarEnabled: args.has("--calendar"),
-  isMapEnabled: false,
-  isGroupingEnabled: false,
+  // `--map` / `--grouping` = the «Карта» / «Группировка» views (MYBPM-IMPORTS.md §2 «BO views»)
+  isMapEnabled: args.has("--map"),
+  isGroupingEnabled: args.has("--grouping"),
   isCodeReadonly: false,
   chosenAccessRight: false,
   isTouchEnabled: !args.has("--no-touch"),

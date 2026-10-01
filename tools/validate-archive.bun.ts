@@ -333,6 +333,25 @@ for (const bo of bos) {
   const unknownBo = Object.keys(bo).filter(k => ![...BO_KEYS, ...BO_KEYS_NEW, ...BO_KEYS_OPTIONAL].includes(k));
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
+  // 0.5c / §2 «BO views»: every template is {kanbanFields: {...}}, and every DROPDOWN_SINGLE needs one —
+  // without it the map, the kanban view and the kanban editor die with «cardTemplate is null»
+  const kct = bo.kanbanCardTemplates;
+  if (kct && typeof kct === "object") {
+    for (const [code, t] of Object.entries<any>(kct)) {
+      if (!t || typeof t.kanbanFields !== "object" || Array.isArray(t.kanbanFields))
+        add("ERROR", "0.5c", `${tag}: kanbanCardTemplates.${code} must be {"kanbanFields": {...}} — without the wrapper the import is APPLIED and sets nothing`);
+      else for (const fc of Object.keys(t.kanbanFields))
+        if (!bo.dynamicFields?.[fc] && !bo.nativeFields?.[fc])
+          add("ERROR", "0.5c", `${tag}: kanbanCardTemplates.${code} names ${fc}, not a field of this BO`);
+    }
+    if (bo.category === "BO" || bo.category === "BO_DICTIONARY")
+      for (const [code, f] of Object.entries<any>(bo.dynamicFields ?? {}))
+        if (f?.type === "DROPDOWN_SINGLE" && !kct[code])
+          add("ERROR", "0.5c", `${tag}: DROPDOWN_SINGLE ${code} has no kanbanCardTemplates entry — the BO's map and kanban die with «cardTemplate is null» once it has a record`);
+  }
+  if (bo.isGroupingEnabled === true)
+    add("WARN", "2", `${tag}: isGroupingEnabled — the registry grouping view is 404 on the server (§2 «BO views»), it renders nothing`);
+
   // §2 «BO card tabs»: boTabs is a map TYPE → orderIndex; a re-import only adds and renumbers, never removes
   if (bo.boTabs !== undefined) {
     if (!bo.boTabs || typeof bo.boTabs !== "object" || Array.isArray(bo.boTabs))
