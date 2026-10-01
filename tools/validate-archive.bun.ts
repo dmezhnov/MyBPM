@@ -53,6 +53,10 @@ const BO_KEYS = ["@class", "oldId", "code", "category", "kind", "boGroupOldId", 
   "dynamicFields", "nativeFields", "dictionaryFields", "actual", "isCalendarEnabled", "isMapEnabled",
   "isGroupingEnabled", "isCodeReadonly", "chosenAccessRight", "kanbanCardTemplates", "timelineTemplates",
   "calendarCardTemplates", "signatures", "buttons", "iframes", "currentDates", "captcha", "currentUser"];
+// keys newer builds write; older exports lack them. A re-import WITHOUT them resets the stand to the default
+// (verified on core2 2026-10-01: isTouchEnabled → true, hideAddButtonFromRegistry → false)
+const BO_KEYS_NEW = ["isTouchEnabled", "hideAddButtonFromRegistry"];
+const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder"];
 
 // §0.5 — the full key set of a dynamic field
 const FIELD_KEYS = ["code", "newId", "archetype", "kind", "boRefStruct", "label", "staticValue",
@@ -320,9 +324,11 @@ for (const bo of bos) {
   for (const k of BO_KEYS) if (!(k in bo)) {
     // a panel the stand built itself has instanceViewType null, and the export omits a null key
     if (k === "instanceViewType" && bo.category === "BO_PANEL") continue;
-    add("ERROR", "0.4", `${tag}: key "${k}" missing — import MERGES, a missing key keeps the stand's old value`);
+    add("ERROR", "0.4", `${tag}: key "${k}" missing — a re-import may reset the stand's value or keep it; ship every key`);
   }
-  const unknownBo = Object.keys(bo).filter(k => !BO_KEYS.includes(k));
+  for (const k of BO_KEYS_NEW) if (!(k in bo))
+    add("WARN", "0.4", `${tag}: key "${k}" missing — a re-import of an existing BO resets it to the default`);
+  const unknownBo = Object.keys(bo).filter(k => ![...BO_KEYS, ...BO_KEYS_NEW, ...BO_KEYS_OPTIONAL].includes(k));
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
   if (!CATEGORIES.has(bo.category)) add("FATAL", "0.9", `${tag}: category "${bo.category}" is not one of ${[...CATEGORIES].join("/")}`);
