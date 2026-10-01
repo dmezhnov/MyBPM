@@ -766,6 +766,13 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
 - Tab rights: `load-field-tab-access-group` params `{businessObjectId, fieldId:<TAB_GROUP field id>, tabId}`;
   `save-field-tab-access-group` body `{businessObjectId, fieldId, tabId, accessGroup}`. An unknown/unset
   `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто» answer is real.
+  The UI follows it with `save-bo-field-tab-chosen-access-right` — **PARAMS** `{boId, fieldId, tabId,
+  chosenAccessRight}` (in the body: 400 «Required parameter 'boId'») — which only turns the lock on the
+  tab chip orange `[C]` (2026-10-01). To reset a tab: `accessForAll:true`, `orgUnitToDelete` = the
+  current `orgUnitRecordList`, then the flag `false`.
+  **Tab rules travel in an archive** `[C]` (2026-10-01) as
+  `AccessStructDto.fieldAccessStructMap.<TAB_GROUP code>.tabAccessStructMap.<tab code>` (export with
+  «Права доступа» → import of a copy → the same lock on the same tab); details in `MYBPM-IMPORTS.md` §7.
 - **Field and tab ids on the stand equal `newId` in an imported archive** — that is how a generated archive
   and the API are stitched together.
 - Also seen on the controller: `load-field-access-author-person-list`. Dictionary options:
@@ -2615,6 +2622,12 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
   applied `gridPosition` / `tableColToShow` / `label` but silently kept `tabId: null`.
 - Fields outside the group stay on the form above and below it. The group's own `rows` is its height on
   the form.
+- **Give the group a code** `[C]` (2026-10-01): with `label: null` the server leaves `code: ""`, and a
+  `save-business-object-portion` carrying `code` does not change it. Set it with
+  `save-business-field-code` — **PARAMS** `{businessObjectId, businessFieldId, businessFieldCode}`
+  (answers `""`; the same call for any field). Without a code the export drops the group and its tab
+  rules and writes the group's id into the fields' `tabCodePath.tabGroupCode`. Tab codes are derived
+  from the tab labels («Секрет» → `Sekret`).
 
 #### FILE_UPLOAD display mode — `params.viewType` `[C]` (2026-09-28)
 
