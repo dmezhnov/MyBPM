@@ -400,7 +400,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Вкладки | `TAB_GROUP` | `fieldTabs` |
 | Карта | `GEO_POINT` | — |
 | Ссылка | `LINK` | — |
-| Загрузка файла | `FILE_UPLOAD` | `viewType` SINGLE/MULTIPLE + `params.contentType` ALL/FOR_CAMERA |
+| Загрузка файла | `FILE_UPLOAD` | `params.viewType` SINGLE/MULTIPLE/TILE + `params.contentType` ALL/FOR_CAMERA (also IMAGE/DOCUMENT; mobile app only, below) |
 | Email / Телефон | `INPUT_EMAIL` / `INPUT_PHONE` | — |
 | Мультиязычное текстовое поле | `INPUT_TEXT_LANG` | — |
 | Мультиязычный текстовый блок | `TEXTAREA_LANG` | — (the value may be HTML, below) |
@@ -483,6 +483,14 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
   not matter). In both «Множественный» and «Плиточный» a script sees the field's value as `File[]` `[C]` —
   the same script compiled unchanged after the switch, and a script-written PNG then showed as a tile
   thumbnail on the card.
+  **«Поведение для MP» = `params.contentType`** `[C]` (2026-10-01, <stand>): the enum is `ALL` / `IMAGE` /
+  `DOCUMENT` / `FOR_CAMERA`; the stand stores all four (API and archive), a stand export writes them and a
+  copy import brings each back unchanged. The constructor's only control is the checkbox «Только камера»,
+  which toggles `FOR_CAMERA` ↔ `ALL` — an `IMAGE` / `DOCUMENT` field shows it unticked, and one click
+  overwrites the value. **The setting does nothing on the web**: the record card renders the same
+  `<input type=file accept="*">` (no `capture`) for all four values, and the server stored a `.txt` in a
+  `FOR_CAMERA`, an `IMAGE` and a `DOCUMENT` field alike. It is read by the mobile app only («MP»); what
+  the mobile app does with it is `[U]`. Leave it `ALL` unless the field is for phone-camera shots.
 - `CHECKLIST` — **the items are the field's `defaultValue`, NOT `fieldOptionsStruct`** `[C]` (2026-09-30,
   build S4.24.25.643, export → edit → import → the items shown on a new record's form): a JSON array
   written as a STRING, `"defaultValue": "[{\"label\":\"Пункт 1\",\"checked\":false},{\"label\":\"Пункт 2\",\"checked\":true}]"`
@@ -1250,8 +1258,8 @@ bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-n
 
 `#…` means a different thing per type: options for `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` /
 `CHECKLIST`, steps for `PROGRESS_BAR`, tabs for `TAB_GROUP`, the HTML itself for `STATIC_TEXT`, and
-«колонки, then rows prefixed with `^`» for `QUESTIONNAIRE`. `!multiple` / `!camera` are the
-`FILE_UPLOAD` settings. `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`.
+«колонки, then rows prefixed with `^`» for `QUESTIONNAIRE`. `!multiple` / `!tile` / `!camera` are the
+`FILE_UPLOAD` settings (`params.viewType` MULTIPLE / TILE, `params.contentType` FOR_CAMERA). `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`.
 
 `I1fVTkYPTSg7X8b8` and `@feclOAWUnwXFQ8c` in that command are **ids ON THE `<company-a>` STAND** — `Person` and
 one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
@@ -1425,7 +1433,7 @@ personGroupBoId}` — which on the reference stand is `I1fVTkYPTSg7X8b8` / `4cQA
 | Вкладки | `TAB_GROUP` | `fieldTabs`; also from the «Виджеты» section |
 | Карта | `GEO_POINT` | excluded from filters and from a BO-reference's column list by the client; the platform's own map (Google, platform team 2026-09-28), so a Yandex Maps key is not used — `MYBPM-UI-API.md` §5i |
 | Ссылка | `LINK` | URLs — not a text field |
-| Загрузка файла | `FILE_UPLOAD` | `viewType` SINGLE / MULTIPLE, `params.contentType` ALL / FOR_CAMERA |
+| Загрузка файла | `FILE_UPLOAD` | `params.viewType` SINGLE / MULTIPLE / TILE, `params.contentType` ALL / FOR_CAMERA / IMAGE / DOCUMENT (mobile app only, §0.5) |
 | Мультиязычное текстовое поле | `INPUT_TEXT_LANG` | scripts read it through `.RUS` |
 | Мультиязычный текстовый блок | `TEXTAREA_LANG` | the value may be HTML, per language |
 | Вложенный объект, Пользователь | `BO` | **not** `BUSINESS_OBJECT` |
