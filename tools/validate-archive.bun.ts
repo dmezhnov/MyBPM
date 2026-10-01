@@ -594,6 +594,9 @@ for (const bo of bos) {
         if (Object.keys(v.massPrintFormCodes ?? {}).length)
           add("WARN", "0.5b", `${ft}: massPrintFormCodes did NOT survive an import on core2 (2026-10-01) — check it on the stand after applying`);
       }
+      if (WIDGET_MAPS.currentDates.includes(v.type) && v.widgetType !== v.type)
+        // core2 2026-10-01: a stand export and the generator both carry widgetType = type in currentDates
+        add("ERROR", "0.5b", `${ft}: widgetType "${v.widgetType}" must repeat type "${v.type}"`);
       if (v.type === "CAPTCHA")
         // core2 2026-10-01: both record-API cycles answer CaptchaNotVerified for a changed or new record
         add("WARN", "0.5b", `${ft}: a CAPTCHA makes the server refuse every save that changes a record until a person solves it — no record API, no headless client`);
