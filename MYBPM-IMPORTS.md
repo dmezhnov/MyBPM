@@ -255,7 +255,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "recordName": {"rus": "Демо из кукбука"}, ← same text (shown nowhere; the constructor keeps it = name)
   "staticValue": {},
   "description": "",
-  "orderIndex": 47480000,
+  "orderIndex": 47480000,                   ← the BO's place in its group: give each BO its own number (§2 «BO place in the sidebar»)
   "dynamicFields": { "<fieldCode>": { …template 0.5… } },   ← one entry per field, keyed by field code
   "nativeFields": {},
   "dictionaryFields": [],
@@ -1167,6 +1167,9 @@ resolve like this:
     {"kanbanFields": {"<a field code>": {"cardOrderIndex": 0, "locationType": "HEADER", "archetype": "DYNAMIC"}}}`,
     even when no kanban was asked for. Without it the BO's map, kanban and kanban editor die with «cardTemplate
     is null» once a record exists (0.5c, §2 «BO views», trap 32).
+17. **Every BO line has a numeric `orderIndex` of its own** — a missing one lands as `null` (top of the group),
+    and the template's 47480000 shared by several BOs makes them impossible to reorder by drag; a re-import also
+    MOVES an existing BO to the archive's group and place (§2 «BO place in the sidebar»).
 
 ### 0.11 Self-check before shipping
 
@@ -1471,6 +1474,32 @@ exported, imported as a copy, re-imported with the flags off and on again, and l
 - Generator: `tools/make-probe-archive.bun.ts --calendar --map --grouping`, a level by
   `--field "Связь:BO@<boId>@Code!viewType=SINGLE,groupingInfo.nodeTreeActive=true,groupingInfo.nodeTreeLevel=0"`.
   Stand side: `MYBPM-UI-API.md` §5l.
+
+### BO place in the sidebar — `boGroupOldId`, `orderIndex`; clones and the iframe URL do not travel `[C]` (2026-10-01, `<stand>`)
+
+Where the BO sits in the constructor's left list. Proven on a cloned probe: moved to a group without a code over the
+API, exported, the group line pointed at another existing group by `code`, `orderIndex` changed, re-imported; then
+re-imported without `orderIndex`.
+
+| key | what it does |
+|---|---|
+| `boGroupOldId` | the group line this BO belongs to (§0.3); the group is matched by its `code` |
+| `orderIndex` | the BO's place inside its group, ascending |
+
+- **A re-import MOVES an existing BO** into the archive's group and to the archive's `orderIndex` — the BO left the
+  group it was in on the stand.
+- **A re-import WITHOUT `orderIndex` writes `null`** — the BO jumps to the top of its group. Always ship a number.
+- **The §0.4 template value 47480000 is shared by every archive BO.** BOs with equal values cannot be reordered
+  between each other in the sidebar (the drag sends the neighbours' midpoint — the same number — and the row falls back
+  on reload; `MYBPM-UI-API.md` trap 64). Give each BO its own value: one above the last BO of the target group
+  (`load-business-object-groups {forEdit: true}` lists them with their `orderIndex`), e.g. +1000 per BO.
+  Generator: `tools/make-probe-archive.bun.ts --bo-order <n>`; the validator warns on 47480000 and fails on `null`.
+- **A stand export of a BO from a group WITHOUT a code writes a group line WITHOUT `code`** (e.g. «Другое»
+  `code: null`). Re-importing that export as is would rename one fixed stand group (§0.3, §8) — the validator stops it
+  (FATAL). Point the line at a group that has a code before re-importing.
+- **Not in the archive** (stand-only, `MYBPM-UI-API.md` §5m): the create-record iframe token (no key; a copy has
+  none), and «Дублировать» — the stand's clone is a separate call; an archive copy is the archive route to the same
+  result (copy the export, new `code` and `name`, fresh `oldId`/`newId`s).
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is

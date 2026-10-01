@@ -652,7 +652,7 @@ dropped (trap 13).
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping) · §6 Excel records: the routes (the FILE FORMAT is
+type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown.
@@ -3240,6 +3240,70 @@ column), saved by `v2/boi-grouping/save-business-object-grouping-fields` with a 
   server; only `load-bo-instance-grouping-search` answers (`{nodes: [], hasNext: true}`). The view shows an empty
   tree. Do not offer grouping to a user; the flag and the levels store and travel, nothing renders them.
 
+### 5m. The BO's sidebar row — «Дублировать», «Переименовать», order, «Добавить в группу», the create-record iframe URL `[C]` (2026-10-01, `<stand>`)
+
+The left list of the constructor (`/business-objects/editing/<boId>`) shows the BOs by group; the row's ⋮ menu has
+«Права доступа» (menu rights, known), «Переименовать», «Добавить в группу», «Дублировать», «Экспортировать»,
+«Удалить». All calls below are `v2/business-objects/…` and answer `""` unless said otherwise. Read the list with
+`load-business-object-groups {forEdit: true}` (PARAMS) → `[{id, name, code, orderIndex, kind, records: [{id, name,
+orderIndex, boCategory}]}]`, records sorted by `orderIndex`. Format side: `MYBPM-IMPORTS.md` §2 «BO place in the
+sidebar».
+
+**«Дублировать» = `clone-business-object {boId}`** (PARAMS) → `{id, name, orderIndex, boCategory}` of the new BO; the UI
+asks nothing and jumps to the clone's editor (its header still shows the source's name until a reload). What the clone
+gets, checked on a header/tabs probe, a views probe with 3 records and a scripted probe:
+- name `Копия_<name>_<N>` and code `<code>_<N>`, where N is a company-wide clone counter (17, 18, 19 … one per clone,
+  deleted ones included). **The other languages come out as `Copy_null_<N>` / `Көшірме_null_<N>` / `Köşırme_null_<N>`**
+  when the source has no text in them — rename the clone in every language you show.
+- the same group and the same `orderIndex` as the source;
+- every field with the **same field ids and codes** (a field id is unique only inside its BO), the card layout, the
+  registry columns, `boTabs`, the messenger link fields, `instanceViewType`, the header flags, the calendar/map/grouping
+  flags, `groupingInfo`, the kanban card template, record rights and the menu-rights record;
+- **the scripts, all versions** (work and test) as NEW script modules whose `scriptId`s repeat the source's — the
+  definitions are stored per (module, scriptId), so editing the clone's script leaves the source alone (proved by
+  `apply-update-cmd` on the clone's «Закрытие» and reading both); the hooks fire on the clone's records;
+- NOT copied: the records, the calendar event titles (the clone gets a default), the create-record iframe token, menu
+  items;
+- **a business process clone loses its work version**: both versions and both diagrams copy byte for byte, but the old
+  work version comes back with `isWork: false` (the test one stays test) — publish one before the process can run.
+A record saved into a clone through §6a is an ordinary record of the clone.
+
+**«Переименовать» = `save-bo-record`** BODY `{id, name}` — and on this build it writes **`recordName` only**: `name`,
+`nameMap`, the sidebar row and the header keep the old name, also after a reload (UI and API alike, checked with a
+10-s wait for the cache). The working rename is the header «Наименование» input (§5j), which writes `name` and
+`recordName` together. Trap 63.
+
+**Order inside a group = `save-bo-record`** BODY `{id, orderIndex}`. Dragging a row sends it with the midpoint of the
+two neighbours' `orderIndex`. **Every archive-created BO carries the template's `orderIndex` 47480000**, so two archive
+BOs side by side have the same value, the dragged row gets that value too and after a reload it falls back to the end
+of the block of equal values (21 BOs shared 47480000 in one group) — the drag is lost. Give such BOs distinct values
+(this call, or `orderIndex` in the archive). A BO with `orderIndex: null` (a re-import without the key, `MYBPM-IMPORTS.md`
+§2) is listed first in its group. Trap 64.
+
+**«Добавить в группу» MOVES the BO** — the submenu is a radio list of the groups, one choice, and it calls
+`move-business-object-to-group {boId, boGroupId}` (PARAMS); the BO leaves its old group and keeps its `orderIndex`.
+Works on clones, archive BOs and constructor BOs alike. Dragging a row into another group does the same plus a
+`save-bo-record` for the place.
+
+**The create-record iframe URL** — header gear → «Сгенерировать встраиваемый URL на создание» → «Пользователь:
+Выберите» (a person chooser, `v2/org-unit/load-filtered-persons-v2`) → «Сформировать»:
+- `generate-create-bo-token {boId, personId}` → a bare 216-character token; `load-create-bo-token {boId}` →
+  `{createBoToken, boId, orgUnitRecord: {id, name, email, …}}`, or `""` when none was made.
+- The three URLs are `<origin>/iframe/<token>/bo?globalLang=rus|eng|kaz`. The page shows the BO's create form with
+  «СОХРАНИТЬ» / «ОТМЕНИТЬ»; a record saved there lands in the BO (`isTouched: true` for the BO's owner).
+- **Generating again revokes the old token**: `v2/auth/load-create-bo-token-record {createBoToken, timeOffsetZoneInMinutes,
+  timezoneRegion}` (PARAMS, no login needed) answers `{createBoToken, boId, personId}` for the current token and
+  RuntimeException «can't find by token» for the previous one. There is no other way to revoke.
+- The token is per BO: a clone does not inherit it, the archive does not carry it.
+- **Opening the URL in a browser that is logged in to the stand stores the token in that origin's localStorage**
+  (`LOCAL_Screate_bo_token`), and an HTTP interceptor then adds a `create_bo_token` header to EVERY request of that
+  origin, the user's own session included. Remove the key after testing an iframe URL. Trap 65.
+- The token alone is not a session: a request with only `create_bo_token` (no `token`) answers SecurityError «Illegal
+  Session». Which person a record made through the URL is authored by, and whether the page works in a browser with no
+  stand login at all, is `[U]` (needs a logged-out browser).
+- The iframe page itself is the Angular route `/iframe/:createBoToken/bo` (`IframeModule`), which calls
+  `load-create-bo-token-record`, stores the token, then opens the ordinary record form in CREATE mode.
+
 ## 6. Records: Excel import and export
 
 Records (instances) are imported as **Excel files into a BO registry** (registry kebab → импорт/экспорт
@@ -4180,6 +4244,14 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `kanbanCardTemplates.<dropdown code>.kanbanFields` does. §5l.
 62. **The registry «Группировка» is not implemented server-side** `[C]` (2026-10-01) — its data calls
     `load-bo-instance-grouping-table` / `-root` are 404, the view stays empty whatever is configured. §5l.
+63. **The sidebar «Переименовать» renames nothing you can see** `[C]` (2026-10-01) — `save-bo-record {id, name}`
+    writes `recordName` only; `name` and the sidebar row stay. Rename through the header input (§5j). §5m.
+64. **Archive BOs share `orderIndex` 47480000, so a drag between two of them is lost** `[C]` (2026-10-01) — the
+    dragged row gets the neighbours' midpoint (the same value) and falls back to the end of the block on reload. Give
+    each BO its own value. §5m.
+65. **Opening a create-record iframe URL plants `create_bo_token` in your own browser** `[C]` (2026-10-01) — the
+    token goes into localStorage `LOCAL_Screate_bo_token` and an interceptor adds the header to every request of the
+    stand's origin until the key is removed. §5m.
 
 ## 12. Open questions
 
@@ -4187,8 +4259,7 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 
 - Whether menu rights cascade from a group item to its children, and what a restricted user really sees.
 - What `save-business-form-field` is actually for, since it does not create fields.
-- Whether a BO created in the constructor can be moved between groups by `move-business-object-to-group`,
-  and what `clone-business-object` copies.
+- The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
 - **Still unexecuted in §5g**: whether `create-local-method` /
   `create-company-global-method` really create a method headlessly (`load-script-def`,
   `translate-script`, `apply-update-cmd`, `paste` and the catalogue calls are `[C]` since 2026-09-18/24). A
