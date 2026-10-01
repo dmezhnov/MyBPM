@@ -34,6 +34,10 @@
  *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
  *   --field "Номер:INPUT_TEXT!titleToShow=true,titleOrderIndex=0" — a part of the record name (card title),
  *     joined by spaces in titleOrderIndex order (MYBPM-IMPORTS.md §3 «Field flags» «Название записи»)
+ *   --tab-view / --hide-add / --no-touch                      — BO header settings (MYBPM-IMPORTS.md §2 «BO header
+ *     settings»): records open as a page tab (instanceViewType TAB), no create button in the registry
+ *     (hideAddButtonFromRegistry), «Помечать новые» off (isTouchEnabled false); both booleans are always written,
+ *     since a re-import without them resets the stand to the defaults
  *   --history                                                 — the record card's «История» tab (boTabs.HISTORY);
  *     a field is logged only with it AND "!isHistoryTracking=true" (MYBPM-IMPORTS.md §3 «Field flags»)
  *   --field "Табл:BO@<boId>@Cel!boRefStruct.linkedFieldCode=Roditel,removeType=HIDE,needMarkNew=true" — the
@@ -1071,7 +1075,7 @@ lines.push({
   category: CATEGORY,
   kind: "GENERAL",
   boGroupOldId: groupOldId,
-  instanceViewType: "FORM",
+  instanceViewType: args.has("--tab-view") ? "TAB" : "FORM",
   bos: sources,
   // `--history` = the card's «История» tab; without it no isHistoryTracking field is ever logged
   boTabs: args.has("--history") ? { HISTORY: 1 } : {},
@@ -1091,6 +1095,8 @@ lines.push({
   isGroupingEnabled: false,
   isCodeReadonly: false,
   chosenAccessRight: false,
+  isTouchEnabled: !args.has("--no-touch"),
+  hideAddButtonFromRegistry: args.has("--hide-add"),
   kanbanCardTemplates,
   timelineTemplates: {},
   calendarCardTemplates: {

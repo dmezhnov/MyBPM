@@ -2568,7 +2568,7 @@ as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the arch
 - **What it is**: the record's name = the title of its card = `v2/business-objects/v2/load-bo-components`
   `P {boId, boiId, boiDialogType: "EDIT"}` → `name` (beside `recordName` = the BO's «название записи»). It is
   the DISPLAY values of the fields with `titleToShow: true`, joined by single spaces in `titleOrderIndex` order;
-  empty fields are skipped; no flagged field → `name` = `recordName`. Phone formatted («+7 (701) 123-45-67»),
+  empty fields are skipped; no flagged field → `name` = the BO's `name`, NOT its `recordName` (§5j). Phone formatted («+7 (701) 123-45-67»),
   `FULL_DATE` as «01.10.2026 14:31». Every field except `TAB_GROUP` and widgets qualifies, natives included.
 - **Setting it**: `v2/business-objects/save-bo-fields-for-bo-name` — `P {boId}`, BODY = an ARRAY of the field DTOs
   (from `load-business-object-by-id` → `formFields`) with `titleToShow` / `titleOrderIndex` changed; answers
@@ -3081,6 +3081,65 @@ that key travels: exported, then imported with other items, they showed up on a 
 `options` / `fieldOptionsStruct`, which a checklist does not use (an import ignores that struct on a
 checklist and even resets the field's `optionSource` to `null`). Everything else — all 27 types with their settings, all six system fields, all ten widgets with their
 codes and urls — survives the archive round trip unchanged.
+
+### 5j. BO header settings — name, description, code, «Помечать новые», «Скрыть кнопку добавить», Карточка/Вкладка `[C]` (2026-10-01, `<stand>`)
+
+The settings of the BO ITSELF that sit in the constructor header and its gear popover. Proven on a probe BO
+built over the API, through the UI, and by archive (export, copy import, re-import). Format side:
+`MYBPM-IMPORTS.md` §2 «BO header settings in the archive».
+
+| setting | UI place | API (all `v2/business-objects/…`, PARAMS half, answer `""`) | archive key |
+|---|---|---|---|
+| name | header «Наименование:» input | portion `{businessObject:{id, nameMap, recordNameMap, description}}` | `name` |
+| record name | — (no control of its own) | the same portion, `recordNameMap` | `recordName` |
+| description | header centre textarea | the same portion, `description` | `description` |
+| code | gear → «Код бизнес - объекта» → pencil → dialog «Изменение кода бизнес объекта» | `save-business-object-code {businessObjectId, businessObjectCode}` — or the dialog's cycle, below | `code` |
+| «Помечать новые (непросмотренные) записи» | gear → checkbox → «Сохранить» | `save-business-object-settings {businessObjectId, businessObjectCode, isTouchEnabled}`; read `load-bo-is-touch-enabled {boId}` | `isTouchEnabled` |
+| «Скрыть кнопку добавить» | gear → checkbox → «Сохранить» | `save-bo-hide-add-button-from-registry {boId, hideAddButtonFromRegistry}` | `hideAddButtonFromRegistry` |
+| Карточка / Вкладка | card editor toolbar switch | `save-boi-view-type {boId, type: "FORM"\|"TAB"}` | `instanceViewType` |
+
+All of them read back in `load-business-object-by-id` at once. Defaults of a new BO: `isTouchEnabled: true`,
+`hideAddButtonFromRegistry: false`, `instanceViewType: "FORM"`, `description: ""`.
+
+- **The header name input writes BOTH maps** `[C]`: typing in «Наименование» overwrote a `recordName` set apart
+  over the API with the same text. A `recordName` different from the name exists only through the API or an
+  archive, and nothing on screen shows it: `load-bo-components` returns it beside `name`, and the record title
+  does NOT use it (next point).
+- **A record with no `titleToShow` field is named after the BO's `name`, not its `recordName`** `[C]` —
+  `load-bo-components` on such a record answered `name: "Проба шапки 2026-10-01"` beside `recordName: "Запись
+  пробы шапки"`, and the record tab carried the BO name. (§5h «Название записи» said `recordName`; the two were
+  equal on that probe.)
+- **«Скрыть кнопку добавить»** `[C]`: the registry loses its create button; the `⋮` there then offers only
+  «Импорт из .xlsx» / «Экспорт в .xlsx» — records still come in through Excel and the API.
+- **TAB** `[C]`: a record opens as a page tab (`display-instance?…&isTab=true&boiViewType=TAB`), FORM as a dialog.
+- **`isTouchEnabled`** `[C]` as stored; what it does `[I]` (bundle): the menu-item editor asks
+  `load-bo-is-touch-enabled` and shows the «needCountMenuItem» (unread counter) option only when it is true. The
+  counter itself was not observed — records you create yourself are never «new» to you.
+- **Archive** `[C]`: all seven keys of the table travel — export, copy import, re-import with flipped values. A
+  re-import WITHOUT `isTouchEnabled` / `hideAddButtonFromRegistry` / `instanceViewType` / `description` RESETS them
+  to `true` / `false` / `FORM` / `null` — always ship every key.
+- **The popover «Сохранить» re-sends the code** through `save-business-object-settings` (the input there is
+  read-only), so that endpoint also changes the code.
+
+#### Changing the code — the dialog's cycle, and the two direct calls
+
+The dialog runs controller **`bo/refresh-code`** — `/web/bo/refresh-code/<m>`, NOT under `v2` (a `v2/bo/…` call
+answers 404): `analyze-code-usage {boId}` → `{refreshCodeDtoId, migrationType: [], alreadyInUse,
+involvedInAnyMigration}`; poll `is-analyze-done {refreshId}` → `{done, errorMessage, scriptOwners, bpOwners}`;
+then `apply-new-code {refreshId, newBoCode}`; `cancel {refreshId}` drops it. The analysis scans the scripts and
+processes that use the code (so the dialog can list them). Fields have the same cycle under `field/refresh-code`
+(`analyze-code-usage {boId, fieldId}`, `apply-new-code {refreshId, newFieldCode}`).
+
+- `apply-new-code` before `done` answers `""` and changes NOTHING `[C]`.
+- The dialog checks the new code on the client — not empty, no leading digit or one of `- = \` ~ ! @ # $ % ^ & * ( ) +`,
+  no `#`, not a Java keyword or `id`/`in_id`/`out_id`/`inserted_date`/`in_status`/`occupied_id`/`occupied_at`/`removed`
+  (`[I]`, bundle) — and on the server: `verify-business-object-code {businessObjectCode}` → `false` for an empty
+  or TAKEN code, `true` for anything else, Cyrillic and spaces included `[C]`.
+- **`save-business-object-code` and `save-business-object-settings` change the code at once and check NOTHING**
+  `[C]` — they took a code already used by another BO of the company (two BOs then shared it), `Код кириллица`,
+  `a b` and the empty string. They also skip the usage analysis, so scripts and processes that name the old
+  code are not migrated. Before calling either, run `verify-business-object-code` yourself.
+- **One undecodable script kills the dialog for the whole company** `[C]` (trap 59).
 
 ## 6. Records: Excel import and export
 
@@ -3997,6 +4056,16 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` is exported as the source stand's option id while the options get
     fresh `newOptionId`s, which become their ids on import; the copy's default then points at nothing. Rewrite
     it to the matching `newOptionId` (`MYBPM-IMPORTS.md` §3 «Единичный выбор»).
+59. **One undecodable script disables every code change in the company** `[C]` (2026-10-01) — the code-usage
+    analysis of `bo/refresh-code` and `field/refresh-code` reads ALL the company's scripts; one stored script
+    the server cannot decode (here a test version holding `"opType":"GreaterEq"`, trap 49) makes
+    `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for ANY BO
+    or field. The «Изменение кода» dialog then keeps «Изменить код» disabled for good, with no visible error.
+    Way round: `save-business-object-code` (BO) after your own `verify-business-object-code` (§5j); the real fix
+    is deleting the broken script or its BO.
+60. **The direct code setters validate nothing** `[C]` (2026-10-01) — `save-business-object-code` /
+    `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
+    not migrate scripts that use the old code. §5j.
 
 ## 12. Open questions
 
