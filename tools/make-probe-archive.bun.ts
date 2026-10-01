@@ -40,6 +40,10 @@
  *     since a re-import without them resets the stand to the defaults
  *   --history                                                 — the record card's «История» tab (boTabs.HISTORY);
  *     a field is logged only with it AND "!isHistoryTracking=true" (MYBPM-IMPORTS.md §3 «Field flags»)
+ *   --tabs CHAT,PEOPLE,FILES,PRINT_FORM                       — the card's rail tabs in that order (boTabs, numbered
+ *     from 1; HISTORY joins with --history); a re-import only ADDS tabs (MYBPM-IMPORTS.md §2 «BO card tabs»)
+ *   --messenger-field <field code> / --whatsapp-field <code>  — the Telegram (messengerFieldCode) / WhatsApp
+ *     (whatsAppFieldCode) link field; a re-import without them keeps the stand's links
  *   --field "Табл:BO@<boId>@Cel!boRefStruct.linkedFieldCode=Roditel,removeType=HIDE,needMarkNew=true" — the
  *     «Отображение» / «Поведение» of a reference (MYBPM-IMPORTS.md §3 «Reference fields»): back field, removeType
  *     (STRIKETHROUGH / HIDE / DISCONNECT), viewType (TABLE / MULTIPLE / SINGLE / FIELDS), isKindAddForSelect,
@@ -1077,8 +1081,14 @@ lines.push({
   boGroupOldId: groupOldId,
   instanceViewType: args.has("--tab-view") ? "TAB" : "FORM",
   bos: sources,
-  // `--history` = the card's «История» tab; without it no isHistoryTracking field is ever logged
-  boTabs: args.has("--history") ? { HISTORY: 1 } : {},
+  // `--tabs` = the card's rail tabs; `--history` adds «История» — without it no isHistoryTracking field is ever logged
+  boTabs: Object.fromEntries(
+    [...flag("tabs", "").split(",").filter(Boolean), ...(args.has("--history") ? ["HISTORY"] : [])]
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .map((type, i) => [type, i + 1]),
+  ),
+  ...(flag("messenger-field", "") ? { messengerFieldCode: flag("messenger-field", "") } : {}),
+  ...(flag("whatsapp-field", "") ? { whatsAppFieldCode: flag("whatsapp-field", "") } : {}),
   printForms,
   name: { rus: BO_NAME },
   recordName: { rus: BO_NAME },

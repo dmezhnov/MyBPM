@@ -652,7 +652,7 @@ dropped (trap 13).
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field** · §6 Excel records: the routes (the FILE FORMAT is
+type, widget and system field**, §5j BO header settings, §5k card tabs · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown.
@@ -1038,6 +1038,10 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   a clean archive returns `conflicts:{}` and they are never needed `[C]`.
 - The BO-side `/web/v2/business-objects/import-structure` (`postFileJson`, param `startTestProcess:false`)
   is a DIFFERENT, single-call endpoint of the BO controller — not used here, untried `[U]`.
+- **The import log** (the «Импорт» tab's table): `/import-structure/load-import-file-records` with `B {paging:
+  {offset, limit}}` (without `paging` → NullPointerException) → newest first `[{id, fileName, description,
+  imported_at, status, canRollback, newerAppliedImportsCount, …}]` `[C]` (2026-10-01). The one reliable way to tell
+  whether an import whose call was cut off (a 45-s `javascript_tool` limit) got applied.
 
 ### The dry run as a VALIDATOR — 13 eval archives against `<stand>` `[C]` (2026-09-18)
 
@@ -2550,7 +2554,7 @@ as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the arch
   «История» → its gear → «Отслеживать изменение полей», a checkbox per field, `changeFieldHistoryTracking` →
   `upsertFieldToEdit`) AND per BO the tab itself: `businessObject.boTabs: [{type: "HISTORY", orderIndex: 1}]` in
   the same portion (switch off = `boTabs` without it + `delBoTabs: ["HISTORY"]`). Tab types `CHAT PEOPLE FILES
-  HISTORY PRINT_FORM` (+ `TELEGRAM`/`WHATSAPP` for BOs linked to a messenger). In an archive the same is
+  HISTORY PRINT_FORM` (+ `TELEGRAM`/`WHATSAPP`), all of them §5k. In an archive the same is
   `boTabs: {"HISTORY": 1}` (a map) — see `MYBPM-IMPORTS.md` «Field flags».
 - **Measured on one record**: no tab, no flag → journal empty; tab only → field edits not logged; tab + flag on
   «Текст» → only «Текст» logged, the unflagged «Ответ» edited in the same save is not; flag but tab removed →
@@ -3140,6 +3144,45 @@ processes that use the code (so the dialog can list them). Fields have the same 
   `a b` and the empty string. They also skip the usage analysis, so scripts and processes that name the old
   code are not migrated. Before calling either, run `verify-business-object-code` yourself.
 - **One undecodable script kills the dialog for the whole company** `[C]` (trap 59).
+
+### 5k. Card tabs — `boTabs`, `delBoTabs`, the messenger link field `[C]` (2026-10-01, `<stand>`)
+
+The icons on the right-hand rail of a record card. Constructor: «Карточка» view → the rail right of the form →
+`+` → a checkbox list «Чат / Люди / Файлы / История / Печатные формы / Telegram / WhatsApp»; a tab is removed by
+its trash icon (confirm «Удаление вкладки бизнес-объекта. Продолжить?») or by unticking it; HISTORY and
+WHATSAPP/TELEGRAM carry a gear instead of a trash icon. Nothing is written until the card «СОХРАНИТЬ». Format
+side: `MYBPM-IMPORTS.md` §2 «BO card tabs in the archive».
+
+On the record card (proven by opening each): CHAT = the record's chat («N собеседников», message box), PEOPLE =
+its participants, FILES = a file list with «Загрузить файл», PRINT_FORM = the print forms, HISTORY = the journal
+(§5h «История»). The rail follows `orderIndex`.
+
+**API** — `save-business-object-portion` with a PARTIAL BO, nothing else of the BO changes:
+```js
+{businessObject: {id, boTabs: [{type: "CHAT", orderIndex: 1}, {type: "FILES", orderIndex: 2}], delBoTabs: ["PEOPLE"]}}
+```
+- **`boTabs` is an UPSERT, not the full set** — a tab left out of the list stays. Only `delBoTabs: [<type>]`
+  removes one. A new `orderIndex` on a listed tab moves it. The card «СОХРАНИТЬ» sends the whole list
+  renumbered 1..n plus `delBoTabs` for what was removed.
+- **Nothing is validated** — `TELEGRAM` was accepted on a BO outside the company messenger list, with no
+  messenger connected (`messenger/settings/load-messenger-bo-settings {messengerType}` →
+  `{isActive:false, isConnected:false, boAllow:[]}`). The card then shows the tab: without a link field a click
+  answers the error «no filed with id =null», with one it is disabled. The constructor offers TELEGRAM/WHATSAPP
+  disabled in its list («выберите данный бизнес-объект в меню Настройки»), so a tab put there by the API or an
+  archive cannot be unticked in the UI — remove it with `delBoTabs`.
+- **Link field** (the field whose value — a Telegram login for `INPUT_TEXT`, a phone for `INPUT_PHONE` — ties a
+  record to a messenger chat): `save-messenger-link-field-id {boId, fieldId, messengerType: "TELEGRAM"|"WHATSAPP"}`
+  (PARAMS half, answers `""`; `fieldId: null` clears it), read back in `load-business-object-by-id` as
+  `tgLinkFieldId` / `waLinkFieldId`. `get-messenger-link-field-id {boId, messengerType}` →
+  `{userSearchType: "LOGIN"|"PHONE", linkFieldId}` LAGS: right after the save it still answered `null`, a few
+  seconds later the field and `LOGIN`. Read `load-business-object-by-id` instead. The structure export reads the
+  same lagging source — an export right after a link change can carry the old link; wait ~10 s. The search method of the
+  constructor form is not sent — the server derives `userSearchType` from the field type.
+- **Archive**: `boTabs` (a map) travels and only ADDS; the links travel as `messengerFieldCode` (Telegram) and
+  `whatsAppFieldCode` (WhatsApp), and a re-import never clears them (`MYBPM-IMPORTS.md` §2).
+- What a connected messenger does with the tab (chat mirroring, the user search) is `[U]` — no stand of ours
+  has one connected; the company switch is `messenger/settings/save-messenger-bo-settings` (company-wide, not
+  touched).
 
 ## 6. Records: Excel import and export
 
@@ -4061,8 +4104,15 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     the server cannot decode (here a test version holding `"opType":"GreaterEq"`, trap 49) makes
     `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for ANY BO
     or field. The «Изменение кода» dialog then keeps «Изменить код» disabled for good, with no visible error.
-    Way round: `save-business-object-code` (BO) after your own `verify-business-object-code` (§5j); the real fix
-    is deleting the broken script or its BO.
+    Way round: `save-business-object-code` (BO) after your own `verify-business-object-code` (§5j).
+    **Deleting the BO does NOT fix it** `[C]` (2026-10-01): after `delete-business-object` on the bricked BO the
+    BO is gone (`load-business-object-by-id` → «не существует»), yet its script module survives —
+    `load-bo-scripts` / `load-bo-script-versions` on the deleted `boId` still answer the same
+    `IllegalArgumentException`, and both analyses still fail. Re-wiring the module with `save-bo-scripts`
+    (all hooks `null`, empty `fieldScripts`) answers 200 and changes nothing either — the bad script def is a
+    separate document, and `v2/script` has no call that overwrites a def without decoding it first. Only the
+    vendor (database) can repair it. Also: each analysis takes ~23 s here — poll until `done: true`, an early
+    `is-analyze-done` answers `{done:false}` (an object, not `false`).
 60. **The direct code setters validate nothing** `[C]` (2026-10-01) — `save-business-object-code` /
     `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
     not migrate scripts that use the old code. §5j.
@@ -4080,8 +4130,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `translate-script`, `apply-update-cmd`, `paste` and the catalogue calls are `[C]` since 2026-09-18/24). A
   headless method would rewrite `MYBPM-IMPORTS.md` §0S.1 and §0S.12.
 - **Is there any repair for a BO whose script module no longer decodes** (§11 trap 49)? Candidates
-  never tried: a structure import carrying that BO's scripts, `save-bo-scripts`, `copy-bo-script-version`,
-  a vendor-side database fix. The probe BO «Проба скрипт архивом 2026-09-18» on `<stand>` is in that state.
+  ruled out 2026-10-01: deleting the BO and re-wiring with `save-bo-scripts` (trap 59). Never tried: a
+  structure import carrying that BO's scripts, `copy-bo-script-version`. Left: a vendor-side database fix.
+  The deleted probe BO «Проба скрипт архивом 2026-09-18» left its broken module on `<stand>`.
 - **Field scripts on `FILE_UPLOAD`, `CHECKLIST` and `CO`** — the only three field types whose
   «Изменение поля» was not seen firing (2026-09-24, §6b): the value shapes are `[U]`, and a burst that
   touched the first two coincided with a 30-second outage of the stand (trap 52). Next attempt: through

@@ -249,7 +249,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "boGroupOldId": "3H84o9iM@G4jaOL3",       ← = oldId of line 1, character for character
   "instanceViewType": "FORM",               ← FORM = a record opens as a dialog, TAB = as a page tab
   "bos": [],
-  "boTabs": {},
+  "boTabs": {},                             ← card tabs, e.g. {"CHAT": 1, "FILES": 2} — ADDS only, never removes (§2 «BO card tabs»)
   "printForms": [],
   "name":       {"rus": "Демо из кукбука"}, ← display name
   "recordName": {"rus": "Демо из кукбука"}, ← same text (shown nowhere; the constructor keeps it = name)
@@ -1399,6 +1399,40 @@ as a copy under a new code, then re-imported with every value flipped:
 - `code`: a re-import of the same `oldId` under another code renames the BO's code (`MYBPM-UI-API.md` «Checking the result of a
   structure import», «Fields are matched by newId») — without the stand's usage analysis, so scripts naming the old code break.
 - Stand-side setting of each key: `MYBPM-UI-API.md` §5j.
+
+### BO card tabs in the archive — `boTabs`, `messengerFieldCode`, `whatsAppFieldCode` `[C]` (2026-10-01, `<stand>`)
+
+The record card's right-hand rail (constructor: card editor → `+` on the rail). Proven on a probe set over the
+API, exported, imported as a copy, then re-imported four times.
+
+| key | values | what it does |
+|---|---|---|
+| `boTabs` | a MAP `{"<TYPE>": <orderIndex>}`, types `CHAT` «Чат», `PEOPLE` «Люди», `FILES` «Файлы», `HISTORY` «История», `PRINT_FORM` «Печатные формы», `TELEGRAM`, `WHATSAPP` | one icon per tab on the record card, top to bottom by the number. CHAT = the record's chat with its participants, PEOPLE = its participants, FILES = files attached to the record («Загрузить файл»), HISTORY = the change journal (§3 «Field flags»), PRINT_FORM = the print forms (`printForms`, §0.5b) |
+| `messengerFieldCode` | a field code of this BO; absent when unset | the **Telegram** link field — the field whose value (a login for `INPUT_TEXT`, a phone for `INPUT_PHONE`) ties a record to a messenger chat |
+| `whatsAppFieldCode` | the same | the **WhatsApp** link field |
+
+- **Export writes, a copy import sets, all three keys** — `{"CHAT":2,"FILES":1,"PRINT_FORM":3,"TELEGRAM":4}` came
+  out of an export, and a copy with `{"PEOPLE":1,"WHATSAPP":2,"HISTORY":3}` landed exactly so.
+- **A re-import only ADDS tabs and renumbers the listed ones** — it never removes one. Re-importing
+  `{"PEOPLE":1}` over `PEOPLE/WHATSAPP/HISTORY` left all three; re-importing `{"HISTORY":1,"PEOPLE":2,"CHAT":3}`
+  gave `HISTORY:1, PEOPLE:2, WHATSAPP:2, CHAT:3` (the unlisted tab kept its old number, two tabs now share
+  2). There is no `delBoTabs` key in the archive: **a tab is removed only on the stand** (constructor trash
+  icon or the API, `MYBPM-UI-API.md` §5k). So a generated archive should list the FULL set with distinct
+  numbers, and a removal is a separate stand-side step.
+- **The two link keys, one per messenger** — an export of a BO with only the Telegram link writes only
+  `messengerFieldCode`, with only the WhatsApp link only `whatsAppFieldCode`, with neither none of them; an import
+  sets `tgLinkFieldId` / `waLinkFieldId` from them. **A re-import WITHOUT them, or with `null`, leaves the stand's
+  links alone** (unlike the header keys above, which reset) — so an archive cannot clear a link; do that on the
+  stand (`MYBPM-UI-API.md` §5k).
+- **An export taken seconds after a link change may still carry the OLD link** `[C]` — the stand serves the
+  links from a cache that lags a few seconds (an export right after clearing the Telegram link still wrote
+  `messengerFieldCode`). Wait ~10 s between changing a link and exporting.
+- **`TELEGRAM` / `WHATSAPP` tabs import without any check** — the stand had no messenger connected and the
+  BO was not in the company messenger list, yet the tabs landed and show on the card. Without a link field the
+  Telegram tab answers «no filed with id =null» on click; with one it is shown disabled. The constructor cannot
+  untick such a tab (its checkbox is disabled until the BO is in the company messenger list), so do not ship
+  them unless the company uses that messenger.
+- Stand side of these keys: `MYBPM-UI-API.md` §5k.
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
@@ -4544,8 +4578,10 @@ Scripts:
     module: `translate-script`, `load-script-def`, `load-bo-scripts` of EVERY version (work included),
     `load-bo-script-versions`, `apply-update-cmd`, `undo`, `delete-local-method` and
     `remove-bo-script-version` all answer `IllegalArgumentException: No enum constant …OpType.GreaterEq`
-    — so the bad value cannot be overwritten either. Other BOs are unaffected. No API repair was found;
-    it needs the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
+    — so the bad value cannot be overwritten either. Other BOs' scripts keep working, but the company-wide
+    code-usage analysis now fails, so the «Изменение кода» dialog of EVERY BO and field is dead
+    (`MYBPM-UI-API.md` trap 59). No API repair was found — deleting the BO leaves its script module behind,
+    still broken, and `save-bo-scripts` does not reach the bad def; it needs the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
     `constType`, block/expression `type`, `varType`) takes ONLY a value listed in §10–§12a — a
     string-typed key (`actId`, `enumValue`, `varName`) is safe to get wrong, the validator reports it.
 27. **A record written through the plain record API runs no script** `[C]` (2026-09-24) — hooks and field
