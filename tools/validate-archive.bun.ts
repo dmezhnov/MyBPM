@@ -481,6 +481,9 @@ for (const bo of bos) {
         add("ERROR", "3", `${ft}: linkedCoSettings on a ${type} — only a CO field has them`);
       if (f.copyFromFieldCode) add("ERROR", "3", `${ft}: copyFromFieldCode on a ${type} — only BO / CO fields copy`);
     }
+    if (f.isHistoryTracking === true && !(bo.boTabs && !Array.isArray(bo.boTabs) && "HISTORY" in bo.boTabs))
+      add("WARN", "3", `${ft}: isHistoryTracking without the BO's boTabs.HISTORY — the change is never logged`);
+    if (f.isHistoryTracking === true && type === "TAB_GROUP") add("WARN", "3", `${ft}: isHistoryTracking on a TAB_GROUP — the constructor never offers it`);
     if (f.needTrackStatus === true) {
       const all = Object.values<any>(bo.dynamicFields);
       const wrap = all.find(g => g.type === "TAB_GROUP" && g.trackedFieldCode === f.code);

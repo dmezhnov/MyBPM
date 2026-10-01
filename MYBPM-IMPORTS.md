@@ -1629,6 +1629,18 @@ every key below imported as a NEW BO; records of both checked on the card). Ever
   (`+` = ticked), `"Вкладки:TAB_GROUP#Шаг 1|>Справа"` (`>` = right), `"Поле:INPUT_TEXT!tab=<код вкладок>/<код
   вкладки>"`, `"Статус:DROPDOWN_SINGLE#Красный=RED|Синий=BLUE"`, `'Текст:TEXTAREA!params.buttonTypes=["bold","table"]'`.
 
+**«История» — `isHistoryTracking` + the BO's `boTabs.HISTORY`** `[C]` (2026-10-01, `<stand>`) — the record
+card's «История» tab logs a change of a field ONLY when BOTH are set: the field's `isHistoryTracking: true`
+(constructor: BO tab bar → «История» → gear → «Отслеживать изменение полей», one checkbox per field, every type
+except `TAB_GROUP`) AND the BO-level tab switched on — in the archive `"boTabs": {"HISTORY": 1}` on the
+`BoStructDto` (a MAP tab type → order index; the other types are `CHAT`, `PEOPLE`, `FILES`, `PRINT_FORM`;
+`{}` = no tabs). A flagged field on a BO without the tab logs NOTHING — the change is not stored hidden, it is
+never written (turning the tab on later shows no event for it). The tab without flags logs no field changes,
+only `CREATE_BOI` and `ADD_PARTICIPANT` of new records. Both keys export and a copy import brought both back,
+and its records logged `UPDATE_FIELD` (old → new display value) for the flagged field only. Generator:
+`--field "Поле:INPUT_TEXT!isHistoryTracking=true"` plus `--history` (writes `boTabs`); the validator warns about a
+flagged field on a BO without `boTabs.HISTORY`.
+
 ### Platform concepts an archive encodes
 
 - **BO = class, instance (инстанция / запись) = object.** A link/collection field holds instances of
