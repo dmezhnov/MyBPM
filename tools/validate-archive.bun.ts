@@ -43,6 +43,9 @@ const WIDGET_MAPS: Record<string, string[]> = {
 // §0.5 "Cell heights the constructor itself assigns"
 const ROWS_6 = new Set(["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR"]);
 const ROWS_8 = new Set(["STATIC_TEXT", "QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"]);
+// the text editor's toolbar buttons a TEXTAREA's params.buttonTypes may list (client enum, 2026-10-01)
+const TEXTAREA_BUTTONS = new Set(["style", "bold", "underline", "italic", "fontsize", "color", "ul", "ol", "paragraph",
+  "table", "link", "picture", "video", "hr", "codeview", "height"]);
 
 // §0.4 — the full key set of BoStructDto
 const BO_KEYS = ["@class", "oldId", "code", "category", "kind", "boGroupOldId", "instanceViewType",
@@ -69,9 +72,9 @@ const COMPOSITE_ABSENT_KEYS = new Set(["gridPosition", "tableColOrderIndex", "re
 const PROCESS_STATUS_ABSENT_KEYS = new Set(["tableColOrderIndex", "removeType", "inMigrationTimezoneMinutes"]);
 const EMPTY_SET = new Set<string>();
 
-// §0.6 transliteration table
+// §0.6 transliteration table («ё» is not in the stand's table — it falls through to «_»)
 const TRANSLIT: Record<string, string> = {
-  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "yi",
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ж: "zh", з: "z", и: "i", й: "yi",
   к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
   х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
 };
@@ -365,6 +368,31 @@ for (const bo of bos) {
       add("WARN", "3", `${ft}: maxLength ${f.maxLength} on a number — the constructor caps it at 21`);
     if (f.useAsKeyInMigration && !["INPUT_TEXT", "INPUT_EMAIL", "INPUT_PHONE"].includes(f.type))
       add("WARN", "3", `${ft}: useAsKeyInMigration on a ${f.type} — only INPUT_TEXT / INPUT_EMAIL / INPUT_PHONE have it`);
+
+    // Per-type settings (MYBPM-IMPORTS.md §3 «Per-type settings»)
+    if (f.params?.buttonTypes !== undefined) {
+      let bt: unknown = null;
+      try { bt = JSON.parse(f.params.buttonTypes); } catch { /* reported below */ }
+      if (!["TEXTAREA", "TEXTAREA_LANG"].includes(f.type)) add("WARN", "3", `${ft}: params.buttonTypes on a ${f.type} — only TEXTAREA / TEXTAREA_LANG have an editor toolbar`);
+      if (!Array.isArray(bt)) add("ERROR", "3", `${ft}: params.buttonTypes must be the JSON TEXT of an array ("[\\"bold\\",…]"), got ${JSON.stringify(f.params.buttonTypes)}`);
+      else {
+        const bad = bt.filter(b => !TEXTAREA_BUTTONS.has(b as string));
+        if (bad.length) add("ERROR", "3", `${ft}: params.buttonTypes has unknown buttons ${bad.join(", ")} — allowed: ${[...TEXTAREA_BUTTONS].join(" ")}`);
+      }
+    }
+    if (f.type === "CHECKLIST") {
+      if (f.isSelectOnly === true && f.isAppendable === true)
+        add("WARN", "3", `${ft}: isSelectOnly with isAppendable — the constructor allows only one of the two`);
+      if (f.isRequiredAll === true)
+        add("WARN", "3", `${ft}: isRequiredAll («Обязательны все пункты») is imported but nothing enforces it on this build — use isRequired or a script`);
+    }
+    if (f.type === "TAB_GROUP") {
+      if (f.params?.showAsStepper === "true") add("WARN", "3", `${ft}: params.showAsStepper travels but changes nothing on a card on this build`);
+      if (f.params?.needDisableTabs === "true" && Object.keys(f.fieldTabs ?? {}).length > 1)
+        add("WARN", "3", `${ft}: params.needDisableTabs hides the strip of ${Object.keys(f.fieldTabs).length} tabs — the fields of the others cannot be reached; the constructor offers it only with one tab`);
+    }
+    if (f.isProgressBarSticky === true && f.type !== "PROGRESS_BAR")
+      add("WARN", "3", `${ft}: isProgressBarSticky on a ${f.type} — only PROGRESS_BAR reads it (use needFreezeWhenScroll)`);
 
     const type = f.type;
     if (NOT_A_FIELD_TYPE.has(type))
