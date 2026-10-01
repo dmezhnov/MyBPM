@@ -529,7 +529,7 @@ keyed by the widget's CODE `[C]` (2026-09-18, exported and re-imported):
 | widget | UI label | map | extra keys |
 |---|---|---|---|
 | `SIGNATURE` | ЭЦП / СМС | `signatures` | `fieldCodes`, `massFieldCodes`, `printFormCodes`, `massPrintFormCodes` (all `{}`) |
-| `BUTTON` | Кнопка | `buttons` | `url`, `fieldCodes` |
+| `BUTTON` | Кнопка | `buttons` | `url`, `fieldCodes` (`{"<field code>": "<archetype>"}`) |
 | `IFRAME` | Блок IFrame | `iframes` | `url` |
 | `CAPTCHA` | Блок captcha | `captcha` | — |
 | `CURRENT_DATE` `CURRENT_DAY` `CURRENT_MONTH` `CURRENT_DAY_AND_MONTH` `CURRENT_YEAR` | Текущая дата / день / месяц / день и месяц / год | `currentDates` | `widgetType` repeats the type |
@@ -541,13 +541,42 @@ One entry looks like this — there are no boolean flags at all, unlike a dynami
 "buttons": {"knopka": {"label": {"rus": "Кнопка"},
   "gridPosition": {"x":0,"y":<y>,"cols":15,"rows":4},
   "code": "knopka", "type": "BUTTON", "newId": "<16 chars>",
-  "url": "https://example.org/hook", "fieldCodes": {}}}
+  "url": "", "fieldCodes": {}}}
 ```
 
 Heights: 4 rows for a button and the CURRENT_* widgets, 6 for `SIGNATURE` / `CAPTCHA` / `CURRENT_USER`,
 8 for `IFRAME`. A widget's code and url survive an import and can be read back through the widget's own
 controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may be placed **once** per BO;
 `BUTTON`, `IFRAME` and `CAPTCHA` may repeat.
+
+**A button's and an iframe's settings round-trip through an archive** `[C]` (2026-10-01, core2 / NIT). A
+probe BO with four buttons and an iframe was exported, re-imported under a new code, and every setting
+was read back through the widget controllers. All of them came back: code, `url` and `fieldCodes` of
+every button, and the iframe's code and `url`. A button's `fieldCodes` is its «Поля для отправки»: a
+map from field CODE to that field's archetype:
+
+```text
+"buttons": {"Plagin": {"label": {"rus": "Плагин"}, "gridPosition": {"x":0,"y":22,"cols":15,"rows":4},
+  "code": "Plagin", "type": "BUTTON", "newId": "<16 chars>",
+  "url": "call/plugin/<plugin name>/<anything>", "fieldCodes": {"Tekst": "DYNAMIC", "Otvet": "DYNAMIC"}}}
+```
+
+The import turns the codes back into the ids of the copy's own fields. What a url does on the record
+card `[C]`:
+
+- **empty** — nothing besides the button's field script. **This is the button to build**: put the logic
+  into a script on «Изменение поля» (below).
+- `call/plugin/<name>/…` — calls a plugin installed on the SERVER under `<name>`. An unknown name gives
+  «No such plugin». `fieldCodes` only matters to such a plugin.
+- `client/save-current-boi` — **does nothing, the record is not saved** (no component of the client
+  listens to that event).
+- `create-boi/<field code>/<from->to, …>` — **does nothing on the record card** (only another, unused
+  form handles it).
+- anything else, `https://…` included — nothing. A button never navigates.
+
+An iframe `url` must be `https:`. The stand silently drops an `http:` url, both from the settings
+dialog and over the API. The iframe shows the same fixed url on every record, and it is not told which
+record it is on.
 
 **A script on a button = a field script on the button's code** — the ordinary «На изменение поля»
 trigger. A click fires it, and each further click fires it again; leave `url` empty for a script-only
@@ -4233,7 +4262,8 @@ here; the rules themselves are §0X.4.
 
 ## 18. Open questions
 
-- What a signature's `fieldCodes` / `printFormCodes` and a button's `fieldCodes` bind to.
+- What a signature's `fieldCodes` / `printFormCodes` bind to. (A button's `fieldCodes` is its «Поля для
+  отправки», answered in §0.5b on 2026-10-01.)
 - BO groups: what the importer really does with `BoGroupStructDto` (see §8).
 - Whether an archive WITHOUT `AccessStructDto` leaves stand rights untouched.
 - Whether `fromFields[f]` really opens a record to the person named in that field; fallbacks
