@@ -776,7 +776,7 @@ re-capitalise the first letter if the original was uppercase; latin letters and 
 **everything else (spaces, punctuation) becomes `_`**; finally cut to **30 characters**.
 
 ```
-а a   б b   в v   г g   д d   е e   ё e   ж zh  з z   и i   й yi
+а a   б b   в v   г g   д d   е e   ё _   ж zh  з z   и i   й yi
 к k   л l   м m   н n   о o   п p   р r   с s   т t   у u   ф f
 х h   ц c   ч ch  ш sh  щ sch ъ —   ы y   ь —   э e   ю yu  я ya
 ```
@@ -796,6 +796,9 @@ stand's own codes): «Текстовый блок» → `Tekstovyyi_blok`, «З�
 
 «Наименование» → `Naimenovanie`, «Сумма» → `Summa`, «Активен» → `Aktiven`,
 «Дата и время» → `Data_i_vremya`.
+
+**`ё` is not in the table — it becomes `_`** `[C]` (2026-10-01, `<stand>`: a field «Зелёный счёт» got
+`Zel_nyyi_sch_t`, an option «Зелёный» `Zel_nyyi`). Write `ё` as `_`, never as `e`.
 
 **A code that already exists on the stand may carry a random 14-character tail**
 (`issuance_dateAew5UkKutBKvPg`) — that tail is part of the real code. When you patch an EXISTING BO,
@@ -1376,6 +1379,34 @@ BOs region / city / branch / order exported, imported as NEW BOs, then re-import
   `relInnerFieldCode` / `relMainInnerFieldCode` are ignored. **Never write `relFieldCode`; after the import set
   `relFieldId` / `relInnerFieldId` through the API or the constructor** (`MYBPM-UI-API.md` §5h ««С фильтром» and
   «Зависимость полей» of a `BO` field») — and know that on this build the relation does not filter the picker in the UI anyway.
+
+**Per-type settings — checklist, questionnaire, progress bar, tabs, text editor, option colours** `[C]`
+(2026-10-01, `<stand>`: a probe built through the API and the constructor was exported, and a probe archive with
+every key below imported as a NEW BO; records of both checked on the card). Every key travels as written:
+
+| type | key in the field | meaning on a record |
+|---|---|---|
+| `CHECKLIST` | `defaultValue` (items, 0.5) + `isAppendable` | `true` = «Добавить» on the record; `false` = only the shipped items |
+| `CHECKLIST` | `isSelectOnly: true` | the item texts cannot be edited, only ticked. Do not combine with `isAppendable: true` (the constructor allows one or the other) |
+| `CHECKLIST` | `isRequired: true` | «Обязателен один пункт» — the server refuses a record with nothing ticked |
+| `CHECKLIST` | `isRequiredAll: true` | «Обязательны все пункты» — imported, but **nothing enforces it on this build** (card and server saved records with unticked items); do not rely on it |
+| `QUESTIONNAIRE` | `questionnaireIsMultiple` | `false` = one radio mark per row, `true` = checkboxes, several per row |
+| `PROGRESS_BAR` | `isProgressBarSticky: true` | the bar stays at the top of the card while the form scrolls. Leave `params` `{}` (`params.isSticky` is not it) |
+| `TAB_GROUP` | `params.needDisableTabs: "true"` | the tab strip is hidden — use it with ONE tab (the constructor offers it only then) |
+| `TAB_GROUP` | `params.showAsStepper: "true"` | travels, but **changes nothing on a card on this build** |
+| `TAB_GROUP` | `fieldTabs.<code>.isRight: true` | the tab sits at the right end of the strip |
+| `TEXTAREA`, `TEXTAREA_LANG` | `params.buttonTypes` = JSON TEXT of an array, `"[\"bold\",\"italic\",\"table\",\"codeview\"]"` | the editor toolbar shows exactly those buttons, from `style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height`; no key = the default ten `bold underline italic fontsize color ul ol table link picture` |
+| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` | `fieldOptionsStruct.options.<code>.fieldOption.color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour (the card shows the option uncoloured) |
+
+- `params` values are strings, as everywhere (`"true"`, not `true`).
+- The option, questionnaire, step and tab codes in the archive are kept as written by the import (an API ADD,
+  by contrast, regenerates option codes from the labels — `MYBPM-UI-API.md` §5h «Per-type settings»).
+- A record's progress bar is coloured by step CODE: the value is a map `{"Novyi":"GREEN"}` (`RED GREEN YELLOW
+  BLUE ORANGE PURPLE`), set by a script or the record API — the card has no control for it. Give the steps
+  stable codes for that reason.
+- The generator writes all of these: `--field "Чек:CHECKLIST#Пункт 1|+Пункт 2!isSelectOnly=true,isAppendable=false"`
+  (`+` = ticked), `"Вкладки:TAB_GROUP#Шаг 1|>Справа"` (`>` = right), `"Поле:INPUT_TEXT!tab=<код вкладок>/<код
+  вкладки>"`, `"Статус:DROPDOWN_SINGLE#Красный=RED|Синий=BLUE"`, `'Текст:TEXTAREA!params.buttonTypes=["bold","table"]'`.
 
 ### Platform concepts an archive encodes
 

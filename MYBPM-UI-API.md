@@ -2457,6 +2457,50 @@ Probes: «Проба чтения из реестра 2026-10-01» (API + constr
   `readFromRegistry ?? isPanel`, so `true` on an ordinary BO's field would probably render it as a
   registry too `[U]` — never tried.
 
+#### Per-type settings — checklist, questionnaire, progress bar, tabs, text editor, option colours `[C]` (2026-10-01, `<stand>`)
+
+Probes in group «Тест»: «Проба свойств типов 2026-10-01» (API, then the constructor UI) and «Проба свойств
+типов архив 2026-10-01» (archive, `MYBPM-IMPORTS.md` §3 «Per-type settings»), records saved through the form
+cycle (§6b) and through the card.
+
+| type | gear → where | key (constructor patch) | what it does on a record |
+|---|---|---|---|
+| `CHECKLIST` | settings block | `isAppendable` «Добавляемый» | «Добавить» under the items — new items on the record |
+| `CHECKLIST` | settings block | `isSelectOnly` «Выбор без редактирования» (`{fieldId, isSelectOnly:true}`) | the item texts are not editable, only ticked (without it a text stays editable even when the field is not appendable) |
+| `CHECKLIST` | settings block | `isRequired` «Обязателен один пункт» | the SERVER refuses a record with no item ticked (`ALERT_SAVE_BUTTON_NOTIFICATION validate_required_title`) |
+| `CHECKLIST` | settings block | `isRequiredAll` «Обязательны все пункты» | **nothing on this build**: stored, exported, imported, but the card (the client maps it to `false`) and the server both saved records with unticked items — through the UI and the form cycle |
+| `QUESTIONNAIRE` | «Отображение» | `questionnaireIsMultiple` «Одиночный / Множественный» (`{fieldId, questionnaireIsMultiple:true}`) | single = radio buttons, one mark per row; multiple = checkboxes, several per row. Only the client keeps a row single — the form cycle stored two marks in one row of a single field. «Поведение» of a questionnaire is empty |
+| `PROGRESS_BAR` | «Поведение» | `isProgressBarSticky` «Фиксация при скроллинге» (`{fieldId, isProgressBarSticky:false}`) | ON: the bar stays at the top of the card while the form scrolls (its grid row gets `div.isSticky`, `position: sticky`); OFF: it scrolls away — both seen on records. `params.isSticky` is only a create-time default, ignore it |
+| `TAB_GROUP` | settings | `params.showAsStepper` «Показать как степпер» | **nothing on this build** — stored and exported, but no runtime component reads it; the card shows ordinary tabs |
+| `TAB_GROUP` | settings (offered only with ≤ 1 tab) | `params.needDisableTabs` «Отключить вкладки» | the tab strip is hidden; the fields of the tab show as plain form fields |
+| `TAB_GROUP` | tab strip in the body | `tabs[].isRight` | the tab sits at the right end of the strip |
+| `TEXTAREA`, `TEXTAREA_LANG` | settings, 16 checkboxes «Включить настройку '…'» | `params.buttonTypes` = JSON TEXT of an array (`{fieldId, params:{buttonTypes:"[\"bold\",\"table\",\"codeview\",\"height\",\"italic\"]"}}`) | the editor toolbar shows exactly those buttons. Members: `style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height`; absent = the default ten `bold underline italic fontsize color ul ol table link picture` |
+| `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` | option chip in the body / kanban editor | `options[].color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour; the record card shows the option uncoloured |
+
+- **The gear differs per type.** A checklist's block: «Обязателен один пункт», «Обязательны все пункты»,
+  «Добавляемый», «Только для чтения», «Выбор без редактирования», «Не сохранять значение», «Убрать
+  заголовок», «Фиксировать при скроллинге» — «Обязательны все пункты» greys out «Обязателен один пункт»,
+  «Выбор без редактирования» greys out «Добавляемый» and back. A progress bar's gear has NO common block,
+  only «Отображение» (the steps) and «Поведение» (the one checkbox). A `TAB_GROUP`'s gear has only the two
+  `params` checkboxes.
+- **The constructor sends `params` of a `TAB_GROUP` as booleans** (`{showAsStepper:false, needDisableTabs:false}`),
+  the server stores them as strings (`"false"`) — the client reads both.
+- **API: `isRequiredAll` and `isSelectOnly` are DROPPED when the field is ADDED** (`addedFieldIds` +
+  `editedFields`), like `needMarkNew` and `useAsKeyInMigration`; a second one-key patch stores them.
+  `isAppendable`, `isRequired`, `questionnaireIsMultiple`, `isProgressBarSticky`, `params`, `tabs[].isRight`,
+  `options[].color` are kept on ADD.
+- **Option codes: the server REGENERATES them on ADD** — a dropdown added with `options[].code = "Krasnyi"`
+  came back `Krasnyyi`, the transliteration of the label (and «Зелёный» → `Zel_nyyi`: `ё` becomes `_`,
+  `MYBPM-IMPORTS.md` §0.6). A patch of an EXISTING field keeps the code sent. Questionnaire, step and tab
+  codes are kept on ADD.
+- **Record values** (form cycle or §6a): a checklist = JSON text `[{"label":"Пункт 1","checked":true},…]` —
+  the whole item list, so a record can carry items of its own; a questionnaire = `[{"rowId","columnId"}]`
+  (ids); **a progress bar = a MAP `{"<step code>":"<COLOR>"}`** — `RED GREEN YELLOW BLUE ORANGE PURPLE`,
+  a step without an entry stays grey. It reads back as `[{"stepCode","color"}]`, but that array, a
+  `{stepId,…}` array or a hex colour sent as the value make `load-field-data` fail for the whole draft
+  (trap 50) and validate answers `incorrect_value`. The card has no control for it — a script or this
+  API colours the steps.
+
 #### What the settings actually DO on a record (runtime, verified in the UI)
 
 - A required field is marked with a red `*` on the record card; saving with it empty is refused with the
@@ -2823,8 +2867,8 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages; for `TEXTAREA_LANG` / `STATIC_TEXT` each language may be HTML, §8) | `[C]` |
 | `TAB_GROUP` | `""` | `[C]` fires the script |
 | `FILE_UPLOAD` | a JSON array of file ids | `[U]` |
-| `CHECKLIST` | a JSON array of item objects (`checked` among the keys) | `[U]` |
-| `PROGRESS_BAR` | a list of `{stepCode, color}` (step colouring) `[I]`; `["<stepId>"]` and `"[]"` are NOT it (trap 50) | — |
+| `CHECKLIST` | the whole item list as JSON text: `[{"label":"Пункт 1","checked":true},…]` | `[C]` (2026-10-01) |
+| `PROGRESS_BAR` | a MAP `{"<step code>":"GREEN"}` (`RED GREEN YELLOW BLUE ORANGE PURPLE`); it reads back as `[{stepCode, color}]`, and THAT array, `["<stepId>"]` or `"[]"` sent as a value break the draft (trap 50) — §5h «Per-type settings» | `[C]` (2026-10-01) |
 
 **The server does not validate the value** — a wrong shape (`"10:30"` for `TIME`, an array for `PERIOD`)
 is stored as is; most shapes still read back, but see trap 50.

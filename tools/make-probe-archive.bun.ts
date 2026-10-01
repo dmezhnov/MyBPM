@@ -42,6 +42,14 @@
  *   --field "Табельный номер:INPUT_TEXT!uniq"                 — «Уникальное поле» (isUnique)
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
  *   --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово"    — «Задать вручную» (FROM_FIELD)
+ *   --field "Статус:DROPDOWN_SINGLE#Новый=BLUE|Готово=GREEN"  — the same with option colours (kanban columns)
+ *   --field "Чек:CHECKLIST#Пункт 1|+Пункт 2!isSelectOnly=true,isAppendable=false" — items go to defaultValue
+ *     (`+` = ticked), isAppendable defaults to true as in the constructor
+ *   --field "Вкладки:TAB_GROUP#Шаг 1|>Справа!params.needDisableTabs=true" — `>` = a tab at the right end
+ *   --field "Поле:INPUT_TEXT!tab=Vkladki/Shag_1"              — the field sits ON that tab (tabCodePath,
+ *     its y counted from the top of the tab)
+ *   --field 'Текст:TEXTAREA!params.buttonTypes=["bold","table"]' — a JSON value may hold commas inside []/{}/""
+ *   (MYBPM-IMPORTS.md §3 «Per-type settings» for what each key does)
  *
  * A KANBAN needs a card template ON THE BO, or the view dies with «cardTemplate is null»:
  *   --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"
@@ -116,6 +124,18 @@ type FieldSpec = {
   /** `!key=value` — any key of the archive field, dotted for a nested one (`params.url`). */
   sets: { path: string[]; value: unknown }[];
 };
+/** Split `a=1,b=["x","y"]` on the commas that are NOT inside [], {} or "" — a JSON value may carry its own. */
+function splitTop(s: string): string[] {
+  const out: string[] = []; let depth = 0, quote = false, cur = "";
+  for (const ch of s) {
+    if (ch === "\"") quote = !quote;
+    else if (!quote && (ch === "[" || ch === "{")) depth++;
+    else if (!quote && (ch === "]" || ch === "}")) depth--;
+    if (ch === "," && depth === 0 && !quote) { out.push(cur); cur = ""; } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
 function fieldFlags(): FieldSpec[] {
   const out: FieldSpec[] = [];
   for (let i = 0; i < Bun.argv.length; i++) {
@@ -127,7 +147,7 @@ function fieldFlags(): FieldSpec[] {
     // `!req,uniq,readonly,nocol` — the field settings of the constructor's gear popover.
     let flags: string[] = [];
     const bang = spec.indexOf("!");
-    if (bang >= 0) { flags = spec.slice(bang + 1).split(",").filter(Boolean); spec = spec.slice(0, bang); }
+    if (bang >= 0) { flags = splitTop(spec.slice(bang + 1)).filter(Boolean); spec = spec.slice(0, bang); }
     // `#Новый|В работе|Готово` — a DROPDOWN_SINGLE's LOCAL option list («Задать вручную»).
     let options: string[] = [];
     const hash = spec.indexOf("#");
@@ -335,9 +355,13 @@ function menuFlags(): MenuSpec[] {
   return out;
 }
 
-/** Cyrillic → latin the way the server generates field/BO codes (see MYBPM-UI-API.md §5b). */
+/**
+ * Cyrillic → latin the way the server generates field/BO codes (see MYBPM-UI-API.md §5b). «ё» is not in
+ * the server's table, so it becomes «_» like any other foreign character (2026-10-01: option «Зелёный» →
+ * `Zel_nyyi`).
+ */
 const TRANSLIT: Record<string, string> = {
-  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "yi",
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ж: "zh", з: "z", и: "i", й: "yi",
   к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
   х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
 };
@@ -478,10 +502,14 @@ function field(o: {
         fieldOptionsStruct: {
           optionSource: "FROM_FIELD",
           // keyed by the option's own transliterated code, each entry carrying its own new id
-          options: Object.fromEntries(o.options.map((label, i) => {
+          // «Красный=RED» — the option's colour (RED GREEN YELLOW BLUE ORANGE PURPLE …), else none
+          options: Object.fromEntries(o.options.map((spec, i) => {
+            const eq = spec.lastIndexOf("=");
+            const label = eq > 0 ? spec.slice(0, eq) : spec;
+            const color = eq > 0 ? spec.slice(eq + 1) : null;
             const optCode = codeOf(label);
             return [optCode, {
-              fieldOption: { label, orderIndex: i * 10000, color: null, code: optCode, hiddenInKanban: false },
+              fieldOption: { label, orderIndex: i * 10000, color, code: optCode, hiddenInKanban: false },
               newOptionId: id(`${BO_CODE}.${o.code}.${optCode}`),
             }];
           })),
@@ -490,11 +518,14 @@ function field(o: {
       }
       : {}),
     // «Вкладки»: one entry per tab, keyed by the tab's transliterated code (export shape).
-    fieldTabs: Object.fromEntries((o.tabs ?? []).map((label, i) => {
+    // «>Справа» = a tab on the RIGHT end of the strip (isRight).
+    fieldTabs: Object.fromEntries((o.tabs ?? []).map((spec, i) => {
+      const isRight = spec.startsWith(">");
+      const label = isRight ? spec.slice(1) : spec;
       const tabCode = codeOf(label);
       return [tabCode, {
-        label: { rus: label }, orderIndex: i, chosenAccessRight: false,
-        isRight: false, isDefault: i === 0, code: tabCode,
+        label: { rus: label }, orderIndex: i * 10000, chosenAccessRight: false,
+        isRight, isDefault: i === 0, code: tabCode,
         newId: id(`${BO_CODE}.${o.code}.tab.${tabCode}`),
       }];
     })),
@@ -646,6 +677,8 @@ if (isComposite) {
   Object.assign(dynamicFields, DEFAULT_FIELDS);
 } else {
   let y = Object.keys(dynamicFields).length * 4;
+  const tabY = new Map<string, number>();
+  let col = Object.keys(dynamicFields).length;
   custom.forEach((f, i) => {
     const code = codeOf(f.label);
     // What the constructor itself assigns: a reference or a file 6 rows, a grid-shaped field 8, else 4.
@@ -671,7 +704,7 @@ if (isComposite) {
       dictionary: f.type === "DROPDOWN_SINGLE" && f.refBoId
         ? { code: f.refBoId, name: f.refBoCode ?? f.refBoId }
         : undefined,
-      options: ["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP", "CHECKLIST"].includes(f.type) ? hash : [],
+      options: ["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? hash : [],
       staticValue: f.type === "STATIC_TEXT" ? (hash[0] ?? `<h2>${f.label}</h2>`) : undefined,
       steps: f.type === "PROGRESS_BAR" ? hash : undefined,
       tabs: f.type === "TAB_GROUP" ? hash : undefined,
@@ -684,8 +717,26 @@ if (isComposite) {
       isUnique: f.flags.includes("uniq"),
       isReadonly: f.flags.includes("readonly"),
     });
+    // «Чек лист»: the items are the field's defaultValue, a JSON STRING (MYBPM-IMPORTS.md 0.5) — never
+    // fieldOptionsStruct, which the importer ignores; «+Пункт» starts ticked. isAppendable as the constructor sets it.
+    if (f.type === "CHECKLIST" && hash.length) Object.assign(dynamicFields[code] as any, {
+      defaultValue: JSON.stringify(hash.map(h => ({ label: h.replace(/^\+/, ""), checked: h.startsWith("+") }))),
+      isAppendable: true,
+    });
     if (f.flags.includes("track")) addTrackStatus(code, y);
+    let inTab = false;
     for (const { path, value } of f.sets) {
+      // `!tab=<код вкладок>/<код вкладки>` — the field sits ON that tab: tabCodePath, and its y counts from the
+      // top of the tab (MYBPM-IMPORTS.md «tabCodePath»), so the form below does not move down.
+      if (path[0] === "tab") {
+        const [tabGroupCode, tabCode] = String(value).split("/");
+        const key = `${tabGroupCode}/${tabCode}`;
+        const ty = tabY.get(key) ?? 0;
+        Object.assign(dynamicFields[code] as any, { tabCodePath: { tabGroupCode, tabCode }, gridPosition: { x: 0, y: ty, cols: 15, rows } });
+        tabY.set(key, ty + rows);
+        inTab = true;
+        continue;
+      }
       // `!show=Strana|Gorod` — the COLUMNS a nested-object table shows, by the target BO's field codes.
       // Without it the importer lists the target's fields with `toShow: false` and the table is blank.
       if (path[0] === "show" && isRef) {
@@ -696,9 +747,12 @@ if (isComposite) {
       let o: any = dynamicFields[code];
       for (const k of path.slice(0, -1)) o = o[k] ??= {};
       // the stand keeps every `params` value as a string (`"enableSequence": "true"`) — write it that way
-      o[path.at(-1)!] = path[0] === "params" && typeof value !== "string" ? String(value) : value;
+      // (an array or object goes in as its JSON text — `params.buttonTypes` is `"[\"bold\",…]"`)
+      o[path.at(-1)!] = path[0] === "params" && typeof value !== "string"
+        ? (typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)) : value;
     }
-    y += rows;
+    // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
+    if (!inTab) { y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++; }
   });
 }
 
