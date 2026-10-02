@@ -1539,6 +1539,11 @@ version) needs NO token, creates one record of the service BO, copies the reques
   answer (text, content type), an `INPUT_NUMBER` for the status code, and a «Создание» script that sets at least the
   status code (≥ 100; empty → 501) and the answer text / content type (plain `BlockAssign`s, §0S.7);
 - do NOT map the file slot unless the script always produces a file (mapped and empty → 500);
+- a FILE answer `[C]` (2026-10-02): map RESULT_FILE to a single-mode FILE_UPLOAD and assign to its `#Значение`
+  `F-writeToFile-K-FIX-T-String` (text) or `F-textToFile-K-FIX-T-String` (Base64 → binary), both with
+  `argExprIds:{fileName}`; the body is then the file (RESULT_TXT ignored), sent as an attachment whose Content-Type
+  comes from the file NAME's extension (RESULT_CONTENT_TYPE ignored) — a name without a known extension (`x.xyz`,
+  `x`) fails with `NoFileMimeType` → 500 (trap 36);
 - the request body must be empty or a JSON object (anything else → 500 before a record exists); query parameters
   fill fields by field CODE; a FULL_DATE header takes only the RFC 1123 HTTP date; header values must be ASCII.
 
@@ -4741,6 +4746,10 @@ Scripts:
     `load-bo-def-list`, so every field act fails `translate-script` and the hook cannot be published. Copy the
     version (`copy-bo-script-version`) and write into the copy (`MYBPM-UI-API.md` §5o, trap 68). A BO whose scripts
     came in by archive is not affected.
+36. **A service file answer needs a file name with a known extension** `[C]` (2026-10-02) — `x.xyz` or a bare `x`
+    fails with `NoFileMimeType` inside the «Создание» script and the service answers 500; with a known extension
+    the response Content-Type is taken from it, not from RESULT_CONTENT_TYPE (§2 «Exposed services»,
+    `MYBPM-UI-API.md` §5o, trap 69).
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
