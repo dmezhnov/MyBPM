@@ -3397,7 +3397,7 @@ The company code is the tenant's code (the dialog prints both full URLs).
 | `RESULT_TXT` | TXT | → the response body |
 | `RESULT_CONTENT_TYPE` | TXT | → the response `Content-Type` (the script must set it) |
 | `RESULT_CODE` | NUM | → the HTTP status; empty or < 100 → **501, empty body** (+ «Указан не верный диапазон…» in SCRIPT_ERRORS) |
-| `RESULT_FILE` | FILE | → a file to download; **if mapped, the script MUST put a file there, else 500** «Field RESULT_FILE … has no any file after creation instance script execution» (the record is still created). Leave it unmapped when the service returns text. A real file answer was not run `[U]` |
+| `RESULT_FILE` | FILE | → a file to download; **if mapped, the script MUST put a file there, else 500** «Field RESULT_FILE … has no any file after creation instance script execution» (the record is still created). Leave it unmapped when the service returns text. A filled file REPLACES the answer — see «File answer» below `[C]` |
 
 - **«Входящие заголовки, копируемые в поля»**: any number of `header name → field` pairs; allowed fields
   INPUT_TEXT / INPUT_NUMBER / FULL_DATE. A missing header writes «Заголовок `X` в запросе отсутствует» into
@@ -3416,6 +3416,19 @@ The company code is the tenant's code (the dialog prints both full URLs).
   (`state` ALL, the «Тестовые»/DEV registry stays empty) with MODE = `TEST`.
 - Scripts: only «Создание» runs (no form is opened); it reads the request fields and writes the result fields
   with ordinary `BlockAssign`s (`MYBPM-IMPORTS.md` §0S.7). Without any script the answer is 501.
+- **File answer** `[C]` (2026-10-02, a separate entry point on the same probe BO with `RESULT_FILE` mapped to a
+  single-mode FILE_UPLOAD, TEST script): the «Создание» script makes a file and assigns it to the field's
+  `#Значение` — `<text>.#Записать в файл(fileName)` (`F-writeToFile-K-FIX-T-String`, the text as UTF-8) or
+  `<base64>.#Base64 преобразовать в файл(fileName)` (`F-textToFile-K-FIX-T-String`, binary; a PNG came back
+  byte-identical). The answer is then the file: status = RESULT_CODE, **body = the file bytes (RESULT_TXT is
+  ignored)**, `Content-Disposition: attachment; filename="<name>"` (a non-ASCII name is percent-encoded UTF-8
+  inside plain `filename=`, no `filename*=`), and **Content-Type comes from the file name's extension, NOT from
+  RESULT_CONTENT_TYPE** (`.txt` → `text/plain;charset=UTF-8`, `.png` → `image/png;charset=UTF-8`, `.json` →
+  `application/json;charset=UTF-8` while the slot held `text/plain`). **The name must carry an extension the file
+  storage knows**: `dannye.xyz` and a bare `otchet` both fail inside the script with
+  `kz.greetgo.file_storage.errors.NoFileMimeType: No MIME type` (written to SCRIPT_ERRORS; the assignments before
+  it, RESULT_CODE included, are kept), the field stays empty and the call answers 500 «has no any file». The file
+  also stays in the record. Six TEST calls in a row caused no outage this time. Trap 69.
 - Every call that reaches the BO creates a record, failures included — a busy service fills its BO; plan a
   physical-removal rule (§5n) if needed.
 
@@ -3465,7 +3478,7 @@ answered nginx 502 for about a minute; the same call afterwards worked. Cause no
 experiments out and watch `load-auth-info` between calls.
 
 Probe on `<stand>`: BO «Проба сервиса 2026-10-01» (`Proba_servisa_2026_10_01`, group «Тест»), entry point
-`proba-servisa`, work script v2 answers `method=…; mode=…; hdr=<X-Proba-Text>; body=<body>` with 200, test v3 with
+`proba-servisa` (and `proba-fajl` with RESULT_FILE mapped — the file answer), work script v2 answers `method=…; mode=…; hdr=<X-Proba-Text>; body=<body>` with 200, test v3 with
 201.
 
 ## 6. Records: Excel import and export
@@ -4426,6 +4439,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 68. **The first script version of a BO that never had scripts is blind** `[C]` (2026-10-01) — its module's
     `load-bo-def-list` is empty, so every field read/write fails `translate-script` and the script cannot be
     published. `copy-bo-script-version` and work on the copy. §5o.
+69. **A service file answer needs a file name with a known extension, and its type is that extension** `[C]`
+    (2026-10-02) — a script-made file named `x.xyz` or `x` fails with `NoFileMimeType` and the service answers 500;
+    with a known extension the response Content-Type is derived from it and RESULT_CONTENT_TYPE is ignored. Name the
+    file for the type you want to send (`.json`, `.pdf`, `.xlsx` …). §5o.
 
 ## 12. Open questions
 
@@ -4437,7 +4454,7 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5n: how to clear a messenger chat registry once set (the API ignores `null`); why Telegram's `isConnected` turned
   `true` on `<stand>` during the 2026-10-01 run (no field values, WhatsApp stayed `false`); the per-BO telephony and
   Kafka migration lists (need a provider / Kafka).
-- §5o: a FILE answer (`RESULT_FILE` filled by the script — headers, name, Content-Type); whether the other 13 settings
+- §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
 - **Still unexecuted in §5g**: whether `create-local-method` /
