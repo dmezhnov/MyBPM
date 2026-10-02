@@ -53,7 +53,7 @@ used.add(P_STEP).add(P_FORMULA);
 
 // 1  Пусть #текст# = '' ⊕ formula
 const vText = blk({ varName: "#текст#", valueExprId: op("Concat", sConst(""), variable(P_FORMULA)), type: "BlockNewVar" });
-// 2  Пусть #код# = step.Код.#Значение
+// 2  Пусть #код# = step.code.#Значение
 const vCode = blk({ varName: "#код#", valueExprId: value(field(variable(P_STEP), "code")), type: "BlockNewVar" });
 // 3  Пусть #ответ# = ''
 const vAns = blk({ varName: "#ответ#", valueExprId: sConst(""), type: "BlockNewVar" });
@@ -74,15 +74,15 @@ const bIf = blk({
   type: "BlockIf",
 });
 
-// 5  Пусть #i# = 0
-const vI = blk({ varName: "#i#", valueExprId: nConst("0"), type: "BlockNewVar" });
-// 6  ЦИКЛ #шаг# : "3" { #i# = #i# + 1 ; ЕСЛИ #i# > 2 : ВЫЙТИ ИЗ ЦИКЛА }
+// 5  Пусть #счётчик# = 0   (declared in the header — chained before the ЕСЛИ, §0S.2a)
+const vI = blk({ varName: "#счётчик#", valueExprId: nConst("0"), type: "BlockNewVar" });
+// 6  ЦИКЛ i : "3" { #счётчик# = #счётчик# + 1 ; ЕСЛИ #счётчик# > 2 : ВЫЙТИ ИЗ ЦИКЛА }
 const loop = nid();
 const brk = blk({ exitType: "FROM_CIRCLE", circleBlockId: loop, type: "BlockExit" });
 const guard = blk({ ifExprId: op("More", variable(vI), nConst("2")), thenBlockId: brk, type: "BlockIf" });
 const inc = blk({ leftExprId: variable(vI), rightExprId: op("Plus", variable(vI), nConst("1")),
                   downBlockId: guard, type: "BlockAssign" });
-B[loop] = { elementVarName: "#шаг#", srcExprId: nConst("3"), bodyBlockId: inc, type: "BlockForeach" };
+B[loop] = { elementVarName: "i", srcExprId: nConst("3"), bodyBlockId: inc, type: "BlockForeach" };
 
 // 7  ВЕРНУТЬ #код# ⊕ ':' ⊕ #ответ#
 const ret = blk({ exitType: "FROM_METHOD",
@@ -90,7 +90,7 @@ const ret = blk({ exitType: "FROM_METHOD",
                   type: "BlockExit" });
 
 // chain the statements (§0S.5)
-const chain = [vText, vCode, vAns, bIf, vI, loop, ret];
+const chain = [vText, vCode, vAns, vI, bIf, loop, ret];
 for (let k = 0; k + 1 < chain.length; k++) B[chain[k]].downBlockId = chain[k + 1];
 
 const hat = blk({
