@@ -78,24 +78,20 @@ const COMPOSITE_ABSENT_KEYS = new Set(["gridPosition", "tableColOrderIndex", "re
 const PROCESS_STATUS_ABSENT_KEYS = new Set(["tableColOrderIndex", "removeType", "inMigrationTimezoneMinutes"]);
 const EMPTY_SET = new Set<string>();
 
-// §0.6 transliteration table («ё» is not in the stand's table — it falls through to «_»)
-const TRANSLIT: Record<string, string> = {
-  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ж: "zh", з: "z", и: "i", й: "yi",
-  к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
-  х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
-};
-function translit(label: string): string {
-  let out = "";
-  for (const ch of label) {
-    const lower = ch.toLowerCase();
-    let mapped: string;
-    if (lower in TRANSLIT) mapped = TRANSLIT[lower];
-    else if (/[a-z0-9]/.test(lower)) mapped = lower;
-    else mapped = "_";
-    if (mapped && ch !== lower && /[а-яёa-z]/.test(lower)) mapped = mapped[0].toUpperCase() + mapped.slice(1);
-    out += mapped;
-  }
-  return out.slice(0, 30);
+// §0.6a naming convention for new codes: English snake_case. Objects (BO / dictionary / composite /
+// process / panel), BO groups and menu items are «Capitalised», everything else is lower case.
+// A code already on a stand is never renamed, so a mismatch is a WARN, not an error.
+const OBJECT_CODE_RE = /^[A-Z][a-z0-9]*(_[a-z0-9]+)*$/;
+const LOWER_CODE_RE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+function naming(where: string, code: string, kind: "object" | "lower" | "checkbox" | "tabs" | "tab") {
+  const want = {
+    object: [OBJECT_CODE_RE, "First letter capital, the rest lower snake_case (Client_order)"],
+    lower: [LOWER_CODE_RE, "lower snake_case (client_name)"],
+    checkbox: [/^is_[a-z0-9]+(_[a-z0-9]+)*$/, "is_* (is_active)"],
+    tabs: [/^tabs(_[a-z0-9]+)*$/, "tabs, or tabs_* when the BO has several"],
+    tab: [/^tab_[a-z0-9]+(_[a-z0-9]+)*$/, "tab_* (tab_documents)"],
+  }[kind] as [RegExp, string];
+  if (!want[0].test(code)) add("WARN", "0.6a", `${where}: code "${code}" is not ${want[1]}`);
 }
 
 type Sev = "FATAL" | "ERROR" | "WARN";
@@ -190,7 +186,7 @@ for (const g of groups) {
   if (typeof g.code !== "string" || !g.code)
     add("FATAL", "0.10/1", `group "${g.name}" has no code — the importer renames a fixed stand group instead (§8)`);
   else if (groupCodes.has(g.code)) add("ERROR", "0.3", `group code "${g.code}" repeats`);
-  else groupCodes.add(g.code);
+  else { groupCodes.add(g.code); naming(`group "${g.name}"`, g.code, "object"); }
   if (g.kind !== "MANUAL") add("ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL`);
   if (!ID_RE.test(String(g.oldId))) add("ERROR", "0.7", `group oldId "${g.oldId}" is not 16 chars over A-Za-z0-9@~`);
   if (!g.newId) add("WARN", "0.3", "group has no newId");
@@ -386,6 +382,7 @@ for (const bo of bos) {
   const code = String(bo.code ?? "");
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(code)) add("ERROR", "0.10/7", `${tag}: BO code "${code}" is not latin/digits/underscore`);
   if (code.length > 30) add("FATAL", "0.10/7", `${tag}: BO code is ${code.length} chars, max 30`);
+  naming(tag, code, "object");
   if (["Person", "Department", "PersonGroup"].includes(code))
     add("FATAL", "0.2a", `${tag}: "${code}" is a reserved built-in code — import dies with «Несоответствие типов объектов»`);
   if (bo.name && typeof bo.name.rus !== "string") add("ERROR", "0.4", `${tag}: name is not {rus: "…"}`);
@@ -480,9 +477,9 @@ for (const bo of bos) {
     else if (typeof lab !== "string") { /* the wrapper: no label, no code rule */ }
     else {
       if (lab !== lab.trimStart()) add("WARN", "0.5", `${ft}: label has a leading space`);
-      const want = translit(lab);
-      if (want !== c && !c.startsWith(want) && bo.category !== "BO_DICTIONARY" && c !== "PROCESS_STATUS")
-        add("WARN", "0.6", `${ft}: code "${c}" != transliteration of "${lab}" ("${want}")`);
+      // CODE / LABEL of a dictionary and PROCESS_STATUS are fixed by the platform (0.6a)
+      if (!(bo.category === "BO_DICTIONARY" && (c === "CODE" || c === "LABEL")) && c !== "PROCESS_STATUS")
+        naming(ft, c, type === "CHECKBOX" ? "checkbox" : type === "TAB_GROUP" ? "tabs" : "lower");
       if (labels.has(lab)) add("WARN", "0.5", `${ft}: label "${lab}" repeats inside the BO`);
       labels.add(lab);
     }
@@ -518,6 +515,7 @@ for (const bo of bos) {
             if (typeof ov.fieldOption.label !== "string")
               add("ERROR", "5", `${ft}: option "${ok}" label must be a PLAIN STRING, got ${JSON.stringify(ov.fieldOption.label)}`);
             if (ov.fieldOption.code !== ok) add("ERROR", "5", `${ft}: option key "${ok}" != fieldOption.code "${ov.fieldOption.code}"`);
+            naming(`${ft}.option`, ok, "lower");
           }
           id(`${ft}.option ${ok}`, ov.newOptionId);
         }
@@ -568,6 +566,9 @@ for (const bo of bos) {
         add("ERROR", "3", `${ft}: the tracked date and its «Статус» must sit in the wrapper's tab (tabCodePath.tabGroupCode = "${wrap.code}")`);
     }
     if (type === "STATIC_TEXT" && !f.staticValue?.rus) add("ERROR", "0.5", `${ft}: STATIC_TEXT without staticValue.rus`);
+    for (const [k, q] of Object.entries<any>(f.questionnaires ?? {})) naming(`${ft}.questionnaire`, q?.questionnaireDto?.code ?? k, "lower");
+    for (const st of Object.values<any>(f.progressSteps ?? {})) if (st?.code) naming(`${ft}.step`, st.code, "lower");
+    if (type === "TAB_GROUP" && !trackedWrapper) for (const k of Object.keys(f.fieldTabs ?? {})) naming(`${ft}.tab`, k, "tab");
     if (type === "QUESTIONNAIRE" && !Object.keys(f.questionnaires ?? {}).length) add("ERROR", "0.5", `${ft}: QUESTIONNAIRE with empty questionnaires`);
     if (type === "PROGRESS_BAR" && !Object.keys(f.progressSteps ?? {}).length) add("ERROR", "0.5", `${ft}: PROGRESS_BAR with empty progressSteps`);
     if (type === "TAB_GROUP" && !Object.keys(f.fieldTabs ?? {}).length) add("ERROR", "0.5", `${ft}: TAB_GROUP with empty fieldTabs`);
@@ -671,6 +672,7 @@ for (const bo of bos) {
     for (const [key, v] of Object.entries<any>(w)) {
       const ft = `${tag}.${map}.${key}`;
       if (v.code !== key) add("ERROR", "0.5b", `${ft}: widget map key != code "${v.code}"`);
+      naming(ft, key, "lower");
       if (!types.includes(v.type)) add("ERROR", "0.5b", `${ft}: type "${v.type}" does not belong in "${map}" (${types.join("/")})`);
       id(ft, v.newId);
       if (!v.gridPosition) add("WARN", "0.5b", `${ft}: widget without gridPosition`);
@@ -895,6 +897,7 @@ menus.forEach(m => {
     if (k in m) add("ERROR", "0.10/14", `${tag}: carries "${k}" — a menu line references everything by CODE and has no id`);
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(String(m.menuItemCode ?? "")))
     add("ERROR", "0.5d", `${tag}: menuItemCode is not latin/digits/underscore`);
+  else naming(tag, String(m.menuItemCode), "object");
   if (MENU_ICONS && m.iconName !== undefined && !MENU_ICONS.has(String(m.iconName)))
     add("ERROR", "0.5e", `${tag}: iconName "${m.iconName}" is not in the icon catalogue — it imports, but the sidebar draws no icon`);
   if (m.chosenAccessRight === true)
