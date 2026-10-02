@@ -4298,6 +4298,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     open** (UI upload, status «Импорт проанализирован») `[C]` (2026-09-18). It is not a reliable «is
     something waiting?» probe — take the `importId` from the log row / from `import-file`, or resume with
     `--import-id`.
+    It can also answer `{importExists:true, fileName}` WITHOUT `importId` `[C]` (2026-10-02) — read the id off
+    `load-import-file-records`. **Never re-run `insert-file-data` on an import whose first call was cut off**
+    (e.g. a page navigation mid-`javascript_tool`): the data goes in twice and the analysis ends
+    `INTERNAL_ERROR` (`MongoUtil.one`). `cancel-import` drops it; upload again in ONE call.
 37. **The LAST icon of a field's settings popover is DELETE** `[C]` (2026-09-18) — `mat-icon.delete-icon`,
     and it opens «Удаление поля: использование в скриптах» whose green button is «УДАЛИТЬ ВСЁ РАВНО».
     A click loop over that icon strip (to find out what the icons are) walks straight into it; the 4th
