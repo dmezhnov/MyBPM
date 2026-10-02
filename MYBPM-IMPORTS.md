@@ -1501,11 +1501,15 @@ re-imported without `orderIndex`.
   none), and «Дублировать» — the stand's clone is a separate call; an archive copy is the archive route to the same
   result (copy the export, new `code` and `name`, fresh `oldId`/`newId`s).
 
-### Company settings that name a BO — none travel `[C]` (2026-10-01, `<stand>`)
+### Company settings that name a BO — none travel WITH THE BO `[C]` (2026-10-01, `<stand>`)
 
 Some company-wide «Настройки» pages keep lists of BOs. They are stored per company, keyed by the BO's STAND id, and
-**an archive carries none of them**: a stand export of a BO that is on every list below (exported with structure,
-rights and scripts) has no key for any of them, and a re-import of that BO leaves all of them in place.
+**the BO's own archive carries none of them**: a stand export of a BO that is on every list below (exported with
+structure, rights and scripts) has no key for any of them, and a re-import of that BO leaves all of them in place.
+**But they may travel as a company-settings line** — see «Exposed services» below: the export screen has a
+settings basket whose ticked kinds export as `CompanySettingsStructDto` lines, and that line's payload has keys for
+physical removal (`boiDeleteSettings`), messengers and offline (`offlineViewBoAllowCodes`, by BO code). Proven only
+for `SCRIPT_SETTINGS`; for the kinds in this table it is `[I]`.
 
 | setting | what it does to the BO |
 |---|---|
@@ -1523,6 +1527,43 @@ the BO ids come from the stand after the import (§0.2a). Two side effects cross
   of the BO's own archive puts the archive's name back while the BO stays the registry.
 
 «Мобильное приложение» looks like it has a BO list (`importBoAllow`) but all its lists are org units, not BOs.
+
+### Exposed services («Выставление сервисов») — a `CompanySettingsStructDto` line `[C]` (2026-10-02, `<stand>`)
+
+«Настройки → Выставление сервисов» turns a BO into a public HTTP endpoint: a call to
+`https://<stand>/api/v1/script/service/<COMPANY CODE>/<entry point>` (or `…/service_test/…` for the TEST script
+version) needs NO token, creates one record of the service BO, copies the request into mapped fields, runs the BO's
+«Создание» hook, and answers with the record's result fields. Runtime, slots, headers, the API and the traps:
+`MYBPM-UI-API.md` §5o. The essentials for building one:
+- the service BO needs text fields for the request (body, content type, method, mode, two error fields) and for the
+  answer (text, content type), an `INPUT_NUMBER` for the status code, and a «Создание» script that sets at least the
+  status code (≥ 100; empty → 501) and the answer text / content type (plain `BlockAssign`s, §0S.7);
+- do NOT map the file slot unless the script always produces a file (mapped and empty → 500);
+- the request body must be empty or a JSON object (anything else → 500 before a record exists); query parameters
+  fill fields by field CODE; a FULL_DATE header takes only the RFC 1123 HTTP date; header values must be ASCII.
+
+**In an archive** the rows are NOT part of the BO line. They come from the export screen's company-settings basket
+(kind `SCRIPT_SETTINGS`) as one line holding **every row of the company**:
+
+```json
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.CompanySettingsStructDto","kind":"SCRIPT_SETTINGS",
+ "payloadJson":"{\"boiDeleteSettings\":[],\"telephonyIsActive\":false,\"telephonyCompanySettings\":[],\"messengerTypes\":{},\"messengerCompanySettings\":[],\"otpAuthSettings\":[],\"geoMapTypes\":{},\"geoMapCompanySettings\":[],\"scriptControllerSettings\":[{\"serviceBoCode\":\"Proba_servisa_2026_10_01\",\"orderIndex\":20000.0,\"entryPointTemplate\":\"proba-servisa\",\"baseFields\":{\"INPUT_TXT\":\"Vhodyaschiyi_tekst\",\"INPUT_CONTENT_TYPE\":\"Tip_vhodyaschego\",\"METHOD\":\"Metod\",\"MODE\":\"Rezhim\",\"REQUEST_ERRORS\":\"Oshibki_zaprosa\",\"SCRIPT_ERRORS\":\"Oshibki_skripta\",\"RESULT_TXT\":\"Tekst_rezultata\",\"RESULT_CONTENT_TYPE\":\"Tip_rezultata\",\"RESULT_CODE\":\"Kod_rezultata\"},\"headerFields\":{\"X-Proba-Text\":\"Zagolovok_tekst\"}}],\"inMigrationAllowBoExports\":[],\"outMigrationAllowBoExports\":[],\"offlineViewBoAllowCodes\":{},\"offlineEditBoAllowCodes\":{}}"}
+```
+
+- `payloadJson` is a JSON **string**. Everything is by CODE: `serviceBoCode` = the BO code, `baseFields` = slot →
+  field code (slots: `INPUT_TXT, INPUT_CONTENT_TYPE, METHOD, MODE, REQUEST_ERRORS, SCRIPT_ERRORS, RESULT_TXT,
+  RESULT_FILE, RESULT_CONTENT_TYPE, RESULT_CODE`; an unmapped slot is left out), `headerFields` = header name →
+  field code. The other keys of the payload were exported empty and the import of a `SCRIPT_SETTINGS` line left the
+  stand's other settings alone.
+- A settings-only archive (this one line + `metadata.mybpm` `objectCount-1`) imports: the analyzer shows one item
+  «Выставление сервисов», `structTypes ["SETTINGS"]`, `settingsState "UPDATE"`; the BO may come in the same archive
+  or already be on the stand.
+- **Apply REPLACES the stand's whole list** — a row the archive does not list is DELETED, and every row is recreated
+  under a new id. So start from a fresh stand export of this kind and add/edit rows in it; never ship only your own row
+  to a stand that already exposes services.
+- **Do not count on rollback**: it brings the old rows back, but with field codes where field ids belong — every
+  restored service then answers 200 with an empty body until its slots and headers are re-saved through the API
+  (`MYBPM-UI-API.md` §5o, trap 67).
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
@@ -4693,6 +4734,13 @@ Scripts:
     a re-import with one repairs the BO.
 33. **The registry «Группировка» is dead** `[C]` (2026-10-01) — the server answers 404 to its data calls;
     `isGroupingEnabled` / `groupingInfo` store and travel but nothing renders (§2 «BO views»).
+34. **An import of «Выставление сервисов» replaces the whole list; its rollback leaves dead rows** `[C]`
+    (2026-10-02) — §2 «Exposed services».
+35. **A BO's first, implicit script version is blind when scripts are written through the API** `[C]` (2026-10-01) —
+    on a BO that never had scripts the one version `load-bo-script-versions` returns has an empty
+    `load-bo-def-list`, so every field act fails `translate-script` and the hook cannot be published. Copy the
+    version (`copy-bo-script-version`) and write into the copy (`MYBPM-UI-API.md` §5o, trap 68). A BO whose scripts
+    came in by archive is not affected.
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
