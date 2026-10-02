@@ -627,8 +627,9 @@ record it is on.
 trigger. A click fires it, and each further click fires it again; leave `url` empty for a script-only
 button (`MYBPM-UI-API.md` §5i «A BUTTON runs a script»). On a stand this is `[C]`: wired by `fieldId`
 through `save-bo-scripts`, run by a real click, 2026-09-28. In an archive it is
-`fieldScripts: {"<button code>": {"afterChangeScriptId": …}}` (§5d), keyed like any field — `[I]`, not
-yet imported.
+`fieldScripts: {"<button code>": "<scriptId>"}` (§5d, `tools/add-bo-scripts.bun.ts --bodies` with hook
+`field:<button code>`), keyed like any field — `[C]` (2026-10-02, build S4.24.25.643): a 3-button archive with
+RestRequest bodies imported, all three `translate-script` success, each real click wrote its field.
 
 **CURRENT_USER («Текущий пользователь») round-trips through an archive** `[C]` (2026-10-01, core2 / NIT).
 The widget was set up in the constructor and over the API, exported, re-imported under a new BO code
@@ -2736,7 +2737,8 @@ Four things you cannot do — do not look for a workaround:
    `Пусть <имя> = <выражение>` (declare), `<переменная> = <выражение>` (assign),
    `ЕСЛИ <условие> … ИНАЧЕ ЕСЛИ … ИНАЧЕ`, `ЦИКЛ <элемент> : <число или коллекция>`,
    `ВЫЙТИ ИЗ ЦИКЛА`, `ВЕРНУТЬ <выражение>`. If a step of your plan cannot be written in those six forms,
-   the plan is wrong, not the language.
+   the plan is wrong, not the language. Name and lay it out by the house style of 0S.2a (header of
+   declarations first, decorated Russian names, modules).
 2. **Ask the user for everything you cannot know**, one request at a time, and wait for the answer:
    - the **copy of the empty method** (gives the real `methodName`, the parameter **ids**, their order
      and types, the return type) — needed before you emit a single line;
@@ -2751,6 +2753,81 @@ Four things you cannot do — do not look for a workaround:
 7. **Put the file on the clipboard** with `wl-copy --type text/plain < file.json` — no other form works.
 8. **Tell the user exactly where to paste**, then ask for a copy back and compare (0S.11) — «no red in
    the IDE» proves nothing; it has silently eaten 55 expressions before.
+
+### 0S.2a House style — naming and layout
+
+The platform does not enforce any of this (a `varName` is a free string, 0S.5); it is the convention
+every script written for this user follows (set by the user, 2026-10-02). Apply it to the pseudocode of
+step 1 and carry the names into the JSON unchanged.
+
+**Language.** Variable and module names are in **Russian**. The exceptions: method **parameters** are
+English `snake_case` with no decoration (`step`, `formula`, `model_step`), and loop **counters** are bare
+`i`, `j`, `k`.
+
+**Decoration — what the variable holds decides the wrapper:**
+
+| holds | wrapper | case | example |
+|---|---|---|---|
+| a field reference — anything that has `.#Значение` (hop 1 of 0S.7, no VALUE) | `~…~` | first letter capital | `~Статус~`, `~Шаги~` |
+| a BO type (the `BoRefCode` constant) | `%…%` | the BO's **display name** as shown, not its code | `%Шаг модели%` |
+| a collection of ONE element by design | `[…]` around the element's own name | element style | `[#ответственный#]`, `[~Ссылка~]` |
+| a collection that may hold MORE than one | `<…>` around the element's own name | element style | `<#шаг#>`, `<~Ссылка~>` |
+| everything else — text, number, date, a **record (instance)** | `#…#` | **all** letters lower case | `#сумма ндс#`, `#заявка#` |
+| a module (below) | `\|…\|` | free | `\|Проверка ИНН\|` |
+| a loop counter | none | — | `i`, `j` |
+
+- A **record is `#…#`**, the **field that holds records is `~…~`**: `~Шаги~` is the field, its
+  `.#Значение` is `<#шаг#>`, one element of it is `#шаг#`. A field with a plain value is `~…~` too
+  (`~Статус~` = `#заявка#.Статус`).
+- `[…]` vs `<…>` is decided **by design when writing the code**, not by the run-time count. The element
+  inside is written in the singular, in its own style (an element that is itself an array keeps its own
+  brackets).
+- **A boolean ends in `?` inside the wrapper**: `#найдено?#`, `~Активен?~`. Modules are the exception —
+  they are booleans but take no `?`.
+
+**Layout — declarations first.** A script (and every module, 0S.2a «Modules») opens with a header of
+`Пусть` blocks; the logic comes after it, and below the header there is only assignment and logic (loop
+elements are declared by their loop and stay where the loop is). A header line either declares the
+variable empty or initialises it at once when its value is already known:
+
+| kind | empty declaration | IDE shows |
+|---|---|---|
+| text | `Пусть #текст# = ''` | `''` |
+| number | `Пусть #сумма# = 0` | `0` |
+| boolean | `Пусть #найдено?# = <пусто>` — a `Bool` CONST **without `value`** | `<пусто>` |
+| record | `Пусть #шаг# = %Шаг модели%.<пусто>` — a `BoiRefCode` CONST with `boCode`, **without `boiId`** | `БО/<name>.<пусто>` |
+| field reference | — none; initialise: `Пусть ~Статус~ = #заявка#.Статус` | |
+
+The two empty constants are in 0S.6. Text and number have no empty form — they always take a value.
+
+**Modules.** A module is a **boolean variable** `|Имя|` whose name is unique within the Company, used
+**only** as the sole condition of an `ЕСЛИ` that has **no `ИНАЧЕ ЕСЛИ` and no `ИНАЧЕ`**:
+
+```text
+Пусть |Проверка ИНН| = Да            ← header: Да / Нет / <пусто>
+…
+|Проверка ИНН| = Нет                 ← any assignment on the way switches it off (or on)
+ЕСЛИ |Проверка ИНН|
+    Пусть #инн# = ''                  ← the module's own header
+    Пусть #инн верен?# = <пусто>
+    …                                 ← the module's logic
+```
+
+- **The body of a module is the same code everywhere in the Company** — every use of `|Проверка ИНН|`,
+  in any script, carries a byte-identical body. Change one, change all.
+- **No `ЭТА ИНСТАНЦИЯ` / `ЭТОТ ПРОЦЕСС` inside a module.** The record comes in as an outer variable.
+- A module uses its **own** variables (declared in its header) and **outer** ones — declared outside it.
+  Every place the module is used must therefore have, in scope, variables with exactly those names and
+  types (the module's inputs).
+- **Modules nest** (a module inside a module; where the inner module's `|…|` is declared — the outer
+  module's header or outside — does not matter) and **one module may be used more than once** in a script
+  or in another module. Two copies live in two separate `ЕСЛИ` bodies, so their inner names do not clash
+  (rule 7 of 0S.9 is per scope).
+- **Compose anything but a trivial script out of modules.**
+
+**Templates (pseudo-metaprogramming).** A name may embed another variable's name: `#пароход ${#имя
+парохода#}#` reads «the пароход whose name is in `#имя парохода#`». The template stays in the `varName`
+**literally**, `${…}` included — it is a note on where the value comes from, nothing substitutes it.
 
 ### 0S.3 The envelope
 
@@ -2789,8 +2866,9 @@ its last block has no `downBlockId`, and execution continues at the parent block
 ```json
 {"varName":"#текст#","valueExprId":"<expr>","downBlockId":"<next>","type":"BlockNewVar"}
 ```
-«Пусть». `varName` is a free string — the `#…#` / `~…~` decoration is part of the name, not syntax, but
-**a name must be unique across the whole method**, loop element names included.
+«Пусть». `varName` is a free string — the `#…#` / `~…~` / `%…%` / `[…]` / `<…>` / `|…|` decoration is
+part of the name, not syntax (which decoration to use is the house style of 0S.2a), but **a name must be
+unique within its scope** (rule 7 of 0S.9), loop element names included.
 
 ```json
 {"leftExprId":"<expr>","rightExprId":"<expr>","downBlockId":"<next>","type":"BlockAssign"}
@@ -2867,6 +2945,15 @@ Two rules before the templates:
 ```
 Text / number / boolean constants (`"yes"` / `"no"`). An empty text constant is `"value":""` — and note
 that a copy coming back from the IDE has **no `value` key at all** for it.
+
+```json
+{"exprValueType":"CONST","valueType":{"type":"Bool"},"constType":"Boolean","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"baseType":"BoRefCode","type":"Bo","isArray":false},"constType":"BoiRefCode","boCode":"<BO code>","type":"ExprValue"}
+```
+The two **empty** constants of a header (0S.2a): a boolean without `value` (IDE `<пусто>`) and a record of
+a given BO without `boiId` (IDE `БО/<name>.<пусто>`; note `valueType.baseType` is `BoRefCode` while
+`constType` is `BoiRefCode` — copied as the IDE wrote it). `[C]` for the IDE: both come from a copy the
+IDE produced (2026-10-02); how a script behaves on an `<пусто>` boolean in `ЕСЛИ` is `[U]`.
 
 ```json
 {"exprValueType":"CONST","valueType":{"baseType":"BoRefCode","type":"Bo","boCode":"Operator"},"constType":"BoRefCode","boCode":"Operator","type":"ExprValue"}
@@ -2995,7 +3082,10 @@ one that is in neither place does not exist. There is still no `indexOf` (only
    String action is safe.)
 5. **No chained comparison.** `a > b > c` parses as `(a > b) > c`. Use `And` or nested `ЕСЛИ`.
 6. **Every expression referenced exactly once** (0S.6) — a shared subtree is a DAG and the IDE rejects it.
-7. **Variable names unique per method**, loop element names included.
+7. **Variable names unique within a scope**, loop element names included: no name may be declared again
+   where a variable of that name is visible. The IDE checks exactly this, so two copies of one module
+   (0S.2a) in two separate `ЕСЛИ` branches may declare the same inner names (stated by the user,
+   2026-10-02).
 8. **`#Подстрока` with `start >= end` returns the WHOLE string**, not `""`. Always guard:
    `ЕСЛИ конец > начало : x = #Подстрока(…) ИНАЧЕ : x = ""`.
 9. **`#Заменить` is literal**; a regex handed to it is matched as text. A *broken* regex in `#Регулярка?`
@@ -3019,16 +3109,16 @@ Method `describe(step: Model_step, formula: Текст) : Текст`, with the 
 copy (`KJC71su~DqnMxD7z` = `step`, `0du0wJobopgISW6H` = `formula`):
 
 ```text
-Пусть #текст#  = '' ⊕ formula                  ← rule 4: pins the String type
-Пусть #код#    = step.code.#Значение           ← two hops
-Пусть #ответ#  = ''
+Пусть #текст#   = '' ⊕ formula                 ← rule 4: pins the String type
+Пусть #код#     = step.code.#Значение          ← two hops
+Пусть #ответ#   = ''
+Пусть #счётчик# = 0                            ← the header ends here (0S.2a)
 ЕСЛИ #текст#.#Пусто?#          : #ответ# = 'пусто'
 ИНАЧЕ ЕСЛИ #текст#.#Регулярка?#('^[0-9]+$') : #ответ# = 'число'
 ИНАЧЕ                          : #ответ# = 'формула'
-Пусть #i# = 0
-ЦИКЛ #шаг# : 3
-    #i# = #i# + 1
-    ЕСЛИ #i# > 2 : ВЫЙТИ ИЗ ЦИКЛА
+ЦИКЛ i : 3
+    #счётчик# = #счётчик# + 1
+    ЕСЛИ #счётчик# > 2 : ВЫЙТИ ИЗ ЦИКЛА
 ВЕРНУТЬ #код# ⊕ ':' ⊕ #ответ#
 ```
 
@@ -3041,13 +3131,13 @@ The ids below are readable on purpose (`id0001…`); any 16-character strings fr
   "id00480000000000":{"x":55,"y":44,"methodName":"describe","params":{"KJC71su~DqnMxD7z":{"name":"step","order":1,"type":{"baseType":"BoiRefCode","boCode":"Model_step","isArray":false,"type":"Bo"}},"0du0wJobopgISW6H":{"name":"formula","order":2,"type":{"baseType":"String","isArray":false,"type":"Text"}}},"returnType":{"baseType":"String","isArray":false,"type":"Text"},"downBlockId":"id00040000000000","type":"BlockFixMethod"},
   "id00040000000000":{"varName":"#текст#","valueExprId":"id00030000000000","downBlockId":"id00080000000000","type":"BlockNewVar"},
   "id00080000000000":{"varName":"#код#","valueExprId":"id00070000000000","downBlockId":"id00100000000000","type":"BlockNewVar"},
-  "id00100000000000":{"varName":"#ответ#","valueExprId":"id00090000000000","downBlockId":"id00270000000000","type":"BlockNewVar"},
-  "id00270000000000":{"ifExprId":"id00210000000000","thenBlockId":"id00130000000000","branches":{"id00220000000000":{"blockId":"id00160000000000","order":10,"exprId":"id00250000000000","hasExpr":true},"id00260000000000":{"blockId":"id00190000000000","order":20}},"downBlockId":"id00290000000000","type":"BlockIf"},
+  "id00100000000000":{"varName":"#ответ#","valueExprId":"id00090000000000","downBlockId":"id00290000000000","type":"BlockNewVar"},
+  "id00270000000000":{"ifExprId":"id00210000000000","thenBlockId":"id00130000000000","branches":{"id00220000000000":{"blockId":"id00160000000000","order":10,"exprId":"id00250000000000","hasExpr":true},"id00260000000000":{"blockId":"id00190000000000","order":20}},"downBlockId":"id00300000000000","type":"BlockIf"},
   "id00130000000000":{"leftExprId":"id00110000000000","rightExprId":"id00120000000000","type":"BlockAssign"},
   "id00160000000000":{"leftExprId":"id00140000000000","rightExprId":"id00150000000000","type":"BlockAssign"},
   "id00190000000000":{"leftExprId":"id00170000000000","rightExprId":"id00180000000000","type":"BlockAssign"},
-  "id00290000000000":{"varName":"#i#","valueExprId":"id00280000000000","downBlockId":"id00300000000000","type":"BlockNewVar"},
-  "id00300000000000":{"elementVarName":"#шаг#","srcExprId":"id00410000000000","bodyBlockId":"id00400000000000","downBlockId":"id00470000000000","type":"BlockForeach"},
+  "id00290000000000":{"varName":"#счётчик#","valueExprId":"id00280000000000","downBlockId":"id00270000000000","type":"BlockNewVar"},
+  "id00300000000000":{"elementVarName":"i","srcExprId":"id00410000000000","bodyBlockId":"id00400000000000","downBlockId":"id00470000000000","type":"BlockForeach"},
   "id00400000000000":{"leftExprId":"id00360000000000","rightExprId":"id00390000000000","downBlockId":"id00350000000000","type":"BlockAssign"},
   "id00350000000000":{"ifExprId":"id00340000000000","thenBlockId":"id00310000000000","type":"BlockIf"},
   "id00310000000000":{"exitType":"FROM_CIRCLE","circleBlockId":"id00300000000000","type":"BlockExit"},
@@ -3088,7 +3178,9 @@ The ids below are readable on purpose (`id0001…`); any 16-character strings fr
 
 14 blocks, 31 expressions. Note what the example does NOT do: no `Eq` between numbers, one `FROM_METHOD`,
 no reused expression id, a `'' ⊕ параметр` first block, and the `ИНАЧЕ` branch carries neither `exprId`
-nor `hasExpr`.
+nor `hasExpr`. And what it does by the 0S.2a house style: every variable is declared in the header before
+the first statement that uses one, the counter `i` is bare, the parameters are English snake_case.
+`tools/follow-cookbook-script.bun.ts` (`DET=1`) rebuilds exactly this JSON.
 
 ### 0S.11 Self-check before shipping
 
@@ -3104,11 +3196,15 @@ Run all of it — the IDE will not tell you about any of these:
 4. **Scope**: every `VAR_REF.varBlockId` is either a parameter id of the hat or a `BlockNewVar` /
    `BlockForeach` that is an ancestor-or-earlier statement on the path to the use. On a **stripped body**
    this check must report exactly the method's parameter ids as out of scope and nothing else.
-5. **Unique names**: no two `varName` / `elementVarName` alike within the method.
+5. **Unique names**: no `varName` / `elementVarName` declared again where a variable of that name is
+   still in scope (rule 7).
 6. **Ids are 16 characters** — `branches` and `more` keys too.
 7. Rules 1–6 are mechanical — encode them once in a checker of your own and run it on every file
    before you deliver it (§0S.13 lists the checkers already written for one project; ask the user
    whether that project's folder is at hand before writing a new one).
+8. **House style** (0S.2a): every name carries its decoration, `#…#` is all lower case, a boolean ends
+   in `?`, counters are bare, the header precedes the logic, a module's `ЕСЛИ` holds nothing but `|…|`
+   and has no other branch, no `ЭТА ИНСТАНЦИЯ` inside a module, every copy of a module is byte-identical.
 
 ### 0S.12 Delivering the file
 
@@ -3173,8 +3269,10 @@ Sequencing: blocks chain through `downBlockId` (the tail has none); appending = 
   IDE includes it (block count = body + 1). **Hats never paste** → §14.
 - `BlockFixEntryPoint {x, y, downBlockId}` — the «ТОЧКА ВХОДА» hat of a **process** script (§16).
 - `BlockNewVar {varName, valueExprId, downBlockId}` — «Пусть»; also what the IDE's parameter carriers
-  `Переменная №N := …` are. `varName` is a free string: the naming convention (`~ref~`, `#entity#`,
-  `|section|`) is literally part of the name, not an encoding.
+  `Переменная №N := …` are. `varName` is a free string: the naming convention (`~Ссылка~`, `#значение#`,
+  `%Имя БО%`, `[…]` / `<…>`, `|модуль|` — §0S.2a) is literally part of the name, not an encoding.
+  `valueExprId` may point to an empty CONST (a `Bool` without `value`, a `BoiRefCode` without `boiId`)
+  — that is how a header declares a variable without a value (§0S.6).
 - `BlockAssign {leftExprId, rightExprId, downBlockId}`. A writable field is assigned **through its value
   reference**: in `~Код следа~.#Значение = …` the `leftExprId` is the `.#Значение` ExprAct, not a VAR_REF.
 - `BlockIf {ifExprId, thenBlockId?, downBlockId, branches}`:
@@ -3207,7 +3305,9 @@ Exact encodings from real copies, used in pastes that worked:
   An **empty-string CONST comes back without the `value` key** — readers must treat missing as `''`.
 - Number: `"constType":"BigDecimal","valueType":{"type":"Number"}` — the IDE writes this short form; the
   full form is accepted too. `[C]`
-- Boolean: `"constType":"Boolean"`, `value` `"yes"` / `"no"`. Both work `[C]`.
+- Boolean: `"constType":"Boolean"`, `value` `"yes"` / `"no"`. Both work `[C]`. Without `value` it is the
+  IDE's `<пусто>` (§0S.6); likewise a `BoiRefCode` without `boiId` is `БО/<name>.<пусто>` `[C]` (IDE copy,
+  2026-10-02; runtime `[U]`).
 - Record of a BO / dictionary row: `"constType":"BoiRefCode"` with `boCode` + `boiId`, assigned as
   `~Код ошибки~.#Значение = <BoiRefCode>`. A BO **type** (left side of create-instance and of
   `findByFilter`): `"constType":"BoRefCode"`.
