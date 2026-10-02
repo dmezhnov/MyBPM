@@ -98,8 +98,9 @@ Rules, all `[C]`:
    Do not start building before the user has answered, or has told you to build without them.
 1. **Collect the input**: the display name of the BO, its fields (label + UI type), and the name of the
    BO group **that already exists on the target stand** (ask the user for it — §0.2a; on the reference stand it was `Бизнес-объект`).
-2. **Decide the codes.** The BO code and every field code are latin, derived from the label with the
-   transliteration table in 0.6. Cut to 30 characters. These are the ONLY values you invent.
+2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
+   BO, `client_name` for a field, `is_*` for a checkbox, `tabs` / `tab_*` for tabs. At most 30
+   characters, shortened by meaning. These are the ONLY values you invent.
 3. **Mint the ids** by the rule in 0.7 — one for the group, one for the BO, one per field.
 4. **Write line 1** = the group DTO, template 0.3.
 5. **Write line 2** = the BO DTO, template 0.4, with one entry of template 0.5 per field inside
@@ -204,7 +205,7 @@ constructor's BO list, and the id sits in the URL `…/business-objects/editing/
 ### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code`, `orderIndex` and the two ids)
 
 ```json
-{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoGroupStructDto","oldId":"3H84o9iM@G4jaOL3","name":"Проба группа","code":"Proba_gruppa","orderIndex":1110000,"kind":"MANUAL","newId":"ca3w3BgmzJGmWO7q"}
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoGroupStructDto","oldId":"3H84o9iM@G4jaOL3","name":"Проба группа","code":"Probe_group","orderIndex":1110000,"kind":"MANUAL","newId":"ca3w3BgmzJGmWO7q"}
 ```
 
 - **Every group line carries a `code` — the importer matches groups BY `code`, not by name** `[C]`
@@ -243,7 +244,7 @@ everything after it on that line — the shipped line must be pure minified JSON
 {
   "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
   "oldId": "WbX5Wa8gcabbVbF1",              ← id of the BO — MINT YOUR OWN (0.7); becomes its real id on the stand
-  "code": "Cookbook_demo",                  ← latin code of the BO, ≤ 30 chars (0.6)
+  "code": "Cookbook_demo",                  ← code of the BO: English, first letter capital, snake_case, ≤ 30 chars (0.6a)
   "category": "BO",                         ← BO | BO_DICTIONARY | BO_PANEL | BO_COMPOSITE | BO_PROCESS (0.9)
   "kind": "GENERAL",
   "boGroupOldId": "3H84o9iM@G4jaOL3",       ← = oldId of line 1, character for character
@@ -293,7 +294,7 @@ everything after it on that line — the shipped line must be pure minified JSON
 
 ```text
 {
-  "code": "Naimenovanie",                  ← the field code; must equal the key in dynamicFields
+  "code": "name",                          ← the field code (0.6a: English lower snake_case); must equal the key in dynamicFields
   "newId": "qmEhH4GnZvawC3R4",             ← id of the field — MINT YOUR OWN (0.7), unique inside the archive
   "archetype": "DYNAMIC",
   "kind": "GENERAL",
@@ -447,11 +448,11 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
 
   ```text
   "fieldOptionsStruct": {"optionSource": "FROM_FIELD", "dictionaryOptionSetting": {}, "options": {
-     "Novyyi":   {"fieldOption": {"code": "Novyyi",   "label": "Новый",    "orderIndex": 0,     "color": null, "hiddenInKanban": false}, "newOptionId": "<16 chars>"},
-     "V_rabote": {"fieldOption": {"code": "V_rabote", "label": "В работе", "orderIndex": 10000, "color": null, "hiddenInKanban": false}, "newOptionId": "<16 chars>"}}}
+     "new":         {"fieldOption": {"code": "new",         "label": "Новый",    "orderIndex": 0,     "color": null, "hiddenInKanban": false}, "newOptionId": "<16 chars>"},
+     "in_progress": {"fieldOption": {"code": "in_progress", "label": "В работе", "orderIndex": 10000, "color": null, "hiddenInKanban": false}, "newOptionId": "<16 chars>"}}}
   ```
 
-  The map key repeats `fieldOption.code`, the code is the option's label transliterated by 0.6, and
+  The map key repeats `fieldOption.code`, the code follows 0.6a (English lower snake_case), and
   **`fieldOption.label` is a PLAIN STRING** — not `{"rus": …}`, the one label in the whole file that is
   not a language map. `orderIndex` steps 0, 10000, 20000…; `newOptionId` is a fresh id by 0.7.
   **`newOptionId` becomes the option's id on the stand**, so an option chosen in advance — the field's
@@ -469,11 +470,11 @@ constructor, then proved by importing the same shape back `[C]` (2026-09-18):
 
   `options` stays EMPTY here — the rows live in the dictionary and the form reads them at runtime.
 - `QUESTIONNAIRE` — columns and rows share ONE map, told apart by `isColumn`, keyed by the option's code:
-  `"questionnaires": {"Kolonka_1": {"questionnaireDto": {"label":"Колонка 1","isColumn":true,"orderIndex":0,"code":"Kolonka_1"}, "newId":"<16 chars>"}, "Stroka_1": {…"isColumn":false…}}`
+  `"questionnaires": {"column_1": {"questionnaireDto": {"label":"Колонка 1","isColumn":true,"orderIndex":0,"code":"column_1"}, "newId":"<16 chars>"}, "row_1": {…"isColumn":false…}}`
 - `PROGRESS_BAR` — `"progressSteps"` is keyed by the step's own **id**, not by its code:
-  `{"<16-char id>": {"code":"Novyyi","label":"Новый","orderIndex":0}, …}`
-- `TAB_GROUP` — `"fieldTabs"` keyed by the tab code:
-  `{"Obschee": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"Obschee","newId":"<16 chars>"}}`
+  `{"<16-char id>": {"code":"new","label":"Новый","orderIndex":0}, …}`
+- `TAB_GROUP` — its own code is `tabs` (`tabs_*` when the BO has several, 0.6a); `"fieldTabs"` keyed by the tab code (`tab_*`):
+  `{"tab_main": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"tab_main","newId":"<16 chars>"}}`
   Fields on a tab carry `tabCodePath: {tabGroupCode, tabCode}` — both CODES. **A TAB_GROUP must have a
   code** `[C]` (2026-10-01): a group created over the API without a label gets code `""`, and a stand
   export then DROPS the group itself and its tab rules, writing the group's id into its fields'
@@ -583,9 +584,9 @@ keyed by the widget's CODE `[C]` (2026-09-18, exported and re-imported):
 One entry looks like this — there are no boolean flags at all, unlike a dynamic field:
 
 ```text
-"buttons": {"knopka": {"label": {"rus": "Кнопка"},
+"buttons": {"button": {"label": {"rus": "Кнопка"},
   "gridPosition": {"x":0,"y":<y>,"cols":15,"rows":4},
-  "code": "knopka", "type": "BUTTON", "newId": "<16 chars>",
+  "code": "button", "type": "BUTTON", "newId": "<16 chars>",
   "url": "", "fieldCodes": {}}}
 ```
 
@@ -601,9 +602,9 @@ every button, and the iframe's code and `url`. A button's `fieldCodes` is its «
 map from field CODE to that field's archetype:
 
 ```text
-"buttons": {"Plagin": {"label": {"rus": "Плагин"}, "gridPosition": {"x":0,"y":22,"cols":15,"rows":4},
-  "code": "Plagin", "type": "BUTTON", "newId": "<16 chars>",
-  "url": "call/plugin/<plugin name>/<anything>", "fieldCodes": {"Tekst": "DYNAMIC", "Otvet": "DYNAMIC"}}}
+"buttons": {"plugin": {"label": {"rus": "Плагин"}, "gridPosition": {"x":0,"y":22,"cols":15,"rows":4},
+  "code": "plugin", "type": "BUTTON", "newId": "<16 chars>",
+  "url": "call/plugin/<plugin name>/<anything>", "fieldCodes": {"text": "DYNAMIC", "answer": "DYNAMIC"}}}
 ```
 
 The import turns the codes back into the ids of the copy's own fields. What a url does on the record
@@ -637,9 +638,9 @@ with every setting changed, and read back through `v2/widget-current-user` and `
 Everything came back: the code, `viewType`, the columns and the lock.
 
 ```text
-"currentUser": {"Tek_polz": {"label": {"rus": "Текущий пользователь"},
+"currentUser": {"current_user": {"label": {"rus": "Текущий пользователь"},
   "gridPosition": {"x":0,"y":38,"cols":15,"rows":6},
-  "code": "Tek_polz", "type": "CURRENT_USER", "newId": "<16 chars>",
+  "code": "current_user", "type": "CURRENT_USER", "newId": "<16 chars>",
   "viewType": "SINGLE",
   "fieldRefs": {"surname": {"toShow": true, "orderIndex": 0},
                 "email":   {"toShow": true, "orderIndex": 1},
@@ -672,15 +673,15 @@ set up over the API and in the constructor, exported, re-imported under a new BO
 the phone, the print forms and the lock came back:
 
 ```text
-"signatures": {"Podpis": {"label": {"rus": "ЭЦП/SMS"},
+"signatures": {"signature": {"label": {"rus": "ЭЦП/SMS"},
   "gridPosition": {"x":0,"y":48,"cols":15,"rows":6},
-  "code": "Podpis", "type": "SIGNATURE", "newId": "<16 chars>",
-  "fieldCodes": {"Tekst":   {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []},
-                 "Regiony": {"boRefCode": "<code of the linked BO>", "ownerFieldArchetype": "DYNAMIC",
-                             "fieldCodes": [{"fieldCode": "Regiony", "refBoCode": "<code of the linked BO>",
-                                             "refFieldCode": {"fieldCode": "Nazvanie", "archetype": "DYNAMIC"},
+  "code": "signature", "type": "SIGNATURE", "newId": "<16 chars>",
+  "fieldCodes": {"text":   {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []},
+                 "regions": {"boRefCode": "<code of the linked BO>", "ownerFieldArchetype": "DYNAMIC",
+                             "fieldCodes": [{"fieldCode": "regions", "refBoCode": "<code of the linked BO>",
+                                             "refFieldCode": {"fieldCode": "name", "archetype": "DYNAMIC"},
                                              "archetype": "DYNAMIC"}]}},
-  "massFieldCodes": {"Regiony": {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []}},
+  "massFieldCodes": {"regions": {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []}},
   "printFormCodes": {"Dogovor": 1},
   "massPrintFormCodes": {"<code of the linked BO>": {"<its print form code>": 1}},
   "signingPhoneCode": "Telefon"}}
@@ -703,7 +704,7 @@ the phone, the print forms and the lock came back:
   group it names. An `AccessStructDto` replaces the BO's rights (§0.10 rule 10).
 - On the record card the signing TYPE (ЭЦП or SMS) is chosen by the user per signing. It is not part of the
   archive.
-- Generator: `--widget "SIGNATURE:ЭЦП/SMS:Podpis:Tekst,Otvet;phone=Telefon;pf=Dogovor;mass=Regiony"`.
+- Generator: `--widget "SIGNATURE:ЭЦП/SMS:signature:text,answer;phone=phone;pf=contract;mass=regions"`.
   The 4th part holds the codes of the fields to sign, then optional `phone=`, `pf=` and `mass=`. The
   validator checks every code against the BO.
 
@@ -713,9 +714,9 @@ re-imported as a copy under a new BO code with the captcha code renamed, and rea
 `v2/captcha`. The code and the lock came back.
 
 ```text
-"captcha": {"Kapcha": {"label": {"rus": "Блок captcha"},
+"captcha": {"captcha": {"label": {"rus": "Блок captcha"},
   "gridPosition": {"x":0,"y":54,"cols":15,"rows":6},
-  "code": "Kapcha", "type": "CAPTCHA", "newId": "<16 chars>"}}
+  "code": "captcha", "type": "CAPTCHA", "newId": "<16 chars>"}}
 ```
 
 - The entry has **no setting of its own** beyond the code. The map key and `code` are the same code.
@@ -738,9 +739,9 @@ re-imported as a copy (one code renamed, one lock changed in the archive), and a
 `tools/make-probe-archive.bun.ts` and imported. Every code and every lock came back as written.
 
 ```text
-"currentDates": {"Data_proba": {"label": {"rus": "Текущая дата"},
+"currentDates": {"current_date": {"label": {"rus": "Текущая дата"},
   "gridPosition": {"x":0,"y":60,"cols":15,"rows":4},
-  "code": "Data_proba", "type": "CURRENT_DATE", "newId": "<16 chars>", "widgetType": "CURRENT_DATE"}}
+  "code": "current_date", "type": "CURRENT_DATE", "newId": "<16 chars>", "widgetType": "CURRENT_DATE"}}
 ```
 
 - **All five types share ONE map**, `currentDates`, keyed by the widget code. `type` and `widgetType`
@@ -865,9 +866,9 @@ only the values marked `←`.
 
 ```json
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
- "menuItemCode":"Zayavki_menu",                  ← your code, latin, unique among MENU codes
+ "menuItemCode":"Requests",                  ← your code, latin, unique among MENU codes
  "menuItemName":"Заявки",                        ← the text in the sidebar
- "boCode":"Zayavki",                             ← the BO's `code`
+ "boCode":"Request",                             ← the BO's `code`
  "boName":"Заявки",                              ← the BO's `name.rus`
  "iconName":"man-with-company",
  "orderIndex":950000,                            ← position among its siblings
@@ -876,7 +877,7 @@ only the values marked `←`.
             "isListEnabled":true,"listIndex":1,
             "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0},
  "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
- "bracketFilter":{"boCode":"Zayavki","type":"MENU_ITEM","brackets":{}},
+ "bracketFilter":{"boCode":"Request","type":"MENU_ITEM","brackets":{}},
  "menuItemType":"BO"}
 ```
 
@@ -887,7 +888,7 @@ applied on 2026-09-22 and read back from `load-nav-items` with exactly these `bo
 
 ```json
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
- "menuItemCode":"Proba_menu_20260922",            ← your code
+ "menuItemCode":"Probe_menu",            ← your code
  "menuItemName":"Проба меню 2026-09-22",          ← the text in the sidebar
  "iconName":"bo-g-draggable",
  "orderIndex":950000,
@@ -921,7 +922,7 @@ verified and ship the rest. The kanban variant of `boPages` (kanban first tab, l
            "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
            "isListEnabled":true,"listIndex":2,
            "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0,
-           "kanbanFieldCode":"Status"}          ← code of a DROPDOWN of that BO = the columns
+           "kanbanFieldCode":"status"}          ← code of a DROPDOWN of that BO = the columns
 ```
 
 Rules:
@@ -1002,10 +1003,12 @@ re-reads it from a stand and prints this block again.
 `menu-item:` —
 - tab 11 (head icon `currency-dollar`, 105): 001-dollar 001-notebook 002-credit-card «002-price tag» 003-auction 003-banknote 004-calculator «004-speech bubble» «005-asset management» 005-diamond «006-bar graph» 006-dollar-symbol 007-coin 007-euro 008-bank 008-bitcoin 009-worker 009-yen 010-partners 010-pound 011-piggy-bank «011-return of investment» 012-balance 012-money-bag 013-balance 013-recruitment 014-atm «014-income statement» 015-percent 015-startup 016-presentation 016-wallet 017-money-exchange 017-salary 018-briefcase «018-credit card» 019-briefcase 019-search 020-contract 020-idea 021-badges «021-pie chart» 022-growth 022-presentation 023-money 023-profits 024-oil 024-smartphone 025-building 025-profit 026-moneybox 026-notes 027-finance 027-safebox 028-gold-ingots 028-success 029-euro 029-vision 030-credit-card-1 030-exchange «031-id card» 031-target 032-manager 032-planning 033-clipboard 033-pyramid-chart 034-envelope «034-flow chart» 035-employee 035-pie-chart 036-bank 036-calculator 037-light-bulb 037-target 038-check 038-deadline «039-digital currency» 039-income «040-hierarchical structure» 040-point-of-service «041-bar graph» 041-currency 042-funnel 042-wallet 043-ipo 043-smartphone 044-analytics 044-certificate 045-businessman 045-ruby «046-atm machine» 046-umbrella 047-abacus 047-contract «048-chinese yuan» «049-gold bar» 049-key 050-security 050-tax clipboard office-building planning task to-do-list to-do
 
-### 0.6 Codes: label → code
+### 0.6 Codes the stand generates: label → code
 
-The stand transliterates Russian labels like this; reproduce it so the code matches what a
-constructor-built field would get. Per character: lowercase it, map it through the table, then
+**This is the platform's DEFAULT, not the naming rule.** The constructor and the API give every new BO,
+field, option and tab a code transliterated from its label, as below. Codes YOU write follow the
+convention of 0.6a. Use this table only to PREDICT a code the stand made by itself — a field built by hand
+in the UI, a source BO of a composite that already lives on the stand. Per character: lowercase it, map it through the table, then
 re-capitalise the first letter if the original was uppercase; latin letters and digits pass through;
 **everything else (spaces, punctuation) becomes `_`**; finally cut to **30 characters**.
 
@@ -1015,11 +1018,11 @@ re-capitalise the first letter if the original was uppercase; latin letters and 
 х h   ц c   ч ch  ш sh  щ sch ъ —   ы y   ь —   э e   ю yu  я ya
 ```
 
-**Transliterate the label — never TRANSLATE it and never rename it.** `Название` → `Nazvanie`, not
+**The stand transliterates the label — it never translates it.** `Название` → `Nazvanie`, not
 `Naimenovanie` (that is the transliteration of a different word) and not `Name`. A code is the label's
-letters mapped one by one; if a code cannot be read back to the label, it is wrong.
+letters mapped one by one.
 
-**Transliterate the WHOLE label, every word of it.** The code is not the first word and not an
+**The WHOLE label is transliterated, every word of it.** The code is not the first word and not an
 abbreviation: «Тема обращения» → `Tema_obrascheniya`, «Дата подачи заявления» → `Data_podachi_zayavleniya`,
 «ФИО заявителя» → `FIO_zayavitelya`. The only thing that may shorten a code is the 30-character cut, and
 it cuts from the right.
@@ -1032,11 +1035,41 @@ stand's own codes): «Текстовый блок» → `Tekstovyyi_blok`, «З�
 «Дата и время» → `Data_i_vremya`.
 
 **`ё` is not in the table — it becomes `_`** `[C]` (2026-10-01, `<stand>`: a field «Зелёный счёт» got
-`Zel_nyyi_sch_t`, an option «Зелёный» `Zel_nyyi`). Write `ё` as `_`, never as `e`.
+`Zel_nyyi_sch_t`, an option «Зелёный» `Zel_nyyi`). Predict `ё` as `_`, never as `e`.
 
 **A code that already exists on the stand may carry a random 14-character tail**
 (`issuance_dateAew5UkKutBKvPg`) — that tail is part of the real code. When you patch an EXISTING BO,
 read the codes off a fresh export instead of transliterating (§3).
+
+### 0.6a Naming convention for new codes
+
+Every code you write yourself — in an archive, in `!code=`, in a «Изменить код» rename — is **English**
+(translate the meaning, do not transliterate), `snake_case`, latin letters, digits and `_` only:
+
+| What | Rule | Example |
+|---|---|---|
+| Field, widget (`dynamicFields`, `signatures`, `buttons`, `iframes`, `captcha`, `currentDates`, `currentUser`) | lower case | `client_name`, `sign_contract` |
+| `CHECKBOX` field | `is_*` | `is_active`, `is_paid` |
+| `TAB_GROUP` widget | `tabs` when the BO has one, `tabs_*` when it has several | `tabs`, `tabs_finance` |
+| Tab (`fieldTabs` key, `tabCodePath.tabCode`) | `tab_*` by meaning, not by number | `tab_main`, `tab_documents` |
+| Object — BO, dictionary, composite, process, panel | first letter capital, the rest lower | `Client_order` |
+| Option of `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP`, `QUESTIONNAIRE` row / column, `PROGRESS_BAR` step | lower case, like a field | `in_progress`, `has_car`, `draft` |
+| BO group (`BoGroupStructDto.code`) | like an object | `Sales` |
+| Menu item (`menuItemCode`) | like an object | `Client_orders` |
+| Exposed-service code (the URL part) | lower case, like a field | `create_order` |
+
+- **At most 30 characters.** Shorten a longer code by meaning (`contract_signing_date_planned` →
+  `planned_signing_date`), never by cutting it from the right as the stand does.
+- **Codes the platform fixes stay as they are**: `CODE` / `LABEL` of a dictionary, `PROCESS_STATUS`, the
+  `nativeFields` ids, and a `CHECKLIST` item has no code at all (`defaultValue` `[{label,checked}]`).
+- **Codes that already exist on a stand are never renamed** to fit the convention: scripts, kanban
+  templates, menu items, composites and `tabCodePath` reference them by code. The convention is for NEW
+  codes only; a reference to an existing object uses its real code, whatever it looks like.
+- **An archive applies the convention at once.** The constructor and the API do not: `create-bo` takes no
+  code and every new field, option and tab gets the transliteration of 0.6. Built that way, rename each code
+  right after creating it (`MYBPM-UI-API.md` §5j «code» for a BO, `save-business-field-code` for a field;
+  an option's code is kept as sent when the field is patched) — before any script, template or menu item
+  refers to it.
 
 ### 0.7 Ids
 
@@ -1140,7 +1173,7 @@ resolve like this:
 6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
    only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
    `BO_COMPOSITE`, which has no form (0.9, §5b).
-7. Codes ≤ 30 characters, latin, from the table in 0.6.
+7. Codes ≤ 30 characters, latin letters, digits and `_`, named by the convention of 0.6a.
 8. Ids are 16 chars over `A-Za-z0-9@~`, deterministic, and the three equalities of 0.7 hold.
 9. `isRequired` + `isReadonly` both true = an unsaveable record.
 10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **replaces** the rights set by
@@ -1187,7 +1220,8 @@ resolve like this:
 - [ ] `tableColOrderIndex` runs 0, 1, 2… down `dynamicFields` — not `0` on every field (0.5).
 - [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
       `fieldOption`, its `label` a plain string (0.5).
-- [ ] Every code is the WHOLE label transliterated, not its first word (0.6).
+- [ ] Every new code follows 0.6a: English snake_case; objects, groups and menu items `Capitalised`, the
+      rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab; ≤ 30 chars.
 - [ ] Every group line has a `code`: an existing group's code confirmed by the user, or a new code for a
       group the archive creates (0.2a, 0.3).
 - [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
@@ -1236,8 +1270,8 @@ A BO plus a sidebar item that opens it — plain navigation, list view only (0.5
 byte-identical to the 0.5d template and passes `tools/validate-archive.bun.ts`):
 
 ```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Zayavki --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
-    --menu "Заявки:BO@Zayavki@Заявки!code=Zayavki_menu!order=950000"
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Request --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
+    --menu "Заявки:BO@Request@Заявки!code=Requests!order=950000"
 ```
 
 Add `!parent=<GROUP code>` to put the item into a group (plus a `--menu "Имя:GROUP!code=…"` if the group
@@ -1254,6 +1288,10 @@ bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-n
     --menu "Проба канбана из меню:BO@Proba_menu_bo_20260922@Проба меню БО 2026-09-22!code=Proba_menu_kanban_20260922!parent=Proba_menu_20260922!kanban=Status!order=950100"
 ```
 
+The generator names fields, options and tabs the way the STAND does (0.6 transliteration), not by 0.6a:
+it is a probe tool. For a real archive rename them to the convention (the BO code is `--code`, a menu code
+`!code=`).
+
 The generator covers ALL 27 field types, the six system fields and all ten widgets `[C]` (2026-09-18 —
 the archive below was generated, imported through the API and read back field by field):
 
@@ -1269,7 +1307,7 @@ bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-n
     --field "Вложенный объект:BO@I1fVTkYPTSg7X8b8@Person" \
     --field "Составной объект:CO@@feclOAWUnwXFQ8c@Sostavnoyi_obekt__4046" \
     --native CREATED_AT --native CREATED_BY --native OPEN_COUNT \
-    --widget "BUTTON:Кнопка:knopka:https://example.org/hook" \
+    --widget "BUTTON:Кнопка:button:https://example.org/hook" \
     --widget "CURRENT_USER:Текущий пользователь:cur_user"
 ```
 
