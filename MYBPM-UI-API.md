@@ -469,10 +469,12 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
   those rows. Steps 4–5 then export BOTH baskets together; a menu item comes out as a `MenuItemStructDto`
   line (`MYBPM-IMPORTS.md` §5e). The export pulls in no BO line for the items' BOs — only what the BO
   basket holds.
-- The same set exists for the two other baskets, unexercised `[U]`: `report-` (`count/load/save/remove/
-  clear-report-export-records`, `load-unexported-report-records`) and settings
-  (`count/load/save/clear-settings-export-kinds`), plus `change/load-export-is-global-methods` for the
-  «Глобальные методы» switch.
+- The same set exists for the report basket, unexercised `[U]`: `count/load/save/remove/clear-report-export-records`,
+  `load-unexported-report-records`; plus `change/load-export-is-global-methods` for the «Глобальные методы» switch.
+- **The company-settings basket** `[C]` (2026-10-02): `load-settings-export-kinds` → `[{kind, selected}]` (14 kinds),
+  `change-settings-export-kind` **P** `{kind, value}` (in B it does nothing), `count-settings-export-kinds`,
+  `clear-settings-export-kinds`. A ticked kind exports as one `CompanySettingsStructDto {kind, payloadJson}` line;
+  exercised for `SCRIPT_SETTINGS` (§5o). Untick it afterwards — it is the user's selection too.
 - Getting the bytes OUT of the browser: fetch the zip inside the page and POST the `arrayBuffer` to a
   local `Bun.serve` — the same 127.0.0.1 bridge the import dry run used (§5).
 - Also present but not needed for this: `v2/business-objects/export-structure` /
@@ -652,7 +654,7 @@ dropped (trap 13).
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers) · §6 Excel records: the routes (the FILE FORMAT is
+type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown.
@@ -3358,6 +3360,114 @@ a call opens, plus field lists) and «IN/OUT Миграция» (`kafka_migratio
 allowed BOs) need a configured telephony provider / Kafka; on `<stand>` the provider is `null` (`all-telephony-settings`
 → NPE «Провайдер телефонии отсутствует»).
 
+**Correction 2026-10-02 — «no archive carries them» holds for the BO's OWN export only.** The export screen has a
+third basket, company settings (`struct/load-settings-export-kinds` → 14 kinds: `LANGUAGES, MOBILE,
+PHYSICAL_REMOVAL, TELEPHONY, OFFLINE, IN_MIGRATION, OUT_MIGRATION, MESSENGER, OTP, NAVIGATOR, AUDIT_TRAIL,
+MIGRATION_MONITORING, SCRIPT_SETTINGS, APPEARANCE`), and a ticked kind exports as a `CompanySettingsStructDto` line.
+Proven end to end only for `SCRIPT_SETTINGS` (§5o); the payload of that line already has the keys
+`boiDeleteSettings`, `messengerTypes`, `messengerCompanySettings`, `offlineViewBoAllowCodes`,
+`offlineEditBoAllowCodes`, so physical removal / messengers / offline very likely travel the same way, by BO CODE
+`[I]` — not run.
+
+### 5o. «Выставление сервисов» — a BO as a public HTTP endpoint `[C]` (2026-10-01/02, `<stand>`)
+
+`/settings?settingsOpenPageUrl=script` («Выставление сервисов», header «Список выставления сервисов»). Each row
+binds an **entry point** to a **service BO**: every HTTP call to
+`https://<stand>/api/v1/script/service/<COMPANY CODE>/<entry point>` (work scripts) or
+`…/api/v1/script/service_test/<COMPANY CODE>/<entry point>` (TEST script version) **creates one record of that BO**,
+copies the request into it, runs the BO's «Создание» hook (`onInstanceCreationId`), and answers with fields of
+that record. **No token, no login** — anyone who knows the URL creates records; treat the entry point as public.
+The company code is the tenant's code (the dialog prints both full URLs).
+
+**The row** (dialog: «Точка входа» input, «Бизнес-объект» picker of every non-panel BO, then two columns):
+- entry point: no leading/trailing `/`, no spaces (client checks only); it is the LAST path segment —
+  `…/<ep>/extra` or an unknown ep answers 500 «Not found entry point [<ep>]. Company with code [<C>] found».
+- **ten fixed slots**, each a field of the service BO (`load-fields` gives code, Russian label and the allowed
+  kind: `TXT` = INPUT_TEXT/INPUT_TEXT_LANG/TEXTAREA/TEXTAREA_LANG, `TXT_ML` = the same list, `NUM` = INPUT_NUMBER,
+  `FILE` = FILE_UPLOAD):
+
+| slot | kind | filled by / read by the server |
+|---|---|---|
+| `INPUT_TXT` | TXT | ← the request body |
+| `INPUT_CONTENT_TYPE` | TXT | ← the request `Content-Type` |
+| `METHOD` | TXT | ← `GET`/`POST`/`PUT`/`PATCH`/`DELETE` (all five accepted) |
+| `REQUEST_ERRORS` | TXT_ML | ← what went wrong preparing the record (header not parseable, query parameter with no such field …), joined by `; <br>` |
+| `SCRIPT_ERRORS` | TXT_ML | ← script errors («В бизнес-объекте нет скриптов вообще», bad result code …) |
+| `MODE` | TXT | ← `PROD` or `TEST` (which URL was called) |
+| `RESULT_TXT` | TXT | → the response body |
+| `RESULT_CONTENT_TYPE` | TXT | → the response `Content-Type` (the script must set it) |
+| `RESULT_CODE` | NUM | → the HTTP status; empty or < 100 → **501, empty body** (+ «Указан не верный диапазон…» in SCRIPT_ERRORS) |
+| `RESULT_FILE` | FILE | → a file to download; **if mapped, the script MUST put a file there, else 500** «Field RESULT_FILE … has no any file after creation instance script execution» (the record is still created). Leave it unmapped when the service returns text. A real file answer was not run `[U]` |
+
+- **«Входящие заголовки, копируемые в поля»**: any number of `header name → field` pairs; allowed fields
+  INPUT_TEXT / INPUT_NUMBER / FULL_DATE. A missing header writes «Заголовок `X` в запросе отсутствует» into
+  REQUEST_ERRORS (the call still runs). A FULL_DATE header takes **only the RFC 1123 HTTP date**
+  (`Thu, 01 Oct 2026 10:00:00 GMT` → stored `2026-10-01T10:00:00.000Z`); ISO with/without zone, epoch millis,
+  `2026-10-01`, `01.10.2026`, `01.10.2026 10:00` were all refused. **Non-ASCII header values arrive as mojibake**
+  (UTF-8 bytes read as Latin-1) — keep headers ASCII. Two headers may target one field.
+- **Query parameters fill fields BY FIELD CODE** (`?Zagolovok_tekst=abc` → that field); a parameter with no
+  such code goes to REQUEST_ERRORS («Пришёл параметр, но у бизнес-объекта нету поля с таким кодом»). A slot
+  beats a parameter (`?Rezhim=x` on the MODE field stayed `PROD`). JSON body keys are NOT spread into fields.
+- **The body must be empty or a JSON OBJECT** — the platform's request filter (`RequestWrapper`) parses every body
+  as a JSON map before the service sees it: `text/plain`, form-urlencoded, XML, a JSON string or a JSON array all
+  answer 500 `JsonParseException` / «Cannot deserialize … LinkedHashMap», and NO record is created. A JSON object
+  arrives verbatim (UTF-8 intact) in INPUT_TXT.
+- **TEST mode runs the BO's TEST script version** (no TEST version → none runs); its records are ORDINARY records
+  (`state` ALL, the «Тестовые»/DEV registry stays empty) with MODE = `TEST`.
+- Scripts: only «Создание» runs (no form is opened); it reads the request fields and writes the result fields
+  with ordinary `BlockAssign`s (`MYBPM-IMPORTS.md` §0S.7). Without any script the answer is 501.
+- Every call that reaches the BO creates a record, failures included — a busy service fills its BO; plan a
+  physical-removal rule (§5n) if needed.
+
+**API** — controller **`/web/script-settings/<m>` (NOT `v2`)**, standard envelope; P = params, B = body:
+
+| call | send | returns |
+|---|---|---|
+| `load-table-records` | — | `[{id, entryPointTemplate, serviceBoRecord:{id,name,…}, orderIndex}]` |
+| `create-table-record` | P `{orderIndex}` (UI: last + 10000) | a new empty row `{id, …null}` — exists at once |
+| `save-script-settings` | B `{id, serviceBoId, entryPointTemplate}` | `""` |
+| `load-fields` | — | the ten slots `[{code, label, type}]` |
+| `load-field-values` / `save-field-values` | P `{recordId}` / P `{recordId}` B `[{code, value:<fieldId>}]` (`""` unmaps) | `[{code, value}]` |
+| `load-header-values` / `save-header-values` | P `{recordId}` / P `{recordId}` B `[{code:<header>, value:<fieldId>}]` — the WHOLE list | `[{code, value}]` |
+| `change-table-record-index` | P `{recordId, index}` | drag order |
+| `remove-table-record` | P `{recordId}` | delete the row |
+
+Saves answer `""`; **loaders lag a few seconds** (a header list read right after the save came back unchanged, the
+same read 2 s later had it).
+
+**Archive** — the rows travel in the company-settings basket, NOT with the BO:
+`struct/change-settings-export-kind` **P** `{kind:"SCRIPT_SETTINGS", value:true}` (in B it silently does nothing;
+`count-settings-export-kinds` must say 1), then the usual export (R4a). The line is
+`CompanySettingsStructDto {kind:"SCRIPT_SETTINGS", payloadJson:"<json string>"}` whose
+`scriptControllerSettings` lists **every row of the company** as `{serviceBoCode, orderIndex, entryPointTemplate,
+baseFields:{<slot>:<field CODE>}, headerFields:{<header>:<field CODE>}}` (an unmapped slot is absent). Import
+(`MYBPM-IMPORTS.md` §2 «Exposed services»): the analyzer shows it as one item «Выставление сервисов», `structTypes
+["SETTINGS"]`, `settingsState:"UPDATE"`; **apply REPLACES the whole list** — rows not in the archive are deleted,
+every row is recreated with a new id, codes are resolved to field ids. Rollback (`restoreItems` category
+`SETTINGS`) brings the old rows back (new ids again) **but with field CODES where ids belong** — the slots and
+headers are then dead (the service ran and answered 200 with an EMPTY body). Repair after a rollback: re-send
+`save-field-values` + `save-header-values` with ids for every row. Trap 67.
+
+**Script versions trap — the first, implicit version of a BO that never had scripts cannot see any BO**
+`[C]` (2026-10-01): on a constructor-made BO, `load-bo-script-versions` returns one version (`isTest:true`);
+wire and fill a hook there and `translate-script` reports `exprAct__noDefinitionForActId` for every
+`F-VALUE-K-DYN-R-D-S-boi_fields` hop (the field hop's type is NULL), and the TEST service URL fails with
+«Ошибка компиляции скрипта на создание инстанции для режима ТЕСТ». `v2/script/load-bo-def-list
+{scriptModuleId}` is the tell: `list: []` for that module, 252 BOs for any other. Two more BOs of the same day
+(one constructor, one archive copy) showed the same empty list. `in-work-bo-script-version` refuses it
+(`script_on_instance_creation_cause`). **Fix: `copy-bo-script-version P {boId, boScriptsId}`** — the copy sees
+every BO, translates `success:true`; then `in-work-bo-script-version` on the copy (no new test version was
+created this time) and, for a working TEST version, copy again + `in-test-bo-script-version`. Trap 68.
+
+**A whole-stand outage followed one TEST call** `[I]`: the first GET to `service_test` right after a new TEST
+version was published created its record (no result written) and then every URL of the stand, the API included,
+answered nginx 502 for about a minute; the same call afterwards worked. Cause not proven — space TEST-mode
+experiments out and watch `load-auth-info` between calls.
+
+Probe on `<stand>`: BO «Проба сервиса 2026-10-01» (`Proba_servisa_2026_10_01`, group «Тест»), entry point
+`proba-servisa`, work script v2 answers `method=…; mode=…; hdr=<X-Proba-Text>; body=<body>` with 200, test v3 with
+201.
+
 ## 6. Records: Excel import and export
 
 Records (instances) are imported as **Excel files into a BO registry** (registry kebab → импорт/экспорт
@@ -4309,6 +4419,13 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 66. **Making a BO the messenger chat registry renames it, for good** `[C]` (2026-10-01) — the server rewrites its
     name, record name and description to «Реестр чатов» in all four languages, and the registry pointer cannot be
     cleared (`chatRegistryBoRecord:null` is ignored). Never point it at a working BO to try it out. §5n.
+67. **An import of «Выставление сервисов» replaces the whole list, and its rollback leaves dead rows** `[C]`
+    (2026-10-02) — rows missing from the archive are deleted; after `rollback-import` the old rows return with
+    field CODES in place of ids, so every service answers 200 with an empty body until each row's slots and
+    headers are re-saved with ids. Export the current list first and put every row into the archive. §5o.
+68. **The first script version of a BO that never had scripts is blind** `[C]` (2026-10-01) — its module's
+    `load-bo-def-list` is empty, so every field read/write fails `translate-script` and the script cannot be
+    published. `copy-bo-script-version` and work on the copy. §5o.
 
 ## 12. Open questions
 
@@ -4320,6 +4437,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5n: how to clear a messenger chat registry once set (the API ignores `null`); why Telegram's `isConnected` turned
   `true` on `<stand>` during the 2026-10-01 run (no field values, WhatsApp stayed `false`); the per-BO telephony and
   Kafka migration lists (need a provider / Kafka).
+- §5o: a FILE answer (`RESULT_FILE` filled by the script — headers, name, Content-Type); whether the other 13 settings
+  kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
+  `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
 - **Still unexecuted in §5g**: whether `create-local-method` /
   `create-company-global-method` really create a method headlessly (`load-script-def`,
   `translate-script`, `apply-update-cmd`, `paste` and the catalogue calls are `[C]` since 2026-09-18/24). A
