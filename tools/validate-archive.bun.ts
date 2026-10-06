@@ -537,6 +537,11 @@ for (const bo of bos) {
       if (type === "CO" && bi && bi.boCategory !== "BO_COMPOSITE")
         add("ERROR", "0.5", `${ft}: CO boInfo.boCategory = ${bi.boCategory}, expected BO_COMPOSITE`);
       if (!f.viewType) add("WARN", "0.5", `${ft}: ${type} without viewType (TABLE/SINGLE)`);
+      // 0.10 rule 15: a reference shows at least one field of its target (a panel widget: §5a check below;
+      // a Person reference with {} is filled with Фамилия + Имя by the stand, 0.5b)
+      if (bo.category !== "BO_PANEL" && bi?.code !== "Person"
+          && !Object.values<any>(f.boRefStruct?.fieldRefs ?? {}).some((r: any) => r?.toShow === true))
+        add("ERROR", "0.10/15", `${ft}: boRefStruct.fieldRefs has no toShow: true — the reference renders an empty selector; list at least one field of ${bi?.code}`);
       checkRefSettings(bo, key, f, ft);
     } else {
       if (f.linkedCoSettings && Object.keys(f.linkedCoSettings).length)
@@ -616,6 +621,11 @@ for (const bo of bos) {
       }
     }
   }
+  // 0.10 rule 15: every BO shows at least one registry column — without one the registry answers
+  // AccessDenied and lists nothing (PROCESS_STATUS is a process's default column)
+  if (bo.category !== "BO_COMPOSITE"
+      && ![...Object.values<any>(bo.dynamicFields ?? {}), ...Object.values<any>(bo.nativeFields ?? {})].some((f: any) => f?.tableColToShow === true))
+    add("ERROR", "0.10/15", `${tag}: no field has tableColToShow: true — the registry shows no column, answers AccessDenied and lists nothing`);
   // a native field placed on the form takes its rows in the same stack (a stand export: LAST_MODIFIED_AT at y=40)
   if (bo.nativeFields && !Array.isArray(bo.nativeFields) && bo.category !== "BO_COMPOSITE")
     for (const [k, n] of Object.entries<any>(bo.nativeFields))
@@ -755,6 +765,9 @@ for (const bo of bos) {
     if (keys[0] !== "code" || keys[1] !== "label")
       add("ERROR", "0.9", `${tag}: a dictionary must START with the system fields code, label — got ${keys.slice(0, 2).join(", ")}`);
     const cf = df.code, lf = df.label;
+    // 0.10 rule 18: both system fields are mandatory on every dictionary
+    if (!cf) add("ERROR", "0.10/18", `${tag}: a dictionary without the required system field "code" — every dictionary has code + label`);
+    if (!lf) add("ERROR", "0.10/18", `${tag}: a dictionary without the required system field "label" — every dictionary has code + label`);
     if (cf) {
       if (cf.type !== "INPUT_TEXT") add("ERROR", "0.9", `${tag}: dictionary "code" type ${cf.type}, must be INPUT_TEXT`);
       if (cf.isUnique !== true || cf.isRequired !== true) add("ERROR", "0.9", `${tag}: dictionary "code" must be isUnique+isRequired`);
@@ -844,6 +857,10 @@ for (const bo of bos) {
       }
     }
     const ps = (df as any).PROCESS_STATUS;
+    // 0.10 rule 18: every business process carries PROCESS_STATUS — never ship one without it
+    if (!ps) add("ERROR", "0.10/18", `${tag}: no PROCESS_STATUS — every business process has the required «Статус процесса» field; ask for the stand's dictionary id + CREATED row id (0.2a) and ship it (§5c)`);
+    else if (ps.isRequired !== true || ps.isSystem !== true || ps.type !== "BO")
+      add("ERROR", "0.10/18", `${tag}: PROCESS_STATUS must be the system field — type BO, isSystem: true, isRequired: true (§5c)`);
     if (ps && (!ps.defaultValue || ps.defaultValue === "[]"))
       add("ERROR", "5c", `${tag}: PROCESS_STATUS has no defaultValue (the stand's CREATED row) — required and empty, every record is refused on save; the export's DEFAULT_VALUE line alone does NOT set it`);
     const code = (bo as any).code;
@@ -851,11 +868,6 @@ for (const bo of bos) {
         x.sourceType === "DEFAULT_VALUE" && x.defaultValueInstanceSource?.boCode === code &&
         x.defaultValueInstanceSource?.fieldCode === "PROCESS_STATUS")))
       add("ERROR", "5c", `${tag}: no ExportStructInstanceDto with a DEFAULT_VALUE source for PROCESS_STATUS — without that line the field's defaultValue does not take and every record is refused on save`);
-    const hasStatus = Object.keys(df).some(k => k === "PROCESS_STATUS") ||
-      Object.values<any>(df).some(f => f.boRefStruct?.boInfo?.code === "PROCESS_STATUS");
-    // §0.9: shipping the process WITHOUT PROCESS_STATUS is the prescribed answer when the
-    // stand's «Статус процесса» id was not supplied — so this is a WARN, not an ERROR.
-    if (!hasStatus) add("WARN", "5c/0.9", `${tag}: no PROCESS_STATUS — the process still runs, but records get no «Статус процесса»; legal only if the stand's dictionary id was unavailable, and it must be said out loud`);
   }
 }
 

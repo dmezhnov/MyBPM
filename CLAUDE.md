@@ -2,8 +2,12 @@
 
 This repository is **documentation about the MyBPM low-code platform, written for an AI to act on**,
 plus the `tools/` that were built while verifying it. It is not tied to any one installation: hosts and
-companies appear as placeholders (`<stand>`, `<company-a>` …), and a fact's origin is marked by the date
-and the platform build it was confirmed on, never by a customer name.
+companies appear as placeholders (`<stand>`, `<company-a>` …), never by a customer name.
+
+**The documents describe the latest implementation of the platform — no dates or times in them.** No
+«confirmed on 2026-…», no «(2026-09-30, `<stand>`)» after a fact, no history of when something was
+found or corrected: a fact is stated as it holds now, and a superseded one is rewritten, not annotated.
+Dates belong in memory and git history only.
 
 ## Platform knowledge
 Everything lives in two documents — read the relevant one before relying on a fact, and write NEW
@@ -36,6 +40,10 @@ renaming or renumbering a heading run `mise run skills-check`**. `mise run skill
 `mise test`, writes the version into `.claude-plugin/plugin.json`, commits everything and pushes to
 `test`; `.github/workflows/publish.yml` reruns `mise test` there and, only if green, fast-forwards
 `main` (via the `RELEASE_SSH_KEY` deploy key) and creates the release `v<version>` with the skill zips.
+**After every publish the installed plugin must be updated** so the user has the latest skills at once:
+`mise publish` does it itself after a green CI run (`claude plugin marketplace update mybpm` +
+`claude plugin update mybpm@mybpm`); if the task stopped before that, run both commands by hand, then
+tell the user to restart Claude Code (a plugin update applies on restart).
 
 ## Working copy
 Folders of concrete projects built on the platform may sit beside these documents in a working copy.
