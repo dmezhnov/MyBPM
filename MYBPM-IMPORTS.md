@@ -1547,8 +1547,9 @@ Some company-wide «Настройки» pages keep lists of BOs. They are store
 structure, rights and scripts) has no key for any of them, and a re-import of that BO leaves all of them in place.
 **But they may travel as a company-settings line** — see «Exposed services» below: the export screen has a
 settings basket whose ticked kinds export as `CompanySettingsStructDto` lines, and that line's payload has keys for
-physical removal (`boiDeleteSettings`), messengers and offline (`offlineViewBoAllowCodes`, by BO code). Proven only
-for `SCRIPT_SETTINGS`; for the kinds in this table it is `[I]`.
+physical removal (`boiDeleteSettings`), messengers and offline (`offlineViewBoAllowCodes`, by BO code). Run for every
+kind on 2026-10-06 — physical removal and offline travel by BO code, the messenger lists do NOT: see «The other
+company-settings kinds» below.
 
 | setting | what it does to the BO |
 |---|---|
@@ -1565,7 +1566,7 @@ the BO ids come from the stand after the import (§0.2a). Two side effects cross
 - the chat registry rename lands in the next export's `name` / `recordName` / `description`; conversely a re-import
   of the BO's own archive puts the archive's name back while the BO stays the registry.
 
-«Мобильное приложение» looks like it has a BO list (`importBoAllow`) but all its lists are org units, not BOs.
+«Мобильное приложение» looks like it has a BO list (`importBoAllow`) but all its lists are org units, not BOs. They travel as the `MOBILE` kind (below).
 
 ### Exposed services («Выставление сервисов») — a `CompanySettingsStructDto` line `[C]` (2026-10-02, `<stand>`)
 
@@ -1608,6 +1609,42 @@ version) needs NO token, creates one record of the service BO, copies the reques
 - **Do not count on rollback**: it brings the old rows back, but with field codes where field ids belong — every
   restored service then answers 200 with an empty body until its slots and headers are re-saved through the API
   (`MYBPM-UI-API.md` §5o, trap 67).
+
+### The other company-settings kinds — what each line carries and what its import does `[C]` (2026-10-06, `<stand>`)
+
+Every kind of the settings basket was set on the stand, exported alone, changed on the stand, and the export imported
+back; the original state was restored afterwards. A settings line is always
+`CompanySettingsStructDto {kind, payloadJson}` (`payloadJson` a JSON STRING); next to it the export puts a
+`CompanyMetadataStructDto` line, and for every ORG UNIT a kind names, an `ExportStructInstanceDto` record line of that
+unit (`boCode` `Department` / `PersonGroup`, `fieldMap` with `name` and the unique `ID`, `sources [{sourceType:
+"SETTINGS", settingsInstanceSource:{settingsKind}}]`). The import of a unit's line found the existing unit — no
+duplicate was created. Each kind shows in the analyzer as one item named after its settings page, `structTypes
+["SETTINGS"]`. **How an import treats what the stand already has differs per kind** — read the row before shipping:
+
+| kind | payload key(s) (only what the kind fills) | import does |
+|---|---|---|
+| `PHYSICAL_REMOVAL` | `boiDeleteSettings: [{boCode, liveTimeEnabled, liveTimeDays, settings: {<condition id>: {fieldId: <FIELD CODE>, onFieldStoredValue: <option id>, fieldType: "DROPDOWN_SINGLE"}}}]` | **upsert by BO code**: updates the days / flag / conditions of a listed BO, adds a new one, **never removes** — a rule on a BO the archive lacks survives, an empty list changes nothing |
+| `OFFLINE` | `offlineModSettings {isActive, dayNumbersUntilReset, maxCountOfflineInstances, nestedLevel: "NONE"\|"FIRST", offlineModAllow: {"D-<dept id>": {displayName}}, viewBoAllow / editBoAllow: {<BO id>: 1}}`, `offlineViewBoAllowCodes` / `offlineEditBoAllowCodes: {<BO code>: 1}` | **replaces**: both BO lists, the org-unit list and the numbers become the archive's. BOs are resolved by the `*Codes` maps — the id maps are ignored, an unknown code is silently dropped |
+| `MOBILE` | `mobileSettings {screenshotAllow: {"D-<id>": {displayName}}, …}` — only the non-empty lists of the seven (all org units); an all-empty kind exports `{}` | **replaces** the lists (a unit on another list of the stand was removed) |
+| `OTP` | `otpAuthSettings: [{isActive, actual, canChange, createInCurrentCompany, personGroupIds: {<group id>: <name>}}]` — **the department is NOT exported** | recreates the OTP row (new id), restores the groups; an empty list does NOT switch OTP off |
+| `LANGUAGES` | `languageMap {<LANG>: {code, displayName, shortName, orderIndex, isActive, isDefault}}` | **replaces**: names, order, active flags and the default language become the archive's; **a language the map lacks is switched OFF** — never ship a partial map. The import also writes a `languageTag` (`en-US`, `ru-KZ`, `kk-KZ`) into every language, and later exports carry it |
+| `AUDIT_TRAIL` | `audBoiSettings {audBoCode, actual, audFieldIds: {<slot>: <FIELD CODE of the journal BO>}, loggingBoCodes: [<BO code>…], retentionDays}` — ONE object | **overwrites the FIRST row** of «Аудиторский след» whatever its journal is; the stand may hold several rows (the export carries only the first, the others neither travel nor are touched). A slot the archive lacks keeps its old field id — so an archive for another journal BO leaves the first row half-pointing at the old journal |
+| `MIGRATION_MONITORING` | `pgMigrationSettings {actual, monitorBoCode, fieldMap: {<slot>: <FIELD CODE>}}` | sets the monitor BO and the slots by code (switches the BO); an archive without `monitorBoCode` leaves the stand's monitor in place |
+| `NAVIGATOR` | `geoMapTypes {GOOGLE_MAP: 1}`, `geoMapCompanySettings [{id: "GOOGLE_MAP-<company id>", fieldValues: {}}]` — **the API key is NOT exported** | applies `fieldValues` when they are there (a key typed into the archive by hand was applied), leaves the stand's key alone when they are empty |
+| `MESSENGER` | `messengerTypes {TELEGRAM: 1}` = which messengers are switched on; `boAllow` / `userAllow` and the chat registry are NOT exported | **nothing** on a stand without a connected messenger (`messengerCompanySettings` empty): it neither switched Telegram on nor an empty map switched WhatsApp off |
+| `SCRIPT_SETTINGS` | `scriptControllerSettings` | replaces the whole list — «Exposed services» above |
+| `TELEPHONY`, `IN_MIGRATION`, `OUT_MIGRATION`, `APPEARANCE` | `telephony*` / `in/outMigrationAllowBoExports` / nothing | not run `[U]`: no telephony provider and no Kafka on the reference stand; APPEARANCE belongs to one company per stand |
+
+Rules that follow:
+- **Ship a settings kind only from a fresh export of the TARGET stand's own state, edited** — the replacing kinds
+  (OFFLINE, MOBILE, LANGUAGES, SCRIPT_SETTINGS) delete what the archive lacks, and AUDIT_TRAIL hits the first row.
+- What never travels and must be set on the target stand by API (`MYBPM-UI-API.md` §5n): the OTP department, the
+  Google Maps key, messenger BO / user lists and the chat registry, every audit row but the first.
+- Org-unit ids (`D-<id>`, group ids) are stand ids; the record line next to them lets the import find the unit by
+  its unique `ID` field — across stands this is `[U]`.
+- **No import removes** a physical-removal rule, an OTP row, a navigator row or a migration monitor; and the API
+  cannot unset the migration monitor either (`monitorBoId` null / `""` → error). Before importing a kind onto a
+  stand that should stay clean, export that kind first so you can put it back.
 
 **Export ids are regenerated on every export** `[C]` — exporting the same BO twice gives different
 `oldId` / `newId` / widget ids, and none of them is the stand's real id (the BO whose stand id is
@@ -4888,6 +4925,11 @@ Scripts:
     fails with `NoFileMimeType` inside the «Создание» script and the service answers 500; with a known extension
     the response Content-Type is taken from it, not from RESULT_CONTENT_TYPE (§2 «Exposed services»,
     `MYBPM-UI-API.md` §5o, trap 69).
+37. **A company-settings import replaces some kinds, merges others and only half-overwrites AUDIT_TRAIL** `[C]`
+    (2026-10-06) — OFFLINE / MOBILE / LANGUAGES / SCRIPT_SETTINGS replace (a language left out of the map is switched
+    off), PHYSICAL_REMOVAL upserts and never removes, AUDIT_TRAIL overwrites the FIRST audit row whatever its journal,
+    MESSENGER does nothing without a connected messenger. Ship a kind only from a fresh export of the target stand
+    (§2 «The other company-settings kinds»).
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
