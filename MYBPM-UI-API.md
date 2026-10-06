@@ -474,7 +474,8 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 - **The company-settings basket** `[C]` (2026-10-02): `load-settings-export-kinds` → `[{kind, selected}]` (14 kinds),
   `change-settings-export-kind` **P** `{kind, value}` (in B it does nothing), `count-settings-export-kinds`,
   `clear-settings-export-kinds`. A ticked kind exports as one `CompanySettingsStructDto {kind, payloadJson}` line;
-  exercised for `SCRIPT_SETTINGS` (§5o). Untick it afterwards — it is the user's selection too.
+  exercised for `SCRIPT_SETTINGS` (§5o) and, on 2026-10-06, for every kind (§5n «Every kind of the settings basket»).
+  Untick it afterwards — it is the user's selection too.
 - Getting the bytes OUT of the browser: fetch the zip inside the page and POST the `arrayBuffer` to a
   local `Bun.serve` — the same 127.0.0.1 bridge the import dry run used (§5).
 - Also present but not needed for this: `v2/business-objects/export-structure` /
@@ -3379,7 +3380,32 @@ MIGRATION_MONITORING, SCRIPT_SETTINGS, APPEARANCE`), and a ticked kind exports a
 Proven end to end only for `SCRIPT_SETTINGS` (§5o); the payload of that line already has the keys
 `boiDeleteSettings`, `messengerTypes`, `messengerCompanySettings`, `offlineViewBoAllowCodes`,
 `offlineEditBoAllowCodes`, so physical removal / messengers / offline very likely travel the same way, by BO CODE
-`[I]` — not run.
+`[I]` — not run. **Run 2026-10-06 — see the next paragraph; the messenger lists do NOT travel.**
+
+**Every kind of the settings basket, imported back** `[C]` (2026-10-06, `<stand>`): per kind, what the line carries
+and whether an import replaces, merges or ignores — the table in `MYBPM-IMPORTS.md` §2 «The other company-settings
+kinds». In short: OFFLINE, MOBILE, LANGUAGES and SCRIPT_SETTINGS **replace**; PHYSICAL_REMOVAL **upserts by BO code and
+never removes**; OTP recreates its row but loses the department; AUDIT_TRAIL overwrites the **first** audit row only;
+MIGRATION_MONITORING sets the monitor by code; NAVIGATOR does not export the Google key; MESSENGER exports only the on/off
+map and its import did nothing. The import of an archive is the §5 cycle; a settings-only archive with one kind takes
+~10–20 s, so drive it fire-and-forget from the page (§10, the 45-s `javascript_tool` limit).
+
+The pages behind the other kinds, all read off the client and exercised the same day (saves answer `""`):
+
+| page | load | save |
+|---|---|---|
+| «Поддержка языков» | `v2/company/all-languages` → `[{language, code, orderIndex, isDefault, isActive, displayName, shortName}]`; `default-language` → `"ENG"`; `system-languages` = the active ones | `v2/company/language-add` B = the WHOLE list in that shape (the UI sends every language, `isActive` per row); `language-remove P {language}` |
+| «Мобильное приложение» | `v2/company/all-mobile-settings` → seven org-unit lists | `v2/company/save-mobile-settings` B deltas `add<List>` / `del<List>` for `ScreenshotAllow, CopyAllow, ImportBoAllow, DownloadFileAllow, DownloadPrintFormAllow, DownloadReportAllow, MobileAllow`; add items `{orgUnitId:{id,type}, displayName}`, del items `{id, type}` |
+| «OTP-аутентификация» | `v2/company/get-otp-settings` → `{id, department, personGroups, isActive, createInCurrentCompany, …}` (`id` null = no row) | `v2/company/save-otp-settings` B `{id, isActive, createInCurrentCompany, departmentId, personGroupsToAdd:[{id,name}], personGroupsToDel:[…]}`; **`isActive:false` deletes the row** |
+| «Навигатор» | `geo-map/settings/load-geo-map-company-fields P {geoMapType:"GOOGLE_MAP"}` (field `api_key`), `load-geo-map-company-field-values P {geoMapType}` → `[{code, value}]` | `save-geo-map-company-field-values P {geoMapType} B [{code:"api_key", value}]` (`value:null` clears; on the favicon page the save answers a websocket «No session» error AFTER storing) |
+| «Аудиторский след» | `aud-boi-settings/load-table-records` → rows `{id, historyBoRecord, audBoList, latestHistoryPeriodDays}`; `load-fields` (11 slots); `load-field-values P {recordId}` → `[{code, value:<field id>}]` | `save-aud-settings` B `{id, historyBoId, audBoIdList, latestHistoryPeriodDays}` (the row's own shape → NPE «audBoIdList is null»); `save-field-values P {recordId} B [{code, value}]`; `create-table-record`, `remove-table-record P {recordId}`. The BO list behaves as a set (order not kept) |
+| «Мониторинг миграции» | `pg-migration-settings/load-settings` → `{monitorBoRecord}`; `load-fields` (9 slots); `load-field-values` | `save-settings` B `{monitorBoId}` — **cannot be unset** (`null` ignored, `""` → `IllegalId`, no key → NPE); `save-field-values` B `[{code, value:<field id or "">}]` |
+
+Offline corrections: `nestedLevel` is the enum `NONE` / `FIRST` (a number → 400 «Failed to read request»); the add
+deltas take `{boRecord:{id,name}, displayName}` for BOs and `{orgUnitId:{id,type}, displayName}` for org units, the
+delete deltas `{id, name}` / `{id, type}`. Messenger `userAllow` / `delUserAllow` take org-unit records
+`{id, type, name}`. Org units for any of these: `v2/business-objects/load-org-unit-record-list P {filter:{searchText,
+types:["DEPARTMENT"|"GROUP"|"PERSON"]}, skipFirstCount:0}`.
 
 ### 5o. «Выставление сервисов» — a BO as a public HTTP endpoint `[C]` (2026-10-01/02, `<stand>`)
 
@@ -4459,6 +4485,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     (2026-10-02) — a script-made file named `x.xyz` or `x` fails with `NoFileMimeType` and the service answers 500;
     with a known extension the response Content-Type is derived from it and RESULT_CONTENT_TYPE is ignored. Name the
     file for the type you want to send (`.json`, `.pdf`, `.xlsx` …). §5o.
+70. **A company-settings import is not one behaviour** `[C]` (2026-10-06) — OFFLINE / MOBILE / LANGUAGES /
+    SCRIPT_SETTINGS replace (a language missing from the map is switched off), PHYSICAL_REMOVAL only adds/updates,
+    AUDIT_TRAIL overwrites the FIRST audit row whatever its journal, NAVIGATOR / OTP lose the key / the department,
+    MESSENGER does nothing. Export the target stand's kind first, edit that, and keep it to restore. §5n.
 
 ## 12. Open questions
 
@@ -4467,6 +4497,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - Whether menu rights cascade from a group item to its children, and what a restricted user really sees.
 - What `save-business-form-field` is actually for, since it does not create fields.
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
+- §5n settings kinds (2026-10-06): how to unset a migration monitor BO; what the `languageTag` an import writes
+  into every language changes; whether an org unit (`D-<id>` + its record line) resolves on ANOTHER stand; TELEPHONY,
+  IN/OUT_MIGRATION, APPEARANCE imports (no provider / Kafka / ownership on the reference stand).
 - §5n: how to clear a messenger chat registry once set (the API ignores `null`); why Telegram's `isConnected` turned
   `true` on `<stand>` during the 2026-10-01 run (no field values, WhatsApp stayed `false`); the per-BO telephony and
   Kafka migration lists (need a provider / Kafka).
