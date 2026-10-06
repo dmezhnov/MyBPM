@@ -55,7 +55,10 @@ export type ProcessSpec = {
   // refBoCode is read only by the archive route (make-probe-archive.bun.ts --process-spec): an archive
   // names the target BO by code in boRefStruct.boInfo, next to its stand id in oldRefBoId
   // type defaults to "BO" (a reference, needs refBoId); any other palette type, e.g. "FULL_DATE" for a Timer
-  fields?: { key: string; label: string; type?: string; refBoId?: string; refBoCode?: string }[];
+  // show: the TARGET BO's field codes the reference displays — the archive route REQUIRES it for a "BO" field
+  // (MYBPM-IMPORTS.md 0.10 rule 15: an empty boRefStruct.fieldRefs renders an empty selector); the API route
+  // shows every field of the target by itself
+  fields?: { key: string; label: string; type?: string; refBoId?: string; refBoCode?: string; show?: string[] }[];
   figures: { key: string; type: FigureType; x: number; y: number; field?: string; slots?: number }[];
   arrows: { key: string; from: string; fromSlot: string; to: string; toSlot: string; name?: string }[];
   scripts?: Record<string, ScriptSpec>;

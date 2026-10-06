@@ -19,7 +19,7 @@
  * Usage:  bun tools/make-probe-archive.bun.ts --group-code CODE --group-name NAME --group-order N
  *         [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
  *         [--category BO|BO_DICTIONARY|BO_COMPOSITE|BO_PANEL|BO_PROCESS] [--field "Метка:TYPE"]...
- *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>]
+ *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>:<CREATED row id>]  (REQUIRED for BO_PROCESS)
  *         [--process-spec <spec.json>]   (a CONFIGURED process — the spec of tools/process-builder.ts)
  *         [--menu "Имя:GROUP"]... [--menu "Имя:BO@<код БО>[@Имя БО]!parent=…!kanban=…"]...
  *         [--print-form "Имя:код:file.docx[:PDF|DOCX]"]...
@@ -673,9 +673,9 @@ const isDictionary = CATEGORY === "BO_DICTIONARY";
 const isComposite = CATEGORY === "BO_COMPOSITE";
 const custom = fieldFlags();
 for (const f of PROCESS_SPEC?.fields ?? []) {
-  if ((f.type ?? "BO") !== "BO") { custom.push({ label: f.label, type: f.type!, options: [], flags: [] }); continue; }
+  if ((f.type ?? "BO") !== "BO") { custom.push({ label: f.label, type: f.type!, options: [], flags: [], sets: [] }); continue; }
   if (!f.refBoCode) throw new Error(`--process-spec: field «${f.label}» needs refBoCode for the archive`);
-  custom.push({ label: f.label, type: "BO", refBoId: f.refBoId, refBoCode: f.refBoCode, options: [], flags: [] });
+  custom.push({ label: f.label, type: "BO", refBoId: f.refBoId, refBoCode: f.refBoCode, options: [], flags: [], sets: [] });
 }
 const sources = sourceFlags();
 const coFields = coFieldFlags();
@@ -848,19 +848,26 @@ function addTrackStatus(dateCode: string, y: number) {
 
 /**
  * A process's own BO-reference field (the record a Form step shows) is exported as a SINGLE picker, not
- * the TABLE a panel's nested object is: `viewType: "SINGLE"`, not «добавить для выбора», no column, no
- * dynamic height (read off the export of the API-built probe, 2026-09-27).
+ * the TABLE a panel's nested object is: `viewType: "SINGLE"`, not «добавить для выбора», no dynamic height
+ * (read off the export of the API-built probe, 2026-09-27). That export also had NO registry column and empty
+ * `fieldRefs` on it — copying that broke 0.10 rule 15 (2026-10-06: a process without PROCESS_STATUS came out
+ * with not one registry column and a selector showing nothing). So here the field IS a registry column (a BO
+ * reference is safe under the Elasticsearch sort defect, 0.5c) and shows the spec's `show` fields of its target.
  */
+let processCol = 0;
 for (const f of PROCESS_SPEC?.fields ?? []) {
   if ((f.type ?? "BO") !== "BO") continue; // e.g. a Timer's FULL_DATE: an ordinary field, left as generated
+  if (!f.show?.length) throw new Error(`--process-spec: field «${f.label}» needs show: [<field codes of ${f.refBoCode}>] — a reference must display at least one field of its target (MYBPM-IMPORTS.md 0.10 rule 15)`);
   const df: any = dynamicFields[codeOf(f.label)];
-  Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: false });
+  Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: true, tableColOrderIndex: processCol++ });
+  df.boRefStruct.fieldRefs = Object.fromEntries(f.show.map((c, i) => [c, { toShow: true, orderIndex: i }]));
   delete df.isHeightDynamic;
-  delete df.tableColOrderIndex;
 }
 
 /**
- * `--process-status <refBoId>` adds the process's own system field `PROCESS_STATUS` — the BO-reference
+ * `--process-status <refBoId>:<CREATED row id>` is REQUIRED for a process (MYBPM-IMPORTS.md 0.10 rule 18): every
+ * business process has the system field `PROCESS_STATUS`, so the generator refuses to build one without it.
+ * It adds the process's own system field `PROCESS_STATUS` — the BO-reference
  * to the stand's built-in dictionary «Статус процесса» (its id is per-stand — read it off your own). The constructor
  * creates this field by itself; the IMPORTER does not `[C]` (2026-09-18), so an archive that wants a
  * process shaped like an exported one has to ship it. Its shape is copied verbatim off a real export —
@@ -873,7 +880,9 @@ for (const f of PROCESS_SPEC?.fields ?? []) {
  * `ExportStructInstanceDto` line for that row (see `pushStatusDefault` below), which is written too.
  */
 const [processStatusRefBoId, processStatusCreatedId] = flag("process-status", "").split(":");
-if (CATEGORY === "BO_PROCESS" && processStatusRefBoId) {
+if (CATEGORY === "BO_PROCESS" && (!processStatusRefBoId || !processStatusCreatedId))
+  throw new Error("--category BO_PROCESS needs --process-status <«Статус процесса» dictionary id>:<its CREATED row id> — every business process has the required PROCESS_STATUS field (MYBPM-IMPORTS.md 0.10 rule 18); read both off the stand (0.2a), never invent them");
+if (CATEGORY === "BO_PROCESS") {
   dynamicFields.PROCESS_STATUS = {
     code: "PROCESS_STATUS",
     newId: id(`${BO_CODE}.PROCESS_STATUS`),
@@ -896,10 +905,8 @@ if (CATEGORY === "BO_PROCESS" && processStatusRefBoId) {
     type: "BO", viewType: "SINGLE",
     groupingInfo: {},
     oldRefBoId: processStatusRefBoId,
-    ...(processStatusCreatedId ? {
-      defaultValue: JSON.stringify([processStatusCreatedId]),
-      defaultValueMap: { RUS: JSON.stringify([processStatusCreatedId]) },
-    } : {}),
+    defaultValue: JSON.stringify([processStatusCreatedId]),
+    defaultValueMap: { RUS: JSON.stringify([processStatusCreatedId]) },
     // a real export puts the status first; here it goes under whatever `--field` already claimed
     gridPosition: { x: 0, y: Object.values(dynamicFields).reduce((m: number, f: any) =>
       Math.max(m, (f.gridPosition?.y ?? 0) + (f.gridPosition?.rows ?? 0)), 0), cols: 8, rows: 4 },
@@ -1163,7 +1170,6 @@ const FIG_PKG = "kz.greetgo.mybpm.reg.structure.model.bo.process.figure";
  * 4c2, which carried the export's own line). Goes between the BO and the versions line, as in an export.
  */
 function pushStatusDefault() {
-  if (!processStatusCreatedId) return;
   lines.push({
     "@class": `${PKG}.ExportStructInstanceDto`,
     compositeId: `${processStatusRefBoId}-${processStatusCreatedId}`,
@@ -1323,6 +1329,28 @@ for (const m of menuFlags()) {
 }
 
 // ---- assemble ----
+
+// 0.10 rule 15 — a hard stop, not a warning: a registry with no column answers AccessDenied and lists
+// nothing, a reference showing no field of its target renders an empty selector (2026-10-06: a process
+// shipped without PROCESS_STATUS had neither). A composite has no form and no registry columns of its own.
+for (const l of lines as any[]) {
+  if (!l["@class"].endsWith(".BoStructDto") || l.category === "BO_COMPOSITE") continue;
+  // 0.10 rule 18 — the platform's mandatory system fields
+  const df = l.dynamicFields ?? {};
+  if (l.category === "BO_PROCESS" && !(df.PROCESS_STATUS?.isRequired && df.PROCESS_STATUS?.defaultValue))
+    throw new Error(`BO ${l.code}: a business process without a required PROCESS_STATUS with its CREATED default (MYBPM-IMPORTS.md 0.10 rule 18)`);
+  if (l.category === "BO_DICTIONARY" && !(df.code?.isRequired && df.label?.isRequired))
+    throw new Error(`BO ${l.code}: a dictionary without the required system fields code + label (MYBPM-IMPORTS.md 0.10 rule 18)`);
+  const all = [...Object.values<any>(l.dynamicFields ?? {}), ...Object.values<any>(l.nativeFields ?? {})];
+  if (!all.some(f => f.tableColToShow === true))
+    throw new Error(`BO ${l.code}: no field has tableColToShow: true — every BO shows at least one registry column (MYBPM-IMPORTS.md 0.10 rule 15)`);
+  for (const f of Object.values<any>(l.dynamicFields ?? {})) {
+    if ((f.type !== "BO" && f.type !== "CO") || l.category === "BO_PANEL") continue;
+    if (f.boRefStruct?.boInfo?.code === "Person") continue; // the stand fills Фамилия + Имя itself (0.5b)
+    if (!Object.values<any>(f.boRefStruct?.fieldRefs ?? {}).some(r => r?.toShow === true))
+      throw new Error(`BO ${l.code}.${f.code}: the reference shows no field of ${f.boRefStruct?.boInfo?.code} — add !show=<codes> / spec show (MYBPM-IMPORTS.md 0.10 rule 15)`);
+  }
+}
 
 const now = new Date();
 const stampUtc = now.toISOString().replace(/[:.]/g, "-").replace("T", "T").slice(0, 23); // 2026-09-18T05-29-24-428
