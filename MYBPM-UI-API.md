@@ -158,7 +158,7 @@ Rules that hold for every endpoint `[C]`:
 - **An error comes back as HTTP 200** with a body
   `{"message":…, "className":"kz.greetgo…", "errorType":"…", "traceId":…, "stackTrace":[~100 lines]}`.
   **Detect an error by the presence of `errorType`/`className`, never by the status code**, and never
-  print the `stackTrace` — cut it (`text[:300]`, or read only `message` and `errorType`).
+  print the `stackTrace` — cut it (`text.slice(0, 300)`, or read only `message` and `errorType`).
 - **Some methods answer 200 with an EMPTY body.** `JSON.parse("")` throws — treat an empty body as
   success returning `null` (`remove-draft`, `save-menu-item-icon-name`, `save-import-description`, …).
 - **Some methods answer a bare JSON string**, not an object: `import-file` → `"<importId>"`,
@@ -170,21 +170,20 @@ Rules that hold for every endpoint `[C]`:
 
 A minimal client, which is all any recipe needs:
 
-```python
-import json, urllib.request
-def call(stand, token, path, params=None, body=None):
-    req = urllib.request.Request(
-        f"{stand}/web{path}", method="POST",
-        headers={"Content-Type": "application/json", "token": token},
-        data=json.dumps({"useParamsFromBody": True,
-                         "params_Lr1oSgwPR8": params or {},
-                         "body_o1nhHUG480": body or {}}).encode())
-    text = urllib.request.urlopen(req).read().decode()
-    if not text: return None
-    out = json.loads(text)
-    if isinstance(out, dict) and ("errorType" in out or "className" in out):
-        raise RuntimeError(f"{path}: {out.get('errorType')} {out.get('message')}")
-    return out
+```ts
+async function call(stand: string, token: string, path: string, params = {}, body = {}) {
+  const res = await fetch(`${stand}/web${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", token },
+    body: JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params, body_o1nhHUG480: body }),
+  });
+  const text = await res.text();
+  if (!text) return null;
+  const out = JSON.parse(text);
+  if (out && typeof out === "object" && ("errorType" in out || "className" in out))
+    throw new Error(`${path}: ${out.errorType} ${out.message}`);
+  return out;
+}
 ```
 
 ### 0U.3 Finding an endpoint this document does not list
@@ -4041,20 +4040,20 @@ Observed while pasting a dashboard into a MyBPM HTML field; the same rules were 
 
 ## 9. Tooling
 
-### xlsx with openpyxl
+### xlsx with a spreadsheet library
 
 - The Excel table `displayName` must be Latin (`Table1`…) — a Cyrillic one makes Excel offer to «repair».
 - `tableColumns` names must match the header cells exactly, else Excel «repairs» the file. When inserting
   columns, rebuild `tableColumns` by header name and extend the table `ref`, the autoFilter and the
   conditional-format `sqref`.
-- **openpyxl's save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the zip
+- **A library's load-and-save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the zip
   instead of loading the workbook.
-- Moving rows: move the values AND `row_dimensions[].height` together; leave cell styles bound to the row
-  index when stripes are explicit per-row fills. `customHeight` has no setter — setting `height` is enough.
+- Moving rows: move the values AND the row heights together; leave cell styles bound to the row
+  index when stripes are explicit per-row fills.
 - Appended rows get no style (no borders, looks foreign) — copy the style from a sample row. MyBPM stand
   rows have thin left/bottom borders (whether the importer cares about data-row borders was never tested;
   its header detection uses freeze/double border, `MYBPM-IMPORTS.md` §19.1).
-- **openpyxl does not widen an existing table**: after adding or removing rows update BOTH the sheet
+- **A spreadsheet library does not widen an existing table**: after adding or removing rows update BOTH the sheet
   `dimension` and the table `ref` (e.g. `A1:D35`), otherwise Excel reports the table as broken. A hand-made
   sheet without a table part needs only `dimension` `[C]`.
 - Readers of such sheets are usually positional — adding a column means updating every reader.
@@ -4067,7 +4066,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 `application/binary` and `workbook.xml` `<extLst><ext uri="GoogleSheetsCustomDataVersion2">`.
 
 - Attempt 1 (hidden columns H:XFD + `zeroHeight`) — still showed cells outside the table. Attempt 2
-  (injecting that metadata after an openpyxl save) — still not cropped.
+  (injecting that metadata after a library save) — still not cropped.
 - **Verification methods that prove NOTHING, do not repeat them**: Drive import with conversion + export
   back (1000 rows for ours and for a genuine example alike, even with the example's raw metadata swapped
   in); counting columns in the export (Google omits default-width columns); ODS export (pads to
@@ -4271,7 +4270,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 14. A section heading that repeats a field name breaks the import with `SameBoFieldsLabel`.
 15. Blank cells may clear values and empty link columns may clear links — regenerate full files, never
     partial ones.
-16. openpyxl: update both `dimension` and the table `ref`; a Cyrillic table `displayName` breaks the file.
+16. xlsx library: update both `dimension` and the table `ref`; a Cyrillic table `displayName` breaks the file.
 17. Do not chase Google Sheets grid cropping through `xl/metadata`.
 18. Structure-import rollback: only the import with `canRollback:true` can be undone, same-minute imports
     may be ranked out of order, and undoing an UPDATE restores the state IT found — later changes are lost
