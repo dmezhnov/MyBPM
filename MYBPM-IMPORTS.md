@@ -1216,8 +1216,9 @@ resolve like this:
 - [ ] `unzip -l` shows exactly two members, both inside one `data-*/` folder.
 - [ ] `unzip -p <zip> 'data-*/metadata.mybpm'` prints `objectCount-<N>`, and
       `unzip -p <zip> 'data-*/0000001.mybpm' | wc -l` prints the same N.
-- [ ] Every line parses on its own (`while read l; do echo "$l" | python3 -m json.tool >/dev/null; done`).
-      Parsing the whole member at once MUST fail with «Extra data» — that proves it is JSONL.
+- [ ] Every line parses on its own (`unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
+      Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
+      MUST fail — that proves it is JSONL.
 - [ ] `boGroupOldId` == the group's `oldId`.
 - [ ] 0.10 rule 15, on EVERY BO including a process: at least one field has `tableColToShow: true`, and every
       `BO` / `CO` field has a `fieldRefs` entry with `toShow: true`. `tools/validate-archive.bun.ts` reports
@@ -1332,16 +1333,19 @@ bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-n
 one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
 archive aimed at another stand (0.2a).
 
-If you must build the zip yourself and have no zip library, STORED entries are enough; in Python:
+If you must build the zip yourself, STORED entries are enough. Bun has no zip API; `tools/zip.ts` writes a
+STORED archive with UTF-8 names (run this as a `*.bun.ts` from the repository root):
 
-```python
-import json, zipfile
-lines = [line1, line2]                      # dicts, in order
-d = "data-2026-09-18T10-43-21-715"
-payload = "\n".join(json.dumps(o, ensure_ascii=False, separators=(",", ":")) for o in lines) + "\n"
-with zipfile.ZipFile("out.mybpm.zip", "w", zipfile.ZIP_STORED) as z:
-    z.writestr(f"{d}/0000001.mybpm", payload.encode("utf-8"))
-    z.writestr(f"{d}/metadata.mybpm", f"objectCount-{len(lines)}".encode("utf-8"))
+```ts
+import { zip } from "./tools/zip.ts";
+const lines = [line1, line2];               // objects, in order
+const d = "data-2026-09-18T10-43-21-715";
+const enc = new TextEncoder();
+const payload = lines.map((o) => JSON.stringify(o)).join("\n") + "\n";
+await Bun.write("out.mybpm.zip", zip([
+  { name: `${d}/0000001.mybpm`, data: enc.encode(payload) },
+  { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${lines.length}`) },
+]));
 ```
 
 **Delivering it — the minimum** `[C]` (the full transport is `MYBPM-UI-API.md` §5 / R3,
@@ -3305,8 +3309,8 @@ Run all of it — the IDE will not tell you about any of these:
 ### 0S.12 Delivering the file
 
 1. **Body paste** (the normal case — the method already exists): remove the `BlockFixMethod` entry, point
-   `startBlockIds` at its `downBlockId`, and copy the hat's `x`/`y` onto that block. `strip_hat.py` does
-   exactly this. The stripped body must have exactly one block fewer than the file you built.
+   `startBlockIds` at its `downBlockId`, and copy the hat's `x`/`y` onto that block. A project hat-stripper
+   («Tooling that already exists») does exactly this. The stripped body must have exactly one block fewer than the file you built.
 2. **Clipboard**: `wl-copy --type text/plain < file.json`. A bare `wl-copy < file.json` advertises
    `application/json` and **the paste is silently ignored**. Verify with `wl-paste -n | md5sum` against the
    file. `wl-copy` daemonises: never end a piped script with it, or the caller hangs.
@@ -3316,7 +3320,7 @@ Run all of it — the IDE will not tell you about any of these:
    press Ctrl+V on the canvas. Then ask them to **copy the result back** (`wl-paste -n > live.json`).
 5. **Compare the copy with what you sent**: block and expression counts first (the copy of a whole method
    = your body + 1 for the hat, plus one `BlockNewVar` per «Переменная №N» carrier the IDE may insert),
-   then an id-free structural diff (`canon.py` / `live_cmp.py`) — **every id is regenerated on paste**, so
+   then an id-free structural diff (the project's canonical comparer) — **every id is regenerated on paste**, so
    a key-by-key diff is worthless. Serialization noise to ignore: `canWriteValue:false`,
    `isTextMultiline:false`, `latitude/longitude:0`, `methodArgs:{}`, `more:{}`, `branches:{}`,
    `useArgNames:false`, the long `valueType` form with its nulls, and a lost `value` key on an empty
@@ -4452,10 +4456,10 @@ the field and then call this». The same list on a process field also offers `#�
 ### Tooling that already exists
 
 These live in a PROJECT repository, not beside this document — ask the user whether that folder is at
-hand before you write a checker from scratch: `strip_hat.py` (drop the method hat, re-point
-`startBlockIds`), `check.py` (scope / dangling-reference / duplicate-variable / reachability checker),
-`canon.py` + `live_cmp.py` (canonical id-free comparison of a generated fragment against a live copy),
-`sim.py` (a formula simulator), `gen5.py` (a script generator built on this section), `canon-compare.bun.ts`.
+hand before you write a checker from scratch: a hat-stripper (drop the method hat, re-point
+`startBlockIds`), a scope / dangling-reference / duplicate-variable / reachability checker, a canonical
+id-free comparison of a generated fragment against a live copy (`canon-compare.bun.ts`), a formula
+simulator and a script generator built on this section.
 Every rule in this section is already encoded in one of them.
 
 ### Paste size — no limit found
@@ -4610,7 +4614,7 @@ unless marked otherwise.
   **Rule: never compare numbers with `Eq`.** Equality = «not `l < r` and not `l > r`»; a zero test = not
   less and not more than 0; `>=` = «if `l < r` then false else true», `<=` mirrored via `More`.
   (15/15 on the stand.) Any `Eq` guard inherits the defect: `x = 0` misses `0.0`, `y = intPart(y)` rejects
-  `2.0`. A Python `Decimal` simulator is scale-insensitive and can NEVER reproduce this — only the stand can.
+  `2.0`. An off-stand decimal simulator is scale-insensitive and can NEVER reproduce this — only the stand can.
 - **Native division: scale 30** (30 digits after the point), **no exception** on non-terminating quotients
   (`1/3` → `0.333333333333333333333333333333`, `4/2` → `2.000000000000000000000000000000`). `[C]`
 - `Div` keeps full precision; what a number FIELD shows is the field's display format (`1/3*1000000` →
@@ -4622,7 +4626,7 @@ unless marked otherwise.
 - `#Взять целую часть` truncates **toward zero** and normalises the scale (`int(9/2)` → `4`); negative
   inputs were never verified `[U]`.
 - **Division by zero: platform behaviour unverified** `[U]` — guard divisors with Less/More.
-- Native number actions have no error channel; a blow-up on huge arguments was only ever seen in a Python
+- Native number actions have no error channel; a blow-up on huge arguments was only ever seen in an off-stand
   simulator — the IDE aborting the calculation is `[I]`.
 - `Less`/`More` on a TEXT value would compare lexicographically (`"10" < "9"`) `[I]` — wrap both sides in
   `#В число`.
@@ -4998,7 +5002,7 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
   the importer finds it **by the frozen rows** (A2 / A3) or by a double bottom border in column A —
   a sheet with neither dies with `kD4QsxZrAY` «Система не может отделить строки заголовка от строк данных»;
 - an Excel table part `xl/tables/table1.xml` rides along in stand files; keep it consistent with
-  `dimension` (the openpyxl traps are 19.9).
+  `dimension` (the xlsx-library traps are 19.9).
 
 ### 0X.2 Algorithm
 
@@ -5186,23 +5190,22 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
   codes) — this caught every error before the stand did.
 - Hand-made files must reproduce the header format exactly (freeze A3 + merges).
 
-### 19.9 Editing an xlsx with openpyxl — the traps `[C]` (same list: `MYBPM-UI-API.md` §9)
+### 19.9 Editing an xlsx with a spreadsheet library — the traps `[C]` (same list: `MYBPM-UI-API.md` §9)
 
 - The Excel table `displayName` must be Latin (`Table1`…) — a Cyrillic one makes Excel offer to «repair».
 - `tableColumns` names must match the header cells exactly, else Excel «repairs» the file. When inserting
   columns, rebuild `tableColumns` by header name and extend the table `ref`, the autoFilter and the
   conditional-format `sqref`.
-- **openpyxl does not widen an existing table**: after adding or removing rows update BOTH the sheet
+- **A spreadsheet library does not widen an existing table**: after adding or removing rows update BOTH the sheet
   `dimension` and the table `ref` (e.g. `A1:D35`), otherwise Excel reports the table as broken. A
   hand-made sheet without a table part needs only `dimension`.
-- openpyxl writes a Python number as a numeric cell (`t="n"` — «103» comes back «103.0» and breaks a
-  lookup) and a `str` as a SHARED string, not `inlineStr`. Stand files use `inlineStr` only (0X.4 rule 1);
+- A spreadsheet library writes a number as a numeric cell (`t="n"` — «103» comes back «103.0» and breaks a
+  lookup) and a string as a SHARED string, not `inlineStr`. Stand files use `inlineStr` only (0X.4 rule 1);
   whether the importer accepts shared strings was never tried `[U]` — the 19.8 technique (rewrite
   `sheet1.xml` yourself) avoids the question. Grep the sheet xml for `t="n"` before shipping.
-- **openpyxl's save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the
+- **A library's load-and-save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the
   zip instead of loading the workbook (the 19.8 technique).
-- Moving rows: move the values AND `row_dimensions[].height` together; `customHeight` has no setter —
-  setting `height` is enough.
+- Moving rows: move the values AND the row heights together.
 - Appended rows get no style — copy it from a sample row (stand rows have thin left/bottom borders;
   whether the importer cares about data-row borders was never tested, its header detection uses the
   freeze / double border of 19.1).
