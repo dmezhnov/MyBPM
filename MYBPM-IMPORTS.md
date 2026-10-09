@@ -978,7 +978,11 @@ Rules:
 - Menu access rights travel `[C]` (§5e): `chosenAccessRight: true` plus an `accessGroup` key —
   the same shape as `AccessStructDto.boAccessStruct` (`denyAll`, per action `{denyAll, participants,
   fromFields, orgUnitIds:["G-<group id>"]}`, only `view` matters for navigation). Without `accessGroup`
-  keep `chosenAccessRight: false`.
+  keep `chosenAccessRight: false`. **Menu rights do not cascade** `[C]`: a closed GROUP item only drops out of
+  the sidebar root, every item is filtered by its own `view` — put the rule on each item that must be
+  hidden. Menu rights hide a SCREEN, never records: a user with an open item but no BO `view` gets an empty
+  registry, and the reverse — records stay reachable whatever the menu says — is why the BO's own rights
+  (§7) are the protection.
 - **A `menuItemCode` that already exists on the stand is an EDIT of that item, not a new one** `[C]`
   (§5e): the import overwrites its name, order, views and filter in place, keeping its id. So a menu
   code of your own must be new to the stand — never reuse a code seen on the stand unless the user asked
@@ -1880,7 +1884,7 @@ field in `dynamicFields`; the field links are by CODE:
 | `removeType` `"STRIKETHROUGH"` (template) / `"HIDE"` / `"DISCONNECT"` | «При удалении объектов» | `[C]` | a deleted referenced record is struck through in a table / hidden / on this build struck through too — the id is never removed from the value |
 | `needChangeParentBoByLinkedBo` (template `true`, and on EVERY field of an export) | «Изменить / Не изменять бизнес объект» | **`false` is LOST on a field the import CREATES** (stored `true`); a second import of the same archive, which UPDATES the field, stores `false` `[C]` | `true`: adding a record is a change of the owner card (saved with it); `false`: written into the record at once, even if the card is then closed without saving |
 | `needMarkNew: true` | «Помечать новые» | `[C]` (kept on a created field, unlike the API) | new rows in bold and on top `[I]` |
-| `needAddToParticipants: true` (only for a field referencing a `PERSON` BO) | «Добавлять в участники и уведомлять» | `[C]` | `[U]` |
+| `needAddToParticipants: true` (only for a field referencing a `PERSON` BO) | «Добавлять в участники и уведомлять» | `[C]` | the person put into the field becomes a PARTICIPANT of the record (bell event «Вас добавили») `[C]`, so `participants:true` in the BO's rights (§7) opens the record to them |
 | `isHeightDynamic: true` (exported only when true) | «Динамическая высота» | `[C]` | see «Tables» below |
 | `linkedCoSettings` — on a `CO` field only, see below | «Связь объектов» → «Объект из Составного объекта» | `[C]` | as `linkedFieldCode` / `removeType`, per source BO of the composite |
 
@@ -2798,7 +2802,18 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   constructor** `[C]`: a tab imported with `chosenAccessRight:false` and a «никому» rule
   still got that rule, and the flag came back `false` as written. Write it `true` wherever you ship a
   rule so the constructor shows the lock.
-- `participants` and `authorsField.fieldCodes` were never seen filled — semantics unknown `[U]`.
+- **What each subject opens** `[C]` (a second, non-admin user reading the registry, `view` restricted to ONE
+  subject at a time): `fromFields.<Person field code>` with «Содержимое поля» → exactly the records whose
+  field names that user; `authorsField` «Автор» → exactly the records they created; `participants:true`
+  («Участники») → the records they are a participant of. The author is a participant from the start; a
+  Person field with `needAddToParticipants:true` (§3 «Reference fields») adds the person put into it, with a
+  bell event «Вас добавили». `authorsField`'s «Содержимое поля» flag alone and a `fromFields` entry's
+  «Автор» flag alone open NOTHING (the latter is `true` by default on every exported entry — harmless).
+  Head / employees / department flags were not measured. `authorsField.fieldCodes` `[I]` = the Person
+  fields of the AUTHOR's own record (`Преемник`, `Предшественник`): «the author's successor sees it too».
+  So for «a record is visible to the person in field X» write `fromFields.X` with «Содержимое поля» — that is
+  enough on its own; add «Автор» if the creator must keep seeing it. The API names and the measurements →
+  `MYBPM-UI-API.md` §3 «What each subject opens».
 - Stand exports write `fromFields` for EVERY Person-ref field in EVERY action; it is a real setting, not a
   blind default (the stand kept `author=false` where the archive wrote false).
 - Rights of subjects are OR-ed: a per-record/per-field grant cannot narrow a group-level grant.
@@ -5114,9 +5129,6 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: why an import drops `massPrintFormCodes`, and which «same signature type» a
   referenced BO needs for mass signing. The rest of the widget is answered in §0.5b «SIGNATURE round-trips».
 - BO groups: what the importer really does with `BoGroupStructDto` (see §8).
-- Whether an archive WITHOUT `AccessStructDto` leaves stand rights untouched.
-- Whether `fromFields[f]` really opens a record to the person named in that field; fallbacks
-  `authorsField.fieldCodes` / `participants` + `needAddToParticipants` are unconfirmed.
 - How to express an M:N (TABLE↔TABLE) link.
 - Whether import applies `hideLabel` and the real ceiling of `gridLayoutPosition.h`.
 - The runtime of `Or` / `Xor` / `Not` / `LessEq` / `MoreEq` / `OrEq` / `AndNotEq` (they compile, §12a).
