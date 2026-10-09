@@ -1033,7 +1033,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 | 2 | `/import-structure/insert-file-data` | `{importId}` | `processId` → poll |
 | 3 | `/import-structure/analyze-file-data` | `{importId}` | `processId` → poll |
 | 4 | `/import-structure/load-import-data` | `{importId}` | the log record: `status`, `error`, `conflicts` |
-|   | `/import-structure/load-import-errors` | `{importId,pageId}` | `{errorRecords:[]}` when clean |
+|   | `/import-structure/load-import-errors` | `{importId,pageId}` — first page: OMIT `pageId` (`pageId: 0` answers `IllegalId` «strId = `0`») `[C]`, then the `nextPageId` it returns | `{errorRecords:[]}` when clean |
 |   | `/import-structure/load-import-bo-infos` | body `{importId}` (**body, not params**) | `[{importRecordId,name,boCategory,structTypes}]` |
 |   | `/import-structure/load-import-bo-record` | `{importId,recordId}` | the per-BO pre-apply diff |
 | 5 | `/import-structure/save-import-description` | `{importId,value}` | `null`; status `DESCRIPTION_ERROR` exists, so set it before applying |
@@ -1619,8 +1619,9 @@ arrows and validation of any existing process — the cheapest read-back there i
 
 #### Both archive routes `[C]`
 
-`tools/make-probe-archive.bun.ts --category BO_PROCESS [--process-figure "<Type>@x,y"]…
---process-status <refBoId>:<CREATED row id>` builds the archive (the status is required, `MYBPM-IMPORTS.md` 0.10 rule 18) (shape in `MYBPM-IMPORTS.md` §5c); the UI route and
+`tools/make-probe-archive.bun.ts --category BO_PROCESS [--process-figure "<Type>@x,y"]…` builds the archive,
+always with the required `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.10 rule 18; `--process-status <refBoId>:<CREATED row id>`
+only overrides its minted ids) (shape in `MYBPM-IMPORTS.md` §5c); the UI route and
 `tools/api-import-structure.bun.ts` both applied it with zero analysis errors, and the diagram came back
 identical (`validate-def` clean, Enter → Exit rendered on screen).
 
@@ -1630,7 +1631,7 @@ identical (`validate-def` clean, Enter → Exit rendered on screen).
   exactly like `oldId` → `boId` (that happened for the 5th and 6th time here).
 - **The importer does NOT create `PROCESS_STATUS`** `[C]`: the process imported without it has only the
   archive's own fields, while every constructor-made process has it. Ship it in `dynamicFields`
-  (`--process-status <refBoId>:<CREATED row id>`) **together with its `defaultValue`** — see the next
+  **together with its `defaultValue`** — see the next
   block. **A process without that field still RUNS** `[C]`: Enter → Script → Script → Exit
   imported with no `PROCESS_STATUS` went to its Exit on an ordinary and on a DEV record — the field gives
   the record its status, it does not drive the process (`MYBPM-IMPORTS.md` §5c). That is a probe result, not
@@ -1650,7 +1651,7 @@ emit the same thing from the same spec, and the result imported and run:
    `FigureFormStruct {fieldCode}` (a CODE, portable), a test-only process sits under
    `processVersions.<version id>` with no `workProcess`.
 2. **Generate**: `bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --process-spec tools/process-probe.spec.json --code
-   <Code> --name "<Имя>" --process-status '<Статус процесса dict id>:<CREATED row id>'` → group, 2 script
+   <Code> --name "<Имя>"` → group, 2 script
    defs, BO, versions line; `tools/validate-archive.bun.ts` now checks the process part (Form `fieldCode`
    is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is
    an arrow of the diagram, `PROCESS_STATUS` has a `defaultValue`).
@@ -1674,10 +1675,16 @@ emit the same thing from the same spec, and the result imported and run:
   `"defaultValue": "[\"<CREATED row id>\"]"` (+ `defaultValueMap`), AND the export's `ExportStructInstanceDto`
   line for the `CREATED` row with a `DEFAULT_VALUE` source `[C]` (the line alone and the key
   alone each leave `"[]"` on a new BO; both together take — `make-probe-archive.bun.ts` writes both;
-  the line is NOT ignored). Both ids are per stand — the dictionary is built in with the fixed code
-  `PROCESS_STATUS`, yet its id differs between stands `[C]` (`Q0zI~z9Ra2R7Q3yd` / `0sKQwbF6d25F6DvG`): read them
-  off `load-bo-dictionary-list` (the entry «Статус процесса») or any constructor-built process —
-  `load-business-object-by-id` → `formFields[code=PROCESS_STATUS]` → `refBoId`, `defaultValue`.
+  the line is NOT ignored). **Both ids are resolved BY CODE on import, so none has to be read off the stand**
+  `[C]`: the dictionary is built in with the fixed code `PROCESS_STATUS`, yet its id differs between stands
+  (`Q0zI~z9Ra2R7Q3yd` / `0sKQwbF6d25F6DvG`), and so does the `CREATED` row id. Two archives imported into one
+  stand — one with the other stand's dictionary id, one with a made-up dictionary id AND a made-up row id
+  (used consistently in the field and in the line's `compositeId`) — both came in with this stand's own
+  `refBoId` and `CREATED` row id in `defaultValue`, and a record of each saved (`CLOSE_DIALOG_SAVE`). The
+  importer matches the line by `boCode: "PROCESS_STATUS"` + the row's unique `code` field `CREATED`, and
+  the field by `boRefStruct.boInfo.code`. The generator mints both ids; mismatched ids between the field and
+  the line are not checked `[U]`. (To read the stand's own ids anyway: `load-bo-dictionary-list`, or
+  `formFields[code=PROCESS_STATUS]` → `refBoId` / `defaultValue` of any process.)
   `runOnTestRecord` now throws on that form command instead of reporting an empty run.
 - **Re-importing the same code adds a version** `[C]`: version 2 `isWork+isTest`, version 1 demoted to
   `isWork:false, isTest:false`; the field default was NOT repaired by that re-import (it carried the line
