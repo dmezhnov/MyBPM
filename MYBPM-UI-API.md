@@ -549,11 +549,12 @@ route below is for items on BOs that are already on the stand, and for access ri
 
 **Records never travel in a structure archive** — they are xlsx imported into a BO registry. The file
 format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it before writing a file. The API is
-`v2/bo-transfer` — upload, act, apply and export `[C]` (driven from a page of the stand, §10); only
-`download-template` was never executed:
+`v2/bo-transfer` — template, upload, act, apply and export `[C]` (driven from a page of the stand, §10):
 
-1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<…>` — an
-   ordinary GET with query parameters (no envelope), returning the xlsx. **Take a fresh template after
+1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<id>,<id>,…` — an
+   ordinary GET with query parameters and the `token` header (no envelope), returning the xlsx `[C]`: the
+   header rows only (one row, or two with merged nested blocks and freeze at A3), no data rows, no table
+   part. Field ids come from `load-business-object-by-id` → `formFields[].fieldId`. **Take a fresh template after
    every structure change**: the columns follow the BO, and their positions move between exports.
 2. Fill it. The three rules that break the most files: every cell must be an **inline string** (a numeric
    `103` becomes «103.0» and breaks lookups); the header must have **frozen rows** (or a double bottom
@@ -585,6 +586,11 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    with 0 errors; **a column missing from the file KEEPS the field**. To update a few fields, ship only
    those columns plus the key. After removing columns re-letter the cells contiguously — a header with
    skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
+**A nested block links, it never edits and never unlinks** `[C]`: only the unique (or `ID`) sub-column is
+   read, the other sub-columns are NOT written into the child and the child's other fields stay intact; an
+   EMPTY block keeps the existing link (unlike a blank scalar cell); on an update a SINGLE block replaces
+   the link and a TABLE block only ADDS children. A child found by a non-unique sub-column alone is not
+   linked, with no error.
 **Never write a column for the SINGLE side of a two-way link** — such rows are silently dropped (trap 13).
 
 #### R8 — Export the structure of a company
@@ -3586,7 +3592,7 @@ xlsx), never through the structure archive.
 
 The registry kebab's «импорт/экспорт xlsx» is an ordinary controller, and it is **two-phase like the
 structure import**: the upload builds an "act" you can read, and a second call applies it. Read off chunk
-`7084` and driven end to end from a page of the stand (upload → act → apply → export); `download-template`,
+`7084` and driven end to end from a page of the stand (template → upload → act → apply → export);
 `load-bo-import-table` and `download-errors` were not called. The exact bodies are §0U R7.
 
 | # | call | params | note |
@@ -4335,8 +4341,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     nested blocks do not create target records.
 13. A row that fills the SINGLE side of a two-way link is silently dropped — set links from the TABLE side.
 14. A section heading that repeats a field name breaks the import with `SameBoFieldsLabel`.
-15. Blank cells may clear values and empty link columns may clear links — regenerate full files, never
-    partial ones.
+15. A blank scalar cell CLEARS the field, a missing column KEEPS it — on an update ship only the columns
+    you change plus the key. Reference blocks behave the other way: an empty block keeps the link, a TABLE
+    block only adds children, and a block never edits the child (R7).
 16. xlsx library: update both `dimension` and the table `ref`; a Cyrillic table `displayName` breaks the file.
 17. Do not chase Google Sheets grid cropping through `xl/metadata`.
 18. Structure-import rollback: only the import with `canRollback:true` can be undone, same-minute imports
@@ -4581,7 +4588,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   add a composite row), capturing the request with the XHR patch.
 - **The success path of `/web/v2/auth/v3/login` was never run** (§0U.1 route A) — only the failure. If
   the body turns out not to be the bare token, §0U.1 and §1 need correcting.
-- `v2/bo-transfer/download-template` (§6) is unexecuted — upload, act, apply and export are confirmed.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet (old question 20;
   «Глобальные методы» is answered in §5g).
 

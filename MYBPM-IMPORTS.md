@@ -5064,13 +5064,16 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
 0. **Ask for the stand data of 0X.3.** Without the template file itself there is nothing to fill.
 1. **Take a FRESH template** — an export of the registry (registry kebab → «импорт/экспорт xlsx»), or
    `GET <stand>/web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<…>`
-   (a plain GET with the `token` header, no envelope `[I]`; more in `MYBPM-UI-API.md` §6).
+   (a plain GET with the `token` header, no envelope, `selectedFieldIds` comma-separated → the header rows
+   only, no data rows, no table part `[C]`; more in `MYBPM-UI-API.md` §6).
    Columns follow the BO at export time and their positions move between exports.
 2. **Build the column map by LABELS, never by position**: the (row-1 block, row-2 field) pair identifies a
    column. Split a row-1 label on the FIRST dot — the prefix is the tab («Системные.Код»).
 3. **Fill the rows.** Values: checkbox `Да`/`Нет`; date `dd.mm.yyyy`; date-time `25.10.2025 10:33`; period
    `dd.mm.yyyy - dd.mm.yyyy`; a dropdown is matched by its LABEL; a reference by the target's unique field
-   or by an `ID` sub-column. A TABLE nested object = the parent row REPEATED per child.
+   or by an `ID` sub-column. A TABLE nested object = the parent row REPEATED per child. A nested block
+   only LINKS: its other sub-columns are never written into the child (19.6) — to change a child, import
+   the child's own file.
 4. **Order the files** when there is more than one: users → groups → dictionaries → records → link files.
    A reference resolves only against records that were on the stand BEFORE the file — never against rows
    of the same file.
@@ -5111,6 +5114,11 @@ every column you keep or drop the column entirely.
 9. **No holes in the cell addresses**: when you remove columns, re-letter the rest contiguously (A, B, C…)
    in the header AND every data row, and fix `dimension`. A sheet whose header skipped letters misread the
    column after the hole — a filled checkbox came out «Нет» `[C]`.
+10. **A nested block links, it never edits and never unlinks** (19.6 `[C]`): only the sub-column holding
+    the target's unique field (or `ID`) matters — the other sub-columns are ignored, the child keeps all its
+    fields. On an update a filled SINGLE block REPLACES the link, a TABLE block ADDS its children to the
+    ones already linked (never removes), and an EMPTY block keeps whatever link was there. To drop a child
+    from a collection, use the record card or the API, not a file.
 
 ### 0X.5 Self-check before shipping
 
@@ -5126,7 +5134,7 @@ every column you keep or drop the column entirely.
 ### 0X.6 Delivering
 
 UI: registry kebab → «импорт/экспорт xlsx». API: `v2/bo-transfer` (`MYBPM-UI-API.md` §6 and §0U R7) —
-upload, act, apply and export `[C]`; only `download-template` was never executed. Either way the upload
+template, upload, act, apply and export `[C]`. Either way the upload
 only builds an **act**: read «создано / обновлено / ошибки» and apply the second step deliberately, and
 pull `download-errors` when rows fail — it names the row numbers.
 
@@ -5174,7 +5182,8 @@ pull `download-errors` when rows fail — it names the row numbers.
   exports) — write what the sub-column expects and re-check it on every export.
 - **A target without a unique field links only by `ID`** `[C]`: a parent file whose nested block had no
   `ID` sub-column created the parents but the block came back EMPTY. Do not expect matching by a
-  non-unique code.
+  non-unique code. Likewise a block whose unique sub-column is EMPTY and only a non-unique one is filled
+  («Имя» = an existing child's exact name) creates the parent with no link and reports no error `[C]`.
 - **A referenced record that does not exist → `NoUniqueFieldValue`**, that row fails and the rest of the
   file imports `[C]` (12 missing dictionary codes → 12 error rows). **A nested block does NOT create target
   records** in v4.24 — import the referenced BO first. (The 2022 jar did create them; ignore that for v4.24.)
@@ -5233,12 +5242,17 @@ pull `download-errors` when rows fail — it names the row numbers.
   cells but keeping the other cells' letters (header A, D, E, G, H) imported «успешно», yet the filled
   «Флаг» (D) came out «Нет» on every row; re-lettered contiguously (A–E), the same data imported right.
   Re-letter after removing columns.
-- An empty link/table cell is the same blank cell — expect it to clear a link set earlier `[I]` (only
-  scalar types were tested).
-- A parent's nested block that maps an existing child (by ID / unique field) may **overwrite the child with
-  only the block's sub-columns, wiping the others**. Per the 2022 jar, sub-values run `saveImportInstance`
-  on the referenced BO (found → UPDATED). Mitigation used in practice: child file → parent file →
-  re-import the child file.
+- **A nested block never writes into the child** `[C]`: parents with a SINGLE and a TABLE block whose
+  sub-columns were «Код» (the child's unique field) and «Имя», filled with a CHANGED name, linked the
+  existing children and left them byte-identical — the new «Имя» was ignored, and the child's fields that
+  had no sub-column («Заметка», a checkbox) kept their values. Same on create and on update of the parent,
+  four imports in a row. The sub-column holding the unique field (or `ID`) is the lookup key; the rest are
+  display only. (The 2022 jar's `saveImportInstance` that UPDATED the child does not apply to v4.24.)
+- **An EMPTY nested block keeps the link** `[C]` — unlike a blank scalar cell: a parent updated with both
+  blocks empty kept its TABLE child, and a blank SINGLE block kept its child too.
+- **A filled block on an update** `[C]`: SINGLE → the link is REPLACED (C1 → C2); TABLE → the listed
+  children are ADDED to those already linked, nothing is removed (a parent with {C1, C2} imported with only
+  C2, then only C1, still had {C1, C2}). A file cannot unlink a child.
 - Deleting child records and re-importing them loses the parent's collection binding (the user re-bound
   them by hand) `[I]`.
 - Aggregate fields over a collection could be zeroed by importing collection rows without amounts `[I]`.
@@ -5285,17 +5299,15 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 - **A library's load-and-save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the
   zip instead of loading the workbook (the 19.8 technique).
 - Moving rows: move the values AND the row heights together.
-- Appended rows get no style — copy it from a sample row (stand rows have thin left/bottom borders;
-  whether the importer cares about data-row borders was never tested, its header detection uses the
-  freeze / double border of 19.1).
+- Appended rows get no style — the importer does not need one: data rows with no `s` attribute at all
+  imported fine `[C]` (header detection uses the freeze / double border of 19.1). Copy a sample row's style
+  only to make the file look like a stand file.
 
 ## 20. Open questions — records
 
 - Which flag actually controls whether a field becomes an Excel export column (`tableColToShow`?).
-- Whether a nested block overwrites the other fields of an existing child.
 - Whether the importer writes into `isReadonly` fields, and whether it accepts sub-columns for fields
   hidden in the reference (`toShow: false`).
 - The 2-level header format for a sub-column that is itself a nested reference (`BoFieldNotSpecified`).
 - Person field labels beyond Фамилия / Имя / Email in the Excel format.
-- Whether a blank cell clears a REFERENCE (BO / TABLE) value, and whether any cell value can clear a DATE.
-- `download-template` over the API is unexecuted (the rest of `v2/bo-transfer` is confirmed, `MYBPM-UI-API.md` §6).
+- Whether any cell value can clear a DATE.
