@@ -2026,8 +2026,8 @@ order, a shared order, and a flag on a `TAB_GROUP`.
   values needs a separate BO linked from the owner.
 - **Change history / audit is a standard platform mechanism** — never model it as fields or an
   «История изменений» BO. Reason/comment fields are data and stay.
-- **Пользователь (Person)** is built in; its unique field is **Email**; it has no patronymic field
-  (ФИО = `surname` + `name`). «Подразделения» (Department) and «Рабочая группа» (PersonGroup) are built
+- **Пользователь (Person)** is built in; its unique field is **Email**; it has no built-in patronymic field
+  (ФИО = `surname` + `name`) — a company may add one to it, as any other field. «Подразделения» (Department) and «Рабочая группа» (PersonGroup) are built
   in too.
 
 ## 4. Form layout (`gridPosition`)
@@ -5228,6 +5228,15 @@ every column you keep or drop the column entirely.
     fields. On an update a filled SINGLE block REPLACES the link, a TABLE block ADDS its children to the
     ones already linked (never removes), and an EMPTY block keeps whatever link was there. To drop a child
     from a collection, use the record card or the API, not a file.
+11. **A sub-header is the TARGET's own field label with the target's tab prefix**, exactly as the
+    template writes it («Пользователь.Почта», «Пользователь.Фамилия» on a stand whose Person fields sit on a
+    tab «Пользователь»). A bare «Почта» or «Email» there rejects the whole file (`NoFieldWithLabel` «Нет поля с
+    именем …») `[C]`. Any field of the target may be a sub-column, also one the reference HIDES
+    (`toShow:false`), so when a block shows no key, ADD the sub-column of the target's unique field — the
+    link then resolves through it (19.3 `[C]`).
+12. **`isReadonly` does not protect a field from a file** (19.6 `[C]`): the import writes read-only fields on
+    create and on update, and a blank cell clears them like any other. Leave such columns out unless you mean
+    to overwrite them.
 
 ### 0X.5 Self-check before shipping
 
@@ -5258,7 +5267,8 @@ pull `download-errors` when rows fail — it names the row numbers.
   strip** (labels can carry leading spaces) — 52 codes mapped with zero unmapped.
 - A nested BO spans several columns: row 1 = a merged block caption, row 2 = sub-headers = the referenced
   BO's `fieldRefs` with `toShow` (sub-headers carry the target's own tab prefix, e.g. «Цель.Формулировка»;
-  Person: Фамилия, Имя, Email). Other columns are merged A1:A2. A dropdown is one cell. Freeze at A3.
+  Person: its own labels with its tab prefix, e.g. «Пользователь.Фамилия», «Пользователь.Почта» — 0X.4
+  rule 11). Other columns are merged A1:A2. A dropdown is one cell. Freeze at A3.
   A sheet without nested blocks has ONE header row and data from row 2.
 - **Header detection**: by FROZEN ROWS, else by a DOUBLE bottom border in column A
   (`ExcelSheetBridge.headerLineCount`, class
@@ -5298,6 +5308,12 @@ pull `download-errors` when rows fail — it names the row numbers.
   which sub-columns a template has, and that set changes when the display config changes (one reference's
   sub-columns went `Наименование|Класс модели|Код результата` → `ID` → `Наименование` across three
   exports) — write what the sub-column expects and re-check it on every export.
+- **A sub-column may name a field the reference HIDES** `[C]`: a SINGLE reference showing only the child's
+  non-unique «Имя» (template, export: one sub-column «Имя», the unique «Код» `toShow:false`) accepted a block
+  «Имя» + «Код» and linked by «Код»; a block with «Код» + the hidden «Заметка» (a changed value) was
+  accepted too, linked, and left the child's «Заметка» as it was. A block with only the shown non-unique
+  «Имя» created the record with no link. So the export of such a block cannot restore its links — add the
+  key sub-column by hand. The sub-header is the target's label with its tab prefix (0X.4 rule 11).
 - **A target without a unique field links only by `ID`** `[C]`: a parent file whose nested block had no
   `ID` sub-column created the parents but the block came back EMPTY. Do not expect matching by a
   non-unique code. Likewise a block whose unique sub-column is EMPTY and only a non-unique one is filled
@@ -5351,8 +5367,14 @@ pull `download-errors` when rows fail — it names the row numbers.
 - Re-importing a full export with rows APPENDED kept the existing rows and added the new ones. `[C]`
 - Built-in «Рабочая группа» registry format: «Имя» + nested «Руководитель» (Email/Фамилия/Имя) + table
   «Пользователи» (Email/Фамилия/Имя); merges A1:A2 / B1:D1 / E1:G1, freeze A3. **Group membership imports
-  from the group side (the table).** Users import with the columns Фамилия, Имя, Email `[C]`; the Person
-  labels of other fields (position, personGroup) are unknown `[U]`.
+  from the group side (the table).** Users import with the columns Фамилия, Имя, Email `[C]` (that stand's labels).
+  **A Person block's sub-headers are the «Пользователи» BO's own labels with its tab prefix**, whatever the
+  field `[C]`: on a stand whose Person fields sit on a tab «Пользователь», a reference showing
+  surname/name/email/Отчество/phone/position/accessLevel/ad_employee_id gave the template (and the export)
+  «Пользователь.Фамилия», «.Имя», «.Почта», «.Отчество», «.Телефон», «.Должность», «.Роль», «.Табельный
+  номер»; the export wrote the role as its option label («Пользователь»). A block with only «Пользователь.Почта»
+  linked the person; «Почта» and «Email» without the prefix were refused (`NoFieldWithLabel`). Labels and the
+  tab differ per stand — take them from that stand's template.
 
 ### 19.6 Destructive risks — all `[U]`, act defensively
 
@@ -5384,9 +5406,11 @@ pull `download-errors` when rows fail — it names the row numbers.
   them by hand) `[I]`.
 - Aggregate fields over a collection could be zeroed by importing collection rows without amounts `[I]`.
 - A `DROPDOWN_SINGLE` with `optionSource: FROM_FIELD` and an EMPTY option list will reject any value `[I]`.
-- Whether the importer writes into `isReadonly` fields is unknown — safe order: import data first, set
-  readonly afterwards. Whether it accepts a sub-column for a field hidden in the reference
-  (`toShow:false`) is unknown.
+- **The importer writes into `isReadonly` fields** `[C]`: INPUT_TEXT, INPUT_NUMBER and CHECKBOX fields flagged
+  «Только для чтения» took the file's values on create, were overwritten on update («ро текст»/5/Да →
+  «изменено»/7/Нет), and blank cells cleared them. Read-only guards the card, not the import.
+- **An empty `INPUT_NUMBER` exports as «0»** `[C]`: a record whose number was never set came out «0» in the
+  export, so re-importing that export writes 0 where there was nothing.
 - Records have a `removeType` of their own (soft delete): deleted records may keep their codes.
 
 ### 19.7 Importer internals (decompiled 2022 jar — v4.24 may differ)
@@ -5432,7 +5456,4 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 
 ## 20. Open questions — records
 
-- Whether the importer writes into `isReadonly` fields, and whether it accepts sub-columns for fields
-  hidden in the reference (`toShow: false`).
-- Person field labels beyond Фамилия / Имя / Email in the Excel format.
 - Whether any cell value can clear a DATE.
