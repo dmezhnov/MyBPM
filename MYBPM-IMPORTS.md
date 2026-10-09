@@ -5213,8 +5213,9 @@ every column you keep or drop the column entirely.
 4. Never write a column for the SINGLE side of a linked pair.
 5. Never name a section heading («Текст») like a field of the same BO — `SameBoFieldsLabel` rejects the
    file while reading the header, and labels are matched across ALL fields regardless of tab.
-6. A sub-column that is itself a nested reference must be omitted (`BoFieldNotSpecified`; the 2-level
-   header for it is `[U]`).
+6. A sub-column that is itself a nested reference must be omitted — the stand's own template and export
+   leave it out too (19.3 `[C]`). Under the 2-row header it rejects the whole file (`BoFieldNotSpecified`); a
+   3-row header that expands it is accepted but its values are ignored, so it buys nothing.
 7. **A blank cell is an ERASE, a missing column is a KEEP** (19.6 `[C]`): on an update, every cell left empty
    clears that field (DATE excepted); a field whose column is absent from the file is left as it was. To
    update only some fields, DELETE the other columns — never blank them.
@@ -5279,6 +5280,10 @@ pull `download-errors` when rows fail — it names the row numbers.
   the registry columns (`tableColToShow`, numbered in their order); the user ticks or unticks any field, and
   the ticked list is sent. `tableColToShow` therefore only sets the UI's default, and `tableColOrderIndex`
   only its order.
+- **An EMPTY `boFieldIds` exports the nested blocks EMPTY** `[C]`: caption and sub-headers are written, but
+  every sub-cell is blank and a TABLE reference is not expanded into repeated rows, although the links
+  exist; the same BO exported with its field ids listed carried the child codes and the repeated rows. A
+  file meant to show or carry links must come from an export that LISTS the fields (the UI always does).
 - **So STATIC_TEXT («Текст») fields appear as columns** — their plain text repeated in every row — when an
   export sent an empty list or the user ticked them. **Drop such hint columns by field TYPE (STATIC_TEXT)
   read from the archive, never by a label pattern.** For the same reason a real field can be absent from a
@@ -5305,9 +5310,17 @@ pull `download-errors` when rows fail — it names the row numbers.
   users → groups → dictionaries → records → link files.
 - A failed import yields a downloadable «Ошибки при загрузке …» xlsx: row numbers + error codes, roughly
   one error per row.
-- `BoFieldNotSpecified` «Не указаны дочерние поля для поля … у бизнес объекта …» (the whole file is
-  rejected while reading the header): a sub-column that is itself a nested reference must be expanded into
-  its own child columns; the 2-level header format for that is unknown `[U]` — omit such sub-columns.
+- **A sub-column that is itself a reference** (BO «Внук» → «Родитель» shown with its own reference «Ребёнок»)
+  `[C]`: the stand's `download-template` and its export both DROP that sub-column — the block holds only the
+  target's plain sub-columns. Written by hand under the usual 2-row header, the file is rejected while
+  reading the header with `BoFieldNotSpecified` «Не указаны дочерние поля для поля `Ребёнок` у бизнес
+  объекта `Проба родитель`»; a sub-header «Ребёнок.Код» answers «Нет поля с именем 'Ребёнок.Код'». The
+  importer does read a **3-row header** — row 1 the block caption (merged over its columns), row 2 the
+  sub-headers with «Ребёнок» over its own columns, row 3 the grandchild's sub-headers («Код»), every other
+  header cell merged down to row 3, frozen at A4 — but the third level only parses: a grandchild code
+  different from the one linked was not written into the middle record, and a code of no existing record
+  raised no error. Since a block only links (19.6), a deeper level can never change anything — **omit
+  such sub-columns** and keep the template's 2-row header.
 - `SameBoFieldsLabel` «Встретились одинаковые названия полей в одном бизнес-объекте… X: DROPDOWN_SINGLE vs
   STATIC_TEXT»: header labels are matched against ALL fields of the BO, including «Текст» section headings
   and regardless of tab. **Never name a section or field like another field.**
@@ -5421,6 +5434,5 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 
 - Whether the importer writes into `isReadonly` fields, and whether it accepts sub-columns for fields
   hidden in the reference (`toShow: false`).
-- The 2-level header format for a sub-column that is itself a nested reference (`BoFieldNotSpecified`).
 - Person field labels beyond Фамилия / Имя / Email in the Excel format.
 - Whether any cell value can clear a DATE.

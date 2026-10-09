@@ -588,7 +588,12 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
    with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab) is a chooser over the same
    fields, pre-ticked with the registry columns; it sends what is ticked, in ticking order. No field flag
-   hides a field from an API export — list the fields you want.
+   hides a field from an API export — list the fields you want. **An EMPTY list exports the nested blocks
+   EMPTY** `[C]`: their caption and sub-headers are there, every sub-cell is blank and a TABLE reference is
+   not expanded into repeated rows, although the links exist — the same BO with its field ids listed gave
+   the child codes and the repeated rows. To read links back from a file, always list the fields.
+   A sub-column that is itself a reference (a nested reference inside the target) is in no template and
+   no export: the stand drops it from the block (`MYBPM-IMPORTS.md` 0X.4 rule 6).
 7. **Verify** by exporting the registry again and rebuilding the data model from the cells. **File order
    matters**: users → groups → dictionaries → records → link files, and a reference resolves only against
    records that were on the stand BEFORE the file was imported.
@@ -3709,7 +3714,7 @@ structure import**: the upload builds an "act" you can read, and a second call a
 Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called) and `export-bracket-bo`
 (`{…filter…, boInstanceIds, boFieldIds, needBoiId}` in the BODY, `[C]`) → an `exportId`; then `is-bo-export-file-ready
 {exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` is how an export gets the
-`ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]`.
+`ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]` — **but with every nested block's cells blank** (no child codes, no repeated TABLE rows) `[C]`, so list the field ids whenever the file must carry links.
 
 **What an update file does to the fields it carries** `[C]`: **A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
 `DATE` excepted), whether the cell is empty or absent from the row, and the act still says «обновлено»
@@ -3748,7 +3753,10 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
 - Related in the same controller: `copy-bo-instance {boId,boiId}`, `delete-bo-instance
   {businessObjectId, boInstanceIds}`, `archive-bo-instance`, `restore-bo-instance`,
   `is-field-value-unique {boId,boiId,fieldId,value}`, `load-boi-id-by-unique-field
-  {boId,fieldCode,fieldValue}` (body, not params), `v2/load-boi-values`.
+  {boId,fieldCode,fieldValue}` (body, not params; seen in the bundle, but both
+  `v2/business-object-instance/load-boi-id-by-unique-field` and `…/v2/load-boi-id-by-unique-field` answer 404 —
+  find a record by its code with `load-bo-instance-bracket-table` instead, whose `records[].values[]` carry
+  `fieldCode`, `value` and `displayValue` `[C]`), `v2/load-boi-values`.
 - The *form* controllers are a different, mobile-ish family and were the wrong door:
   `v2/instance-form-create-draft/create-draft` demands a `boiId` (it is the EDIT draft),
   `…/create-draft-with-boi` wants a real minted `draftId` and a `BoiState`
