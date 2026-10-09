@@ -176,10 +176,31 @@ const menus = objs.filter(o => cls(o) === "MenuItemStructDto");
 // §5e: a menu line may point at a BO already on the stand, so an archive of menu lines alone is
 // legal — imported 2026-09-22. It only needs every boCode to exist on the stand, which we cannot see.
 const menuOnly = menus.length > 0 && !objs.some(o => cls(o) === "BoStructDto");
+// §5d «Company-global methods»: an archive of global methods alone (their ScriptDefStructDtos + one
+// CompanyGlobalMethodsStructDto) is legal too — it has no group and no BO.
+const globals = objs.filter(o => cls(o) === "CompanyGlobalMethodsStructDto");
+const noBoArchive = menuOnly || (globals.length > 0 && !objs.some(o => cls(o) === "BoStructDto"));
+if (globals.length > 1) add("ERROR", "5d", `${globals.length} CompanyGlobalMethodsStructDto lines — the export writes one; the import REPLACES the whole list with it`);
+for (const g of globals) {
+  const ids: string[] = Array.isArray(g.scriptDefIds) ? g.scriptDefIds : [];
+  if (!Array.isArray(g.scriptDefIds)) add("FATAL", "5d", "CompanyGlobalMethodsStructDto has no scriptDefIds array");
+  const names = new Set<string>();
+  for (const sid of ids) {
+    const def = objs.find(o => cls(o) === "ScriptDefStructDto" && o.compositeId === sid);
+    if (!def) { add("ERROR", "5d", `global methods: scriptDefIds names "${sid}", no ScriptDefStructDto has that compositeId`); continue; }
+    const hats = Object.values(def.blocks ?? {}).filter((b: any) => String(b["@class"] ?? "").endsWith("BlockFixMethodStruct")) as any[];
+    if (hats.length !== 1) { add("ERROR", "5d", `global method "${sid}": ${hats.length} BlockFixMethodStruct hats, must be exactly 1`); continue; }
+    const n = String(hats[0].methodName ?? "");
+    if (!n) add("ERROR", "5d", `global method "${sid}": hat has no methodName`);
+    if (names.has(n)) add("ERROR", "5d", `global method name "${n}" twice`);
+    names.add(n);
+  }
+  add("WARN", "5d", `the import REPLACES the stand's whole global-method list with these ${ids.length} — a stand method missing here is DELETED; after the import touch one method via apply-update-cmd or records keep running the old bodies`);
+}
 
 // ---------------------------------------------------------------- groups (§0.3, §0.10 rule 1)
 const groups = objs.filter(o => cls(o) === "BoGroupStructDto");
-if (groups.length === 0 && !menuOnly) add("FATAL", "0.3", "no BoGroupStructDto line");
+if (groups.length === 0 && !noBoArchive) add("FATAL", "0.3", "no BoGroupStructDto line");
 const groupCodes = new Set<string>();
 for (const g of groups) {
   // §0.3: groups are matched BY code; a line without one renames a fixed stand group (§8)
@@ -224,7 +245,7 @@ function id(where: string, value: any) {
 
 // ---------------------------------------------------------------- business objects
 const bos = objs.filter(o => cls(o) === "BoStructDto");
-if (bos.length === 0 && !menuOnly) add("FATAL", "0.4", "no BoStructDto line");
+if (bos.length === 0 && !noBoArchive) add("FATAL", "0.4", "no BoStructDto line");
 if (menuOnly) add("WARN", "5e", "menu lines only, no BO line — legal (§5e), but every boCode must already be on the stand");
 const boByCode = new Map<string, any>(bos.map(b => [String(b.code), b]));
 

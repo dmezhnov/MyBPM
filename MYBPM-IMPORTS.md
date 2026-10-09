@@ -1397,7 +1397,9 @@ does not block applying, and `load-import-errors` can come back empty while the 
   whose `code` is the wanted BO (`BoStructDto`, display name in `name.rus`). `[C]`
 - Line order: `CompanyMetadataStructDto`; then each `BoGroupStructDto` followed by its `BoStructDto`(s);
   `AccessStructDto` / `ScriptDef` optional (absence of the access DTO = default access); sidebar menu
-  items (`MenuItemStructDto`, §5e) come after the BOs. A one-BO export
+  items (`MenuItemStructDto`, §5e) come after the BOs; company-global methods are their
+  `ScriptDefStructDto`s followed by one `CompanyGlobalMethodsStructDto` (§5d «Company-global methods» —
+  importing it REPLACES the stand's whole list). A one-BO export
   = 3 lines + its `AccessStructDto` if any. `[C]`
 - `CompanyMetadataStructDto` carries the company ids `personBoId`, `departmentBoId`, `personGroupBoId`
   (different per company — read them from a stand export). It has **no** stand host/URL, so record the
@@ -2544,6 +2546,51 @@ result is §15 «When each hook runs».
 - The same bodies were also written WITHOUT an archive (`save-bo-scripts` + `paste` +
   `apply-update-cmd`, `MYBPM-UI-API.md` §5g) — identical runtime.
 
+#### Company-global methods — `CompanyGlobalMethodsStructDto` `[C]`
+
+«Глобальные методы» (`/settings` → «Глобальные методы») is one script module per company whose methods
+every BO and process script of that company can call. The stand's own text on that screen: a module's
+(local) method with the same name overrides the global one `[I]` (not run).
+
+**In an archive** — the export basket switch «Глобальные методы» (`struct/change-export-is-global-methods`,
+`MYBPM-UI-API.md` §5) adds one `ScriptDefStructDto` per method plus ONE list line:
+
+```json
+{"@class":"…dto.ScriptDefStructDto","compositeId":"<global module id>-<scriptId>","blocks":{
+  "<hat>":{"@class":"…process.block.BlockFixMethodStruct","x":20.0,"y":20.0,"methodName":"glob_greet","downBlockId":"<exit>",
+           "params":{"<param id>":{"name":"imya","order":1,"type":{"baseType":"String","type":"Text","isArray":false}}},
+           "returnType":{"baseType":"String","type":"Text","isArray":false}},
+  "<exit>":{"@class":"…process.block.BlockExitStruct","exitType":"FROM_METHOD","returnExprId":"<expr>"}},"expressions":{…}}
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.CompanyGlobalMethodsStructDto","scriptDefIds":["<global module id>-<scriptId>", …]}
+```
+
+The body is the same Part II def as a local method (§«Local methods travel»): a `BlockFixMethodStruct` hat
+with `params` and `returnType`, one `FROM_METHOD` exit carrying the return value. An archive may hold ONLY
+these lines (plus `CompanyMetadataStructDto`) — no group, no BO; the analysis shows one row «Глобальные
+методы», `structTypes: ["GLOBAL_METHODS"]`. Import semantics, all `[C]`:
+
+- **The import REPLACES the company's whole list.** A method on the stand that the archive does not
+  carry is DELETED (its def comes back empty); an archive with one method leaves exactly one.
+- **The module part of `compositeId` is free** — a foreign module id lands in the stand's own module.
+  **`scriptId` and every block / expression / parameter id are kept verbatim**, so a method re-imported
+  with new ids is a NEW script, and a BO call written against the old one breaks (next bullet).
+- A call site is an ordinary `ExprCall` by `funcName` (§13) — nothing in it names the global module — and
+  its **`args` are keyed by the callee's parameter id** (§13). After a global method's param ids change,
+  `translate-script` of the caller says «Не передан аргумент `imya` в вызов метода `glob_greet`»; after
+  the method disappears, «У выражения справа не определён тип». Repair = re-key the args (or re-import
+  the archive with the old ids). Ship global methods with their stand ids unchanged.
+- Re-importing a stand's own export changes nothing (same `scriptId`, no duplicate).
+- **An import does NOT reach the running scripts.** The stand runs a compiled copy of the global module,
+  and the import does not refresh it: after an import, records kept running the OLD body — even of a
+  method the import had DELETED — until any `apply-update-cmd` on any global method (a `Set` of an
+  unchanged value is enough, `MYBPM-UI-API.md` §5g). Only then did the new bodies run (and the call to
+  the deleted method failed with a field error). So **after importing global methods, touch one of them
+  through the API or the IDE**, then test on a record.
+- Without an archive (`MYBPM-UI-API.md` §5g): `POST /web/v2/script/list-company-global-methods {}` →
+  `[{scriptId, methodName}]`, `create-company-global-method {methodName}` → `{scriptModuleId, scriptId}`,
+  `delete-company-global-method {scriptId}`, the body written by `apply-update-cmd`
+  P `{scriptModuleId, scriptId}` (a `Group` of `Set blocks.<id>` / `expressions.<id>`).
+
 ## 5e. Sidebar menu items inside the archive (`MenuItemStructDto`) `[C]`
 
 The cookbook templates are 0.5d; this is the evidence behind them. Decoded by EXPORT — the export screen
@@ -2820,8 +2867,9 @@ script) in the Block IDE and presses Ctrl+V; the IDE rebuilds the blocks from th
 source file on the platform side, no compiler, no CLI — **for the IDE route the clipboard is the whole
 delivery channel**. (Both directions also exist outside the IDE: a structure export taken with the
 «Скрипты» checkbox carries every script of the BO as `ScriptDefStructDto`, and an import CREATES the
-scripts it carries — §5d. What an archive still cannot deliver is a BO's own
-methods, so §0S's «you cannot create a method» stands for this route.)
+scripts it carries — §5d, local methods and company-global methods included. Over the API a method
+is created by name with no IDE — `MYBPM-UI-API.md` §5g. «You cannot create a method» below is about
+the clipboard route only.)
 
 Four things you cannot do — do not look for a workaround:
 
