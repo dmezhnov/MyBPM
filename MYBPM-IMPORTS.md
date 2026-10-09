@@ -802,13 +802,17 @@ A kanban is TWO things, and the archive can carry BOTH:
   BO's MAP view and the constructor's kanban editor die the same way once a record exists (§2 «BO views»). A
   BO already broken so is repaired by re-importing its line with the template (keep the `kanbanFields` wrapper —
   without it the import is APPLIED and changes nothing); `save-kanban-card-template` does not repair it.
-- the **switch that shows the board**, with its column field. The one place verified so far is a SIDEBAR
-  MENU ITEM (`boPages.isKanbanEnabled` + the column field) — a menu line of the SAME archive does it by
-  code, `boPages.kanbanFieldCode` (0.5d, §5e); the alternative is
-  `v2/menu-item/save-menu-item-bo-pages` after the import (`MYBPM-UI-API.md` §4). **Whether a kanban can
-  be switched on anywhere else is `[U]`** — never looked at: a registry inside a `BO_PANEL`, a BO / CO
-  reference field (its `viewType` key), the BO registry opened outside the menu. Do not claim either way;
-  if the user wants a board, a menu item is the proved route.
+- the **place that shows the board**, with its column field `[C]`. Two exist:
+  - the **BO's own registry** (opened from «Бизнес-объекты», not from a menu) needs NO switch: its view chooser
+    lists «Канбан по полю: <label>» for every `DROPDOWN_SINGLE` of the BO by itself, and the board renders
+    (columns = the options, cards = the template);
+  - a **SIDEBAR MENU ITEM** shows it only when switched on — `boPages.isKanbanEnabled` + the column field; a menu
+    line of the SAME archive does it by code, `boPages.kanbanFieldCode` (0.5d, §5e), or
+    `v2/menu-item/save-menu-item-bo-pages` after the import (`MYBPM-UI-API.md` §4). Give the user a menu item
+    when the board must be one click away.
+  Nowhere else: the constructor offers a `BO` / `CO` reference field only Табличный / Множественный / Одиночный /
+  Карточкой and a panel registry only Табличный / Множественный. The client's `viewType` enum also lists
+  `KANBAN` / `CALENDAR` / `MAP` / `TIMELINE`, but no screen sets them — never ship them in a field's `viewType`.
 
 ```text
 "kanbanCardTemplates": {
@@ -913,7 +917,7 @@ write all twelve keys. What each view needs besides its flag:
 | kanban | `isKanbanEnabled`, `kanbanIndex` | `kanbanFieldCode` = code of a `DROPDOWN_SINGLE` of the BO (the columns) AND that field's card template in the BO's `kanbanCardTemplates` (0.5c) | `[C]` |
 | calendar | `isCalendarEnabled`, `calendarIndex` | the BO's `isCalendarEnabled: true` and a date field (`FULL_DATE` with `needShowToCalendar`) — nothing on the item | `[C]` |
 | timeline («Диаграмма Ганта») | `isTimelineEnabled`, `timelineIndex` | **`timelineFieldCode`** = code of a `PERIOD` / `PERIOD_TIME` field of the BO (the import resolves it into the item's `timelineFieldId`); the BO needs nothing else — a timeline template exists by itself for every such field | `[C]` |
-| map | `isMapEnabled`, `mapIndex` | the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card template for every dropdown (0.5c) — proven in the BO registry (§2 «BO views»), not yet through a menu item | `[U]` on the item |
+| map | `isMapEnabled`, `mapIndex` | the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card template for every dropdown (0.5c) — nothing on the item; an archive item with `isMapEnabled:true, mapIndex:2` came back as shipped and its «Список / Карта» switcher showed the record's marker | `[C]` |
 | grouping | `isGroupingEnabled`, `groupingIndex` | nothing works: the registry grouping view is 404 on the server (§2 «BO views») — never enable it | `[C]` dead |
 
 List, kanban, calendar and timeline are proven (calendar and timeline: an item with both views built through
@@ -934,7 +938,7 @@ Rules:
 - **A `GROUP` line carries NO `boPages`, NO `bracketFilter`, NO `boCode`/`boName`** — the stand exports
   it exactly like that, and the import accepts it.
 - **A `BO` line carries both `boPages` and `bracketFilter`**; `bracketFilter.boCode` repeats `boCode`,
-  `brackets: {}` = no record filter (every record is shown).
+  `brackets: {}` = no record filter (every record is shown); a non-empty filter imports whole `[C]` (shape in §5e).
 - `kanbanFieldCode` appears ONLY when the kanban is on. It must be a `DROPDOWN_SINGLE` of that BO and the
   outer key of its `kanbanCardTemplates` — the columns alone give a board the stand cannot draw (0.5c).
 - `boCode` may name a BO of THIS archive (the usual case) or a BO that is ALREADY on the stand — then it
@@ -1376,13 +1380,14 @@ this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, on
   delete / restore; `v2/process-indicator/pre-create-process` `P {}` → a fresh `processId`; then
   `import-structure/rollback-import` `P {importId, processId}` → `{"type":"ROLLED_BACK"}` undoes it (BOs
   and menu items alike; the process may finish at 25 %, do not wait for 100). Only the import the stand
-  flags `canRollback: true` can be undone, and «latest» is the stand's ranking, not yours — same-minute
-  applies were ranked out of order. Undoing an import that UPDATED something restores the SNAPSHOT it
+  flags `canRollback: true` can be undone, and «latest» is the stand's ranking, not yours — the log keeps
+  minutes, and inside one minute the FIRST-applied import counts as the newest. Undoing an import that UPDATED something restores the SNAPSHOT it
   found, silently dropping anything applied after it; undoing a chain is safe only all the way back to
   the import that CREATED the objects. When you may need to undo, leave a minute between applies.
 
 **Always read the analysis result before pressing ПРИМЕНИТЬ** — «В Составном объекте не достаёт БО»
-does not block applying, and `load-import-errors` can come back empty while the UI dialog shows an error.
+does not block applying. Over the API read `load-import-errors` of the SAME `importId` (it carries the UI
+dialog's errors) AND `load-import-data.status` (`INTERNAL_ERROR` = an analyzer crash, no error record).
 
 ---
 
@@ -2639,9 +2644,13 @@ not the menu item's own, not the BO's, not the parent's.
   ```
 
   An empty filter (`brackets: {}`) still makes the stand create a bracket-filter record for the item
-  (`bracketFilterId` was set after the import). Importing a NON-empty filter was not tried `[U]` — the
-  map keys are presumably free 8-char ids `[I]`, and a `dynamicFilters` entry has never been seen in
-  this shape at all.
+  (`bracketFilterId` was set after the import). **A NON-empty filter imports whole** `[C]`: the filter above
+  plus a `dynamicFilters` entry of the same shape as a field filter (0.5 «A record filter on the field
+  TRAVELS»: `{"ajW7xfc8": {"fieldCode": "Tekst", "type": "INPUT_TEXT", "value": "фильтр", "numberFrom": 0,
+  "numberTo": 0, "isCurrentUser": false, "isEmptyValue": false, "boiIds": {}, "fromFieldCodes": {}}}`), shipped
+  with the BO in one archive, came back from `v2/menu-item/load-bracket-filter` as one bracket ANDing «Текст =
+  фильтр» and «Автор = я». `fieldCode` is resolved to the field id of the (new) BO, and the map keys are free
+  8-char ids that become the ids of the bracket and of each filter as they are.
 - **A menu line may reference a BO that is not in the archive**: the 3-item export carried no BO line of
   its own for the items' BOs (the one BO line in it came from the BO basket). Such a line relies on the
   BO already being on the stand, by `boCode`.
@@ -2704,7 +2713,7 @@ group (`boCode:"PersonGroup"`); after the item was reset to «всем» the imp
 **Calendar and timeline views travel** `[C]` (same day): `boPages` in the export carries
 `timelineFieldCode` (the `PERIOD` field's CODE) instead of `timelineFieldId`, the import resolves it.
 
-Open `[U]`: a non-empty `bracketFilter` on import; the map / grouping views of `boPages`; where else a kanban can be switched on besides a menu item (0.5c).
+Open `[U]`: where else a kanban can be switched on besides a menu item (0.5c).
 
 ## 6. References between BOs
 
