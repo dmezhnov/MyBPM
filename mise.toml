@@ -56,7 +56,7 @@ console.log("all tests passed");
 '''
 
 [tasks.publish]
-description = "Set the plugin version, commit everything, push to test and stream the CI run (mise test -> fast-forward main -> GitHub release with the skill zips), then update the installed mybpm plugin"
+description = "Set the plugin version, commit everything, push to test and stream the CI run (mise test -> fast-forward main -> GitHub release with the skill zips), then fetch origin and update the installed mybpm plugin"
 usage = '''
 arg "<version>" help="New plugin version for .claude-plugin/plugin.json, e.g. 1.2.0; the release tag is v<version>"
 arg "<message>" help="Commit message for the release commit"
@@ -91,6 +91,9 @@ for (let i = 0; i < 10 && !runId; i++) {
 if (!runId) { console.error("Publish run not found yet; check GitHub Actions manually."); process.exit(0); }
 const watch = await $`gh run watch ${runId} --exit-status`.nothrow();
 if (watch.exitCode) process.exit(watch.exitCode);
+
+// CI fast-forwarded main on the remote; refresh origin/main so local main no longer shows "ahead 1".
+await $`git fetch origin`;
 
 // main now holds the release: pull it into the locally installed plugin so the new skills are live
 // after the next Claude Code restart.
