@@ -566,12 +566,22 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    `103` becomes «103.0» and breaks lookups); the header must have **frozen rows** (or a double bottom
    border in column A) or the whole file is rejected; dropdowns match **by label**, references by the
    target's **unique field or an `ID` sub-column** — and the referenced records must already exist.
+   A sub-header is the target's own label WITH its tab prefix, as the template writes it
+   («Пользователь.Почта» for a Person block on a stand whose Person fields sit on a tab; a bare «Почта» or
+   «Email» rejects the file with `NoFieldWithLabel`) `[C]`. A sub-column may name a field the reference
+   hides (`toShow:false`): a block showing only a non-unique field links once you add the unique field's
+   sub-column by hand — its template and export never carry it `[C]`. **`isReadonly` fields are written**
+   on create and update and cleared by a blank cell `[C]` — drop their columns unless you mean to overwrite.
 3. `POST /web/v2/bo-transfer/import-from-file` — **multipart**, file under `file`, plus the form field
    `businessObjectId` → a bare `"<actId>"` string (no envelope on this call: plain multipart, `token`
    header).
 4. `is-import-file-finished` — `P {"actId":…}` → `true` when done; then `load-import-file` — `P {"actId":…}` →
    `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` (`importId` = the actId). **Nothing
    is written yet** — this is the same two-phase shape as R3.
+   **A header error comes back from `is-import-file-finished` itself** `[C]`: instead of `true`/`false` it
+   answers an error object whose `message` is the reason («qy7G90BqN7 :: Ошибка при импорте данных: Нет поля с
+   именем 'Почта' в бизнес-объекте 'Пользователи'») — stop polling on anything that is not a boolean, or the
+   loop spins forever.
 5. `apply-imported` — `P {"importId":…}` writes (answers `""`); poll `watch-import-finished` — `P {"importId":…}`
    → `true`; `cancel-imported` drops it; `imported-ok` closes it;
    `download-errors` — `P {"importId":…}` returns the «Ошибки при загрузке …» xlsx (row numbers + error
