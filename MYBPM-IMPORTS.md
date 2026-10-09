@@ -3218,6 +3218,35 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   column, do a selection pass: `ЦИКЛ COUNT раз { лучший = 10⁹; foreach строка: ЕСЛИ номер > пред И номер
   < лучший → лучший = номер …; ЕСЛИ лучший < 10⁹ → пред = лучший; обработать }` (only `More`/`Less`/`And`,
   rule 1). A whole number read from `INPUT_NUMBER` concatenated as `1`, not `1.000`.
+- **The view of a `BO` field decides its script type** `[C]`: `TABLE` and `MULTIPLE` read the same —
+  `.#Значение` is `Bo/BoiRefCode[]`, so foreach, `F-COUNT`, `F-ADD` work identically on both. **`SINGLE` is
+  NOT an array**: `.#Значение` is ONE record (`Bo/BoiRefCode`), its field reference offers the child's
+  fields directly (`ЭТА ИНСТАНЦИЯ.<single>.Kod.#Значение` = `….<single>.#Значение.Kod.#Значение`), `F-COUNT`
+  (0/1) and `F-HAS_REF`, but **no `F-ADD` / `F-DELETE`** — `F-ADD` on it fails `translate-script` with
+  `exprAct__noDefinitionForActId`. Put a record into it by assignment: `ЭТА ИНСТАНЦИЯ.<single>.#Значение =
+  #запись#` (replaces the link). A foreach over a SINGLE's `.#Значение` compiles and makes one pass. So a
+  script written for a MULTIPLE field stops compiling when the field is switched to SINGLE only where it
+  uses `F-ADD`/`F-DELETE`.
+- **A composite (`CO`) field** `[C]`: `.#Значение` is an array of records of the COMPOSITE
+  (`Bo/BoiRefCode[]`, `boCode` = the composite's code) holding rows of every source BO; its field reference
+  offers `F-ADD`, `F-DELETE`, `F-COUNT`, `F-FIRST`, `F-LAST`. **An element's fields are the composite's
+  ATTRIBUTES, with a different actId**: `CO_CODE-<composite code>-F-<attribute code>-K-DYN-S-boi_fields`, then
+  `F-VALUE-K-DYN-R-D-S-boi_fields` as usual — the plain `F-<code>-K-DYN-S-boi_fields` does not exist on a CO
+  element. An attribute that a row's source BO does not feed reads `''` (no error); assigning it does
+  nothing for that row. `F-ADD` takes a record of any source BO (a child-BO record created by `F-CI` was
+  added and stored as `<source BO id>-<boiId>`); `#Сохранить` is offered on an element.
+- **Writing a child's field** (`#строка#.Имя.#Значение = …` inside a foreach, `<single>.Число.#Значение =
+  …`, a CO attribute) `[C]`: the write goes into the parent's form session and **reaches the child record
+  only when the parent is SAVED** — on `remove-draft` (ОТМЕНИТЬ) it is lost, with no `#Сохранить` needed for
+  the save case. **`#Сохранить` (`F-saveBoiChanges-K-FIX-T-BoiRefCode`) applied to the child record — a
+  `BlockAssign` with that act as `leftExprId` and no `rightExprId` — stores the child at once, even if the
+  parent form is then cancelled.** A CO attribute written on an element writes the source record's field
+  that feeds it. A record made by `F-CI` and filled in the same script was stored with its fields when the
+  parent was saved (no `#Сохранить`).
+- **On a test (`DEV`) record the script sees only test records in its link fields** `[C]`: a DEV parent
+  whose links point at ordinary records reads every `BO`/`CO` collection as empty (`F-COUNT` = 0, foreach
+  makes no pass); a DEV child in the same field is seen. Test a script on DEV only with DEV children, or
+  promote the version to work and test on an ordinary record (§15).
 - **Reading a dictionary at run time**: `F-findByFilter-K-FIX-T-BoRefCode` applied to a `BoRefCode`
   constant returns the rows — loop over them and compare a field (`code` matching is case-sensitive).
 
@@ -3245,6 +3274,8 @@ Fields and collections
   добавить        F-ADD-K-DYN-R-D-S-boi_fields          arg: adding
   количество      F-COUNT-K-DYN-R-D-S-boi_fields
   создать         F-CI-K-DYN-R-C-S-bo_fields
+  #Сохранить      F-saveBoiChanges-K-FIX-T-BoiRefCode   (on a record: stores it at once)
+  CO attribute    CO_CODE-<composite code>-F-<attribute code>-K-DYN-S-boi_fields   (field of a CO element)
   НайтиПоФильтру  F-findByFilter-K-FIX-T-BoRefCode
 ```
 
@@ -3984,8 +4015,8 @@ meta acts exist for widgets as `…-K-DYN-R-M-S-boi_widgets`.
 | DROPDOWN_SINGLE, RADIO_BUTTON_GROUP | SingleSelect | — |
 | GEO_POINT | GeoPoint | — |
 | FILE_UPLOAD | File/MybpmFile | `F-addFile_v2-K-FIX-T-BoiFieldRefCode (file)` |
-| BO (link, multiple) / CO | `Bo/BoiRefCode[]` | `F-ADD (adding)`, `F-DELETE (deleting)`, `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST` («Значения как в реестре»), all `-K-DYN-R-D-S-boi_fields`; CO also `F-SHOWN_BO_IN_CO_FIELD-K-DYN-R-M-S-boi_fields (boRefCode, orgUnit)` |
-| BO (single — e.g. CREATED_BY, LAST_MODIFIED_BY) | `Bo/BoiRefCode` | the same list-acts plus `F-HAS_REF`, **and every field of the target BO directly**: `rec.CREATED_BY.surname` is `F-surname-K-DYN-S-boi_fields` applied to the field reference, no `#Значение` hop |
+| BO (view TABLE or MULTIPLE) / CO | `Bo/BoiRefCode[]` (CO: records of the composite, `boCode` = its code) | `F-ADD (adding)`, `F-DELETE (deleting)`, `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST` («Значения как в реестре»), all `-K-DYN-R-D-S-boi_fields`; CO also `F-SHOWN_BO_IN_CO_FIELD-K-DYN-R-M-S-boi_fields (boRefCode, orgUnit)`; a CO element reads its attributes by `CO_CODE-<composite code>-F-<attr>-K-DYN-S-boi_fields` (0S.7) `[C]` |
+| BO (view SINGLE, and the natives CREATED_BY, LAST_MODIFIED_BY) | `Bo/BoiRefCode` | `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST`, `F-HAS_REF` — **no `F-ADD` / `F-DELETE`** `[C]` — **and every field of the target BO directly**: `rec.CREATED_BY.surname` is `F-surname-K-DYN-S-boi_fields` applied to the field reference, no `#Значение` hop |
 | PROGRESS_BAR | — (no `#Значение`) | one act per step: `F-<field>-K-DYN-PS-<stepCode>-S-boi_fields` → `ProgressBar/ProgressStepRefCode` |
 | CHECKLIST, QUESTIONNAIRE | — (**`#Значение` has no type** — not readable from a script) | — |
 
@@ -5061,6 +5092,12 @@ Scripts:
     off), PHYSICAL_REMOVAL upserts and never removes, AUDIT_TRAIL overwrites the FIRST audit row whatever its journal,
     MESSENGER does nothing without a connected messenger. Ship a kind only from a fresh export of the target stand
     (§2 «The other company-settings kinds»).
+38. **On a test (`DEV`) record a script's link fields hide every ordinary record** `[C]` — `BO` and `CO`
+    collections read empty (`F-COUNT` 0), only DEV children are seen; a script that «finds nothing» on a test
+    record may be right. Test link logic with DEV children or on an ordinary record under the work version (0S.7).
+39. **A child's field written by a script is lost when the parent form is cancelled** `[C]` — it is stored
+    only with the parent's save, unless the script calls `#Сохранить` on the child, which stores it at once,
+    cancel or not (0S.7).
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
@@ -5083,6 +5120,8 @@ here; the rules themselves are §0X.4.
 - The checkbox value's runtime type and its text form when concatenated.
 - Whether a counted loop re-evaluates its bound, and the counter's base.
 - Whether a method argument can carry a LIST of instances.
+- Whether a CO element's `#Сохранить` stores the SOURCE record, and whether `F-ADD` on a CO field accepts
+  a record of a BO that is not one of the composite's sources.
 
 ---
 
