@@ -3241,7 +3241,8 @@ onto the SAME child BO keep separate lists per record.
   `save-business-object-grid-layout-position` with a **body** of `{boId, gridLayoutPosition:{id:"0", x, y,
   w, h}}` (read: `load-business-object-grid-layout-position` params `{boId}`; `""` = never set = full
   size). The width is `w` of 16 columns of `0.9·innerWidth`. The height is `h` rows of 30 px, capped at
-  `0.9·innerHeight`. The viewer re-centres `x = ceil((16−w)/2)`. For two fields in one row, `w:6, h:8` gives a
+  `0.9·innerHeight` — the server takes any `h` (an archive with `h:200` read back 200 and opened the CREATE
+  dialog at 840 px of a 965 px window) `[C]`, so that cap is the only ceiling. The viewer re-centres `x = ceil((16−w)/2)`. For two fields in one row, `w:6, h:8` gives a
   compact dialog (≈630×240 px at 1876×965): fields plus the СОХРАНИТЬ/ОТМЕНИТЬ bar.
 - **A required `INPUT_NUMBER` starts at 0** on a CREATE dialog, so it counts as filled. The red `*` and
   the warning appear only after the user clears it. `isRequired` really is on, but nothing forces the

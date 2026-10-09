@@ -2064,7 +2064,8 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   `aria-label`; `h1`–`h3` lose bold → set `font-weight:700` explicitly; avoid `transform` and
   `conic-gradient` (assumed filtered `[U]`). (Same list: `MYBPM-UI-API.md` §8.) 15×3 showed the platform's own scrollbar inside
   the band for "heading + subheading" → use **15×4** or more. `hideLabel:true` avoids the field label
-  duplicating the heading (whether import applies it was never reported `[U]`).
+  duplicating the heading — import applies it on a «Текст» field too `[C]`: the card shows only the
+  HTML, no label row.
   **A section heading must not repeat any field name of the BO — it breaks Excel import** (`SameBoFieldsLabel`).
 - **Tabs**: one `TAB_GROUP` field (code `Vkladki` in exports) with `fieldTabs` (tab codes + labels);
   fields on a tab carry `tabCodePath{tabGroupCode, tabCode}`. `boTabs` can stay `{}` while tabs exist `[C]`.
@@ -2075,8 +2076,11 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   ~16-column SCREEN grid, not the form; `null` for dictionaries. All four occurrences ever seen:
   `{x:1,w:15,h:21}`, `{x:1,w:15,h:18}` (top-level BOs), `{x:3,w:11,h:18}` / `{x:3,w:10,h:28}` (BOs opened
   only from a parent's table). `h` is not the form's row count (a 37-row form scrolls inside an 18-unit
-  window); 28 is the largest ever seen — treat it as a cap and probe before going higher `[U]`.
-  Import appears to apply it `[I]`.
+  window). Import applies it `[C]` (read back with `load-business-object-grid-layout-position`), and the
+  server stores any `h` — 40 and 200 both read back unchanged `[C]`. The ceiling is the CLIENT's: one unit
+  is 30 px and the dialog is capped at `0.9·innerHeight` (`MYBPM-UI-API.md`, «Size of the child's record
+  dialog» under «A nested table … on a record card»), so `h:200` opens exactly as tall as `h:40` — about 28 units on a 965 px window. A larger `h`
+  only means «as tall as the screen allows».
 
 ## 5. Dictionaries (справочники)
 
@@ -5130,7 +5134,6 @@ here; the rules themselves are §0X.4.
   referenced BO needs for mass signing. The rest of the widget is answered in §0.5b «SIGNATURE round-trips».
 - BO groups: what the importer really does with `BoGroupStructDto` (see §8).
 - How to express an M:N (TABLE↔TABLE) link.
-- Whether import applies `hideLabel` and the real ceiling of `gridLayoutPosition.h`.
 - The runtime of `Or` / `Xor` / `Not` / `LessEq` / `MoreEq` / `OrEq` / `AndNotEq` (they compile, §12a).
 - Whether a field script fires on `FILE_UPLOAD`, `CHECKLIST` and `CO` (the other 24 types do, §15), and
   whether an xlsx record import runs any hook.
