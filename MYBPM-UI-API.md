@@ -654,7 +654,7 @@ dropped (trap 13).
       «Ошибка — Возникла ошибка при запросе в сервис …» (`MYBPM-IMPORTS.md`, RestRequest section); a
       script's own `ScriptNotification` lands there too. They sit under the bell (header, «События»).
       Check the count before your first write and after your last one. The red × on the «События» header deletes them all —
-      `v2/user-notification/delete-notifications` (body not captured `[U]`); the grey × on one entry
+      `v2/user-notification/delete-notifications` (`P {}`, `B {}` — deletes ALL of them `[C]`); the grey × on one entry
       deletes that one; `v2/user-notification/count` / `load-notifications` read them `[C]`.
       **Headless, no UI** `[C]`: `load-notifications` `B {paging: {offset: 0, limit: 50}}` (without
       `paging` → NullPointerException) lists `[{row: {id, header, body, happenedAt}}]`; `delete-notification`
