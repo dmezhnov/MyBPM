@@ -1597,7 +1597,17 @@ A figure is not dragged from a palette (there is none) and the canvas's right-cl
 dots of an existing figure onto empty canvas** — a picker «Выберите фигуру» opens with 8 tiles (top-left
 tile = **Exit**), and choosing one fires `load-new-ids` → `apply-update-cmd` → `validate-def`, creating the
 figure AND the arrow in a single command. `computer left_click_drag` drives this fine (the one place in
-this app where a coordinate drag is needed — trap 30 does not apply to the slot handles).
+this app where a coordinate drag is needed — trap 30 does not apply to the slot handles) `[C]`; no
+synthetic mouse events are needed. Take the dot from a SCREENSHOT, not from `getBoundingClientRect` of
+`circle.fillOuter`: the two frames differ by the page zoom (§10). The picker (3×3 grid, 8 tiles: Exit,
+Switch, Form, Script, the two waits, Timer, Terminator) opens below-right of the drop point, about 390×400
+px — drop in the upper left of the canvas so it is not cut off by the window edge.
+- **Ctrl+Z on the canvas = `v2/bo-process-editor/undo`** `[C]` — it removes a figure just created together
+  with its arrow, followed by `validate-def`; a mis-picked tile is undone that way.
+- **A Script figure has exactly ONE outgoing arrow** `[C]`: a second one marks both arrows ⚠ and
+  `validate-def` answers «Из фигуры выходить может только одна стрелка» (`t9KI1UvhI2`, `place: ARROW`)
+  for each. Branching belongs to a Switch, whose arrows must all be named (below); an arrow that is the
+  only exit of its figure validates with `name: null` `[C]`.
 
 #### The same thing headlessly — `tools/create-process-constructor.bun.ts` `[C]`
 
@@ -2072,6 +2082,15 @@ body   {"name":"<any label>",
   is write-only. (`MYBPM-IMPORTS.md` §14 «Validator phases» has the four phases.)
 - **Then `translate-script`** — the only check. It reports wrong `actId`s, argument names, dangling ids
   and types; `success:true` with a `WARN used_deprecated_blocks` means an old-panel element is present.
+- **A wrong SHAPE bricks a module the same way** `[I]` (reported from another stand, deliberately not
+  reproduced): `ExprCall.args` sent as `{"<paramId>":"<exprId>"}` instead of `{"<paramId>":{"exprId":…}}`
+  in a company-global method made the global module undecodable («Failed to decode 'ScriptModuleDto'») — the
+  «Глобальные методы» list, every process `validate-def` and the figure script IDE all failed with it.
+  Copy object-valued keys (`args`, `argExprIds`, `branches`, `more`, `params`, `valueType`) exactly
+  from `MYBPM-IMPORTS.md` §10–§11.
+- **A `WARN` is not a clean result**: `Eq` between an act's `boolean` and a «Да/Нет» constant answers
+  `success:true` with `WARN exprOp__equalsDifferentTypes` («…одинаковыми быть не могут никогда») — the
+  condition is always false `[C]`. Use the boolean itself, or `Not`.
 - **Never write an enum value you have not seen in `MYBPM-IMPORTS.md` §10–§12a** (`opType`, `exitType`,
   `exprValueType`, `constType`, `type`). The server stores it, then cannot decode the BO's script module
   any more: every read and write of every version of that BO's scripts — including `apply-update-cmd`,
@@ -3750,6 +3769,8 @@ missing one was never the menu item:
    **The BO's own registry needs no switch** `[C]`: opened from «Бизнес-объекты» it offers «Канбан по полю:
    <label>» per `DROPDOWN_SINGLE` and renders the board at
    `/business-objects/viewing-list/bo/<boId>/kanban-view?fieldId=<dropdown fieldId>&boId=<boId>&menuItemId=<dropdown fieldId>&businessObjectId=<boId>`.
+   A local-list dropdown (`FROM_FIELD`) qualifies exactly like a dictionary one (`FROM_BO`) `[C]`:
+   `v2/kanban/load-kanban-fields {boId}` lists both and the board shows the local options as columns.
    A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
    (`MYBPM-IMPORTS.md` 0.5c).
 2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO carried `{}`,
