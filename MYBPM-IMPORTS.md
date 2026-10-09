@@ -475,9 +475,10 @@ constructor, then proved by importing the same shape back `[C]`:
   `{"<16-char id>": {"code":"new","label":"Новый","orderIndex":0}, …}`
 - `TAB_GROUP` — its own code is `tabs` (`tabs_*` when the BO has several, 0.6a); `"fieldTabs"` keyed by the tab code (`tab_*`):
   `{"tab_main": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"tab_main","newId":"<16 chars>"}}`
-  Fields on a tab carry `tabCodePath: {tabGroupCode, tabCode}` — both CODES; a widget on a tab (a `buttons` entry
-  …) carries the same object under the key `tabCode` instead `[C]` (stand export), and its `gridPosition.y` is
-  relative to the tab like a field's. **A TAB_GROUP must have a
+  Fields on a tab carry `tabCodePath: {tabGroupCode, tabCode}` — both CODES. A button on a tab (`buttons` entry)
+  carries the same object under the key `tabCode` instead, never `tabCodePath`, and its `gridPosition.y` counts
+  from the top of the tab like a field's `[C]` (stand export); the other widget maps of 0.5b presumably do the
+  same `[I]`. **A TAB_GROUP must have a
   code** `[C]`: a group created over the API without a label gets code `""`, and a stand
   export then DROPS the group itself and its tab rules, writing the group's id into its fields'
   `tabGroupCode` (the archive cannot be imported back). Give the group a code before exporting
