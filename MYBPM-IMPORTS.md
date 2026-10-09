@@ -5090,8 +5090,9 @@ The same contract as §0.2a, with a heavier list, because a record file is mostl
 | For every reference column — **the referenced records must already exist** | v4.24 does NOT create targets from a nested block (`NoUniqueFieldValue`, the row fails) | build the child file first and say the import order |
 | Whether any column is the **SINGLE side of a two-way link** | such rows are SILENTLY dropped: «успешно, 5 записей» and the registry shows «0 из 0» | never write that column; set the link from the TABLE side (19.4) |
 
-Absolute, no asking needed: numbers as text; never index by column position; never re-import a partial
-file (blank-cell semantics are an unresolved destructive unknown, 19.6).
+Absolute, no asking needed: numbers as text; never index by column position; **a blank cell CLEARS the
+field on an existing record** (19.6) — on an update file every cell you leave empty is an erase, so fill
+every column you keep or drop the column entirely.
 
 ### 0X.4 Hard rules
 
@@ -5103,8 +5104,13 @@ file (blank-cell semantics are an unresolved destructive unknown, 19.6).
    file while reading the header, and labels are matched across ALL fields regardless of tab.
 6. A sub-column that is itself a nested reference must be omitted (`BoFieldNotSpecified`; the 2-level
    header for it is `[U]`).
-7. Regenerate COMPLETE files; a missing column may clear the field on existing records (`[U]`, 19.6).
+7. **A blank cell is an ERASE, a missing column is a KEEP** (19.6 `[C]`): on an update, every cell left empty
+   clears that field (DATE excepted); a field whose column is absent from the file is left as it was. To
+   update only some fields, DELETE the other columns — never blank them.
 8. Dictionary codes are case-sensitive (`MRP` ≠ `mrp`).
+9. **No holes in the cell addresses**: when you remove columns, re-letter the rest contiguously (A, B, C…)
+   in the header AND every data row, and fix `dimension`. A sheet whose header skipped letters misread the
+   column after the hole — a filled checkbox came out «Нет» `[C]`.
 
 ### 0X.5 Self-check before shipping
 
@@ -5114,11 +5120,13 @@ file (blank-cell semantics are an unresolved destructive unknown, 19.6).
 - [ ] No SINGLE-side link column; no `STATIC_TEXT` hint column (drop those by field TYPE, 19.2).
 - [ ] Every dropdown value exists in its dictionary; every reference value exists on the stand.
 - [ ] Row count equals what you promised, and the file order is written down for the operator.
+- [ ] On an update file: no empty cell in a kept column unless erasing it is the intent; cell addresses
+      contiguous (no skipped column letters) in every row.
 
 ### 0X.6 Delivering
 
-UI: registry kebab → «импорт/экспорт xlsx». API: `v2/bo-transfer` (`MYBPM-UI-API.md` §6 and §0U R7,
-`[I]` — read off the bundle, never executed; the UI route is the confirmed one). Either way the upload
+UI: registry kebab → «импорт/экспорт xlsx». API: `v2/bo-transfer` (`MYBPM-UI-API.md` §6 and §0U R7) —
+upload, act, apply and export `[C]`; only `download-template` was never executed. Either way the upload
 only builds an **act**: read «создано / обновлено / ошибки» and apply the second step deliberately, and
 pull `download-errors` when rows fail — it names the row numbers.
 
@@ -5198,7 +5206,8 @@ pull `download-errors` when rows fail — it names the row numbers.
 ### 19.5 Merge / idempotency
 
 - **Match by the `ID` column → OVERRIDE, not duplicate** `[C]`: client-chosen ids
-  (`base62(sha256(seed))[:16]`, A-Za-z0-9) were accepted and kept. Platform ids are 16 chars and their
+  (`base62(sha256(seed))[:16]`, A-Za-z0-9) were accepted and kept. An API export with `needBoiId:true` adds
+  this column itself as the LAST one, headed «Внутренний айди» `[C]`; the UI export has none. Platform ids are 16 chars and their
   alphabet includes `~` and `@` (untested on import — stay in A-Za-z0-9). The id may be an ordinary column,
   e.g. «Системные.ID» (code `ID_`) — keep it in the file.
 - **Match by the unique field → UPDATE** `[C]`: adding a unique text field «Код» to the built-in «Рабочая
@@ -5211,9 +5220,21 @@ pull `download-errors` when rows fail — it names the row numbers.
 
 ### 19.6 Destructive risks — all `[U]`, act defensively
 
-- **Blank-cell semantics are unknown**: a blank cell (or a column missing for a newly added field) may
-  CLEAR the field on existing records → regenerate files with every column; an empty link/table cell might
-  clear a link set earlier → avoid re-importing files with empty link columns.
+- **A blank cell CLEARS the field on an existing record** `[C]`: an update matched by the ID column or by
+  the unique field, with `INPUT_TEXT`, `INPUT_NUMBER`, `CHECKBOX`, `DROPDOWN_SINGLE` and `TEXTAREA` cells
+  left empty, stored empty values (text → `""`, the rest → `null`, a checkbox reads «Нет»). It does not
+  matter whether the cell is present with empty text (`<is><t></t></is>`) or absent from the row — both
+  erase. The act does not warn: it reports the row as «обновлено», 0 errors. **`DATE` is the exception —
+  an empty date cell left the stored date untouched** `[C]`.
+- **A column MISSING from the file keeps the field** `[C]`: a file without the «Текст», «Число» and
+  «Статус» columns updated the other fields and left those three as they were. So the safe way to update a
+  few fields is a file with ONLY those columns (plus the key) — not a full file with blanks.
+- **Holes in the cell addresses break reading** `[C]`: the same three columns deleted by dropping their
+  cells but keeping the other cells' letters (header A, D, E, G, H) imported «успешно», yet the filled
+  «Флаг» (D) came out «Нет» on every row; re-lettered contiguously (A–E), the same data imported right.
+  Re-letter after removing columns.
+- An empty link/table cell is the same blank cell — expect it to clear a link set earlier `[I]` (only
+  scalar types were tested).
 - A parent's nested block that maps an existing child (by ID / unique field) may **overwrite the child with
   only the block's sub-columns, wiping the others**. Per the 2022 jar, sub-values run `saveImportInstance`
   on the referenced BO (found → UPDATED). Mitigation used in practice: child file → parent file →
@@ -5240,7 +5261,10 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 
 - **Round-trip instead of guessing**: take a stand export, edit it, import it, export again and read back.
 - Editing an export by rewriting only `xl/worksheets/sheet1.xml` (append rows before `</sheetData>`, update
-  `dimension ref`) and re-zipping every other member byte-for-byte imports fine.
+  `dimension ref`) and re-zipping every other member byte-for-byte imports fine — also as a STORED
+  (uncompressed) zip.
+- Re-importing an unchanged export with its ID column is a no-op update (every row «обновлено», values
+  unchanged) `[C]` — a cheap way to restore records after a destructive probe.
 - **Before handing a file over, read the xlsx BACK and rebuild the data model from its cells** (labels →
   codes) — this caught every error before the stand did.
 - Hand-made files must reproduce the header format exactly (freeze A3 + merges).
@@ -5268,10 +5292,10 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 ## 20. Open questions — records
 
 - Which flag actually controls whether a field becomes an Excel export column (`tableColToShow`?).
-- Blank-cell semantics on import (clear vs keep) — the single biggest destructive unknown.
 - Whether a nested block overwrites the other fields of an existing child.
 - Whether the importer writes into `isReadonly` fields, and whether it accepts sub-columns for fields
   hidden in the reference (`toShow: false`).
 - The 2-level header format for a sub-column that is itself a nested reference (`BoFieldNotSpecified`).
 - Person field labels beyond Фамилия / Имя / Email in the Excel format.
-- The `v2/bo-transfer` cycle itself is unexecuted — only the UI route is confirmed (`MYBPM-UI-API.md` §6).
+- Whether a blank cell clears a REFERENCE (BO / TABLE) value, and whether any cell value can clear a DATE.
+- `download-template` over the API is unexecuted (the rest of `v2/bo-transfer` is confirmed, `MYBPM-UI-API.md` §6).

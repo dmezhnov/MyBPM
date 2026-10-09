@@ -549,7 +549,8 @@ route below is for items on BOs that are already on the stand, and for access ri
 
 **Records never travel in a structure archive** — they are xlsx imported into a BO registry. The file
 format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it before writing a file. The API is
-`v2/bo-transfer` `[I]` (read off the client; the UI route is the confirmed one):
+`v2/bo-transfer` — upload, act, apply and export `[C]` (driven from a page of the stand, §10); only
+`download-template` was never executed:
 
 1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<…>` — an
    ordinary GET with query parameters (no envelope), returning the xlsx. **Take a fresh template after
@@ -559,22 +560,32 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    border in column A) or the whole file is rejected; dropdowns match **by label**, references by the
    target's **unique field or an `ID` sub-column** — and the referenced records must already exist.
 3. `POST /web/v2/bo-transfer/import-from-file` — **multipart**, file under `file`, plus the form field
-   `businessObjectId` → `{actId}`.
-4. `is-import-file-finished` — `P {"actId":…}`; then `load-import-file` — `P {"actId":…}` → the act: what
-   would be created, what updated, what failed. **Nothing is written yet** — this is the same two-phase
-   shape as R3.
-5. `apply-imported` — `P {"importId":…}` writes; `cancel-imported` drops it; `imported-ok` closes it;
+   `businessObjectId` → a bare `"<actId>"` string (no envelope on this call: plain multipart, `token`
+   header).
+4. `is-import-file-finished` — `P {"actId":…}` → `true` when done; then `load-import-file` — `P {"actId":…}` →
+   `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` (`importId` = the actId). **Nothing
+   is written yet** — this is the same two-phase shape as R3.
+5. `apply-imported` — `P {"importId":…}` writes (answers `""`); poll `watch-import-finished` — `P {"importId":…}`
+   → `true`; `cancel-imported` drops it; `imported-ok` closes it;
    `download-errors` — `P {"importId":…}` returns the «Ошибки при загрузке …» xlsx (row numbers + error
    codes).
-6. Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`) → `exportId` →
-   `is-bo-export-file-ready` — `P {"exportId":…}` → `load-bo-export-file` — `P {"exportId":…}` → bytes.
+6. Export: `export-bracket-bo` — **B** = the registry filter plus the selection:
+   `{boId, dynamicFilters:[], nativeFilters:[], brackets:[], search:"", paging:{offset:0,limit:50},
+   ordering:{fieldId:"",state:"UNSET",archetype:null}, state:"ALL", boInstanceIds:[…], boFieldIds:[…],
+   needBoiId:true}` → a bare `"<exportId>"`; `is-bo-export-file-ready` — `P {"exportId":…}` → `true`;
+   `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`needBoiId:true` adds a last
+   column «Внутренний айди»** holding each record's id, and a re-import matches rows by it `[C]`. The UI's
+   own export never sends it (bundle), so a UI export has no id column and matches by the unique field only.
 7. **Verify** by exporting the registry again and rebuilding the data model from the cells. **File order
    matters**: users → groups → dictionaries → records → link files, and a reference resolves only against
    records that were on the stand BEFORE the file was imported.
 
-The destructive unknowns of `MYBPM-IMPORTS.md` §19.6 apply in full: regenerate complete files, never
-partial ones, and **never write a column for the SINGLE side of a two-way link** — such rows are silently
-dropped (trap 13).
+**A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
+   `DATE` excepted), whether the cell is empty or absent from the row, and the act still says «обновлено»
+   with 0 errors; **a column missing from the file KEEPS the field**. To update a few fields, ship only
+   those columns plus the key. After removing columns re-letter the cells contiguously — a header with
+   skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
+**Never write a column for the SINGLE side of a two-way link** — such rows are silently dropped (trap 13).
 
 #### R8 — Export the structure of a company
 
@@ -3571,29 +3582,36 @@ Probe on `<stand>`: BO «Проба сервиса» (group «Тест»), entry
 Records (instances) are imported as **Excel files into a BO registry** (registry kebab → импорт/экспорт
 xlsx), never through the structure archive.
 
-### Import and export through the API — controller `v2/bo-transfer` `[I]` (read off the bundle)
+### Import and export through the API — controller `v2/bo-transfer` `[C]`
 
 The registry kebab's «импорт/экспорт xlsx» is an ordinary controller, and it is **two-phase like the
 structure import**: the upload builds an "act" you can read, and a second call applies it. Read off chunk
-`7084`; **not executed** — every record import so far was done through the UI.
+`7084` and driven end to end from a page of the stand (upload → act → apply → export); `download-template`,
+`load-bo-import-table` and `download-errors` were not called. The exact bodies are §0U R7.
 
 | # | call | params | note |
 |---|---|---|---|
 | 0 | `load-bo-import-details` | `{businessObjectId}` | what the importer expects of this BO |
 | 1 | `download-template` | `{businessObjectId, selectedFieldIds}` | a plain **GET** with query params, no envelope → the xlsx |
-| 2 | `import-from-file` | multipart: file under **`file`**, plus the form field `businessObjectId` | → `{actId}` |
+| 2 | `import-from-file` | multipart: file under **`file`**, plus the form field `businessObjectId` | → a bare `"<actId>"` |
 | 3 | `is-import-file-finished` | `{actId}` | poll |
-| 4 | `load-import-file` | `{actId}` | the act: new / updated / errors — **nothing written yet** |
+| 4 | `load-import-file` | `{actId}` | the act `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` — **nothing written yet**; a blank cell shows up only as «updated» |
 |   | `load-bo-import-table` | body = a table request | the act's rows |
 | 5 | `apply-imported` | `{importId}` | **writes** |
 |   | `cancel-imported` / `imported-ok` | `{importId}` | drop / close |
 |   | `watch-import-finished` | `{importId}` | poll the apply |
 | 6 | `download-errors` | `{importId}` | the «Ошибки при загрузке …» xlsx |
 
-Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`) and `export-bracket-bo`
-(`{…filter…, boInstanceIds, boFieldIds, needBoiId}`) → an `exportId`; then `is-bo-export-file-ready
+Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called) and `export-bracket-bo`
+(`{…filter…, boInstanceIds, boFieldIds, needBoiId}` in the BODY, `[C]`) → an `exportId`; then `is-bo-export-file-ready
 {exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` is how an export gets the
-`ID` column that makes a re-import idempotent (§«Merge / idempotency»).
+`ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`.
+
+**What an update file does to the fields it carries** `[C]`: **A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
+`DATE` excepted), whether the cell is empty or absent from the row, and the act still says «обновлено»
+with 0 errors; **a column missing from the file KEEPS the field**. To update a few fields, ship only
+those columns plus the key. After removing columns re-letter the cells contiguously — a header with
+skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
 
 ### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]`
 
@@ -4563,7 +4581,7 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   add a composite row), capturing the request with the XHR patch.
 - **The success path of `/web/v2/auth/v3/login` was never run** (§0U.1 route A) — only the failure. If
   the body turns out not to be the bare token, §0U.1 and §1 need correcting.
-- The `v2/bo-transfer` record import/export (§6) is equally unexecuted — the UI route is the confirmed one.
+- `v2/bo-transfer/download-template` (§6) is unexecuted — upload, act, apply and export are confirmed.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet (old question 20;
   «Глобальные методы» is answered in §5g).
 
