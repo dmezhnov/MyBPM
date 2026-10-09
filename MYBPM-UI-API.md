@@ -92,18 +92,16 @@ Content-Type: application/json
   `dXNlcm5hbWU=` (base64 of `username`) and the password under `cGFzc3dvcmQ=` (base64 of `password`),
   **and the values are base64 too** (`btoa(unescape(encodeURIComponent(value)))`, i.e. base64 of the
   UTF-8 bytes). `clientType` is `WEB` or `MOBILE`.
-- **The response body IS the token** `[I]` — the client feeds the whole body of `/v3/login` straight into
-  its token store (`setSession(y)` → `writeToken`), which is the same value the `token` header carries.
-  Use it as the header for every later call.
+- **The response body IS the token** `[C]` — a JSON string (`"abc…"`, ~236 bytes with the quotes); **strip the
+  quotes** and send the rest as the `token` header of every later call (with the quotes: `SecurityError`
+  «Illegal Session», as in route B). `GET /web/v2/auth/load-auth-info` with that header names the user
+  and lists their `functionCodes` — the quickest check that the login landed on the intended account.
 - Wrong credentials answer **HTTP 200** with
   `{"message":"Не верен пользователь и/или пароль","errorType":"IllegalLoginOrPassword",…}` `[C]`
   (probed on `<stand>` with a nonexistent user). So a failed login looks exactly like any other
   error (§0U.2) — check `errorType`, never the HTTP status.
 - `POST /web/v2/auth/load-token` (empty params and body) returns the token of the CURRENT session, and
   `GET /web/v2/auth/load-auth-info` describes who you are. `GET /web/v2/auth/logout` ends the session.
-- **Not yet executed end to end**: only the failure path was probed, because the password was never in
-  this folder. If the success path turns out to return an object rather than a bare string, take the
-  token out of it and correct this paragraph.
 
 #### Route B — take the token out of a logged-in browser
 
@@ -516,7 +514,9 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
    (`+ tabId`). An unknown `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто»
    answer can be real.
 7. **Verify** by calling `load-access-group` again and comparing — this is the one area where the UI
-   silently sends nothing when it thinks nothing changed.
+   silently sends nothing when it thinks nothing changed. What each subject really opens (field content,
+   author, participants) is the table in §3 «What each subject opens» `[C]`; checking it needs a second,
+   NON-admin login (§0U.1 route A) — an admin sees every record whatever the rights say.
 
 #### R6 — A sidebar menu item and a record filter
 
@@ -538,7 +538,9 @@ route below is for items on BOs that are already on the stand, and for access ri
    catalogue gives an item with no icon at all.
 4. Rights: `load-access-group` / `save-access-group` on **`v2/menu-item`** — `P {"menuItemId":…}`, body =
    the access group (same shape as R5); then `save-menu-item-chosen-access-right` —
-   `P {"menuItemId":…,"chosenAccessRight":true}`. Only `view` matters for navigation.
+   `P {"menuItemId":…,"chosenAccessRight":true}`. Only `view` matters for navigation. **Rights do not
+   cascade** `[C]`: each item is filtered by its OWN rights — set them on every item you want hidden
+   (§4 «Menu-item rights»).
 5. A record filter: `load-bracket-filter` — `P {"menuItemId":…}` **creates** the filter record if it is
    missing → `POST /web/v2/bracket-filter/save` — `B {"id":…,"boId":…,"brackets":[<root>]}`. A bracket is
    `{id,parentId,parentTreeIds,connectionType,notType,dynamicFilters,nativeFilters,brackets}`.
@@ -715,19 +717,18 @@ something behaves impossibly** · §12 what is still unknown.
   «expired session». In the browser the Angular client reads the same key, so a curl/Bun client outside the
   browser needs nothing else: **no cookies** (`document.cookie` is empty on this stand) and no company
   header — the token alone selects the tenant.
-- **A browser is not the only way to get a token** — the stand has a headless login. Endpoint `[C]`,
-  return value `[I]` (read off chunk `9839`; the failure path was probed with curl):
+- **A browser is not the only way to get a token** — the stand has a headless login `[C]` (both paths run):
   `POST /web/v2/auth/v3/login`, standard envelope, body
   `{"dXNlcm5hbWU=":"<base64 of the login>","cGFzc3dvcmQ=":"<base64 of the password>",
   "timeOffsetZoneInMinutes":-300,"timezoneRegion":"Asia/Almaty","clientType":"WEB","userAgent":"curl",
   "pushToken":null,"clientVersion":""}`. The two keys are literally base64 of `username` / `password`,
   and the values are base64 of the UTF-8 bytes (`btoa(unescape(encodeURIComponent(v)))`).
-  **The response body is the token itself** — the client feeds the whole body into `writeToken`.
+  **The response body is the token itself**, as a JSON string — strip the quotes.
   Wrong credentials: HTTP 200 + `{"errorType":"IllegalLoginOrPassword","message":"Не верен пользователь
   и/или пароль"}`. The rest of the controller: `load-token` (the current session's token),
   `load-auth-info` (GET, who am I), `fast-login`, `otp-login`, `verify-code`, `send-to-verify`,
-  `has-otp-settings`, `get-all-masks`, `save-company`, `logout` (GET). **The success path was never
-  executed** — no password was ever in this folder; run it once and re-mark it.
+  `has-otp-settings`, `get-all-masks`, `save-company`, `logout` (GET). A second, non-admin login is how
+  rights are verified (§3 «What each subject opens») — the admin token sees everything.
 - **Fresh ids**: `v2/id-loader/load-portion` returns an array of ids; use them for objects you create.
 - **Finding an endpoint — grep the whole bundle offline, it beats sniffing** `[C]`.
   Endpoints live in lazy JS chunks (`956.*.js` — rights, menu, icons; `9839` — BO controller + the HTTP
@@ -790,7 +791,38 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
   `orgUnitRecordList[{id,type:GROUP|PERSON,name,…}]`, `orgUnitToAdd`, `orgUnitToDelete`.
   Mapping: «Автор (инициатор)» = `authorsField.accessForAuthor`; «Содержимое поля» =
   `fromFields[fieldId].accessForContent`. `accessForAuthor` is true on every `fromFields` entry of
-  `all`/`view` by default — meaning unclear `[U]`.
+  `all`/`view` by default, and it opens nothing (below).
+- **What each subject opens** `[C]` — measured as a second, non-admin user reading the registry
+  (`load-bo-instance-bracket-table` → `totalHits`) of a probe BO with one Person field, `view` set to
+  `accessForAll:false` plus ONE subject at a time:
+
+  | subject (`view`) | the user sees |
+  |---|---|
+  | nothing at all | no record |
+  | `fromFields[<Person field>].accessForContent` («Из поля → Содержимое поля») | exactly the records whose field holds them |
+  | `authorsField.accessForAuthor` («Автор (инициатор)») | exactly the records they created |
+  | `participants:true` («Участники») | the records they are a participant of |
+  | `authorsField.accessForContent` alone | no record |
+  | `fromFields[<field>].accessForAuthor` alone | no record — the default `true` there is inert |
+
+  **Participants**: the author of a record is its participant from the start (so `participants:true`
+  also shows a user their own records); `v2/business-object-instance/members-of-instance` —
+  `P {businessObjectId, boInstanceId, draftId:null}` → `[{id, type:"PERSON", name, email, …}]` reads them;
+  `add-members-to-instance` (same params, **B** = an array of org units `[{id,type:"PERSON",name}]`, → `""`)
+  and `delete-members-from-instance` change them. A Person field with `needAddToParticipants:true` adds the
+  person put into it — even through the script-less draft cycle (§6a). Each addition raises a bell event
+  «Вас добавили» (`type:"ADD_PARTICIPANTS"`) for the added person (`v2/user-notification/count` →
+  `events`). A user named in the field of a record they are NOT a participant of does not see it under
+  `participants:true` alone.
+  Not measured: `accessForHead` / `accessForEmployees` / `accessForDepartment` / `…ParentDepartment` /
+  `…ChildDepartment` (need an org structure around the test user) and `authorsField.fieldIds`. The latter is
+  `[I]` the Person fields of the AUTHOR's own record — `load-org-field-record-list` lists, under each Person
+  field, the Person BO's own Person fields (`Преемник`, `Предшественник`), and `load-field-access-author-person-list
+  {name:"Сотрудник"}` serves the author row the same way.
+  **Re-sending `fromFields:{}` does NOT remove a field entry** — the server keeps it; set its flags to
+  `false` instead. Once, a record the user created right after the first rights save showed up although no
+  subject covered it; two later records under the same rights did not, and the first one vanished after the
+  next save — treat a just-created record's visibility as unreliable for a minute, re-check after a re-save.
 - `save-access-group` body `{businessObjectId, accessGroup:<the same object>}`.
   **Groups persist only through `orgUnitToAdd` (full unit records) / `orgUnitToDelete`, NOT through
   `orgUnitRecordList`** `[C]` — the UI sends `orgUnitToAdd: []` for groups that are already there.
@@ -920,8 +952,14 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
   `boPages` travel too — the timeline as `timelineFieldCode` (a `PERIOD` field's code) — `[C]` same day;
   set them over the API with `save-menu-item-bo-pages` params `{menuItemId}`, body = the whole `boPages`
   (`timelineFieldId` = a field of `v2/timeline/load-fields {boId}` — the BO's `PERIOD`/`PERIOD_TIME` fields).
-- `[U]`: whether group-level menu rights cascade to child items (set both), and whether users really see
-  only permitted items (never checked under a restricted user).
+- **No cascade; each item is filtered by its own `view`** `[C]` (a non-admin user's `load-nav-items`, the
+  call the sidebar makes): a GROUP closed to them («ВЫБОРОЧНО», nobody) disappears from the root, but
+  `load-nav-items {parentId:<that group>}` still returns its open children — they are only unreachable in
+  the sidebar. With the group open and one child closed, only the other child comes back; that child
+  reappears once the user is put into its `view.orgUnitToAdd` (a PERSON unit works as well as a group).
+- **Menu rights and BO rights are independent** `[C]`: an item open to the user stays in their sidebar while
+  the BO's own `view` shows them nothing — the registry then opens empty. Hide a screen with the menu
+  rights, protect the records with the BO rights (§3).
 
 ### Record filters (bracket filters)
 
@@ -2442,7 +2480,7 @@ appears when the referenced BO has a field pointing back).
 | `needChangeParentBoByLinkedBo` (default `true` on EVERY field) | «При добавлении/изменении объекта(ов)» «Изменить бизнес объект "<BO>"» (`true`) / «Не изменять…» (`false`) | see below |
 | `copyFromFieldId` = another `BO` field of the same BO | «Отображение» → «Логика отображения значения» → «Из другого поля» | the field is filled with a COPY of that field's value on every save of the record (stored, not just shown); emptied when the source is emptied `[C]` |
 | `needMarkNew` | «Поведение» → «Помечать новые» | client code: rows with `isNew` (or state NEW) render in bold and new ones are put on TOP instead of the sort order. `isNew` came back `false` for every record in a one-user probe — the bold was not seen `[I]` |
-| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» (only when the referenced BO is kind `PERSON`) | adding MYSELF raised no notification (the self-case is probably skipped); another person was not tried — it would notify a real user `[U]` |
+| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» (only when the referenced BO is kind `PERSON`) | the person put into the field becomes a participant of the record and gets the bell event «Вас добавили» `[C]` (a second user, also through the script-less §6a cycle); adding MYSELF raised no notification. What a participant gains: §3 «What each subject opens» |
 | `isHeightDynamic` | «Динамическая высота» (`BO` only) | see «Tables» in `MYBPM-IMPORTS.md` §3 |
 | `linkedCoSettings` (a `CO` field) | «Поведение» → «Связь объектов <BO>/<field>» → «Объект из Составного объекта» → pick a source BO → the same «Заполнить поле» / «При удалении» radios | per source BO of the composite: see below |
 
@@ -4634,7 +4672,6 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 
 The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` §20.
 
-- Whether menu rights cascade from a group item to its children, and what a restricted user really sees.
 - What `save-business-form-field` is actually for, since it does not create fields.
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
 - §5n settings kinds: how to unset a migration monitor BO; what the `languageTag` an import writes
@@ -4655,8 +4692,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   touched the first two coincided with a 30-second outage of the stand (trap 52). Next attempt: through
   the UI (upload a real file, tick a checklist item on a BO whose items were typed in the constructor,
   add a composite row), capturing the request with the XHR patch.
-- **The success path of `/web/v2/auth/v3/login` was never run** (§0U.1 route A) — only the failure. If
-  the body turns out not to be the bare token, §0U.1 and §1 need correcting.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet (old question 20;
   «Глобальные методы» is answered in §5g).
 
