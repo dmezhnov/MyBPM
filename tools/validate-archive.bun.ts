@@ -630,12 +630,13 @@ for (const bo of bos) {
   if (bo.nativeFields && !Array.isArray(bo.nativeFields) && bo.category !== "BO_COMPOSITE")
     for (const [k, n] of Object.entries<any>(bo.nativeFields))
       if (n?.gridPosition && typeof n.gridPosition.y === "number") laid.push({ ft: `${tag}.native ${k}`, f: n, gp: n.gridPosition, box: true });
-  // so does every widget (§0.5b) — a stand export with widgets between the fields has the gaps they fill
+  // so does every widget (§0.5b) — a stand export with widgets between the fields has the gaps they fill; a widget
+  // on a tab names it in `tabCode` (a field uses `tabCodePath`) and is laid out inside that tab, not in this stack
   if (bo.category !== "BO_COMPOSITE")
     for (const map of ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"])
       if (bo[map] && !Array.isArray(bo[map]))
         for (const [k, w] of Object.entries<any>(bo[map]))
-          if (w?.gridPosition && typeof w.gridPosition.y === "number" && !w.tabCodePath?.tabGroupCode)
+          if (w?.gridPosition && typeof w.gridPosition.y === "number" && !w.tabCodePath?.tabGroupCode && !w.tabCode?.tabGroupCode)
             laid.push({ ft: `${tag}.${map}.${k}`, f: w, gp: w.gridPosition, box: true });
   laid.sort((a, b) => a.gp.y - b.gp.y);
   let prevY: number | null = null, prevRows = 0;
