@@ -5272,12 +5272,17 @@ pull `download-errors` when rows fail — it names the row numbers.
 
 ### 19.2 Columns missing from / leaking into an export
 
-- **STATIC_TEXT («Текст») fields can leak in as columns** with their plain text repeated in every row.
-  28 of 29 did not appear (the user had hidden them); `tableColOrderIndex: 0` is NOT the switch; the real
-  switch is unidentified (candidate `tableColToShow` `[U]`). **Drop such hint columns by field TYPE
-  (STATIC_TEXT) read from the archive, never by a label pattern.**
-- One real field was absent from an export (same value «Всегда» in every row); the explanation «omitted
-  because all values are identical» is `[U]`.
+- **No field flag decides the export columns — the export request does** `[C]`. `export-bracket-bo`
+  carries `boFieldIds`: a non-empty list gives exactly those fields, in that order; an EMPTY list gives
+  every field of the BO except `TAB_GROUP` — `STATIC_TEXT` included and `tableColToShow: false` fields
+  included. The UI's «Экспорт в .xlsx» is a field chooser over all fields but `TAB_GROUP`, pre-ticked with
+  the registry columns (`tableColToShow`, numbered in their order); the user ticks or unticks any field, and
+  the ticked list is sent. `tableColToShow` therefore only sets the UI's default, and `tableColOrderIndex`
+  only its order.
+- **So STATIC_TEXT («Текст») fields appear as columns** — their plain text repeated in every row — when an
+  export sent an empty list or the user ticked them. **Drop such hint columns by field TYPE (STATIC_TEXT)
+  read from the archive, never by a label pattern.** For the same reason a real field can be absent from a
+  user's export (it was not ticked) — never conclude from one export that a field does not exist.
 
 ### 19.3 Resolution rules
 
@@ -5324,7 +5329,8 @@ pull `download-errors` when rows fail — it names the row numbers.
 
 - **Match by the `ID` column → OVERRIDE, not duplicate** `[C]`: client-chosen ids
   (`base62(sha256(seed))[:16]`, A-Za-z0-9) were accepted and kept. An API export with `needBoiId:true` adds
-  this column itself as the LAST one, headed «Внутренний айди» `[C]`; the UI export has none. Platform ids are 16 chars and their
+  this column itself as the LAST one, headed «Внутренний айди» `[C]`; in the UI the same column is the
+  «Внутренний айди» checkbox of «Экспорт в .xlsx», shown to administrators only and off by default. Platform ids are 16 chars and their
   alphabet includes `~` and `@` (untested on import — stay in A-Za-z0-9). The id may be an ordinary column,
   e.g. «Системные.ID» (code `ID_`) — keep it in the file.
 - **Match by the unique field → UPDATE** `[C]`: adding a unique text field «Код» to the built-in «Рабочая
@@ -5413,7 +5419,6 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 
 ## 20. Open questions — records
 
-- Which flag actually controls whether a field becomes an Excel export column (`tableColToShow`?).
 - Whether the importer writes into `isReadonly` fields, and whether it accepts sub-columns for fields
   hidden in the reference (`toShow: false`).
 - The 2-level header format for a sub-column that is itself a nested reference (`BoFieldNotSpecified`).

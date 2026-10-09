@@ -581,8 +581,14 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    ordering:{fieldId:"",state:"UNSET",archetype:null}, state:"ALL", boInstanceIds:[…], boFieldIds:[…],
    needBoiId:true}` → a bare `"<exportId>"`; `is-bo-export-file-ready` — `P {"exportId":…}` → `true`;
    `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`needBoiId:true` adds a last
-   column «Внутренний айди»** holding each record's id, and a re-import matches rows by it `[C]`. The UI's
-   own export never sends it (bundle), so a UI export has no id column and matches by the unique field only.
+   column «Внутренний айди»** holding each record's id, and a re-import matches rows by it `[C]`. In the UI
+   it is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default — so a
+   user's export usually has no id column and matches by the unique field only.
+   **`boFieldIds` decides the columns** `[C]`: a non-empty list = exactly those fields in that order; an
+   EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
+   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab) is a chooser over the same
+   fields, pre-ticked with the registry columns; it sends what is ticked, in ticking order. No field flag
+   hides a field from an API export — list the fields you want.
 7. **Verify** by exporting the registry again and rebuilding the data model from the cells. **File order
    matters**: users → groups → dictionaries → records → link files, and a reference resolves only against
    records that were on the stand BEFORE the file was imported.
@@ -3703,7 +3709,7 @@ structure import**: the upload builds an "act" you can read, and a second call a
 Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called) and `export-bracket-bo`
 (`{…filter…, boInstanceIds, boFieldIds, needBoiId}` in the BODY, `[C]`) → an `exportId`; then `is-bo-export-file-ready
 {exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` is how an export gets the
-`ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`.
+`ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]`.
 
 **What an update file does to the fields it carries** `[C]`: **A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
 `DATE` excepted), whether the cell is empty or absent from the row, and the act still says «обновлено»
