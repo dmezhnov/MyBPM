@@ -394,8 +394,11 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
      `[{importRecordId,name,boCategory,structTypes}]`, one row per object in the archive;
    - `load-import-bo-record` — `P {"importId":…,"recordId":…}` → the per-BO pre-apply diff (added fields,
      changed fields, added tabs/widgets).
-   **Read this before applying.** `load-import-errors` has come back EMPTY while the UI dialog showed a
-   real error («В Составном объекте не достаёт БО»), so an empty error list is not a guarantee.
+   **Read this before applying — all three, an empty `errorRecords` alone is not a guarantee.** The analysis
+   errors of the UI «Ошибки» tab come back in `load-import-errors` of the SAME `importId` `[C]` (another
+   import's errors look empty — that is how they once seemed missing); an analyzer crash is not an error
+   record but `load-import-data` → `status:"INTERNAL_ERROR"` + a Java stack in `error`; and errors raised
+   only while APPLYING never reach either — they are in the apply process (trap 57).
 5. `save-import-description` — `P {"importId":…,"value":"что и зачем импортируем"}` → empty body.
    The description is **required**: applying without it gives status `DESCRIPTION_ERROR`.
 6. `POST /web/v2/process-indicator/pre-create-process` — `P {}` → `"<processId>"`.
@@ -841,8 +844,8 @@ All verified on the `<company-c>` stand by building 5 menu groups + 36 items via
 - The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it (100000, 200000, …).
 - `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages` = the item's views: list, kanban,
   calendar, timeline, map, grouping, each an `is*Enabled` flag + an `*Index` (tab order, 1-based over the
-  enabled views). Only list and kanban were ever set `[C]`; what the other four need is `[U]`
-  (`MYBPM-IMPORTS.md` 0.5d). Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
+  enabled views). List, kanban, calendar, timeline and map work `[C]`, grouping is dead server-side; what
+  each needs on the BO is the table of `MYBPM-IMPORTS.md` 0.5d. Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
   the board and its COLUMNS on for THIS item; the CARD lives on the BO and must come from the archive (§7).
 - Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"<namespace>:<name>"}` (empty 200).
   **Valid names = the catalogue below** (1153 names, `phosphor:*` AND `menu-item:*`); the server accepts
@@ -924,6 +927,8 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 - `load-bracket-filter {menuItemId}` **creates** the item's filter record if it is missing
   (`bracketFilterId` is null until then) → then `v2/bracket-filter/save` body
   `{id:<filter id>, boId, brackets:[root]}`.
+- **An archive can carry the filter instead** `[C]`: a menu line's `bracketFilter.brackets` (maps keyed by
+  8-char ids, `fieldCode` instead of `fieldId`) imports whole — `MYBPM-IMPORTS.md` §5e.
 - A bracket: `{id, parentId, parentTreeIds, connectionType, notType: DEFAULT|NOT, dynamicFilters,
   nativeFilters, brackets}`.
 - **Semantics, verified by record counts** `[C]`: filters inside ONE bracket are AND-ed; a bracket's own
@@ -1060,8 +1065,12 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   after. So rolling back in the order the stand allowed: B → the item got A's name back and **C's change,
   applied later, was silently lost**; then C → the item got **B's** name back — a state from an import
   that was already rolled back; then A (`deleteItems`) removed the BO and the item, and the stand was
-  clean again. Rules: when you may need to undo, **leave at least a minute between applies** (how
-  same-minute imports are ordered is unknown `[U]`); before undoing ONE import, check that it is the one
+  clean again. **The ranking rule** `[C]` (three runs, the same every time): imports are ordered by the
+  MINUTE of `imported_at` (the upload time, minute precision), and **inside one minute the order is
+  REVERSED — the import applied FIRST counts as the newest**. a, b, c applied in that order within one
+  minute came back `newerAppliedImportsCount` a 0 / b 1 / c 2 (`canRollback` on a); d applied the next
+  minute ranked above all three. Rules: when you may need to undo, **leave at least a minute between
+  applies**; undoing a same-minute batch goes FIRST-applied first. Before undoing ONE import, check that it is the one
   with `canRollback:true`; undoing a CHAIN is safe only all the way back to the import that CREATED the
   objects, whose rollback deletes them.
 - **`load-business-object-name` is not an existence check** `[C]`: after the rollback it still answered
@@ -3302,7 +3311,8 @@ fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the
   every archive BO with a dropdown imported without one was broken this way (trap 61).
 - `v2/kanban/save-kanban-card-template` does NOT repair it (it fills another store, §7). **A re-import with
   `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor came back, records kept.
-- A BO with a GEO_POINT and no dropdown at all: points load (`[]` with no records); not looked at with records `[I]`.
+- A BO with a GEO_POINT and no dropdown at all needs no template `[C]`: its point carries EVERY form field
+  (`Текст`, `Точка`), and the map opened from a menu item with `isMapEnabled` showed the marker.
 
 **Grouping.** The levels and columns are per FIELD, `groupingInfo {colToShow, colOrderIndex, nodeTreeActive,
 nodeTreeLevel}` (`nodeTreeActive` + `nodeTreeLevel` 0.. = a tree level, `colToShow` + `colOrderIndex` = a table
@@ -3737,8 +3747,11 @@ missing one was never the menu item:
 
 1. **Columns** — switched on where the board is shown; the one verified place is a MENU ITEM:
    `boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId` (§4). This part always worked.
-   Whether a kanban can be switched on anywhere else (a panel's registry, a reference field, the BO
-   registry outside the menu) is `[U]` (`MYBPM-IMPORTS.md` 0.5c).
+   **The BO's own registry needs no switch** `[C]`: opened from «Бизнес-объекты» it offers «Канбан по полю:
+   <label>» per `DROPDOWN_SINGLE` and renders the board at
+   `/business-objects/viewing-list/bo/<boId>/kanban-view?fieldId=<dropdown fieldId>&boId=<boId>&menuItemId=<dropdown fieldId>&businessObjectId=<boId>`.
+   A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
+   (`MYBPM-IMPORTS.md` 0.5c).
 2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO carried `{}`,
    so `BoDto.toKanbanCardTemplate` NPE-d and the view showed «cardTemplate is null». **Ship the template
    inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
@@ -4349,8 +4362,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     block only adds children, and a block never edits the child (R7).
 16. xlsx library: update both `dimension` and the table `ref`; a Cyrillic table `displayName` breaks the file.
 17. Do not chase Google Sheets grid cropping through `xl/metadata`.
-18. Structure-import rollback: only the import with `canRollback:true` can be undone, same-minute imports
-    may be ranked out of order, and undoing an UPDATE restores the state IT found — later changes are lost
+18. Structure-import rollback: only the import with `canRollback:true` can be undone, inside one minute the
+    stand ranks the FIRST-applied import as the newest, and undoing an UPDATE restores the state IT found — later changes are lost
     (§5 «Rollback trap»). Leave a minute between applies you may want to undo.
 18. A BO is created only from a GROUP's hover-kebab in `/business-objects/editing`; the caption-level ⊕
     sends `boGroupId: null`, finds no `kind: DEFAULT` group on `<company-a>` and silently creates nothing.
