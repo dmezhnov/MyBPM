@@ -219,7 +219,8 @@ otherwise. `P` marks values that go into `params_Lr1oSgwPR8`, `B` into `body_o1n
 
 No archive is involved. This is the cheapest way to put a BO on a stand.
 
-1. **Resolve the group.** `load-bo-groups` — `P {}`, `B {}` → `[{id,name,code,orderIndex,kind}]`.
+1. **Resolve the group.** `load-bo-groups` — `P {"forEdit":true}`, `B {}` → `[{id,name,code,orderIndex,kind}]`
+   (without `forEdit` the groups that hold no BO are left out `[C]`).
    Pick the group **by name, from what the stand actually returned**; the group must already exist.
 2. **Create.** `create-bo` — `P {}`, **`B {"boGroupId":"<group id>","boCategory":"BO"}`** →
    `{"id":"…","name":"Бизнес объект №7",…}`. **The BO is on the stand from this moment on**, under a
@@ -422,7 +423,7 @@ Use these instead of screenshots; several of these screens are invisible to text
 
 | question | call | params |
 |---|---|---|
-| which BO groups exist? | `load-bo-groups` | `{}` (optional `{forEdit, searchValue}`) |
+| which BO groups exist? | `load-bo-groups` | `{"forEdit":true}` — **without it the empty groups are missing** `[C]` (optional `searchValue`) |
 | what is in a group? | `load-bo-records-by-group-id` | `{"groupId":…}` — **`groupId`**, not `boGroupId` |
 | what is this BO? | `load-business-object-by-id` | `{"businessObjectId":…}` |
 | id of a BO whose code I know | `load-bo-id-by-code` | `{"boCode":…}` |
@@ -1151,12 +1152,25 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 
 - `load-bo-id-by-code {boCode}` → the BO id. On the API-imported probe it returned exactly the archive's
   `oldId` — confirms again that **the archive's `oldId` becomes the stand's BO id** `[C]`.
-- `load-business-object-name {boId}` → the BO's name; `load-bo-groups {}` → all 14 `<company-a>` groups with
-  `{id,name,code,orderIndex,kind}` (the way to prove an import renamed nothing — **groups are matched by
+- `load-business-object-name {boId}` → the BO's name; `load-bo-groups {forEdit: true}` (PARAMS) → every group
+  with `{id,name,code,orderIndex,kind}` — **without `forEdit` the groups that hold no BO are silently left out**
+  `[C]` (15 of 22 on `<stand>`), so a before/after snapshot must take `forEdit: true`
+  (the way to prove an import renamed nothing — **groups are matched by
   `code`; a group line without `code` renames one fixed group, and a line WITH an existing code still
   overwrites that group's `name` and `orderIndex` with its own** `[C]`, `MYBPM-IMPORTS.md` §0.3/§8). Undo a rename
   with `save-business-object-group`, body = that group object with the old `name` / `orderIndex` (answers
   `""`); a rollback does NOT restore it `[C]`;
+- **The group lifecycle** (all `v2/business-objects/…`, PARAMS unless said) `[C]`:
+  `create-business-object-group {orderIndex, kind: "MANUAL"}` → the group object, named «Группа №N» and
+  **already carrying a code `Gruppa__N`** — a new group always has a code, only old groups have `null`;
+  `save-business-object-group` BODY = the whole group object → `""` — renames, moves (`orderIndex`) and
+  **changes the code**; a code already taken or `null` is refused with `IllegalArgumentException` «Bo group
+  code is not valid or already exists» (re-saving a group whose code IS `null` with `code: null` passes —
+  that is the rename repair above), so **giving a code-less group a code is one-way**: it can never go back
+  to `null`. `verify-business-object-group-code {boGroupId, boGroupCode}` → `true` when the code is free —
+  it checks only uniqueness (`"плохой код"` with a space answered `true`). `delete-business-object-group
+  {boGroupId}` → `""` deletes an empty group. A code given by `save-business-object-group` is matched by
+  the next archive like any other: the BO landed in that group, no group changed;
 - `import-structure/load-import-file-records` — body `{paging:{offset,limit}}` (without `paging`: NPE) → the
   import log, newest first, `{id,fileName,description,imported_at,status,canRollback,…}`;
 - **`apply-import` can answer an ERROR** instead of `{type:"APPLIED"}` — then the import stays `ANALYZED`
@@ -1260,7 +1274,7 @@ settings).
 
 | # | call | params / body | note |
 |---|---|---|---|
-| 1 | `load-bo-groups` | `{}` | resolve the group by name → `{id,name,code,orderIndex,kind}` |
+| 1 | `load-bo-groups` | `{forEdit: true}` | resolve the group by name → `{id,name,code,orderIndex,kind}` |
 | 2 | `create-bo` | **body** `{boGroupId, boCategory}` | the BO exists from here on |
 | 3 | `save-business-object-portion` | body `{jsonPart, orderIndex, isLast, id}` | rename + description |
 | 4 | `generate-business-form-field` | params `{boId, fieldType, fieldBoId}` | one call per field |
@@ -4550,7 +4564,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     record».
 55. **An archive group line without `code` renames an existing BO group** `[C]` — even when
     its `name` is another existing group's; all such lines collapse into that one group; rollback does not
-    undo the rename. Always ship `code` (§5 «Verifying an import»).
+    undo the rename. Always ship `code` (§5 «Verifying an import»). Which group it hits is NOT the one
+    with the largest `orderIndex` `[C]`: with another code-less group moved below it, the line still renamed
+    the same «Бизнес-объект» on `<stand>`; why that one stays unknown, and it can no longer be probed —
+    every group created now gets a code, and a code cannot be set back to `null` (§5 «group lifecycle»).
 56. **The timeline view («Диаграмма Ганта») shows «Your license key is not valid to work with this
     version»** at its bottom on `<stand>` `[C]` — a banner of the Gantt library; the view works.
 57. **An import can be `APPLIED` while the BO it should create does not exist** `[C]` — the

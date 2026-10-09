@@ -129,7 +129,7 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 
 | Ask for | Why guessing fails silently | Fallback if the user declines to supply it |
 |---|---|---|
-| The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted — say so); for a new one mint a new `code` and say that a group will be CREATED |
+| The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted until it is given one — `save-business-object-group` with a new `code`, `MYBPM-UI-API.md` §5; that is a stand write and one-way, a code never goes back to `null`, so ask before doing it); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 
@@ -206,8 +206,8 @@ Two more rules that need no asking, they are absolute: `Person` / `Department` /
 reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
 shipped unless the user asked for one (§0.10 rule 10 — it REPLACES the rights set on the stand).
 
-Where the user reads these off a stand (routes in `MYBPM-UI-API.md` §0U, recipe R4): `load-bo-groups` → the group
-names, `load-bo-records-by-group-id` → the BOs of a group with their codes and ids,
+Where the user reads these off a stand (routes in `MYBPM-UI-API.md` §0U, recipe R4): `load-bo-groups {forEdit: true}` → the group
+names (without `forEdit` the empty groups are missing), `load-bo-records-by-group-id` → the BOs of a group with their codes and ids,
 `load-bo-id-by-code` → an id for a known code, `load-bo-dictionary-list` → the dictionaries. By hand: the
 constructor's BO list, and the id sits in the URL `…/business-objects/editing/<boId>/object-editing`.
 
@@ -226,9 +226,12 @@ constructor's BO list, and the id sits in the URL `…/business-objects/editing/
   EXISTING group copy all three — `code`, `name`, `orderIndex` — from `load-bo-groups` (0.2a). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
   it** — whatever `name` says, even the exact name of another existing group. That is the defect that
   destroys the customer's group list (§8). Never ship a group line without `code`.
-- To put the BOs into an EXISTING group, copy its `code` from `load-bo-groups` (0.2a). Many stand groups
-  have `code: null` — such a group cannot be targeted by an archive; ask the user for a group that has a
-  code, or ship a new group with a new code.
+- To put the BOs into an EXISTING group, copy its `code` from `load-bo-groups` (0.2a). Old stand groups
+  often have `code: null` — such a group cannot be targeted by an archive; ask the user for a group that has a
+  code, ship a new group with a new code, or (with the user's yes — it is one-way) give that group a code
+  first with `save-business-object-group` (`MYBPM-UI-API.md` §5). A group created on a stand now always
+  gets a code (`Gruppa__N`). Read the list with `load-bo-groups {forEdit: true}` — without it the empty
+  groups are left out.
 - The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
@@ -2857,7 +2860,8 @@ Six probe imports on `<stand>`, each rolled back, the stand's group list compare
 | two lines, one existing code + one new code | each BO in its own group, one group created, nothing renamed (the existing line carried the group's own name) |
 
 - **Groups are matched by `code`.** A line without `code` is written onto ONE fixed stand group (here
-  «Бизнес-объект», the group with the largest `orderIndex`; why that one is `[U]`) — name and
+  «Бизнес-объект»; NOT the group with the largest `orderIndex` — another code-less group moved below it
+  changed nothing; why that one is `[U]`, and no longer probeable, since a new group always gets a code) — name and
   `orderIndex` are overwritten. The name is NOT a key: the «safe recipe» «copy an existing
   group's name» works only because the name copied was that same fixed group's own name.
 - The symptom «two groups → all BOs in «Справочники», renamed» is this same behaviour: group lines
@@ -2870,7 +2874,9 @@ Six probe imports on `<stand>`, each rolled back, the stand's group list compare
   (`MYBPM-UI-API.md` §5).
 - Stand groups made in the UI mostly have `code: null` (13 of 14 on `<stand>`); an archive can reach only
   a group that has a code. Giving an existing group a code is `save-business-object-group` with `code`
-  (+ `verify-business-object-group-code`) `[I]`, never tried.
+  (`verify-business-object-group-code` checks only that it is free) `[C]`: the next archive with that code put
+  its BO into the group and changed no group. It is one-way — `code: null` is refused, so the group can never
+  be code-less again. A group created now always gets a code `Gruppa__N`.
 
 ---
 
