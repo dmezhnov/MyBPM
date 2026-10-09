@@ -2127,7 +2127,9 @@ The IDE's own sequence (read off the bundle, then run alone on a BO imported wit
 4. Each script is now empty (`load-script-def` → `{blocks:{}, expressions:{}}`): write its body with
    `paste` + `apply-update-cmd` (above), hat and exit included, then `translate-script`.
 5. **A TEST version runs only on test records** (`boiState: DEV`, the registry tab «Тестовые»); ordinary
-   records keep running the work version (none → nothing runs). `in-work-bo-script-version`
+   records keep running the work version (none → nothing runs). **And on a DEV record the script sees only
+   DEV records in its `BO`/`CO` fields** `[C]` — links to ordinary records read as an empty collection, so test
+   link logic with DEV children, or promote the version and test on an ordinary record (`MYBPM-IMPORTS.md` 0S.7). `in-work-bo-script-version`
    P `{boId, boScriptsId}` makes it the work version and the stand immediately creates a new test
    version (a copy, next number).
 
@@ -3678,6 +3680,9 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
  "values":[{"fieldId":…, "value":"…", "saveType":null}]}
 ```
 
+- **Editing an EXISTING record** the same way `[C]`: `create-draft` → `v2/save-boi-value` with the record's own id as
+  `boInstanceId` (no `create-boi`) → `apply-and-remove-draft`. A `BO` value is `["<boiId>", …]`, a `CO` value
+  `["<source BO id>-<boiId>", …]` (§6b table); both stored this way, and no script runs.
 - `addValueId(fieldId, valueId)` is the client's reference/dropdown variant: `value:""` plus `valueId`.
   **It does NOT store a `DROPDOWN_SINGLE`**: the call answers `[]` and the record's dropdown stays empty
   `[C]`. Set a dropdown through the form cycle instead (§6b `save-field-value` with the bare option id as
@@ -3738,7 +3743,8 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""` | `[C]` |
 | `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}` | `[C]` |
 | `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare | `[C]` |
-| `BO` (and, per the client, `CO`) | a JSON array of record ids `["<boiId>"]` | `BO` `[C]`; a `CO` value was not stored `[U]` |
+| `BO` | a JSON array of record ids `["<boiId>"]` | `[C]` |
+| `CO` | a JSON array of `"<source BO id>-<boiId>"` (bare ids → `IllegalStoredValue … Value_CO`); the UI adds one row with `saveType:"ADD"` | `[C]` |
 | `QUESTIONNAIRE` | `[{"rowId":"…","columnId":"…"}]` | `[C]` |
 | `GEO_POINT` | `{"lat":43.238,"lon":76.945}` | `[C]` |
 | `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages; for `TEXTAREA_LANG` / `STATIC_TEXT` each language may be HTML, §8) | `[C]` |
