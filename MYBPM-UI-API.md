@@ -2710,6 +2710,10 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
   applied `gridPosition` / `tableColToShow` / `label` but silently kept `tabId: null`.
 - Fields outside the group stay on the form above and below it. The group's own `rows` is its height on
   the form.
+- A widget on a tab (button, iframe, signature, captcha, current date/user) comes back from
+  `load-business-object-by-id` with the same `tabId` as a field `[C]`. In an archive it names the tab in
+  `tabCode: {tabGroupCode, tabCode}`, NOT `tabCodePath`: the import ignores `tabCodePath` on a widget and
+  leaves it outside the tabs, overlapping the form at its `y` `[C]`.
 - **Give the group a code** `[C]`: with `label: null` the server leaves `code: ""`, and a
   `save-business-object-portion` carrying `code` does not change it. Set it with
   `save-business-field-code` — **PARAMS** `{businessObjectId, businessFieldId, businessFieldCode}`

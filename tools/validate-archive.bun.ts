@@ -631,14 +631,22 @@ for (const bo of bos) {
     for (const [k, n] of Object.entries<any>(bo.nativeFields))
       if (n?.gridPosition && typeof n.gridPosition.y === "number") laid.push({ ft: `${tag}.native ${k}`, f: n, gp: n.gridPosition, box: true });
   // so does every widget (§0.5b) — a stand export with widgets between the fields has the gaps they fill; a widget
-  // on a tab names it in `tabCode` (a field uses `tabCodePath`; [C] for buttons, [I] for the other maps) and is
-  // laid out inside that tab, not in this stack
+  // on a tab names it in `tabCode` (a field uses `tabCodePath`, which the import IGNORES on a widget) and is laid
+  // out inside that tab, not in this stack
   if (bo.category !== "BO_COMPOSITE")
     for (const map of ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"])
       if (bo[map] && !Array.isArray(bo[map]))
-        for (const [k, w] of Object.entries<any>(bo[map]))
-          if (w?.gridPosition && typeof w.gridPosition.y === "number" && !w.tabCodePath?.tabGroupCode && !w.tabCode?.tabGroupCode)
-            laid.push({ ft: `${tag}.${map}.${k}`, f: w, gp: w.gridPosition, box: true });
+        for (const [k, w] of Object.entries<any>(bo[map])) {
+          const wt = `${tag}.${map}.${k}`;
+          if (w?.tabCodePath)
+            add("ERROR", "0.5", `${wt}: a widget names its tab in "tabCode", not "tabCodePath" — the import ignores tabCodePath and drops the widget out of the tab`);
+          if (w?.tabCode?.tabGroupCode) {
+            const grp = bo.dynamicFields?.[w.tabCode.tabGroupCode];
+            if (grp?.type !== "TAB_GROUP") add("ERROR", "0.5", `${wt}: tabCode.tabGroupCode "${w.tabCode.tabGroupCode}" is not a TAB_GROUP of this BO`);
+            else if (!(w.tabCode.tabCode in (grp.fieldTabs ?? {}))) add("ERROR", "0.5", `${wt}: tabCode.tabCode "${w.tabCode.tabCode}" is not a tab of ${w.tabCode.tabGroupCode}`);
+          } else if (w?.gridPosition && typeof w.gridPosition.y === "number")
+            laid.push({ ft: wt, f: w, gp: w.gridPosition, box: true });
+        }
   laid.sort((a, b) => a.gp.y - b.gp.y);
   let prevY: number | null = null, prevRows = 0;
   let idx = 0;
