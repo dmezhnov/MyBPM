@@ -1909,7 +1909,8 @@ true of the IDE, not of the platform.
 `v2/script/translate-script` (the reading half; see «Reading a BO's scripts headlessly» below). The
 WRITING half: **`apply-update-cmd` and `paste` are `[C]`** (below, «Writing a script
 headlessly»), and so are `load-new-ids` + `save-bo-scripts` + `in-work-bo-script-version` (the hook
-wiring, «Wiring scripts onto a BO headlessly»); `create-local-method` is still untried. An archive also creates scripts on import
+wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-method` / `list-local-methods` /
+`delete-local-method` («Local methods without the IDE» below). An archive also creates scripts on import
 (`MYBPM-IMPORTS.md` §5d, verified).
 
 | controller | scope | methods |
@@ -1927,12 +1928,28 @@ wiring, «Wiring scripts onto a BO headlessly»); `create-local-method` is still
   {methodName:"Новый метод"}`; the new def is a bare hat `{BlockFixMethod, methodName, params:{}}`.
   Fill it with ONE `apply-update-cmd` P `{scriptModuleId, scriptId}`: `Set blocks.<hat>` to the whole hat
   with `params {<param id>: {name, order, type}}`, `returnType` and `downBlockId`, plus the body blocks /
-  expressions (ids from `load-new-ids`) — then `translate-script` → `success:true`. The screen text: a
-  module method with the same name overrides the global one `[I]`.
+  expressions (ids from `load-new-ids`) — then `translate-script` → `success:true`.
+- **A local method with the same name overrides the global one** `[C]` (the screen says so, and it
+  holds): a local `glob_greet` (body «Локально, »+imya) added to the work version made the field script
+  store «Локально, Мир»; after `delete-local-method` the same record cycle stored «Здравствуй, Мир» from the
+  global body again. Both took effect on the next record at once, no version switch.
+- **Local methods without the IDE** `[C]`: `v2/bo-scripts-editor/create-local-method` P `{boScriptsId,
+  methodName}` (`boScriptsId` = the version's `boScriptModId`) → `{scriptId, methodName}`; the method
+  is added IN PLACE to that version's `methodScriptIds` (no new version, `methodsScriptId` stays null)
+  and its def is a bare hat `{BlockFixMethod, methodName, params:{}}`. Fill it exactly like a global one
+  (one `apply-update-cmd` P `{scriptModuleId: boScriptsId, scriptId}`, `Set blocks.<hat>` with
+  `params`/`returnType`/`downBlockId` + the body). `list-local-methods {boScriptsId}` →
+  `[{scriptId, methodName}]`; `delete-local-method {boScriptsId, scriptId}` → empty body, the id leaves
+  `methodScriptIds`. A call site's `args` are keyed by the callee's param id — reuse the param id of the
+  method you shadow and the same call works against either.
 - **Calling a global method** `[C]`: a BO script calls it like a local one — `ExprCall {funcName:
   "<name>", useArgNames:false, args: {<the global method's param id>: {name, order, exprId}}}`; nothing
   names the global module. Proven on a record: field script `Привет.#Значение = glob_greet(Имя.#Значение)`
-  → «Мир» stored «Привет, Мир». The archive form and its import semantics (REPLACES the whole list,
+  → «Мир» stored «Здравствуй, Мир». **A process Script figure calls it the same way** `[C]`: the figure's
+  def (`scriptModuleId` = the process version) got `Итог.#Значение = glob_greet("БП")` (`BlockAssign`,
+  left = `F-VALUE-K-DYN-R-D-S-boi_fields` over `F-Itog-K-DYN-S-boi_fields` over `THIS_PROCESS`) —
+  `translate-script` and `validate-def` clean, a DEV process record passed Enter → Script → Exit and
+  stored «Здравствуй, БП». The archive form and its import semantics (REPLACES the whole list,
   ids kept verbatim) are `MYBPM-IMPORTS.md` §5d «Company-global methods».
 - **The stand runs a compiled copy of the global module** `[C]`: an `apply-update-cmd` on ANY global
   method refreshes it at once (the next record runs the new body), a structure import does NOT — records
@@ -4535,9 +4552,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
-- **Still unexecuted in §5g**: `create-local-method` (its global twin `create-company-global-method` IS `[C]`).
-  Whether a local method of the same name really overrides a global one (the screen says so). Whether a
-  global method is callable from a PROCESS script the same way (only a BO field script was run).
 - **Is there any repair for a BO whose script module no longer decodes** (§11 trap 49)? Candidates
   ruled out: deleting the BO and re-wiring with `save-bo-scripts` (trap 59). Never tried: a
   structure import carrying that BO's scripts, `copy-bo-script-version`. Left: a vendor-side database fix.

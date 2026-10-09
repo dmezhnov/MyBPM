@@ -2549,8 +2549,11 @@ result is §15 «When each hook runs».
 #### Company-global methods — `CompanyGlobalMethodsStructDto` `[C]`
 
 «Глобальные методы» (`/settings` → «Глобальные методы») is one script module per company whose methods
-every BO and process script of that company can call. The stand's own text on that screen: a module's
-(local) method with the same name overrides the global one `[I]` (not run).
+every BO and process script of that company can call — a BO field script and a process Script figure
+both call it as a plain `ExprCall` by name `[C]`. **A local method with the same name overrides the
+global one** `[C]`: with a local `glob_greet` in the BO's work version the record got the local body's
+result, and after `delete-local-method` the same call ran the global body again. So a BO that ships a
+local method named like a global one silently shadows it — pick distinct names.
 
 **In an archive** — the export basket switch «Глобальные методы» (`struct/change-export-is-global-methods`,
 `MYBPM-UI-API.md` §5) adds one `ScriptDefStructDto` per method plus ONE list line:
