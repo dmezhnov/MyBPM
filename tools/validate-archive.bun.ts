@@ -631,7 +631,8 @@ for (const bo of bos) {
     for (const [k, n] of Object.entries<any>(bo.nativeFields))
       if (n?.gridPosition && typeof n.gridPosition.y === "number") laid.push({ ft: `${tag}.native ${k}`, f: n, gp: n.gridPosition, box: true });
   // so does every widget (§0.5b) — a stand export with widgets between the fields has the gaps they fill; a widget
-  // on a tab names it in `tabCode` (a field uses `tabCodePath`) and is laid out inside that tab, not in this stack
+  // on a tab names it in `tabCode` (a field uses `tabCodePath`; [C] for buttons, [I] for the other maps) and is
+  // laid out inside that tab, not in this stack
   if (bo.category !== "BO_COMPOSITE")
     for (const map of ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"])
       if (bo[map] && !Array.isArray(bo[map]))
