@@ -1400,7 +1400,9 @@ this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, on
   flags `canRollback: true` can be undone, and «latest» is the stand's ranking, not yours — the log keeps
   minutes, and inside one minute the FIRST-applied import counts as the newest. Undoing an import that UPDATED something restores the SNAPSHOT it
   found, silently dropping anything applied after it; undoing a chain is safe only all the way back to
-  the import that CREATED the objects. When you may need to undo, leave a minute between applies.
+  the import that CREATED the objects. When you may need to undo, leave a minute between applies. A
+  create + update applied in one minute is undone create first (the BO is deleted); the update then
+  offers a RESTORE of that BO — leave it APPLIED, whether undoing it brings the BO back is `[U]`.
 
 **Always read the analysis result before pressing ПРИМЕНИТЬ** — «В Составном объекте не достаёт БО»
 does not block applying. Over the API read `load-import-errors` of the SAME `importId` (it carries the UI
@@ -2847,9 +2849,12 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   as `false`; never drop the key. Write field-level flags explicitly on every field.**
 - **Nothing is ever deleted by an import** `[C]`: an archive without a
   field that the stand BO has leaves the field in place (the pre-apply diff has only «added» / «changed»
-  categories, and the import client has no delete path at all). Remove fields and tabs in the constructor
+  categories, and the import client has no delete path at all). Tabs too `[C]`: a BO imported with two
+  TAB_GROUPs («Шаг 1|Шаг 2», «Один|Два») and a field on each of three tabs, then re-imported from an
+  archive holding only the first group with only «Шаг 1» and its field — the diff listed the two kept
+  fields as «changed», the apply was clean, and every field, both groups, tab «Шаг 2» (same id) and the
+  fields on the dropped tabs (same `tabId`) were still there. Remove fields and tabs in the constructor
   or through the API (`deletedFieldIds` of `save-business-object-portion`, `MYBPM-UI-API.md` R1).
-  Tabs were not re-probed separately — same mechanism `[I]`.
 - Structure import does not touch instance values — belief consistent with everything seen `[I]`.
 - **Import APPLIES `AccessStructDto`, group ids included** `[C]`: a BO's
   view given to one group and edit to another through the API, exported with «Права доступа», then reset
