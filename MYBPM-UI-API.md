@@ -469,7 +469,12 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
   line (`MYBPM-IMPORTS.md` §5e). The export pulls in no BO line for the items' BOs — only what the BO
   basket holds.
 - The same set exists for the report basket, unexercised `[U]`: `count/load/save/remove/clear-report-export-records`,
-  `load-unexported-report-records`; plus `change/load-export-is-global-methods` for the «Глобальные методы» switch.
+  `load-unexported-report-records`.
+- **The «Глобальные методы» switch** `[C]`: `struct/load-export-is-global-methods {}` → `true|false`,
+  `struct/change-export-is-global-methods` P `{value}`. With it on (and every basket empty) steps 4–5 export
+  `CompanyMetadataStructDto` + one `ScriptDefStructDto` per global method + one `CompanyGlobalMethodsStructDto`
+  (`MYBPM-IMPORTS.md` §5d «Company-global methods»: an import REPLACES the stand's whole list and does not
+  refresh the running copy — §5g). Switch it back off afterwards — it is the user's selection.
 - **The company-settings basket** `[C]`: `load-settings-export-kinds` → `[{kind, selected}]` (14 kinds),
   `change-settings-export-kind` **P** `{kind, value}` (in B it does nothing), `count-settings-export-kinds`,
   `clear-settings-export-kinds`. A ticked kind exports as one `CompanySettingsStructDto {kind, payloadJson}` line;
@@ -1912,11 +1917,27 @@ wiring, «Wiring scripts onto a BO headlessly»); `create-local-method` is still
 | `v2/bo-scripts-editor` | a BO's script MODULE and its versions | `load-bo-scripts {boId, boScriptsId}`, `load-bo-script-versions {boId}`, `save-bo-scripts` (body), `in-work-bo-script-version` / `in-test-bo-script-version` / `copy-bo-script-version` / `remove-bo-script-version` / `change-bo-script-version-comment {boId, boScriptsId[, comment]}`, `unset-in-work-version {boId, boScriptId}`, `list-local-methods {boScriptsId}`, **`create-local-method {boScriptsId, methodName}`**, `delete-local-method {boScriptsId, scriptId}` |
 | `v2/script` | ONE script (a method body or a process script) | **`load-script-def {scriptModuleId, scriptId}`**, `load-script-meta-state`, `load-module-methods {scriptModuleId}`, **`apply-update-cmd`** (params `{scriptModuleId, scriptId}`, body = the command), `undo` / `redo`, `load-new-ids {count}`, **`paste`** (body `{copied: <the clipboard JSON>}`), `translate-script`, `load-bo-def-list`, `load-const-field-list`, `load-func-groups-definition`, `load-objects-definition`, `load-enums-definition`, `load-act-record-list` / `load-act-details`, `load-bo-field-options {boId, fieldId, filterText}`, `load-script-env-params-by-bo-process-id {boProcessId}`, `load-expr-value-display-str`, `load-value-ext-type-for-expr`, `load-predefined-expr-value-params-for-ext-type` |
 
-- **Company-global methods** («Глобальные методы» in `/settings`) are the same controller:
-  `ensure-company-global-script-module {}`, `list-company-global-methods {}`,
-  `create-company-global-method {methodName}`, `delete-company-global-method {scriptId}`.
-  So **a method CAN be created without the IDE** — §0S.1's «you cannot create a method» is a statement
-  about the clipboard, not about the platform. `[I]`
+- **Company-global methods** («Глобальные методы» in `/settings`, route
+  `/settings?settingsOpenPageUrl=global-script-methods`) are the same controller, all `[C]`:
+  `ensure-company-global-script-module {}` → `{scriptModuleId, scriptId:null}` (one module per company),
+  `list-company-global-methods {}` → `[{scriptId, methodName}]`, `create-company-global-method
+  {methodName}` → `{scriptModuleId, scriptId}`, `delete-company-global-method {scriptId}` → empty.
+  So **a method IS created without the IDE** — §0S.1's «you cannot create a method» is about the
+  clipboard, not the platform. The screen's «Добавить» sends exactly `create-company-global-method
+  {methodName:"Новый метод"}`; the new def is a bare hat `{BlockFixMethod, methodName, params:{}}`.
+  Fill it with ONE `apply-update-cmd` P `{scriptModuleId, scriptId}`: `Set blocks.<hat>` to the whole hat
+  with `params {<param id>: {name, order, type}}`, `returnType` and `downBlockId`, plus the body blocks /
+  expressions (ids from `load-new-ids`) — then `translate-script` → `success:true`. The screen text: a
+  module method with the same name overrides the global one `[I]`.
+- **Calling a global method** `[C]`: a BO script calls it like a local one — `ExprCall {funcName:
+  "<name>", useArgNames:false, args: {<the global method's param id>: {name, order, exprId}}}`; nothing
+  names the global module. Proven on a record: field script `Привет.#Значение = glob_greet(Имя.#Значение)`
+  → «Мир» stored «Привет, Мир». The archive form and its import semantics (REPLACES the whole list,
+  ids kept verbatim) are `MYBPM-IMPORTS.md` §5d «Company-global methods».
+- **The stand runs a compiled copy of the global module** `[C]`: an `apply-update-cmd` on ANY global
+  method refreshes it at once (the next record runs the new body), a structure import does NOT — records
+  kept running the pre-import body, even of a method the import had deleted. After importing global
+  methods, send any `apply-update-cmd` to one of them (a `Set` of an unchanged value works).
 - **`apply-update-cmd` is the same patch language as the process diagram** (§5f): a `Group` of
   `Set`/`Unset` over `dotPath`s — here `blocks.<id>` and `expressions.<id>` instead of
   `figures.<id>`/`arrows.<id>`, and the same `forward`/`backward` pair. `undo`/`redo` are server-side.
@@ -1968,8 +1989,15 @@ Use it after every script write — an import NEVER reports a broken body (`MYBP
   constructor (`…/object-editing`) and inside the process editor (`…/process-editing`); the company-wide
   screens are `/settings?settingsOpenPageUrl=…` → «Глобальные методы» and «Браузер скриптов»
   (controller `v2/script-browser`: `load-tree`, `load-children {folderId}`, `search {query}`,
-  `load-exit-variants {scriptModuleId, scriptId}`). This answers open question 20 only on paper — nobody
-  has opened it yet.
+  `load-exit-variants {scriptModuleId, scriptId}`). «Глобальные методы» is a list on the left
+  («Добавить», search) and the method's IDE canvas on the right; «Браузер скриптов» was not opened.
+- **A freshly imported BO may fail `translate-script` falsely** `[I]`: right after the import, every
+  field act of a script on it answered `exprAct__noDefinitionForActId` for `F-VALUE-K-DYN-R-D-S-boi_fields`
+  (hop 1 typed with no `boCode`; `load-bo-def-list` → 0 BOs), while `load-act-record-list` already knew
+  the fields. A few minutes later — after the BO's script dialog had been opened in the constructor — the
+  same script answered `success:true` and `load-bo-def-list` 257 BOs. Which of the two (time or the
+  dialog) fixed it is not separated. `in-work-bo-script-version` refuses while the error stands (it
+  answers `[{text:"script_on_change_field_cause", …}]` and changes nothing).
 
 #### Writing a script headlessly — `apply-update-cmd` `[C]`
 
@@ -4507,10 +4535,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
-- **Still unexecuted in §5g**: whether `create-local-method` /
-  `create-company-global-method` really create a method headlessly (`load-script-def`,
-  `translate-script`, `apply-update-cmd`, `paste` and the catalogue calls are `[C]`). A
-  headless method would rewrite `MYBPM-IMPORTS.md` §0S.1 and §0S.12.
+- **Still unexecuted in §5g**: `create-local-method` (its global twin `create-company-global-method` IS `[C]`).
+  Whether a local method of the same name really overrides a global one (the screen says so). Whether a
+  global method is callable from a PROCESS script the same way (only a BO field script was run).
 - **Is there any repair for a BO whose script module no longer decodes** (§11 trap 49)? Candidates
   ruled out: deleting the BO and re-wiring with `save-bo-scripts` (trap 59). Never tried: a
   structure import carrying that BO's scripts, `copy-bo-script-version`. Left: a vendor-side database fix.
@@ -4523,8 +4550,8 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - **The success path of `/web/v2/auth/v3/login` was never run** (§0U.1 route A) — only the failure. If
   the body turns out not to be the bare token, §0U.1 and §1 need correcting.
 - The `v2/bo-transfer` record import/export (§6) is equally unexecuted — the UI route is the confirmed one.
-- What «Браузер скриптов» (`v2/script-browser`) and «Глобальные методы» actually look like on screen —
-  nobody has opened either (old question 20).
+- What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet (old question 20;
+  «Глобальные методы» is answered in §5g).
 
 - **The ES mapping defect of §7** — the index/field question is ANSWERED («Офисы»: it is the
   INDEX; a field added later to an old BO sorts fine). What is still open: whether the platform vendor
