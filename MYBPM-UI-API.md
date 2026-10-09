@@ -1117,6 +1117,9 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   category:"BUSINESS_OBJECT"|"MENU", code:"<code>#BUSINESS_OBJECT"|"<code>#MENU", name, structTypes}]}` —
   exactly what was created, nothing else; after `rollback-import` the BO answers `NoBoWithId` and the menu
   items are gone. The process finished with `percentage: 25` and `isFinished: true` — do not wait for 100.
+- **An import never deletes** `[C]` (`MYBPM-IMPORTS.md` §8): fields, TAB_GROUPs and single tabs that a
+  re-imported archive no longer carries stay on the BO with the same ids, and the fields on a dropped tab
+  keep their `tabId`. Delete them with `deletedFieldIds` of `save-business-object-portion` (R1).
 - **Rollback trap: «latest» is not the order you applied in, and a rollback restores a SNAPSHOT** `[C]`
  . Three imports touching one menu item were applied A (23:08),
   B (23:09), C (23:09) — the log keeps minutes only. The stand ranked them A < C < B: B had
@@ -4488,7 +4491,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 17. Do not chase Google Sheets grid cropping through `xl/metadata`.
 18. Structure-import rollback: only the import with `canRollback:true` can be undone, inside one minute the
     stand ranks the FIRST-applied import as the newest, and undoing an UPDATE restores the state IT found — later changes are lost
-    (§5 «Rollback trap»). Leave a minute between applies you may want to undo.
+    (§5 «Rollback trap»). Leave a minute between applies you may want to undo. After a same-minute
+    create + update pair, the create is undone first and deletes the BO; the update then shows
+    `canRollback:true` with a RESTORE of that BO — leave it APPLIED; whether undoing it brings the BO back is `[U]`.
 18. A BO is created only from a GROUP's hover-kebab in `/business-objects/editing`; the caption-level ⊕
     sends `boGroupId: null`, finds no `kind: DEFAULT` group on `<company-a>` and silently creates nothing.
 19. `save-business-object-portion` wants `{businessObject: …}` inside `jsonPart`; a bare DTO throws
