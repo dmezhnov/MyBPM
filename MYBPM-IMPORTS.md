@@ -131,8 +131,17 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 |---|---|---|
 | The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted — say so); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
-| For a business process — the stand's **«Статус процесса» dictionary id AND the id of its `CREATED` row** (both are in `formFields[code=PROCESS_STATUS]` of any constructor-built process: `refBoId` / `defaultValue`, `MYBPM-UI-API.md` §5f) | the dictionary id is an `oldRefBoId` like any other; without the row id the required status field has no default and **every record of the process is refused on save** — the import itself still reports success (§5c) | **none — a process cannot be built without them** (0.10 rule 18): stop and ask, or read both off the stand yourself (`load-bo-dictionary-list`, any process's `formFields`); never ship a process without `PROCESS_STATUS`. **The dictionary is built in, but its id is NOT the same everywhere** `[C]`: code `PROCESS_STATUS` and name «Статус процесса» on every stand, yet two stands answer `Q0zI~z9Ra2R7Q3yd` and `0sKQwbF6d25F6DvG` — so it is asked like any other stand id |
 | For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
+
+**NOT asked: the ids of a business process's `PROCESS_STATUS`** `[C]`. The «Статус процесса» dictionary is
+built in with the fixed code `PROCESS_STATUS`, but its id differs between stands (`Q0zI~z9Ra2R7Q3yd` on one,
+`0sKQwbF6d25F6DvG` on another). The importer does not care: it resolves the reference by
+`boRefStruct.boInfo.code` and the default by the `CREATED` row's unique code in the `DEFAULT_VALUE` line —
+an archive carrying another stand's ids, and one carrying made-up ids, both came in with the stand's own
+`refBoId` and `CREATED` row id, and records of both processes saved. So mint the two ids like any
+archive-internal id (0.7) and use each consistently: the dictionary id in `oldRefBoId` and in the line's
+`compositeId`, the row id in `defaultValue` / `defaultValueMap` and in the `compositeId` (§5c). Whether
+mismatched ids between the field and the line would still resolve is not checked `[U]`.
 
 **Every id literal printed in this section is `<company-a>`'s, not yours** `[C]`. Copying one out of an
 example IS inventing an id — 0.2a forbids it exactly the same way, and it fails in the same silent manner.
@@ -1154,18 +1163,16 @@ A dictionary's two system fields — the template of 0.5 with these values, at `
 Dictionary row codes are **case-sensitive** (`MRP` ≠ `mrp`).
 
 **A process and the `PROCESS_STATUS` id.** The importer does not create the status field, so the archive
-must ship it (§5c) — but that field is a `type: "BO"` reference to the stand's «Статус процесса»
-dictionary and needs its `oldRefBoId`, which 0.2a forbids inventing. The two rules do not collide; they
-resolve like this:
+must ship it (§5c). It is a `type: "BO"` reference to the built-in «Статус процесса» dictionary, and —
+unlike any other reference — its ids need not be asked for: the importer resolves the dictionary and its
+`CREATED` row BY CODE (0.2a) `[C]`. So:
 
-- the id was supplied → ship `PROCESS_STATUS` exactly as §5c prints it, **with `defaultValue` = the id
-  of the dictionary's `CREATED` row** — ask for that row id too (§0.2a). Without the default no record
-  of the process can be saved (§5c);
-- the id was NOT supplied → **do not build the process** — ask for the two ids, or read them off the
-  stand (`load-bo-dictionary-list`; `refBoId` / `defaultValue` of `PROCESS_STATUS` in any
-  constructor-built process's `formFields`). `PROCESS_STATUS` is mandatory on EVERY business process
-  (0.10 rule 18). The importer would take a process without it and even run it (§5c) — that is not a
-  licence: such a process is broken (no status, no default registry column).
+- ship `PROCESS_STATUS` exactly as §5c prints it, **with `defaultValue` = the `CREATED` row id** and the
+  `DEFAULT_VALUE` line for that row; both ids may be your own minted ones, used consistently. Without the
+  default no record of the process can be saved (§5c);
+- `PROCESS_STATUS` is mandatory on EVERY business process (0.10 rule 18). The importer would take a
+  process without it and even run it (§5c) — that is not a licence: such a process is broken (no status,
+  no default registry column).
 - **Never substitute a local dropdown «Статус» for it** — that is an ordinary field with a similar name,
   nothing on the stand treats it as the process status, and the archive looks complete while it is not.
   And never paste `<company-a>`'s `Q0zI~z9Ra2R7Q3yd`.
@@ -1217,10 +1224,10 @@ resolve like this:
     MOVES an existing BO to the archive's group and place (§2 «BO place in the sidebar»).
 18. **The platform's mandatory system fields are always shipped** — a rule from the platform team
    . Every business process (`BO_PROCESS`) carries `PROCESS_STATUS` (§5c: `type: "BO"`,
-    `isSystem`, `isRequired`, `defaultValue` = the stand's `CREATED` row + its `DEFAULT_VALUE` line); every
+    `isSystem`, `isRequired`, `defaultValue` = the `CREATED` row + its `DEFAULT_VALUE` line); every
     dictionary (`BO_DICTIONARY`) carries `code` and `label`, both `isRequired` (0.9). The importer does not
     add them and does not complain when they are missing — the archive looks fine and the object is broken.
-    No stand id for `PROCESS_STATUS` = no process archive (0.2a), never a process without it.
+    Its ids are resolved by code on import (0.2a), so nothing stops you shipping it — never a process without it.
 
 ### 0.11 Self-check before shipping
 
@@ -2308,6 +2315,7 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
   процесса", boCategory: "BO_DICTIONARY"}`, `fieldRefs.label.toShow`, `oldRefBoId` = the stand's
   «Статус процесса» dictionary — `<company-a>` `Q0zI~z9Ra2R7Q3yd`) — an archive must ship that field itself.
+  The importer resolves that reference by `boInfo.code`, not by `oldRefBoId` (below).
 - **…but the PROCESS runs without it** `[C]`: an archive with no `PROCESS_STATUS`
   line (Enter → Script → Script → Exit, both defs shipped) imported, the BO came in with no status field at
   all (`formFields` / `load-bo-fields-for-drag` list only the archive's own field), `validate-def []`, and
@@ -2328,10 +2336,14 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   (its full shape: `tools/make-probe-archive.bun.ts`, `pushStatusDefault`). The line alone left
   `defaultValue "[]"`; the key alone left `"[]"` too; both together took. (An earlier reading «the line is
   ignored, the key is enough» was wrong — every archive that worked happened to carry both.)
-  The row id is per stand like the dictionary id — read both off the stand (§0.2a). The dictionary is
-  built in and carries the fixed code `PROCESS_STATUS` everywhere, but its id differs between stands `[C]`
-  (`Q0zI~z9Ra2R7Q3yd` on one, `0sKQwbF6d25F6DvG` on another). Whether the importer would resolve the
-  reference by `boInfo.code` and ignore a foreign `oldRefBoId` is not checked `[U]`. **So an EXPORTED
+  **Both ids are resolved BY CODE on import** `[C]`: the dictionary is built in with the fixed code
+  `PROCESS_STATUS`, its id differs between stands (`Q0zI~z9Ra2R7Q3yd` on one, `0sKQwbF6d25F6DvG` on
+  another), and its `CREATED` row id differs too — yet an archive carrying the other stand's dictionary id,
+  and one carrying a made-up dictionary id AND a made-up row id (the same made-up ids in the field and in
+  the line's `compositeId`), both came in with the importing stand's own `refBoId` and `CREATED` row id
+  in `defaultValue`, and a record of each process saved (`CLOSE_DIALOG_SAVE`). The line names the row by
+  `boCode: "PROCESS_STATUS"` + its unique `code` field `CREATED`, which is what the importer matches. So no
+  stand id is needed for a process — mint the two ids (0.2a). **So an EXPORTED
   process never imports runnable as is** `[C]`: the export writes
   `PROCESS_STATUS` with no `defaultValue` key (only the line), the imported copy
   refused every record with «validate_required_title»; adding the key to the field — and nothing
@@ -2342,8 +2354,9 @@ that field is the only link between them. The `<company-a>` sample carries 7 obj
   Neither was needed to import a working process.
 - **Generator**: `tools/make-probe-archive.bun.ts --category BO_PROCESS` emits both lines; it always puts
   an `Enter` at (100,100) and chains `--process-figure "<Type>[@x,y]"` (repeatable, default a single
-  `Exit@440,104`) after it with `main → main` arrows, and `--process-status <refBoId>:<CREATED row id>`
-  adds the `PROCESS_STATUS` field in the export's own shape plus its `defaultValue`. A CONFIGURED process
+  `Exit@440,104`) after it with `main → main` arrows, and always adds the `PROCESS_STATUS` field in the
+  export's own shape plus its `defaultValue` and `DEFAULT_VALUE` line, with minted ids (`--process-status
+  <refBoId>:<CREATED row id>` overrides them). A CONFIGURED process
   comes from `--process-spec` instead (above). Both routes verified on `<company-a>`
   (`MYBPM-UI-API.md` §5f); the import dialog labels the node **«Бизнес-процесс/<имя>»** and
   `load-import-bo-infos` returns `boCategory: "BO_PROCESS"`.

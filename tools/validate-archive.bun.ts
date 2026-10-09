@@ -889,7 +889,7 @@ for (const bo of bos) {
     }
     const ps = (df as any).PROCESS_STATUS;
     // 0.10 rule 18: every business process carries PROCESS_STATUS — never ship one without it
-    if (!ps) add("ERROR", "0.10/18", `${tag}: no PROCESS_STATUS — every business process has the required «Статус процесса» field; ask for the stand's dictionary id + CREATED row id (0.2a) and ship it (§5c)`);
+    if (!ps) add("ERROR", "0.10/18", `${tag}: no PROCESS_STATUS — every business process has the required «Статус процесса» field; ship it (§5c); its ids are resolved by code, mint them (0.2a)`);
     else if (ps.isRequired !== true || ps.isSystem !== true || ps.type !== "BO")
       add("ERROR", "0.10/18", `${tag}: PROCESS_STATUS must be the system field — type BO, isSystem: true, isRequired: true (§5c)`);
     if (ps && (!ps.defaultValue || ps.defaultValue === "[]"))

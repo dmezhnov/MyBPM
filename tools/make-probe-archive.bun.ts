@@ -19,7 +19,7 @@
  * Usage:  bun tools/make-probe-archive.bun.ts --group-code CODE --group-name NAME --group-order N
  *         [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
  *         [--category BO|BO_DICTIONARY|BO_COMPOSITE|BO_PANEL|BO_PROCESS] [--field "Метка:TYPE"]...
- *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>:<CREATED row id>]  (REQUIRED for BO_PROCESS)
+ *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>:<CREATED row id>]  (optional; ids are resolved by code)
  *         [--process-spec <spec.json>]   (a CONFIGURED process — the spec of tools/process-builder.ts)
  *         [--menu "Имя:GROUP"]... [--menu "Имя:BO@<код БО>[@Имя БО]!parent=…!kanban=…"]...
  *         [--print-form "Имя:код:file.docx[:PDF|DOCX]"]...
@@ -865,23 +865,25 @@ for (const f of PROCESS_SPEC?.fields ?? []) {
 }
 
 /**
- * `--process-status <refBoId>:<CREATED row id>` is REQUIRED for a process (MYBPM-IMPORTS.md 0.10 rule 18): every
- * business process has the system field `PROCESS_STATUS`, so the generator refuses to build one without it.
- * It adds the process's own system field `PROCESS_STATUS` — the BO-reference
- * to the stand's built-in dictionary «Статус процесса» (its id is per-stand — read it off your own). The constructor
+ * Every process gets the system field `PROCESS_STATUS` (MYBPM-IMPORTS.md 0.10 rule 18) — the BO-reference
+ * to the stand's built-in dictionary «Статус процесса». Its id differs per stand, but the importer resolves the
+ * reference by `boInfo.code` and the default row by its code `CREATED` (MYBPM-IMPORTS.md 0.2a), so the two ids
+ * are minted here; `--process-status <refBoId>:<CREATED row id>` only overrides them. The constructor
  * creates this field by itself; the IMPORTER does not `[C]` (2026-09-18), so an archive that wants a
  * process shaped like an exported one has to ship it. Its shape is copied verbatim off a real export —
  * `viewType: "SINGLE"`, `isSystem`/`isCodeReadonly`/`isRequired`, no `removeType`, no `tableColOrderIndex`.
  *
- * `--process-status <refBoId>:<CREATED row id>` also gives the field its DEFAULT VALUE — the dictionary
- * row `CREATED` («Только что создан»; its id is per-stand too). Without it the field is required AND
+ * The field also gets its DEFAULT VALUE — the dictionary row `CREATED` («Только что создан»). Without it
+ * the field is required AND
  * empty, so every record of the process is refused on save («validate_required_title») and the process
  * never starts `[C]` (2026-09-27). The default takes only together with the export's separate
  * `ExportStructInstanceDto` line for that row (see `pushStatusDefault` below), which is written too.
  */
-const [processStatusRefBoId, processStatusCreatedId] = flag("process-status", "").split(":");
+const [processStatusRefBoId, processStatusCreatedId] = flag("process-status", "")
+  ? flag("process-status", "").split(":")
+  : [id(`${BO_CODE}.PROCESS_STATUS.dictionary`), id(`${BO_CODE}.PROCESS_STATUS.CREATED`)];
 if (CATEGORY === "BO_PROCESS" && (!processStatusRefBoId || !processStatusCreatedId))
-  throw new Error("--category BO_PROCESS needs --process-status <«Статус процесса» dictionary id>:<its CREATED row id> — every business process has the required PROCESS_STATUS field (MYBPM-IMPORTS.md 0.10 rule 18); read both off the stand (0.2a), never invent them");
+  throw new Error("--process-status needs <dictionary id>:<CREATED row id>");
 if (CATEGORY === "BO_PROCESS") {
   dynamicFields.PROCESS_STATUS = {
     code: "PROCESS_STATUS",
