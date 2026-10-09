@@ -3640,7 +3640,10 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
  "values":[{"fieldId":…, "value":"…", "saveType":null}]}
 ```
 
-- `addValueId(fieldId, valueId)` is the reference/dropdown variant: `value:""` plus `valueId`.
+- `addValueId(fieldId, valueId)` is the client's reference/dropdown variant: `value:""` plus `valueId`.
+  **It does NOT store a `DROPDOWN_SINGLE`**: the call answers `[]` and the record's dropdown stays empty
+  `[C]`. Set a dropdown through the form cycle instead (§6b `save-field-value` with the bare option id as
+  `value`) `[C]`; whether `save-boi-value` takes the bare option id in `value` is `[U]`.
 - Related in the same controller: `copy-bo-instance {boId,boiId}`, `delete-bo-instance
   {businessObjectId, boInstanceIds}`, `archive-bo-instance`, `restore-bo-instance`,
   `is-field-value-unique {boId,boiId,fieldId,value}`, `load-boi-id-by-unique-field
