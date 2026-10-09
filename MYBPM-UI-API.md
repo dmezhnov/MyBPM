@@ -2513,6 +2513,14 @@ appears when the referenced BO has a field pointing back).
   **`DISCONNECT`** — on this build exactly like `STRIKETHROUGH` (the row is struck, the id stays in the
   stored value, even with `linkedFieldId` set; re-read after a minute: unchanged) `[C]`. A `SINGLE` chip
   shows a deleted record plainly, with no mark. The stored value is never cleaned by a delete.
+- **M:N = two `TABLE` fields whose `linkedFieldId` point at each other** `[C]` (archive form:
+  `MYBPM-IMPORTS.md` §6; the server offers a `TABLE` back field in `linkedBo.fieldsForLink`). Probe records
+  A1, A2 × B1, B2: **adding is mirrored and APPENDS** — the back field keeps its other records — in the form
+  cycle and in §6a alike. **Removing is not symmetric**: through the form cycle / UI (⊖ = `saveType:"REMOVE"`,
+  or a replace without the id) the removed record KEEPS the owner in its back field, so the sides drift
+  apart — remove on both sides yourself; through §6a `save-boi-value` (`REMOVE` or replace) the removed
+  record's WHOLE back field is emptied — A2 lost B1 as well when B2 dropped it. Never remove from an M:N
+  field with §6a.
 - **`needChangeParentBoByLinkedBo` decides whether a change of the field is a change of the OWNER record**
   `[C]` (UI and API): with `true` (default) choosing a record puts it into the card's draft only — the card
   shows «Сохранить / Отменить» and closing asks «Несохранённые данные … Закрыть без сохранения?»; «ДА» =
@@ -2520,7 +2528,8 @@ appears when the referenced BO has a field pointing back).
   straight into the record** — the card stays clean, closing sends `remove-draft` and the choice is kept.
   Proven headlessly too: `create-draft` → `save-field-value` on a `false` field → `remove-draft` leaves the
   value in the record; on a `true` field the value is gone. Without `saveType` the value replaces, with
-  `"ADD"` it is appended. Editing a referenced record elsewhere does NOT touch the owner's
+  `"ADD"` it is appended, with `"REMOVE"` the listed ids are taken out — what the row's ⊖ in a card's
+  table sends `[C]`; `"DELETE"` changes nothing. Editing a referenced record elsewhere does NOT touch the owner's
   `LAST_MODIFIED_AT` either way. Client side the flag also decides whether editing a nested record from the
   card marks the owner card as changed (`boiChanged`).
 - **`needMarkNew` is RESET to `false` by any `editedFields` patch of the same field that does not carry
@@ -3756,7 +3765,9 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
 
 - **Editing an EXISTING record** the same way `[C]`: `create-draft` → `v2/save-boi-value` with the record's own id as
   `boInstanceId` (no `create-boi`) → `apply-and-remove-draft`. A `BO` value is `["<boiId>", …]`, a `CO` value
-  `["<source BO id>-<boiId>", …]` (§6b table); both stored this way, and no script runs.
+  `["<source BO id>-<boiId>", …]` (§6b table); both stored this way, and no script runs. **Not for
+  removing from an M:N field** (two `TABLE` fields linked to each other): the removed record's whole back
+  field is emptied, its other links included (§5h «Reference fields») `[C]`.
 - `addValueId(fieldId, valueId)` is the client's reference/dropdown variant: `value:""` plus `valueId`.
   **It does NOT store a `DROPDOWN_SINGLE`**: the call answers `[]` and the record's dropdown stays empty
   `[C]`. Set a dropdown through the form cycle instead (§6b `save-field-value` with the bare option id as

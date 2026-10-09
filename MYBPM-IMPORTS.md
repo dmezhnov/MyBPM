@@ -1879,7 +1879,7 @@ field in `dynamicFields`; the field links are by CODE:
 |---|---|---|---|
 | `viewType` `"TABLE"` / `"MULTIPLE"` / `"SINGLE"` / `"FIELDS"` | «Вид отображения» | `[C]` | table / chips / one chip / the record's fields as a form. A `SINGLE` field keeps only the FIRST id of a value it is given |
 | `isKindAddForSelect: true` | «Только добавление» | `[C]` | «Добавить» creates a referenced record instead of picking one |
-| `boRefStruct.linkedFieldCode: "<code>"` (NOT a top-level key) — the code of a field of the REFERENCED BO that points back | «Связь объектов» → «Заполнить поле» | `[C]`, also when the two BOs reference each other inside the same archive (any line order) | adding a record fills its back field with the owner record; removing it clears it. The export writes it on BOTH ends of the pair; one back field serves only ONE field (the constructor greys the others out: «Невозможно - уже существует связь с полем …») |
+| `boRefStruct.linkedFieldCode: "<code>"` (NOT a top-level key) — the code of a field of the REFERENCED BO that points back | «Связь объектов» → «Заполнить поле» | `[C]`, also when the two BOs reference each other inside the same archive (any line order) | adding a record fills its back field with the owner record; removing it clears it. Two `TABLE` fields naming each other make an M:N link (§6 «M:N») — there adding appends to the back field, but removing is not mirrored cleanly. The export writes it on BOTH ends of the pair; one back field serves only ONE field (the constructor greys the others out: «Невозможно - уже существует связь с полем …») |
 | `copyFromFieldCode: "<code>"` — another `BO` field of the same BO | «Логика отображения значения» → «Из другого поля» | `[C]` | the field gets a stored copy of that field's value on every save |
 | `removeType` `"STRIKETHROUGH"` (template) / `"HIDE"` / `"DISCONNECT"` | «При удалении объектов» | `[C]` | a deleted referenced record is struck through in a table / hidden / on this build struck through too — the id is never removed from the value |
 | `needChangeParentBoByLinkedBo` (template `true`, and on EVERY field of an export) | «Изменить / Не изменять бизнес объект» | **`false` is LOST on a field the import CREATES** (stored `true`); a second import of the same archive, which UPDATES the field, stores `false` `[C]` | `true`: adding a record is a change of the owner card (saved with it); `false`: written into the record at once, even if the card is then closed without saving |
@@ -2753,7 +2753,22 @@ Open `[U]`: where else a kanban can be switched on besides a menu item (0.5c).
 - Type `BO`, `viewType` SINGLE / TABLE / MULTIPLE, `oldRefBoId`, `boRefStruct{boInfo, fieldRefs,
   linkedFieldCode}`. A two-way link is a SINGLE↔TABLE pair joined by `linkedFieldCode`.
 - **`oldRefBoId` ≠ the target's `oldId` is NORMAL** (every reference in `<company-b>` mismatches) — not a bug.
-- **M:N (TABLE↔TABLE)** has never been seen in any export; how to express it is unknown `[U]`.
+- **M:N = two `TABLE` fields, each naming the other in `boRefStruct.linkedFieldCode`** `[C]`. Probe: BO A
+  with `TABLE` «Связи Б» → B (`linkedFieldCode` = B's field), BO B with `TABLE` «Связи А» → A (`linkedFieldCode`
+  = A's field), both in ONE archive, `isKindAddForSelect:false`, `fieldRefs` = the other BO's unique «Код».
+  Clean dry run, applied; the stand stored `linkedFieldId` on both ends (and lists the `TABLE` field in the
+  constructor's `linkedBo.fieldsForLink`), and its own export of the pair carries exactly these keys back.
+  On records (A1, A2 × B1, B2):
+  - **Adding is mirrored and APPENDS** `[C]` — A1 ← [B1, B2] then A2 ← [B1, B2] left B1 = B2 = [A1, A2]; the
+    back field keeps the records it already had. The same through the form cycle (UI) and the script-less
+    `save-boi-value` cycle, from either side.
+  - **Removing through the form/UI is NOT mirrored** `[C]` — the row's ⊖ in the card (it sends
+    `saveType:"REMOVE"`) and a replace without the id both leave the owner in the removed record's back
+    field: A1 dropped B2, B2 still listed A1. The two sides drift apart; remove on BOTH sides yourself.
+  - **Removing through `save-boi-value` (MYBPM-UI-API.md §6a) EMPTIES the removed record's whole back field**
+    `[C]` — B2 dropped A2 there, and A2, which held [B1, B2], came out empty: its link to B1 was lost too.
+    Never remove from an M:N field with `save-boi-value`.
+  - The xlsx route is untested for M:N `[U]`.
 - `fieldRefs` = the reference's display config («Выбрать поля для отображения»):
   `{fieldCode: {toShow, orderIndex, gridPosition}}`. In real exports the gridPositions are a flattened
   copy of the TARGET BO's layout; a synthetic non-overlapping stack imports fine. `fieldRefs` does **not**
@@ -5133,7 +5148,6 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: why an import drops `massPrintFormCodes`, and which «same signature type» a
   referenced BO needs for mass signing. The rest of the widget is answered in §0.5b «SIGNATURE round-trips».
 - BO groups: what the importer really does with `BoGroupStructDto` (see §8).
-- How to express an M:N (TABLE↔TABLE) link.
 - The runtime of `Or` / `Xor` / `Not` / `LessEq` / `MoreEq` / `OrEq` / `AndNotEq` (they compile, §12a).
 - Whether a field script fires on `FILE_UPLOAD`, `CHECKLIST` and `CO` (the other 24 types do, §15), and
   whether an xlsx record import runs any hook.
