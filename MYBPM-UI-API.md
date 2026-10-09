@@ -1674,7 +1674,9 @@ emit the same thing from the same spec, and the result imported and run:
   `"defaultValue": "[\"<CREATED row id>\"]"` (+ `defaultValueMap`), AND the export's `ExportStructInstanceDto`
   line for the `CREATED` row with a `DEFAULT_VALUE` source `[C]` (the line alone and the key
   alone each leave `"[]"` on a new BO; both together take — `make-probe-archive.bun.ts` writes both;
-  the line is NOT ignored). Both ids are per stand: read them off any constructor-built process —
+  the line is NOT ignored). Both ids are per stand — the dictionary is built in with the fixed code
+  `PROCESS_STATUS`, yet its id differs between stands `[C]` (`Q0zI~z9Ra2R7Q3yd` / `0sKQwbF6d25F6DvG`): read them
+  off `load-bo-dictionary-list` (the entry «Статус процесса») or any constructor-built process —
   `load-business-object-by-id` → `formFields[code=PROCESS_STATUS]` → `refBoId`, `defaultValue`.
   `runOnTestRecord` now throws on that form command instead of reporting an empty run.
 - **Re-importing the same code adds a version** `[C]`: version 2 `isWork+isTest`, version 1 demoted to
