@@ -1,5 +1,5 @@
 [tools]
-bun = "1.4.2"
+bun = "1.4.3"
 
 [tasks.skills-check]
 description = "Check that every heading a SKILL.md routes to still exists in its document"
