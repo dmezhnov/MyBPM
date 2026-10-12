@@ -9,6 +9,11 @@ companies appear as placeholders (`<stand>`, `<company-a>` …), never by a cust
 found or corrected: a fact is stated as it holds now, and a superseded one is rewritten, not annotated.
 Dates belong in memory and git history only.
 
+**No evidence in the documents either.** They say WHAT holds and WHAT TO DO, never how it was found
+out: no probe or round-trip narratives, no «verified on `<company-a>` by exporting and re-importing…», no
+sample-file names, no «the user confirmed». A fact carries its `[C]`/`[I]`/`[U]` mark and nothing else;
+the proof goes into memory (`docs-evidence-archive`) or stays in git.
+
 ## Platform knowledge
 Everything lives in two documents — read the relevant one before relying on a fact, and write NEW
 platform facts into them (marked `[C]` confirmed / `[I]` inferred / `[U]` unverified), not into memory:
