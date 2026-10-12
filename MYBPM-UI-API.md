@@ -419,6 +419,9 @@ Traps: **`load-import-state` is not a reliable «is something open?» probe** �
 
 Use these instead of screenshots; several of these screens are invisible to text extraction anyway.
 
+All of these but the last are `POST /web/v2/business-objects/<call>` (envelope §10) `[C]`; without the
+`v2/business-objects/` prefix they answer 404.
+
 | question | call | params |
 |---|---|---|
 | which BO groups exist? | `load-bo-groups` | `{"forEdit":true}` — **without it the empty groups are missing** `[C]` (optional `searchValue`) |
@@ -3806,7 +3809,7 @@ driven alone). Every hook ran server-side; the answers carry the script's field 
 | open EXISTING | `v2/instance-form-create-draft/create-draft` | P `{boId, boiId, draftId:null}` B `{}` → bare `"<draftId>"` | «Открытие» |
 | change a field | `v2/instance-field-form/save-field-value` | B `{draftId, boId, boInstanceId, values:[{fieldId, value}]}` | «Изменение поля» of that field |
 | save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]`; **no `CLOSE_DIALOG_SAVE` = NOT saved** — e.g. an empty required field answered only `[CAN_ENABLE_CANCEL_BUTTON]`, no error command, record unchanged `[C]` | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
-| close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created |
+| close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created. A «Закрытие» hook wired by an archive but with no body adds `SHOW_NOTIFICATION` ERROR «Скрипт на закрытие не отработал.» even on a NEW record `[C]` — harmless, the draft is gone |
 | read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
 | read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`). **`tabId:null` returns only the fields OUTSIDE tabs**; the fields of a `TAB_GROUP` tab come back only with that tab's id in `tabId` `[C]` | — |
 
