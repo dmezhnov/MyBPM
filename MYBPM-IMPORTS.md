@@ -1116,7 +1116,7 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
 - Field ids use `newId` (not `oldId`); the BO and the group use `oldId` (the group also carries a
   `newId`, any unique value).
 - **A re-import matches the BO by `oldId` and its fields by `newId`, NOT by code** `[C]`
-  (core2). An archive whose BO `oldId` was already imported, but whose field `newId`s were all fresh, was
+  (`<stand>`). An archive whose BO `oldId` was already imported, but whose field `newId`s were all fresh, was
   analysed with no error and no conflict, and applied. It **added** nine fields to that BO, next to the
   nine it already had, with the **same codes**: two «Текст» with code `Tekst`, two buttons `Plagin`, and so
   on. It also **rewrote the BO's `code` and name** to the archive's. Each imported field takes its `newId` as
@@ -4400,7 +4400,7 @@ F-headerText-K-FIX-T-RestResponse                          заголовок к
 F-headerDate-K-FIX-T-RestResponse                          заголовок как дата/время               (headerName:Text/String) → Date
 ```
 
-A GET run end to end on core2 `[C]`. The script was
+A GET run end to end on `<stand>` `[C]`. The script was
 `Пусть #запрос# = Создать Rest-запрос` (`JavaObjectFactories` `BEAN_METHOD-RestExtensions-createJsonDeck`)
 → `#запрос#.адрес = …` → `#запрос#.Метод вызова = GET` (an `Enum` constant `RestRequestMethod`) →
 optional `#запрос#.#Заголовок("Referer", …)` (a `BlockAssign` with `leftExprId` only) →
@@ -4413,7 +4413,7 @@ optional `#запрос#.#Заголовок("Referer", …)` (a `BlockAssign` w
 - **Number → text works with `'' ⊕ resultCode`.**
 - **`headerText` of a header the response lacks gives an empty string.**
 
-A second script, run on core2 `[C]`, chained three GETs and parsed their JSON. It was a field
+A second script, run on `<stand>` `[C]`, chained three GETs and parsed their JSON. It was a field
 script on a button, 57 blocks, and it compiled and ran on the first paste:
 - **A Cyrillic and spaced value can go into `адрес` raw** (`"…&geocode=" ⊕ <address field>`). The
   request reached the service correctly encoded. A raw curl URL, by contrast, needs `--data-urlencode`.
