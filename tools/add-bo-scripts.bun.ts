@@ -9,9 +9,12 @@
  * `compositeId` ends with that script id and wires it onto the hook named after the colon.
  *
  * Or the bodies are GENERATED: `--bodies <file.json>` takes `{"<hook>": {entry, blocks, expressions}}` with the
- * hook keys of `--def` (`onOpen`, `field:<fieldCode>` …) and each body in the CLIPBOARD form of Part II (`type`,
+ * hook keys of `--def` (`onOpen`, `field:<fieldCode>`, `method:<name>` …) and each body in the CLIPBOARD form of Part II (`type`,
  * `valueType`); it is rewritten into the archive form (`@class` …Struct, `valueTypeStruct`) — §5d. Each body must
  * be a whole hook script: its `BlockFixEntryPoint` hat, the statements, a closing `BlockExit FROM_METHOD`.
+ * A LOCAL METHOD (`method:<name>`) is a body whose hat is `BlockFixMethod` (methodName, params, returnType) — its id
+ * goes into `methodScriptIds`; the param ids and the method id are kept verbatim by the import, so the call sites
+ * (`ExprCall.args` keyed by param id) may be written in the same file — MYBPM-IMPORTS.md §5d, §13.
  *
  * MIND §5d: a `K-DYN` actId embeds the SOURCE field code (`F-code-K-DYN-S-boi_fields`). Moving a body to a
  * BO with different field codes needs `--rename-act code=Kod`, otherwise the import succeeds and the
@@ -110,6 +113,10 @@ for (const spec of specs) {
     if (!fieldCode) throw new Error(`--def ${spec}: "field" needs a field code`);
     scriptId = id16(`${boCode}-field-${fieldCode}`);
     work.fieldScripts[fieldCode] = scriptId;      // archive = by CODE, the stand stores it by field id
+  } else if (hook === "method") {
+    if (!fieldCode) throw new Error(`--def ${spec}: "method" needs a method name`);
+    scriptId = id16(`${boCode}-method-${fieldCode}`);
+    work.methodScriptIds.push(scriptId);
   } else {
     if (!hookKey[hook]) throw new Error(`--def ${spec}: unknown hook ${hook}`);
     scriptId = work[hookKey[hook]];
