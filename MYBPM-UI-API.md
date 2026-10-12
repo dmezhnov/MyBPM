@@ -587,8 +587,9 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    loop spins forever.
 5. `apply-imported` — `P {"importId":…}` writes (answers `""`); poll `watch-import-finished` — `P {"importId":…}`
    → `true`; `cancel-imported` drops it; `imported-ok` closes it;
-   `download-errors` — `P {"importId":…}` returns the «Ошибки при загрузке …» xlsx (row numbers + error
-   codes).
+   Before applying, read each row's error with `load-bo-import-table` — `B {"importId":…, "paging":{"offset":0,"limit":10}}`
+   → `{heads, records:[{hasError, errorText, values}]}` `[C]` (params instead of body → NPE). `download-errors` is a
+   GET `?importId=` (POST → 405); after an apply it returned the header only, no rows `[C]` — do not rely on it.
 6. Export: `export-bracket-bo` — **B** = the registry filter plus the selection:
    `{boId, dynamicFilters:[], nativeFilters:[], brackets:[], search:"", paging:{offset:0,limit:50},
    ordering:{fieldId:"",state:"UNSET",archetype:null}, state:"ALL", boInstanceIds:[…], boFieldIds:[…],
@@ -612,7 +613,7 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    records that were on the stand BEFORE the file was imported.
 
 **A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
-   `DATE` excepted), whether the cell is empty or absent from the row, and the act still says «обновлено»
+   `DATE` excepted — no cell value clears a date: blank or spaces keep it, `-`/`null`/`0` fail the row, so empty a date with §6a `value: null`), whether the cell is empty or absent from the row, and the act still says «обновлено»
    with 0 errors; **a column missing from the file KEEPS the field**. To update a few fields, ship only
    those columns plus the key. After removing columns re-letter the cells contiguously — a header with
    skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
@@ -3736,7 +3737,7 @@ xlsx), never through the structure archive.
 The registry kebab's «импорт/экспорт xlsx» is an ordinary controller, and it is **two-phase like the
 structure import**: the upload builds an "act" you can read, and a second call applies it. Read off chunk
 `7084` and driven end to end from a page of the stand (template → upload → act → apply → export);
-`load-bo-import-table` and `download-errors` were not called. The exact bodies are §0U R7.
+The exact bodies are §0U R7.
 
 | # | call | params | note |
 |---|---|---|---|
@@ -3745,11 +3746,11 @@ structure import**: the upload builds an "act" you can read, and a second call a
 | 2 | `import-from-file` | multipart: file under **`file`**, plus the form field `businessObjectId` | → a bare `"<actId>"` |
 | 3 | `is-import-file-finished` | `{actId}` | poll |
 | 4 | `load-import-file` | `{actId}` | the act `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` — **nothing written yet**; a blank cell shows up only as «updated» |
-|   | `load-bo-import-table` | body = a table request | the act's rows |
+|   | `load-bo-import-table` | **B** `{importId, paging:{offset:0,limit:10}}` (params → NPE «strId is marked non-null») | the act's rows `{heads, records:[{hasError, errorText, values}]}` — the per-row error text, before apply `[C]` |
 | 5 | `apply-imported` | `{importId}` | **writes** |
 |   | `cancel-imported` / `imported-ok` | `{importId}` | drop / close |
 |   | `watch-import-finished` | `{importId}` | poll the apply |
-| 6 | `download-errors` | `{importId}` | the «Ошибки при загрузке …» xlsx |
+| 6 | `download-errors` | GET `?importId=` with the `token` header (POST → 405) | the «Ошибки при загрузке …» xlsx — after an apply it came back with the header only, no rows, although the act had an error row `[C]`; read `load-bo-import-table` instead |
 
 Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called) and `export-bracket-bo`
 (`{…filter…, boInstanceIds, boFieldIds, needBoiId}` in the BODY, `[C]`) → an `exportId`; then `is-bo-export-file-ready
@@ -3757,9 +3758,10 @@ Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called)
 `ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]` — **but with every nested block's cells blank** (no child codes, no repeated TABLE rows) `[C]`, so list the field ids whenever the file must carry links.
 
 **What an update file does to the fields it carries** `[C]`: **A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
-`DATE` excepted), whether the cell is empty or absent from the row, and the act still says «обновлено»
+`DATE` excepted — no cell value clears a date: blank or spaces keep it, `-`/`null`/`0` fail the row, so empty a date with §6a `value: null`), whether the cell is empty or absent from the row, and the act still says «обновлено»
 with 0 errors; **a column missing from the file KEEPS the field**. To update a few fields, ship only
-those columns plus the key. After removing columns re-letter the cells contiguously — a header with
+those columns plus the key. A date cell is parsed leniently — `31.02.2026` → 03.03.2026, `00.00.0000` →
+30.11.0002, `1.1.26` → year 0026, no error `[C]`. After removing columns re-letter the cells contiguously — a header with
 skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
 
 ### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]`
@@ -3788,6 +3790,9 @@ The value DTO (class `M` of chunk `43756`, built by `M.of(draftId, boId, boiId, 
   `["<source BO id>-<boiId>", …]` (§6b table); both stored this way, and no script runs. **Not for
   removing from an M:N field** (two `TABLE` fields linked to each other): the removed record's whole back
   field is emptied, its other links included (§5h «Reference fields») `[C]`.
+- **A `DATE` value** is the ISO instant as a JSON string (`value: "\"2026-09-30T22:00:00.000Z\""`), and
+  **`value: null` or `""` clears it** `[C]` — the only way to empty a date without the card, since no xlsx cell does
+  (`MYBPM-IMPORTS.md` §19.6).
 - `addValueId(fieldId, valueId)` is the client's reference/dropdown variant: `value:""` plus `valueId`.
   **It does NOT store a `DROPDOWN_SINGLE`**: the call answers `[]` and the record's dropdown stays empty
   `[C]`. Set a dropdown through the form cycle instead (§6b `save-field-value` with the bare option id as

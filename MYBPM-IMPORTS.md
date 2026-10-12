@@ -1797,7 +1797,8 @@ is ALLOWED: `dateOnlyPast: true` = the constructor's «Будущие даты �
 today and earlier), `dateOnlyFuture: true` = «Прошедшие даты недоступны для выбора» (today and later). Never
 both `true` — the UI cannot produce it. Imported, exported and honoured by the record picker exactly like a
 constructor-built field; today and the current month/year stay selectable. **Only the picker enforces it** —
-the record API stores any date `[C]`; scripts and an xlsx import presumably too `[I]`. Generator: `--field "Срок:DATE!dateOnlyFuture=true"`.
+the record API stores any date `[C]`; scripts and an xlsx import presumably too `[I]`. No xlsx cell can clear
+a date (19.6 `[C]`). Generator: `--field "Срок:DATE!dateOnlyFuture=true"`.
 
 **Six more gear flags** `[C]` — plain booleans on the field, imported, re-imported
 (an existing BO code is updated in place) and exported exactly like the constructor's, and verified on
@@ -5235,7 +5236,8 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
    Columns follow the BO at export time and their positions move between exports.
 2. **Build the column map by LABELS, never by position**: the (row-1 block, row-2 field) pair identifies a
    column. Split a row-1 label on the FIRST dot — the prefix is the tab («Системные.Код»).
-3. **Fill the rows.** Values: checkbox `Да`/`Нет`; date `dd.mm.yyyy`; date-time `25.10.2025 10:33`; period
+3. **Fill the rows.** Values: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently —
+   `31.02.2026` silently becomes 03.03.2026, 19.6 `[C]`); date-time `25.10.2025 10:33`; period
    `dd.mm.yyyy - dd.mm.yyyy`; a dropdown is matched by its LABEL; a reference by the target's unique field
    or by an `ID` sub-column. A TABLE nested object = the parent row REPEATED per child. A nested block
    only LINKS: its other sub-columns are never written into the child (19.6) — to change a child, import
@@ -5276,7 +5278,8 @@ every column you keep or drop the column entirely.
    3-row header that expands it is accepted but its values are ignored, so it buys nothing.
 7. **A blank cell is an ERASE, a missing column is a KEEP** (19.6 `[C]`): on an update, every cell left empty
    clears that field (DATE excepted); a field whose column is absent from the file is left as it was. To
-   update only some fields, DELETE the other columns — never blank them.
+   update only some fields, DELETE the other columns — never blank them. **No cell value clears a `DATE`**
+   (19.6 `[C]`) — to empty a date use the record API (`MYBPM-UI-API.md` §6a, `value: null`).
 8. Dictionary codes are case-sensitive (`MRP` ≠ `mrp`).
 9. **No holes in the cell addresses**: when you remove columns, re-letter the rest contiguously (A, B, C…)
    in the header AND every data row, and fix `dimension`. A sheet whose header skipped letters misread the
@@ -5312,7 +5315,8 @@ every column you keep or drop the column entirely.
 UI: registry kebab → «импорт/экспорт xlsx». API: `v2/bo-transfer` (`MYBPM-UI-API.md` §6 and §0U R7) —
 template, upload, act, apply and export `[C]`. Either way the upload
 only builds an **act**: read «создано / обновлено / ошибки» and apply the second step deliberately, and
-pull `download-errors` when rows fail — it names the row numbers.
+read the failing rows before applying: `load-bo-import-table` `B {importId, paging:{offset:0,limit:10}}` →
+`{heads, records:[{hasError, errorText, values}]}` gives each row's error text `[C]`.
 
 ## 19. The Excel format — evidence
 
@@ -5441,7 +5445,14 @@ pull `download-errors` when rows fail — it names the row numbers.
   left empty, stored empty values (text → `""`, the rest → `null`, a checkbox reads «Нет»). It does not
   matter whether the cell is present with empty text (`<is><t></t></is>`) or absent from the row — both
   erase. The act does not warn: it reports the row as «обновлено», 0 errors. **`DATE` is the exception —
-  an empty date cell left the stored date untouched** `[C]`.
+  no cell value clears it** `[C]`: an empty cell (`<t></t>`, `<c t="inlineStr"/>` with no text, or no cell)
+  and a cell of spaces leave the stored date untouched; `-`, `null`, `0` fail the row («Дата: неверный формат
+  значения в колонке `Дата`, укажите формат: DD.MM.YYYY, имеющееся неверное значение `-`»). To empty a
+  date, use the record API: `save-boi-value` with `value: null` (or `""`) clears it (`MYBPM-UI-API.md` §6a) `[C]`.
+- **A date cell is parsed LENIENTLY** `[C]` — a wrong date becomes another real date with no error:
+  `31.02.2026` → 03.03.2026, `00.00.0000` → 30.11.0002, `1.1.26` → 01.01.0026 (the year is taken
+  literally); `2026-10-01` is accepted as 01.10.2026. Write `dd.mm.yyyy` with a four-digit year and
+  check the act's rows (`load-bo-import-table`, `MYBPM-UI-API.md` §6) before applying.
 - **A column MISSING from the file keeps the field** `[C]`: a file without the «Текст», «Число» and
   «Статус» columns updated the other fields and left those three as they were. So the safe way to update a
   few fields is a file with ONLY those columns (plus the key) — not a full file with blanks.
@@ -5514,4 +5525,4 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 
 ## 20. Open questions — records
 
-- Whether any cell value can clear a DATE.
+None open: every record-import behaviour this part relies on is `[C]`.
