@@ -5176,8 +5176,9 @@ Scripts:
     module: `translate-script`, `load-script-def`, `load-bo-scripts` of EVERY version (work included),
     `load-bo-script-versions`, `apply-update-cmd`, `undo`, `delete-local-method` and
     `remove-bo-script-version` all answer `IllegalArgumentException: No enum constant …OpType.GreaterEq`
-    — so the bad value cannot be overwritten either. Other BOs' scripts keep working, but the company-wide
-    code-usage analysis now fails, so the «Изменение кода» dialog of EVERY BO and field is dead
+    — so the bad value cannot be overwritten either. Other BOs' scripts keep working, but the code-usage
+    analysis — which reads the scripts of every company on the stand — now fails, so the «Изменение кода»
+    dialog of EVERY BO and field of EVERY company on that stand is dead
     (`MYBPM-UI-API.md` trap 59). No API or import repair exists — deleting the BO leaves its script module behind,
     still broken; `save-bo-scripts`, `copy-bo-script-version`, `unset-in-work-version` and a blind
     `apply-update-cmd` that `Set`s `blocks`/`expressions` to `{}` all decode first and fail; a structure import
