@@ -5184,7 +5184,7 @@ Scripts:
     `apply-update-cmd` that `Set`s `blocks`/`expressions` to `{}` all decode first and fail; a structure import
     carrying the BO's scripts is refused at `apply-import` with the same 500 while the BO exists (import status
     stays `ANALYZED`; a structure-only archive of the same BO applies), and after deletion it applies — the BO
-    comes back under its old id with a new script version — yet the versions still do not decode. It needs
+    comes back under its old id with a new script version — yet the versions still do not decode, and on that live BO the re-wiring calls and an archive with the broken module id as prefix fail the same. It needs
     the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
     `constType`, block/expression `type`, `varType`) takes ONLY a value listed in §10–§12a — a
     string-typed key (`actId`, `enumValue`, `varName`) is safe to get wrong, the validator reports it.
