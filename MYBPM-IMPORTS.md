@@ -5269,7 +5269,6 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: what clears `signFieldUnsupported` («такой-же тип подписания») on a referenced BO — nothing on
   the stand does (`MYBPM-UI-API.md` §5i), so only the vendor can answer; until then `massPrintFormCodes`
   never survives an import (§0.5b «SIGNATURE round-trips»).
-- BO groups: what the importer really does with `BoGroupStructDto` (see §8).
 - Whether a field script fires on `FILE_UPLOAD`, `CHECKLIST` and `CO` (the other 24 types do, §15), and
   whether an xlsx record import runs any hook.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
