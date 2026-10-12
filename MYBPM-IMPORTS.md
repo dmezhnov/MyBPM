@@ -3125,8 +3125,8 @@ independent `ЕСЛИ` blocks one after another.
  "downBlockId":"<next>","type":"BlockForeach"}
 ```
 Two uses, same block: `srcExprId` a **number** → a counted loop (that many passes); `srcExprId` a
-**collection** (a link-many field read through `.#Значение`) → a foreach. Do not use the counter's value:
-its base is unverified.
+**collection** (a link-many field read through `.#Значение`) → a foreach. The counter runs from **1** to the bound,
+and the bound is evaluated ONCE on entry — reassigning its variable inside the body changes nothing `[C]`.
 
 ```json
 {"exitType":"FROM_METHOD","returnExprId":"<expr>","type":"BlockExit"}
@@ -3211,11 +3211,10 @@ A variable reference names the block that declared it (or the parameter id for a
  "more":{"<id>":{"opType":"Concat","order":10,"exprId":"<expr>"}},"type":"ExprOp"}
 ```
 Binary operator; a third and further operand go into `more`, applied after left/right in `order`.
-**Run-proven `opType`s** (use these by default): `Plus`, `Minus`, `Mul`, `Div`, `Concat`, `Eq`,
-`NotEq`, `More`, `Less`, `And`. The language has seven more — `Or`, `Xor`, `Not` (unary: `leftExprId`
-only), `LessEq`, `MoreEq`, and `OrEq` / `AndNotEq` (only inside `more` of an `Eq` / `NotEq`) — which
-compile but were never run on a record (§12a); until they are, write disjunction as nested `ЕСЛИ` and
-negation as the `ИНАЧЕ` branch. **Never type any other string into `opType`**: a value outside the
+**Run-proven `opType`s — all 17**: `Plus`, `Minus`, `Mul`, `Div`, `Concat`, `Eq`,
+`NotEq`, `More`, `Less`, `And`, and also `Or`, `Xor`, `Not` (unary: `leftExprId` only), `LessEq`,
+`MoreEq`, and `OrEq` / `AndNotEq` (only inside `more` of an `Eq` / `NotEq`) — each gave the right
+answer on a record (§12a). **Never type any other string into `opType`**: a value outside the
 server's enum is stored as is and then makes EVERY script of the BO unreadable, with no way back
 through the API (§17 trap 26).
 
@@ -3551,8 +3550,9 @@ Sequencing: blocks chain through `downBlockId` (the tail has none); appending = 
   - Only ONE branch of an if/elif chain executes (§15).
 - `BlockForeach {elementVarName, srcExprId, bodyBlockId, downBlockId}` — two uses: a **counted loop** over
   a number (`Цикл #i# : текст.#Длина`, or over a numeric CONST `2` / `"200"` — runs on the stand) and a
-  **foreach over a collection** (`Цикл #параметр# : ~Параметры~.#Значение`). The counter's base is unknown
-  `[U]` — do not rely on the counter's value.
+  **foreach over a collection** (`Цикл #параметр# : ~Параметры~.#Значение`). The counter runs `1, 2, …, n`, and
+  `n` is evaluated once on entry: a body that set the bound variable from 3 to 1 still made 3 passes
+  (`L:1,2,3,`, the variable read 1 afterwards) `[C]`.
   - **Over an ARRAY PARAMETER of a method** (`params.<id>.type = {"baseType":"String","type":"Text","isArray":true}`)
     the loop compiles, but the Java translation declares the element as `Object` `[C]`: using it where a
     `String` is expected — assigned to a Text variable, as the left side of `#Длина` — fails phase 4 with
@@ -3561,7 +3561,7 @@ Sequencing: blocks chain through `downBlockId` (the tail has none); appending = 
     A `Bo[]` parameter is reported to fail the same way («… cannot be converted to BoiRef») `[I]`.
 - `BlockExit {exitType, circleBlockId?, targetArrowId?}`:
   - `FROM_METHOD` — «Выйти из метода: <значение>», **carries the return value**; a body without it returns
-    nothing. An early `FROM_METHOD` inside an IF branch is a suspect of the boolean gate defect (§15).
+    nothing. An early `FROM_METHOD` inside an IF branch works — the blocks after the IF did not run `[C]` (§15).
   - `FROM_CIRCLE` = break, works from inside a branch of the loop it targets `[C]`;
     `FROM_CIRCLE_ITER` = continue (targeting a non-innermost loop was never used `[U]`).
   - `FROM_METHOD_BY_ARROW` + `targetArrowId` — leaves a **process** script by a named arrow (§16).
@@ -3599,7 +3599,7 @@ Exact encodings from real copies, used in pastes that worked:
 - opTypes confirmed in IDE copies / live processes: `Eq`, `NotEq`, `More`, `Less`, `Plus`, `Minus`,
   `Mul`, `Div` (**not** `Multiply`/`Divide`), `And`, `Concat`.
 - The whole enum has 17 members (§12a): also `Or`, `Xor`, `Not` (unary), `LessEq` (⩽), `MoreEq` (⩾),
-  `OrEq`, `AndNotEq` `[C]` compile; runtime `[U]`.
+  `OrEq`, `AndNotEq` `[C]` compile AND run correctly on a record `[C]` (§12a).
 - `Concat` accepts a BigDecimal on either side (`"" Concat число` = number→text; concat with `""` is a
   no-op on strings).
 - Arithmetic is `ExprOp`, not calls into a directory.
@@ -3634,7 +3634,7 @@ a field between form tabs needs no script patch).
 #Пусто?       F-isEmpty-K-FIX-T-String
 #Заменить     F-replaceByTemplate-K-FIX-T-String               args target, replacement, needReplaceAll
 #В число      F-convertToBigDecimal-K-FIX-T-String
-#Содержит     F-contains-K-FIX-T-String                        arg fragment — [C] catalogue (§12a)
+#Содержит     F-contains-K-FIX-T-String                        arg fragment — runs: 'abc' ∋ 'b' → Да, 'z' → Нет
 ```
 
 There is **no `indexOf`** in the known String palette (not proven exhaustive).
@@ -3655,7 +3655,7 @@ Full palette (user screenshot, «Всё, больше ни чего нет»): o
 #Округлять дробную часть  F-roundFractionPart-K-FIX-T-BigDecimal   arg value
 ```
 
-`#Чётное ли?` = `F-isEven-K-FIX-T-BigDecimal` (§12a). Natives accept any BigDecimal (`7,5.#не чётное ли?` was accepted).
+`#Чётное ли?` = `F-isEven-K-FIX-T-BigDecimal` (§12a) — runs: `4` → Да, `3` → Нет `[C]`. Natives accept any BigDecimal (`7,5.#не чётное ли?` was accepted).
 
 ### Field access (DYN)
 
@@ -3684,7 +3684,7 @@ Full palette (user screenshot, «Всё, больше ни чего нет»): o
   an intermediate variable. Create instance `F-CI-K-DYN-R-C-S-bo_fields` (left = `BoRefCode`),
   add `F-ADD-K-DYN-R-D-S-boi_fields` (arg `adding`), count `F-COUNT-K-DYN-R-D-S-boi_fields`.
 - **Checkbox**: the value act used directly as an `Если` condition is accepted and a stand check depending
-  on it passed `[I]`; its runtime text form when concatenated was never measured `[U]` (§15).
+  on it fires both ways `[C]`; concatenated into a text it reads `true` / `false` (English, lower case) `[C]` (§15).
 - **Process record**: `ЭТОТ_ПРОЦЕСС.F-<code>-K-DYN-S-boi_fields` (§16).
 
 ### SingleSelect («Единичный выбор»)
@@ -3759,8 +3759,10 @@ Read off the client's operator table (module `88612`).
 | `NotEq` | ≠ | Bool | `AndNotEq` («и ≠») |
 
 `Or`, `Not`, `Xor`, `LessEq`, `MoreEq`, `OrEq` and `AndNotEq` all **compile** (`translate-script`
-`success:true`). Their runtime was not exercised on a record `[U]` — §15's advice to prefer
-nested `ЕСЛИ` stands until it is. In the action list of a value an operator appears as a pseudo-action
+`success:true`) and **run correctly on a record** `[C]`: each was put in an IF on a NEW record's
+«Открытие» with a true and a false case — `Or`, `Xor`, unary `Not`, `LessEq` (3⩽3, 4⩽3), `MoreEq`,
+`Eq … more:[OrEq]` (`3 = 1 или = 3`), `NotEq … more:[AndNotEq]` (`3 ≠ 1 и ≠ 2`) — all 14 answers right, and
+so did `#Содержит` and `#Чётное ли?`. In the action list of a value an operator appears as a pseudo-action
 `K-OP-OP-<opType>`; that id is never written into a script — choosing it produces an `ExprOp`.
 
 **A wrong `opType` string destroys the BO's scripts** — see §17 trap 26 before you write one by hand.
@@ -4850,22 +4852,26 @@ unless marked otherwise.
 
 - **Gate defect** `[C]` on stand: `BlockIf (Eq #формула?#, CONST Boolean 'no') → BlockExit FROM_METHOD`
   NEVER fired although the called method returned false (both the simulator and the live copy were
-  correct). The suspects were not separated: `Eq` between Bool operands, or an early `FROM_METHOD` exit
-  from an IF branch.
-  **Rule: test a boolean as `ЕСЛИ #переменная#` (`ifExprId` = VAR_REF, else branch `exprId:null`); keep
-  ONE method exit; `FROM_CIRCLE` inside loops is fine.**
-- `Or` (and `Not`, `Xor`) compile (§12a) but were never run on a record `[U]` — write disjunction as nested IFs.
-- A checkbox's value act is accepted as a bare IF condition and a dependent stand check passed `[I]`; its
-  runtime type and its text form when concatenated (`yes`/`Да`/`1`/empty) were never measured `[U]`.
-  Fallback: compare against `{constType:"Boolean", value:"yes"}`.
+  correct). **Neither old suspect reproduces it alone** `[C]`: `Eq` between a computed Bool variable
+  (`Пусть #ложь# = 1 > 2`) and `CONST no` / `yes` / another `CONST no` answered right, and an early
+  `FROM_METHOD` from an IF branch exited cleanly. What is left is the operand being the RETURN VALUE of a
+  called method `[U]` — so the rule below still holds for method results.
+  **Rule: test a boolean as `ЕСЛИ #переменная#` (`ifExprId` = VAR_REF, else branch `exprId:null`) rather
+  than `Eq` against `Да`/`Нет`; an early exit from a branch and `FROM_CIRCLE` inside loops are fine.**
+- `Or`, `Xor`, `Not`, `LessEq`, `MoreEq`, `OrEq`, `AndNotEq` run correctly on a record `[C]` (§12a) — no need
+  for nested IFs.
+- A checkbox's value act as a bare IF condition fires both ways `[C]` (field hook after `save-field-value`
+  `"true"` then `"false"`). Concatenated into a text it gives `true` / `false` `[C]` — the same as a
+  computed Bool (`'' ⊕ (Да Or Нет)` → `true`); not `yes`, `Да` or `1`.
 
 ### Control flow and program structure — hard limits
 
 - **`ИНАЧЕ ЕСЛИ` executes exactly ONE branch** of the chain; "try each candidate until one matches" must be
   written as independent sequential `ЕСЛИ` blocks.
 - **No while-loop** — counted loop and foreach only; a counted loop with a pass cap guards
-  recursion/fixed points (a 50-pass cap answered fast). Whether the bound is re-evaluated each iteration is
-  unknown `[U]` — bind it to an immutable value.
+  recursion/fixed points (a 50-pass cap answered fast). The bound is evaluated once on entry and the
+  counter runs from 1 `[C]` (§12): changing the bound's variable inside the body does not shorten the loop —
+  leave it with `Выйти из цикла`.
 - **No arrays** (hence no stack). **No dynamic dispatch**: a method cannot be called by a name taken from
   data `[C]`, a dictionary field cannot hold a script — one explicit branch per operation.
 - **No iteration over the fields of an instance, nor over BO codes**: each field read is a compiled
@@ -5076,7 +5082,7 @@ Scripts:
 19. Never compare numbers with `Eq` (scale-sensitive); `0/100` prints as `0E-30`.
 20. `#Подстрока` with `start >= end` returns the whole string.
 21. `#Заменить` is literal, not regex; a broken regex silently returns `Нет`; never backslash a letter.
-22. Test a boolean as a bare condition, never `Eq <Boolean>` (gate defect), and keep one method exit.
+22. Test a boolean as a bare condition, never `Eq <Boolean>` on a method's return value (gate defect, §15).
 23. Expressions must be a strict TREE, never a DAG (each expression referenced exactly once — the IDE warns
     «…операнд номер 1, который уже ранее использовался»), and a variable name is unique across the whole
     METHOD, foreach element names included.
@@ -5153,12 +5159,10 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: why an import drops `massPrintFormCodes`, and which «same signature type» a
   referenced BO needs for mass signing. The rest of the widget is answered in §0.5b «SIGNATURE round-trips».
 - BO groups: what the importer really does with `BoGroupStructDto` (see §8).
-- The runtime of `Or` / `Xor` / `Not` / `LessEq` / `MoreEq` / `OrEq` / `AndNotEq` (they compile, §12a).
 - Whether a field script fires on `FILE_UPLOAD`, `CHECKLIST` and `CO` (the other 24 types do, §15), and
   whether an xlsx record import runs any hook.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
-- The checkbox value's runtime type and its text form when concatenated.
-- Whether a counted loop re-evaluates its bound, and the counter's base.
+- The gate defect (§15): does `Eq` misfire only when an operand is a called method's return value?
 - Whether a method argument can carry a LIST of instances.
 - Whether a CO element's `#Сохранить` stores the SOURCE record, and whether `F-ADD` on a CO field accepts
   a record of a BO that is not one of the composite's sources.
