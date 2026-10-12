@@ -2020,7 +2020,7 @@ The «Зависимости:» pane lists what the selection needs («Стру�
 selected BOs. The `<company-a>` export came back named `MyBPM-export-<COMPANY_A>-…` — the file name's company slug is
 not the tenant you are working in `[U]`.
 
-### 5g. Block IDE scripts on a running stand — the API `[I]` (read off the bundle)
+### 5g. Block IDE scripts on a running stand — the API (reading and writing `[C]`, the rest read off the bundle)
 
 The script format, the block/expression templates and the clipboard paste protocol are
 `MYBPM-IMPORTS.md` Part II (§0S is the cookbook). What was missing there was the other half: **where that
@@ -2092,6 +2092,19 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   on a 711-block / 1723-expression fragment and on 26 small ones in a row. Into an empty hook the fragment
   goes with its `BlockFixEntryPoint` hat and a closing `BlockExit FROM_METHOD` (`MYBPM-IMPORTS.md` §0S.12
   item 7, §14 «Validator phases»).
+- **`/paste` breaks parameter references** `[C]`: it gets no target (the client posts only `{copied}`), and
+  every VAR_REF to a METHOD PARAMETER comes back rewired to a detached carrier `BlockFixEmpty →
+  BlockNewVar «Переменная №N» = 0` (a Number CONST), the body under its own `BlockFixEmpty`, not hung under
+  the hat — on every run, body alone or the whole method with its hat. The IDE writes that answer verbatim.
+  **A method body that reads its parameters is written WITHOUT `paste`** `[C]`: one `apply-update-cmd`
+  P `{scriptModuleId, scriptId}` with `Set blocks.<id>` / `Set expressions.<id>` under YOUR ids (any
+  16 characters of the id alphabet are taken as they are; `load-new-ids` is optional) plus a `Set` of the
+  whole hat with `downBlockId` = the first body block → `translate-script` `success:true`. The
+  `MYBPM-IMPORTS.md` §0S.10 worked example, written this way, gave the right answers on records
+  (`MYBPM-IMPORTS.md` §0S.12 item 7b).
+- **`undo` can wipe an imported def** `[C]`: on a method whose def came from an import and was never edited,
+  one `undo` after the first `apply-update-cmd` left the def EMPTY, hat included. Keep the hat from
+  `load-script-def` before writing, so a `Set` can put it back.
 - The paste the IDE refuses is reproduced server-side too: a fragment whose blocks include
   `BlockFixMethod` or `BlockFixEntryPoint` is rejected for a global method.
 - A process version carries its scripts as a `scriptsDefs {defs: {<figureId>: {blocks, expressions}}}`
