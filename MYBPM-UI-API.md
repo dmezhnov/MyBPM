@@ -1180,10 +1180,11 @@ that is the platform itself. It was run over all 13 archives the §0 eval genera
   `ownerBoInfo` = who is broken, `requiredBoInfo` = what it needs and BY WHICH CODE. That is the analysis
   the §0.2a paragraph on composites was written from, now confirmed on a stand: a composite whose `bos[]`
   names a code the stand does not have **fails loudly at ANALYZE time**, nothing is silently merged.
-- **The intra-archive reference survives the analyzer** `[C-analyze]`: case01 («Ученик» → «Класс» by
+- **The intra-archive reference survives the analyzer and the apply** `[C]`: case01 («Ученик» → «Класс» by
   `oldId`) and case06 (a `BO_PANEL` plus the three BOs it shows, same archive) both analysed with zero
-  errors, so the importer resolves a reference to a line of the SAME archive. Still `[I]` for APPLY —
-  nothing was applied; see `MYBPM-IMPORTS.md` §0.2a and the open-questions list.
+  errors, so the importer resolves a reference to a line of the SAME archive. APPLY `[C]` too: a TABLE field
+  pointing at a BO on an earlier line of its archive applied clean, the target kept its `oldId` as its id and
+  the field's `refBoId` read back as that id (`MYBPM-IMPORTS.md` §0.2a).
 - WARNs of `tools/validate-archive.bun.ts` are confirmed to be style only: every 0-FATAL/0-ERROR archive
   analysed clean whatever its WARN count (case05b had 8).
 
