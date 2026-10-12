@@ -4869,12 +4869,16 @@ form API (`MYBPM-UI-API.md` §6b), and read back from the database.
   (new) / `…/create-draft` (existing), `v2/instance-field-form/save-field-value`,
   `v2/instance-form/validate-apply-remove-draft`, `v2/instance-form/remove-draft`; bodies and value
   formats: `MYBPM-UI-API.md` §6b. A record created through the plain record API (`create-draft`
-  + `save-boi-value` + `apply-and-remove-draft`, `MYBPM-UI-API.md` §6a) and an xlsx import run none `[C]`
-  for the API, `[I]` for xlsx.
+  + `save-boi-value` + `apply-and-remove-draft`, `MYBPM-UI-API.md` §6a) runs none `[C]`, and **neither does
+  an xlsx record import** `[C]` for a created record (no «Добавление», no «Сохранение», no field script —
+  every marker empty); an xlsx UPDATE of an existing record is the same importer, `[I]`.
 - A **test** script version runs only on test records (`boiState DEV`, the «Тестовые» tab); ordinary
   records run the **work** version. A BO whose only version is a test one runs nothing on ordinary records.
-- Field scripts were seen firing on 24 of the 27 types; `FILE_UPLOAD`, `CHECKLIST` and `CO` are `[U]`
-  (`MYBPM-UI-API.md` §12).
+- **A field script fires on all 27 field types** `[C]` — `FILE_UPLOAD` (a real uploaded file),
+  `CHECKLIST` (the item list) and `CO` (a composite row) included; value shapes: `MYBPM-UI-API.md` §6b.
+- **Cancelling a NEW record headlessly = `delete-boi` then `remove-draft`** `[C]` — what the UI sends. A bare
+  `remove-draft` of a new draft on a BO with a «Закрытие» script fails `RuntimeException … No boi with id`
+  and leaves the draft behind (`MYBPM-UI-API.md` §6b).
 
 Most number/string readings were taken THROUGH a formula engine that delegates each operation to a built-in
 block and renders results with `'' ⊕ число`; attributing a reading to the platform is an inferred mapping
@@ -5269,8 +5273,8 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: what clears `signFieldUnsupported` («такой-же тип подписания») on a referenced BO — nothing on
   the stand does (`MYBPM-UI-API.md` §5i), so only the vendor can answer; until then `massPrintFormCodes`
   never survives an import (§0.5b «SIGNATURE round-trips»).
-- Whether a field script fires on `FILE_UPLOAD`, `CHECKLIST` and `CO` (the other 24 types do, §15), and
-  whether an xlsx record import runs any hook.
+- Whether an xlsx UPDATE of an existing record runs any hook (a created record runs none, §15) — needs a BO
+  with scripts AND a unique field to match on.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
 - Whether a CO element's `#Сохранить` stores the SOURCE record, and whether `F-ADD` on a CO field accepts
   a record of a BO that is not one of the composite's sources.
@@ -5331,7 +5335,7 @@ The same contract as §0.2a, with a heavier list, because a record file is mostl
 | Ask for | Why guessing fails | Fallback if the user declines |
 |---|---|---|
 | **The template or a registry export of the target BO** (the file, not its description) | column layout, merges, freeze rows, styles and the table part all come from it; a hand-composed sheet is rejected at the header | none — stop and ask again. This one has no fallback |
-| The BO's **unique field** (or whether the export carries an `ID` column) | no unique field and no `ID` → every import CREATES, so a re-run duplicates instead of updating | say plainly that the file will be create-only and ask for confirmation before shipping it |
+| The BO's **unique field** (or a field of its own labelled `ID`) | no unique field and no `ID` → every import CREATES, so a re-run duplicates instead of updating — the export's «Внутренний айди» column does NOT prevent it (19.5) | say plainly that the file will be create-only and ask for confirmation before shipping it |
 | **The dictionary values that already exist** on the stand, for every dropdown column | dropdowns match by LABEL and the value must already be there — otherwise `NotFoundDictByLabel`, that row fails | fill only the dropdowns whose labels the user gave, leave the rest empty, and list them |
 | For every reference column — **the referenced records must already exist** | v4.24 does NOT create targets from a nested block (`NoUniqueFieldValue`, the row fails) | build the child file first and say the import order |
 | Whether any column is the **SINGLE side of a two-way link** | such rows are SILENTLY dropped: «успешно, 5 записей» and the registry shows «0 из 0» | never write that column; set the link from the TABLE side (19.4) |
@@ -5493,12 +5497,16 @@ read the failing rows before applying: `load-bo-import-table` `B {importId, pagi
 
 ### 19.5 Merge / idempotency
 
-- **Match by the `ID` column → OVERRIDE, not duplicate** `[C]`: client-chosen ids
-  (`base62(sha256(seed))[:16]`, A-Za-z0-9) were accepted and kept. An API export with `needBoiId:true` adds
-  this column itself as the LAST one, headed «Внутренний айди» `[C]`; in the UI the same column is the
-  «Внутренний айди» checkbox of «Экспорт в .xlsx», shown to administrators only and off by default. Platform ids are 16 chars and their
-  alphabet includes `~` and `@` (untested on import — stay in A-Za-z0-9). The id may be an ordinary column,
-  e.g. «Системные.ID» (code `ID_`) — keep it in the file.
+- **Match by the BO's own `ID` field → OVERRIDE, not duplicate** `[C]`: an ordinary field labelled «ID»
+  (e.g. «Системные.ID», code `ID_`) — client-chosen ids (`base62(sha256(seed))[:16]`, A-Za-z0-9) were
+  accepted and kept. Keep it in the file. A BO without such a field has no `ID` header: «ID» or «ID_» there
+  is rejected `NoFieldWithLabel`.
+- **The export's «Внутренний айди» column does NOT match** `[C]`. An API export with `needBoiId:true` adds it
+  as the LAST column (in the UI: the «Внутренний айди» checkbox of «Экспорт в .xlsx», administrators only,
+  off by default); the importer reads the header without complaint and then ignores the value. On a BO
+  with no unique field, re-importing its own export with the column created a DUPLICATE record; on a BO
+  with a unique field, the same row with the record's id but a new unique value was counted «новая».
+  Updates go by the unique field (next bullet) — drop the column or leave it, it changes nothing.
 - **Match by the unique field → UPDATE** `[C]`: adding a unique text field «Код» to the built-in «Рабочая
   группа» made its import idempotent. **A BO with neither an ID column nor a unique field always CREATES.**
 - Re-importing a full export with rows APPENDED kept the existing rows and added the new ones. `[C]`
@@ -5515,8 +5523,8 @@ read the failing rows before applying: `load-bo-import-table` `B {importId, pagi
 
 ### 19.6 Destructive risks — all `[U]`, act defensively
 
-- **A blank cell CLEARS the field on an existing record** `[C]`: an update matched by the ID column or by
-  the unique field, with `INPUT_TEXT`, `INPUT_NUMBER`, `CHECKBOX`, `DROPDOWN_SINGLE` and `TEXTAREA` cells
+- **A blank cell CLEARS the field on an existing record** `[C]`: an update matched by the unique field,
+  with `INPUT_TEXT`, `INPUT_NUMBER`, `CHECKBOX`, `DROPDOWN_SINGLE` and `TEXTAREA` cells
   left empty, stored empty values (text → `""`, the rest → `null`, a checkbox reads «Нет»). It does not
   matter whether the cell is present with empty text (`<is><t></t></is>`) or absent from the row — both
   erase. The act does not warn: it reports the row as «обновлено», 0 errors. **`DATE` is the exception —
@@ -5572,7 +5580,7 @@ above**). Treat this jar as a hint about mechanisms only, never as a statement a
 - Editing an export by rewriting only `xl/worksheets/sheet1.xml` (append rows before `</sheetData>`, update
   `dimension ref`) and re-zipping every other member byte-for-byte imports fine — also as a STORED
   (uncompressed) zip.
-- Re-importing an unchanged export with its ID column is a no-op update (every row «обновлено», values
+- Re-importing an unchanged export of a BO with a unique field is a no-op update (every row «обновлено», values
   unchanged) `[C]` — a cheap way to restore records after a destructive probe.
 - **Before handing a file over, read the xlsx BACK and rebuild the data model from its cells** (labels →
   codes) — this caught every error before the stand did.
