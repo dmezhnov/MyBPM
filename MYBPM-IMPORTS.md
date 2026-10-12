@@ -3451,6 +3451,12 @@ nor `hasExpr`. And what it does by the 0S.2a house style: every variable is decl
 the first statement that uses one, the counter `i` is bare, the parameters are English snake_case.
 `tools/follow-cookbook-script.bun.ts` (`DET=1`) rebuilds exactly this JSON.
 
+**Run on a stand** `[C]`: this exact body (only `boCode` swapped for the probe BO, which had a field with
+code `code`), written into an empty method `describe` by §0S.12 item 7b, translated clean and, called from
+an «Открытие» hook as `Итог = describe(ЭТОТ, Formula)`, gave `K1:пусто` / `K2:число` / `K3:формула` for
+`Formula` = empty / `123` / `a+b`. The parameter ids in that run were the ones above, shipped in the
+method hat of the archive (the importer keeps them, §5d).
+
 ### 0S.11 Self-check before shipping
 
 Run all of it — the IDE will not tell you about any of these:
@@ -3510,6 +3516,17 @@ Run all of it — the IDE will not tell you about any of these:
    4. To take it back: `POST /web/v2/script/undo`, same params — one call undoes the whole step 2.
    Into an EMPTY hook the file goes WITH its entry-point hat (`BlockFixEntryPoint`) and a closing
    `BlockExit FROM_METHOD`. Proven on a 711-block / 1723-expression fragment and 26 small ones.
+   **7b. A METHOD body that reads its parameters — skip `paste`** `[C]`: `paste` rewrites every parameter
+   reference into a detached «Переменная №N = 0» carrier (§14 «Parameter carriers»). Instead send your
+   own `blocks`/`expressions` straight to `apply-update-cmd` (params `{scriptModuleId, scriptId}` of the
+   method, `Set blocks.<id>` / `Set expressions.<id>` with YOUR ids — any 16 characters of the 0S.4
+   alphabet are accepted as they are, `load-new-ids` is optional) plus one `Set` of the hat
+   `blocks.<hat id>` = the whole hat (`methodName`, `params`, `returnType`) with `downBlockId` = your first
+   body block. Then `translate-script` must answer `success:true`. Run with the §0S.10 example; the
+   method computed the right answers on records.
+   **`undo` trap** `[C]`: on a method whose def came from an import and was never edited since, one
+   `undo` after the first `apply-update-cmd` left the def EMPTY — the import's hat went too. Before any
+   write, keep the hat (`load-script-def`) so you can `Set` it back.
 
 ---
 
@@ -4672,7 +4689,14 @@ all pasted without loss where read back. If a paste ever chokes, split into meth
   unaffected. For a BO-typed parameter there is no such trick — pass the data another way.
 - **Parameter carriers «Переменная №N»**: sometimes the IDE does not bind param refs in place but adds one
   `BlockNewVar` per referenced parameter at the top (`Переменная №N := <param>`) and rewires all uses to
-  them. Frequent, not systematic, trigger unknown `[U]`. The №-numbering often runs crossed relative to the
+  them. Frequent, not systematic in IDE pastes, trigger unknown `[U]`. **The server half is deterministic**
+  `[C]`: `v2/script/paste` receives only `{copied}` — no target script (the client's `paste(m)` posts the
+  body alone and then writes the answer verbatim, bundle chunk `9839`) — and on every run, body or whole
+  method with its hat, it turned each VAR_REF to a method parameter into a DETACHED carrier
+  `BlockFixEmpty → BlockNewVar «Переменная №N» = 0` (a Number CONST, not the parameter), and returned the
+  body itself under a third `BlockFixEmpty`, not hung under the hat. Written as returned, that method
+  computes with zeros. So for a method body that reads its parameters, **do not route it through `paste`**:
+  write it with `apply-update-cmd` directly (§0S.12 item 7b). The №-numbering often runs crossed relative to the
   parameters — **crossed NAMES alone are cosmetic; only the initialiser-vs-use binding matters**. Wrong
   bindings did happen and changed results (`5-3` → `-2`, `4/2` → `0.5`; commutative ops were unaffected).
   Detection: match each carrier's initialiser **by parameter id** (stable) against how the body uses it,
@@ -5084,8 +5108,9 @@ Scripts:
 14. A method hat never pastes; an entry point in the clipboard blocks method pastes.
 15. A body paste types every parameter as a number — string parameters need `'' Concat param` first, or
     assignments vanish without an error.
-16. Parameter carriers «Переменная №N» can bind arguments to the wrong roles; only non-commutative probes
-    catch it.
+16. Parameter carriers «Переменная №N» can bind arguments to the wrong roles (only non-commutative probes
+    catch it); the server `paste` always makes them, initialised to 0 — write a method body that reads its
+    parameters by `apply-update-cmd` instead (§0S.12 item 7b).
 17. The IDE regenerates every id — diff structurally (id-free pseudocode), never by key.
 18. "No red in the IDE" proves nothing; structural equality proves nothing about runtime.
 19. Never compare numbers with `Eq` (scale-sensitive); `0/100` prints as `0E-30`.
