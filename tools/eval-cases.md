@@ -126,3 +126,8 @@ Gaps found and repaired (commit of 2026-10-12):
 5. **orderIndex**: the template annotation says CHANGE IT.
 6. **No literal process in §0** (29b guessed the CREATED line and the slot names): new 0.9a, the whole
    seven-line process from the stand-verified generator.
+
+**§0 renumbered after round 5.** The rounds above cite the OLD numbers. §0 now has the core first and the
+optional blocks after it: old 0.10/0.11/0.12 → 0.9/0.10/0.11 (hard rules / self-check / building), old
+0.5a/0.5b/0.5c/0.5d/0.5e → 0.12/0.13/0.14/0.15/0.16 (system fields / widgets / kanban / menu items / icons),
+old 0.9/0.9a → 0.17/0.18 (other kinds / business process). The validator's rule ids follow the new numbers.

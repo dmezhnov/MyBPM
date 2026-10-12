@@ -5,7 +5,7 @@
  * only that document, so every rule below quotes the section it comes from.
  *
  * Severity:
- *   FATAL — the import is expected to fail outright (§0.10)
+ *   FATAL — the import is expected to fail outright (§0.9)
  *   ERROR — the import succeeds but builds something other than what was asked (silent damage)
  *   WARN  — style / convention deviation, the object is still usable
  *
@@ -103,7 +103,7 @@ const file = Bun.argv[2];
 const asJson = Bun.argv.includes("--json");
 if (!file) { console.error("usage: validate-archive.bun.ts <file.mybpm.zip>"); process.exit(2); }
 
-// ---------------------------------------------------------------- zip layout (§0.1, §0.11)
+// ---------------------------------------------------------------- zip layout (§0.1, §0.10)
 const listProc = Bun.spawnSync(["zipinfo", "-1", file]);
 if (listProc.exitCode !== 0) {
   add("FATAL", "0.1", `not a readable zip: ${new TextDecoder().decode(listProc.stderr).trim()}`);
@@ -132,44 +132,44 @@ function extract(name: string): string {
 let payload = payloadName ? extract(payloadName) : "";
 const meta = metaName ? extract(metaName) : "";
 
-// ---------------------------------------------------------------- metadata (§0.10 rule 2)
+// ---------------------------------------------------------------- metadata (§0.9 rule 2)
 const rawLines = payload.split("\n");
 const jsonLines = rawLines.filter(l => l.trim() !== "");
 nLines = jsonLines.length;
-if (payload && !payload.endsWith("\n")) add("ERROR", "0.10/3", "payload has no final newline");
-if (payload.endsWith("\n\n")) add("WARN", "0.10/3", "payload ends with a blank line");
+if (payload && !payload.endsWith("\n")) add("ERROR", "0.9/3", "payload has no final newline");
+if (payload.endsWith("\n\n")) add("WARN", "0.9/3", "payload ends with a blank line");
 if (metaName) {
   const m = /^objectCount-(\d+)$/.exec(meta.trim());
-  if (!m) add("FATAL", "0.10/2", `metadata.mybpm is ${JSON.stringify(meta)}, expected "objectCount-<N>"`);
+  if (!m) add("FATAL", "0.9/2", `metadata.mybpm is ${JSON.stringify(meta)}, expected "objectCount-<N>"`);
   else {
     if (meta !== meta.trim()) add("WARN", "0.1", "metadata.mybpm carries trailing whitespace/newline");
     if (Number(m[1]) !== jsonLines.length)
-      add("FATAL", "0.10/2", `objectCount-${m[1]} but the payload has ${jsonLines.length} lines`);
+      add("FATAL", "0.9/2", `objectCount-${m[1]} but the payload has ${jsonLines.length} lines`);
   }
 }
 
-// ---------------------------------------------------------------- JSONL (§0.10 rule 3)
+// ---------------------------------------------------------------- JSONL (§0.9 rule 3)
 const objs: any[] = [];
 jsonLines.forEach((line, i) => {
   try {
     const o = JSON.parse(line);
     objs.push(o);
     if (typeof o !== "object" || o === null || Array.isArray(o))
-      add("FATAL", "0.10/3", `line ${i + 1} is not a JSON object`);
+      add("FATAL", "0.9/3", `line ${i + 1} is not a JSON object`);
     const minified = JSON.stringify(o);
     if (line.length > minified.length + 2 && /:\s|,\s/.test(line))
-      add("WARN", "0.10/3", `line ${i + 1} looks pretty-printed / padded (${line.length} vs ${minified.length} chars minified)`);
+      add("WARN", "0.9/3", `line ${i + 1} looks pretty-printed / padded (${line.length} vs ${minified.length} chars minified)`);
   } catch (e) {
-    add("FATAL", "0.10/3", `line ${i + 1} does not parse as JSON: ${(e as Error).message}`);
+    add("FATAL", "0.9/3", `line ${i + 1} does not parse as JSON: ${(e as Error).message}`);
   }
 });
-if (payload.trim().startsWith("[")) add("FATAL", "0.10/3", "payload is a JSON array, must be JSONL");
+if (payload.trim().startsWith("[")) add("FATAL", "0.9/3", "payload is a JSON array, must be JSONL");
 
-// ---------------------------------------------------------------- @class (§0.10 rule 4)
+// ---------------------------------------------------------------- @class (§0.9 rule 4)
 objs.forEach((o, i) => {
-  if (!o["@class"]) add("FATAL", "0.10/4", `line ${i + 1} has no "@class"`);
+  if (!o["@class"]) add("FATAL", "0.9/4", `line ${i + 1} has no "@class"`);
   else if (!String(o["@class"]).startsWith(PKG) && !String(o["@class"]).startsWith("kz.greetgo.mybpm.reg.structure.model."))
-    add("FATAL", "0.10/4", `line ${i + 1} "@class" = ${o["@class"]}, must start with ${PKG}`);
+    add("FATAL", "0.9/4", `line ${i + 1} "@class" = ${o["@class"]}, must start with ${PKG}`);
 });
 const cls = (o: any) => String(o?.["@class"] ?? "").split(".").pop();
 const menus = objs.filter(o => cls(o) === "MenuItemStructDto");
@@ -198,14 +198,14 @@ for (const g of globals) {
   add("WARN", "5d", `the import REPLACES the stand's whole global-method list with these ${ids.length} — a stand method missing here is DELETED; after the import touch one method via apply-update-cmd or records keep running the old bodies`);
 }
 
-// ---------------------------------------------------------------- groups (§0.3, §0.10 rule 1)
+// ---------------------------------------------------------------- groups (§0.3, §0.9 rule 1)
 const groups = objs.filter(o => cls(o) === "BoGroupStructDto");
 if (groups.length === 0 && !noBoArchive) add("FATAL", "0.3", "no BoGroupStructDto line");
 const groupCodes = new Set<string>();
 for (const g of groups) {
   // §0.3: groups are matched BY code; a line without one renames a fixed stand group (§8)
   if (typeof g.code !== "string" || !g.code)
-    add("FATAL", "0.10/1", `group "${g.name}" has no code — the importer renames a fixed stand group instead (§8)`);
+    add("FATAL", "0.9/1", `group "${g.name}" has no code — the importer renames a fixed stand group instead (§8)`);
   else if (groupCodes.has(g.code)) add("ERROR", "0.3", `group code "${g.code}" repeats`);
   else { groupCodes.add(g.code); naming(`group "${g.name}"`, g.code, "object"); }
   if (g.kind !== "MANUAL") add("ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL`);
@@ -216,7 +216,7 @@ for (const g of groups) {
 
 for (const o of objs) if (cls(o) === "AccessStructDto")
   for (const k of Object.keys(o.fieldAccessStructMap ?? {})) if (k in NATIVE_TYPES)
-    add("WARN", "0.5a", `AccessStructDto: the lock of native ${k} is ignored by the import — set it over the API after the import`);
+    add("WARN", "0.12", `AccessStructDto: the lock of native ${k} is ignored by the import — set it over the API after the import`);
 // tab rules (§7): fieldAccessStructMap.<TAB_GROUP code>.tabAccessStructMap.<tab code> — both looked up by code
 for (const o of objs) if (cls(o) === "AccessStructDto") {
   const bo = objs.find(b => cls(b) === "BoStructDto" && b.code === o.boCode);
@@ -231,7 +231,7 @@ for (const o of objs) if (cls(o) === "AccessStructDto") {
   }
 }
 if (objs.some(o => cls(o) === "AccessStructDto"))
-  add("ERROR", "0.10/10", "archive ships an AccessStructDto — import replaces the stand's rights with the archive's; never ship one unasked");
+  add("ERROR", "0.9/10", "archive ships an AccessStructDto — import replaces the stand's rights with the archive's; never ship one unasked");
 
 // ---------------------------------------------------------------- ids unique (§0.7)
 const idSeen = new Map<string, string>();
@@ -356,21 +356,21 @@ for (const bo of bos) {
   const unknownBo = Object.keys(bo).filter(k => ![...BO_KEYS, ...BO_KEYS_NEW, ...BO_KEYS_OPTIONAL].includes(k));
   if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
-  // 0.5c / §2 «BO views»: every template is {kanbanFields: {...}}, and every DROPDOWN_SINGLE needs one —
+  // 0.14 / §2 «BO views»: every template is {kanbanFields: {...}}, and every DROPDOWN_SINGLE needs one —
   // without it the map, the kanban view and the kanban editor die with «cardTemplate is null»
   const kct = bo.kanbanCardTemplates;
   if (kct && typeof kct === "object") {
     for (const [code, t] of Object.entries<any>(kct)) {
       if (!t || typeof t.kanbanFields !== "object" || Array.isArray(t.kanbanFields))
-        add("ERROR", "0.5c", `${tag}: kanbanCardTemplates.${code} must be {"kanbanFields": {...}} — without the wrapper the import is APPLIED and sets nothing`);
+        add("ERROR", "0.14", `${tag}: kanbanCardTemplates.${code} must be {"kanbanFields": {...}} — without the wrapper the import is APPLIED and sets nothing`);
       else for (const fc of Object.keys(t.kanbanFields))
         if (!bo.dynamicFields?.[fc] && !bo.nativeFields?.[fc])
-          add("ERROR", "0.5c", `${tag}: kanbanCardTemplates.${code} names ${fc}, not a field of this BO`);
+          add("ERROR", "0.14", `${tag}: kanbanCardTemplates.${code} names ${fc}, not a field of this BO`);
     }
     if (bo.category === "BO" || bo.category === "BO_DICTIONARY")
       for (const [code, f] of Object.entries<any>(bo.dynamicFields ?? {}))
         if (f?.type === "DROPDOWN_SINGLE" && !kct[code])
-          add("ERROR", "0.5c", `${tag}: DROPDOWN_SINGLE ${code} has no kanbanCardTemplates entry — the BO's map and kanban die with «cardTemplate is null» once it has a record`);
+          add("ERROR", "0.14", `${tag}: DROPDOWN_SINGLE ${code} has no kanbanCardTemplates entry — the BO's map and kanban die with «cardTemplate is null» once it has a record`);
   }
   if (bo.isGroupingEnabled === true)
     add("WARN", "2", `${tag}: isGroupingEnabled — the registry grouping view is 404 on the server (§2 «BO views»), it renders nothing`);
@@ -396,22 +396,22 @@ for (const bo of bos) {
     if (bo[k] != null && !(bo.dynamicFields && bo[k] in bo.dynamicFields))
       add("WARN", "2", `${tag}: ${k} "${bo[k]}" is no dynamicFields code of this BO`);
 
-  if (!CATEGORIES.has(bo.category)) add("FATAL", "0.9", `${tag}: category "${bo.category}" is not one of ${[...CATEGORIES].join("/")}`);
+  if (!CATEGORIES.has(bo.category)) add("FATAL", "0.17", `${tag}: category "${bo.category}" is not one of ${[...CATEGORIES].join("/")}`);
   if (groups.length && !groups.some(g => g.oldId === bo.boGroupOldId))
-    add("FATAL", "0.10/8", `${tag}: boGroupOldId "${bo.boGroupOldId}" matches no group line oldId`);
+    add("FATAL", "0.9/8", `${tag}: boGroupOldId "${bo.boGroupOldId}" matches no group line oldId`);
 
   const code = String(bo.code ?? "");
-  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(code)) add("ERROR", "0.10/7", `${tag}: BO code "${code}" is not latin/digits/underscore`);
-  if (code.length > 30) add("FATAL", "0.10/7", `${tag}: BO code is ${code.length} chars, max 30`);
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(code)) add("ERROR", "0.9/7", `${tag}: BO code "${code}" is not latin/digits/underscore`);
+  if (code.length > 30) add("FATAL", "0.9/7", `${tag}: BO code is ${code.length} chars, max 30`);
   naming(tag, code, "object");
   if (["Person", "Department", "PersonGroup"].includes(code))
     add("FATAL", "0.2a", `${tag}: "${code}" is a reserved built-in code — import dies with «Несоответствие типов объектов»`);
   if (bo.name && typeof bo.name.rus !== "string") add("ERROR", "0.4", `${tag}: name is not {rus: "…"}`);
 
-  // ------------------------------------------------ dynamicFields (§0.5, §0.10 rules 5, 12)
+  // ------------------------------------------------ dynamicFields (§0.5, §0.9 rules 5, 12)
   const df = bo.dynamicFields;
   if (df === undefined) { add("ERROR", "0.4", `${tag}: no dynamicFields`); continue; }
-  if (Array.isArray(df)) { add("FATAL", "0.10/5", `${tag}: dynamicFields is an ARRAY, must be an object keyed by field code`); continue; }
+  if (Array.isArray(df)) { add("FATAL", "0.9/5", `${tag}: dynamicFields is an ARRAY, must be an object keyed by field code`); continue; }
 
   const labels = new Set<string>();
   // The stacking rule is about the y values, not about the key order: a stand's own export lists the map
@@ -424,7 +424,7 @@ for (const bo of bos) {
     add("ERROR", "3", `${tag}: useAsKeyInMigration on ${migrationKeys.length} fields (${migrationKeys.join(", ")}) — the constructor allows one per BO`);
   for (const [key, f] of entries) {
     const ft = `${tag}.${key}`;
-    if (f.code !== key) add("FATAL", "0.10/5", `${ft}: dynamicFields key "${key}" != field code "${f.code}"`);
+    if (f.code !== key) add("FATAL", "0.9/5", `${ft}: dynamicFields key "${key}" != field code "${f.code}"`);
     id(ft, f.newId);
     if ("oldId" in f && !("newId" in f)) add("ERROR", "0.7", `${ft}: field carries oldId; fields use newId`);
     if (f.archetype !== "DYNAMIC") add("ERROR", "0.5", `${ft}: archetype "${f.archetype}", a dynamicFields entry is DYNAMIC`);
@@ -484,13 +484,13 @@ for (const bo of bos) {
 
     const type = f.type;
     if (NOT_A_FIELD_TYPE.has(type))
-      add("FATAL", "0.10/12", `${ft}: type "${type}" is not a dynamic field type (widget / native / invented) — wrong map`);
+      add("FATAL", "0.9/12", `${ft}: type "${type}" is not a dynamic field type (widget / native / invented) — wrong map`);
     else if (!FIELD_TYPES.has(type))
       add("FATAL", "0.5", `${ft}: type "${type}" is not in the field-type enum`);
 
     const c = String(f.code ?? "");
-    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(c)) add("ERROR", "0.10/7", `${ft}: field code "${c}" is not latin/digits/underscore`);
-    if (c.length > 30) add("ERROR", "0.10/7", `${ft}: field code is ${c.length} chars, max 30`);
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(c)) add("ERROR", "0.9/7", `${ft}: field code "${c}" is not latin/digits/underscore`);
+    if (c.length > 30) add("ERROR", "0.9/7", `${ft}: field code is ${c.length} chars, max 30`);
     const lab = f.label?.rus;
     // «Отслеживать статус» (§3 «Six more gear flags»): the constructor leaves its TAB_GROUP wrapper unlabelled
     const trackedWrapper = type === "TAB_GROUP" && !!f.trackedFieldCode;
@@ -506,7 +506,7 @@ for (const bo of bos) {
     }
 
     if (f.isRequired === true && f.isReadonly === true)
-      add("ERROR", "0.10/9", `${ft}: isRequired AND isReadonly — the record can never be saved`);
+      add("ERROR", "0.9/9", `${ft}: isRequired AND isReadonly — the record can never be saved`);
 
     // type-specific extras
     if (type === "DROPDOWN_SINGLE" || type === "RADIO_BUTTON_GROUP") {
@@ -558,11 +558,11 @@ for (const bo of bos) {
       if (type === "CO" && bi && bi.boCategory !== "BO_COMPOSITE")
         add("ERROR", "0.5", `${ft}: CO boInfo.boCategory = ${bi.boCategory}, expected BO_COMPOSITE`);
       if (!f.viewType) add("WARN", "0.5", `${ft}: ${type} without viewType (TABLE/SINGLE)`);
-      // 0.10 rule 15: a reference shows at least one field of its target (a panel widget: §5a check below;
-      // a Person reference with {} is filled with Фамилия + Имя by the stand, 0.5b)
+      // 0.9 rule 15: a reference shows at least one field of its target (a panel widget: §5a check below;
+      // a Person reference with {} is filled with Фамилия + Имя by the stand, 0.13)
       if (bo.category !== "BO_PANEL" && bi?.code !== "Person"
           && !Object.values<any>(f.boRefStruct?.fieldRefs ?? {}).some((r: any) => r?.toShow === true))
-        add("ERROR", "0.10/15", `${ft}: boRefStruct.fieldRefs has no toShow: true — the reference renders an empty selector; list at least one field of ${bi?.code}`);
+        add("ERROR", "0.9/15", `${ft}: boRefStruct.fieldRefs has no toShow: true — the reference renders an empty selector; list at least one field of ${bi?.code}`);
       checkRefSettings(bo, key, f, ft);
     } else {
       if (f.linkedCoSettings && Object.keys(f.linkedCoSettings).length)
@@ -642,16 +642,16 @@ for (const bo of bos) {
       }
     }
   }
-  // 0.10 rule 15: every BO shows at least one registry column — without one the registry answers
+  // 0.9 rule 15: every BO shows at least one registry column — without one the registry answers
   // AccessDenied and lists nothing (PROCESS_STATUS is a process's default column)
   if (bo.category !== "BO_COMPOSITE"
       && ![...Object.values<any>(bo.dynamicFields ?? {}), ...Object.values<any>(bo.nativeFields ?? {})].some((f: any) => f?.tableColToShow === true))
-    add("ERROR", "0.10/15", `${tag}: no field has tableColToShow: true — the registry shows no column, answers AccessDenied and lists nothing`);
+    add("ERROR", "0.9/15", `${tag}: no field has tableColToShow: true — the registry shows no column, answers AccessDenied and lists nothing`);
   // a native field placed on the form takes its rows in the same stack (a stand export: LAST_MODIFIED_AT at y=40)
   if (bo.nativeFields && !Array.isArray(bo.nativeFields) && bo.category !== "BO_COMPOSITE")
     for (const [k, n] of Object.entries<any>(bo.nativeFields))
       if (n?.gridPosition && typeof n.gridPosition.y === "number") laid.push({ ft: `${tag}.native ${k}`, f: n, gp: n.gridPosition, box: true });
-  // so does every widget (§0.5b) — a stand export with widgets between the fields has the gaps they fill; a widget
+  // so does every widget (§0.13) — a stand export with widgets between the fields has the gaps they fill; a widget
   // on a tab names it in `tabCode` (a field uses `tabCodePath`, which the import IGNORES on a widget) and is laid
   // out inside that tab, not in this stack
   if (bo.category !== "BO_COMPOSITE")
@@ -681,7 +681,7 @@ for (const bo of bos) {
     idx++;
   }
 
-  // STATIC_TEXT heading must not repeat ANOTHER field's label (§0.5, §0.10 rule 12).
+  // STATIC_TEXT heading must not repeat ANOTHER field's label (§0.5, §0.9 rule 12).
   // Its OWN label normally equals the heading — that is what a real export looks like, not a defect.
   for (const [, f] of entries) {
     if (f.type === "STATIC_TEXT") {
@@ -691,123 +691,123 @@ for (const bo of bos) {
     }
   }
 
-  // ------------------------------------------------ nativeFields (§0.5a)
+  // ------------------------------------------------ nativeFields (§0.12)
   const nf = bo.nativeFields;
   if (nf && !Array.isArray(nf)) for (const [key, n] of Object.entries<any>(nf)) {
     const ft = `${tag}.native ${key}`;
-    if (!(key in NATIVE_TYPES)) add("ERROR", "0.5a", `${ft}: "${key}" is not a creatable native type (${Object.keys(NATIVE_TYPES).join("/")})`);
-    if (n.nativeFieldId !== key) add("ERROR", "0.5a", `${ft}: nativeFields key != nativeFieldId "${n.nativeFieldId}"`);
-    if (n.archetype !== "NATIVE") add("ERROR", "0.5a", `${ft}: archetype "${n.archetype}", must be NATIVE`);
-    if (key in NATIVE_TYPES && n.type !== NATIVE_TYPES[key]) add("ERROR", "0.5a", `${ft}: type "${n.type}", the platform fixes ${NATIVE_TYPES[key]}`);
+    if (!(key in NATIVE_TYPES)) add("ERROR", "0.12", `${ft}: "${key}" is not a creatable native type (${Object.keys(NATIVE_TYPES).join("/")})`);
+    if (n.nativeFieldId !== key) add("ERROR", "0.12", `${ft}: nativeFields key != nativeFieldId "${n.nativeFieldId}"`);
+    if (n.archetype !== "NATIVE") add("ERROR", "0.12", `${ft}: archetype "${n.archetype}", must be NATIVE`);
+    if (key in NATIVE_TYPES && n.type !== NATIVE_TYPES[key]) add("ERROR", "0.12", `${ft}: type "${n.type}", the platform fixes ${NATIVE_TYPES[key]}`);
     id(ft, n.newId);
     // verified on core2 2026-10-01: the import applies chosenAccessRight but never the native's rights
-    if (n.chosenAccessRight === true) add("WARN", "0.5a", `${ft}: chosenAccessRight on a native — the import shows the orange lock but does not apply its rights; set them over the API after the import`);
-    for (const k of ["needUploadToOutTable", "needLoadFromInTables"]) if (n[k] === true) add("WARN", "0.5a", `${ft}: ${k} on a native is not applied by the import`);
-    if (n.inMigrationTimezoneMinutes) add("WARN", "0.5a", `${ft}: inMigrationTimezoneMinutes on a native is never stored`);
+    if (n.chosenAccessRight === true) add("WARN", "0.12", `${ft}: chosenAccessRight on a native — the import shows the orange lock but does not apply its rights; set them over the API after the import`);
+    for (const k of ["needUploadToOutTable", "needLoadFromInTables"]) if (n[k] === true) add("WARN", "0.12", `${ft}: ${k} on a native is not applied by the import`);
+    if (n.inMigrationTimezoneMinutes) add("WARN", "0.12", `${ft}: inMigrationTimezoneMinutes on a native is never stored`);
   }
 
-  // ------------------------------------------------ widgets (§0.5b)
+  // ------------------------------------------------ widgets (§0.13)
   for (const [map, types] of Object.entries(WIDGET_MAPS)) {
     const w = bo[map];
     if (!w || Array.isArray(w)) continue;
     for (const [key, v] of Object.entries<any>(w)) {
       const ft = `${tag}.${map}.${key}`;
-      if (v.code !== key) add("ERROR", "0.5b", `${ft}: widget map key != code "${v.code}"`);
+      if (v.code !== key) add("ERROR", "0.13", `${ft}: widget map key != code "${v.code}"`);
       naming(ft, key, "lower");
-      if (!types.includes(v.type)) add("ERROR", "0.5b", `${ft}: type "${v.type}" does not belong in "${map}" (${types.join("/")})`);
+      if (!types.includes(v.type)) add("ERROR", "0.13", `${ft}: type "${v.type}" does not belong in "${map}" (${types.join("/")})`);
       id(ft, v.newId);
-      if (!v.gridPosition) add("WARN", "0.5b", `${ft}: widget without gridPosition`);
-      if (v.type === "BUTTON" && v.url === undefined) add("WARN", "0.5b", `${ft}: BUTTON without url`);
-      if (v.type === "IFRAME" && v.url === undefined) add("WARN", "0.5b", `${ft}: IFRAME without url`);
+      if (!v.gridPosition) add("WARN", "0.13", `${ft}: widget without gridPosition`);
+      if (v.type === "BUTTON" && v.url === undefined) add("WARN", "0.13", `${ft}: BUTTON without url`);
+      if (v.type === "IFRAME" && v.url === undefined) add("WARN", "0.13", `${ft}: IFRAME without url`);
       if (v.type === "BUTTON" && typeof v.url === "string" && v.url.trim()) {
         // what each url does on the record card was clicked through on core2, 2026-10-01
         if (/^(client\/)?(save-current-boi|create-boi\/)/.test(v.url))
-          add("WARN", "0.5b", `${ft}: url "${v.url}" does nothing on the record card — leave url empty and put the logic into the button's field script`);
+          add("WARN", "0.13", `${ft}: url "${v.url}" does nothing on the record card — leave url empty and put the logic into the button's field script`);
         else if (!v.url.startsWith("call/plugin/"))
-          add("WARN", "0.5b", `${ft}: url "${v.url}" does nothing — a button never navigates; only empty (script) or call/plugin/<server plugin> act`);
+          add("WARN", "0.13", `${ft}: url "${v.url}" does nothing — a button never navigates; only empty (script) or call/plugin/<server plugin> act`);
       }
       if (v.type === "BUTTON" && v.fieldCodes && typeof v.fieldCodes === "object") {
         const known = new Set([...Object.keys(bo.dynamicFields ?? {}), ...Object.keys(bo.nativeFields ?? {})]);
         for (const c of Object.keys(v.fieldCodes))
-          if (!known.has(c)) add("ERROR", "0.5b", `${ft}: fieldCodes names "${c}", no field of this BO has that code`);
+          if (!known.has(c)) add("ERROR", "0.13", `${ft}: fieldCodes names "${c}", no field of this BO has that code`);
       }
       if (v.type === "SIGNATURE") {
         // round-tripped on core2 2026-10-01: everything by CODE; printFormCodes / massPrintFormCodes values are 1
         const dyn = bo.dynamicFields ?? {};
         for (const c of Object.keys(v.fieldCodes ?? {}))
-          if (!(c in dyn)) add("ERROR", "0.5b", `${ft}: fieldCodes names "${c}", no dynamic field of this BO has that code`);
+          if (!(c in dyn)) add("ERROR", "0.13", `${ft}: fieldCodes names "${c}", no dynamic field of this BO has that code`);
         for (const c of Object.keys(v.massFieldCodes ?? {})) {
-          if (!(c in dyn)) add("ERROR", "0.5b", `${ft}: massFieldCodes names "${c}", no dynamic field of this BO has that code`);
-          else if (dyn[c].type !== "BO") add("ERROR", "0.5b", `${ft}: massFieldCodes "${c}" is ${dyn[c].type} — mass signing goes through a BO field`);
+          if (!(c in dyn)) add("ERROR", "0.13", `${ft}: massFieldCodes names "${c}", no dynamic field of this BO has that code`);
+          else if (dyn[c].type !== "BO") add("ERROR", "0.13", `${ft}: massFieldCodes "${c}" is ${dyn[c].type} — mass signing goes through a BO field`);
         }
         if (v.signingPhoneCode != null) {
-          if (!(v.signingPhoneCode in dyn)) add("ERROR", "0.5b", `${ft}: signingPhoneCode "${v.signingPhoneCode}" is not a field of this BO`);
-          else if (dyn[v.signingPhoneCode].type !== "INPUT_PHONE") add("ERROR", "0.5b", `${ft}: signingPhoneCode "${v.signingPhoneCode}" is ${dyn[v.signingPhoneCode].type}, the stand offers only INPUT_PHONE fields`);
+          if (!(v.signingPhoneCode in dyn)) add("ERROR", "0.13", `${ft}: signingPhoneCode "${v.signingPhoneCode}" is not a field of this BO`);
+          else if (dyn[v.signingPhoneCode].type !== "INPUT_PHONE") add("ERROR", "0.13", `${ft}: signingPhoneCode "${v.signingPhoneCode}" is ${dyn[v.signingPhoneCode].type}, the stand offers only INPUT_PHONE fields`);
         }
         const pfCodes = new Set((bo.printForms ?? []).map((f: any) => f.printFormCode));
         for (const c of Object.keys(v.printFormCodes ?? {}))
-          if (!pfCodes.has(c)) add("ERROR", "0.5b", `${ft}: printFormCodes names "${c}", not a printForms[].printFormCode of this BO`);
+          if (!pfCodes.has(c)) add("ERROR", "0.13", `${ft}: printFormCodes names "${c}", not a printForms[].printFormCode of this BO`);
         if (Object.keys(v.massPrintFormCodes ?? {}).length)
-          add("WARN", "0.5b", `${ft}: massPrintFormCodes did NOT survive an import on core2 (2026-10-01) — check it on the stand after applying`);
+          add("WARN", "0.13", `${ft}: massPrintFormCodes did NOT survive an import on core2 (2026-10-01) — check it on the stand after applying`);
       }
       if (WIDGET_MAPS.currentDates.includes(v.type) && v.widgetType !== v.type)
         // core2 2026-10-01: a stand export and the generator both carry widgetType = type in currentDates
-        add("ERROR", "0.5b", `${ft}: widgetType "${v.widgetType}" must repeat type "${v.type}"`);
+        add("ERROR", "0.13", `${ft}: widgetType "${v.widgetType}" must repeat type "${v.type}"`);
       if (v.type === "CAPTCHA")
         // core2 2026-10-01: both record-API cycles answer CaptchaNotVerified for a changed or new record
-        add("WARN", "0.5b", `${ft}: a CAPTCHA makes the server refuse every save that changes a record until a person solves it — no record API, no headless client`);
+        add("WARN", "0.13", `${ft}: a CAPTCHA makes the server refuse every save that changes a record until a person solves it — no record API, no headless client`);
       if (v.type === "IFRAME" && typeof v.url === "string" && /^http:/i.test(v.url))
-        add("ERROR", "0.5b", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
+        add("ERROR", "0.13", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
       if (v.type === "CURRENT_USER") {
         // round-tripped on core2 2026-10-01: TABLE/SINGLE only; fieldRefs keyed by «Пользователи» field CODES
         if (v.viewType !== undefined && v.viewType !== "TABLE" && v.viewType !== "SINGLE")
-          add("ERROR", "0.5b", `${ft}: viewType "${v.viewType}" — CURRENT_USER takes only TABLE or SINGLE`);
+          add("ERROR", "0.13", `${ft}: viewType "${v.viewType}" — CURRENT_USER takes only TABLE or SINGLE`);
         const refs = v.fieldRefs ?? {};
-        if (typeof refs !== "object" || Array.isArray(refs)) add("ERROR", "0.5b", `${ft}: fieldRefs must be a map {<Person field code>: {toShow, orderIndex}}`);
+        if (typeof refs !== "object" || Array.isArray(refs)) add("ERROR", "0.13", `${ft}: fieldRefs must be a map {<Person field code>: {toShow, orderIndex}}`);
         else {
           for (const [c, r] of Object.entries<any>(refs))
-            if (typeof r?.toShow !== "boolean") add("ERROR", "0.5b", `${ft}: fieldRefs.${c}.toShow must be true/false`);
+            if (typeof r?.toShow !== "boolean") add("ERROR", "0.13", `${ft}: fieldRefs.${c}.toShow must be true/false`);
           const vals = Object.values<any>(refs);
           if (vals.length && !vals.some((r) => r?.toShow === true))
-            add("WARN", "0.5b", `${ft}: fieldRefs hides every column — leave it {} for the default «Фамилия» + «Имя»`);
+            add("WARN", "0.13", `${ft}: fieldRefs hides every column — leave it {} for the default «Фамилия» + «Имя»`);
         }
       }
     }
     if (map === "currentUser" && Object.keys(w).length > 1)
-      add("ERROR", "0.5b", `${tag}.${map}: ${Object.keys(w).length} CURRENT_USER widgets — the platform allows one per BO`);
+      add("ERROR", "0.13", `${tag}.${map}: ${Object.keys(w).length} CURRENT_USER widgets — the platform allows one per BO`);
   }
 
-  // ------------------------------------------------ print forms (§0.5b «Print forms»)
+  // ------------------------------------------------ print forms (§0.13 «Print forms»)
   const files = new Set(objs.filter((o) => cls(o) === "ExportStructFileDto").map((o) => o.fileId));
   for (const [i, f] of (Array.isArray(bo.printForms) ? bo.printForms : []).entries()) {
     const pt = `${tag}.printForms[${i}]`;
-    if (!f.printFormCode) add("ERROR", "0.5b", `${pt}: no printFormCode`);
-    if (f.fileType !== "PDF" && f.fileType !== "DOCX") add("ERROR", "0.5b", `${pt}: fileType "${f.fileType}", must be PDF or DOCX`);
-    if (!files.has(f.fileId)) add("ERROR", "0.5b", `${pt}: no ExportStructFileDto line with fileId "${f.fileId}" — the template .docx travels in the archive`);
+    if (!f.printFormCode) add("ERROR", "0.13", `${pt}: no printFormCode`);
+    if (f.fileType !== "PDF" && f.fileType !== "DOCX") add("ERROR", "0.13", `${pt}: fileType "${f.fileType}", must be PDF or DOCX`);
+    if (!files.has(f.fileId)) add("ERROR", "0.13", `${pt}: no ExportStructFileDto line with fileId "${f.fileId}" — the template .docx travels in the archive`);
     id(pt, f.newId);
   }
 
-  // ------------------------------------------------ per-category (§0.9)
+  // ------------------------------------------------ per-category (§0.17)
   if (bo.category === "BO_DICTIONARY") {
     const dfk = bo.dictionaryFields;
     if (JSON.stringify(dfk) !== JSON.stringify(["CODE", "LABEL"]))
-      add("ERROR", "0.9", `${tag}: dictionaryFields = ${JSON.stringify(dfk)}, must be ["CODE","LABEL"]`);
+      add("ERROR", "0.17", `${tag}: dictionaryFields = ${JSON.stringify(dfk)}, must be ["CODE","LABEL"]`);
     const keys = entries.map(([k]) => k);
     if (keys[0] !== "code" || keys[1] !== "label")
-      add("ERROR", "0.9", `${tag}: a dictionary must START with the system fields code, label — got ${keys.slice(0, 2).join(", ")}`);
+      add("ERROR", "0.17", `${tag}: a dictionary must START with the system fields code, label — got ${keys.slice(0, 2).join(", ")}`);
     const cf = df.code, lf = df.label;
-    // 0.10 rule 18: both system fields are mandatory on every dictionary
-    if (!cf) add("ERROR", "0.10/18", `${tag}: a dictionary without the required system field "code" — every dictionary has code + label`);
-    if (!lf) add("ERROR", "0.10/18", `${tag}: a dictionary without the required system field "label" — every dictionary has code + label`);
+    // 0.9 rule 18: both system fields are mandatory on every dictionary
+    if (!cf) add("ERROR", "0.9/18", `${tag}: a dictionary without the required system field "code" — every dictionary has code + label`);
+    if (!lf) add("ERROR", "0.9/18", `${tag}: a dictionary without the required system field "label" — every dictionary has code + label`);
     if (cf) {
-      if (cf.type !== "INPUT_TEXT") add("ERROR", "0.9", `${tag}: dictionary "code" type ${cf.type}, must be INPUT_TEXT`);
-      if (cf.isUnique !== true || cf.isRequired !== true) add("ERROR", "0.9", `${tag}: dictionary "code" must be isUnique+isRequired`);
-      if (cf.isSystem !== true) add("ERROR", "0.9", `${tag}: dictionary "code" must be isSystem: true`);
+      if (cf.type !== "INPUT_TEXT") add("ERROR", "0.17", `${tag}: dictionary "code" type ${cf.type}, must be INPUT_TEXT`);
+      if (cf.isUnique !== true || cf.isRequired !== true) add("ERROR", "0.17", `${tag}: dictionary "code" must be isUnique+isRequired`);
+      if (cf.isSystem !== true) add("ERROR", "0.17", `${tag}: dictionary "code" must be isSystem: true`);
     }
     if (lf) {
-      if (lf.type !== "INPUT_TEXT_LANG") add("ERROR", "0.9", `${tag}: dictionary "label" type ${lf.type}, must be INPUT_TEXT_LANG`);
-      if (lf.isRequired !== true) add("ERROR", "0.9", `${tag}: dictionary "label" must be isRequired`);
-      if (lf.isSystem !== true) add("ERROR", "0.9", `${tag}: dictionary "label" must be isSystem: true`);
+      if (lf.type !== "INPUT_TEXT_LANG") add("ERROR", "0.17", `${tag}: dictionary "label" type ${lf.type}, must be INPUT_TEXT_LANG`);
+      if (lf.isRequired !== true) add("ERROR", "0.17", `${tag}: dictionary "label" must be isRequired`);
+      if (lf.isSystem !== true) add("ERROR", "0.17", `${tag}: dictionary "label" must be isSystem: true`);
     }
   }
   if (bo.category === "BO_PANEL") {
@@ -888,10 +888,10 @@ for (const bo of bos) {
       }
     }
     const ps = (df as any).PROCESS_STATUS;
-    // 0.10 rule 18: every business process carries PROCESS_STATUS — never ship one without it
-    if (!ps) add("ERROR", "0.10/18", `${tag}: no PROCESS_STATUS — every business process has the required «Статус процесса» field; ship it (§5c); its ids are resolved by code, mint them (0.2a)`);
+    // 0.9 rule 18: every business process carries PROCESS_STATUS — never ship one without it
+    if (!ps) add("ERROR", "0.9/18", `${tag}: no PROCESS_STATUS — every business process has the required «Статус процесса» field; ship it (§5c); its ids are resolved by code, mint them (0.2a)`);
     else if (ps.isRequired !== true || ps.isSystem !== true || ps.type !== "BO")
-      add("ERROR", "0.10/18", `${tag}: PROCESS_STATUS must be the system field — type BO, isSystem: true, isRequired: true (§5c)`);
+      add("ERROR", "0.9/18", `${tag}: PROCESS_STATUS must be the system field — type BO, isSystem: true, isRequired: true (§5c)`);
     if (ps && (!ps.defaultValue || ps.defaultValue === "[]"))
       add("ERROR", "5c", `${tag}: PROCESS_STATUS has no defaultValue (the stand's CREATED row) — required and empty, every record is refused on save; the export's DEFAULT_VALUE line alone does NOT set it`);
     const code = (bo as any).code;
@@ -907,7 +907,7 @@ for (const pv of objs.filter(o => cls(o) === "BoProcessVersionsStructDto"))
   if (!bos.some(b => b.oldId === pv.oldId))
     add("FATAL", "5c", `BoProcessVersionsStructDto oldId "${pv.oldId}" matches no BoStructDto`);
 
-// ---------------------------------------------------------------- sidebar menu items (§0.5d, §0.10 rule 14)
+// ---------------------------------------------------------------- sidebar menu items (§0.15, §0.9 rule 14)
 const MENU_KEYS = ["@class", "menuItemCode", "menuItemName", "parentMenuItemCode", "boCode", "boName",
   "iconName", "orderIndex", "boPages", "chosenAccessRight", "needCountMenuItem", "isPanel",
   "needHideInMobApp", "bracketFilter", "menuItemType"];
@@ -917,7 +917,7 @@ const BO_PAGES_KEYS = ["isKanbanEnabled", "kanbanIndex", "isCalendarEnabled", "c
   "isTimelineEnabled", "timelineIndex", "isListEnabled", "listIndex", "isMapEnabled", "mapIndex",
   "isGroupingEnabled", "groupingIndex"];
 
-// 0.5e: the icon catalogue, pulled off a stand's frontend by tools/menu-icons.bun.ts
+// 0.16: the icon catalogue, pulled off a stand's frontend by tools/menu-icons.bun.ts
 const MENU_ICON_DEFAULTS = ["bo-g-draggable", "man-with-company", "bo-d-draggable"];
 const iconFile = Bun.file(`${import.meta.dir}/menu-icons.json`);
 const iconCat = await iconFile.exists() ? await iconFile.json() : null;
@@ -928,21 +928,21 @@ const MENU_ICONS: Set<string> | null = iconCat
 const menuByCode = new Map<string, any>();
 for (const m of menus) {
   const c = String(m.menuItemCode ?? "");
-  if (menuByCode.has(c)) add("ERROR", "0.5d", `menu code "${c}" repeats — the stand addresses menu items by code`);
+  if (menuByCode.has(c)) add("ERROR", "0.15", `menu code "${c}" repeats — the stand addresses menu items by code`);
   menuByCode.set(c, m);
 }
 menus.forEach(m => {
   const tag = `menu ${m.menuItemCode ?? "?"}`;
-  for (const k of MENU_REQUIRED) if (!(k in m)) add("ERROR", "0.5d", `${tag}: key "${k}" missing`);
+  for (const k of MENU_REQUIRED) if (!(k in m)) add("ERROR", "0.15", `${tag}: key "${k}" missing`);
   const unknown = Object.keys(m).filter(k => !MENU_KEYS.includes(k));
-  if (unknown.length) add("WARN", "0.5d", `${tag}: keys not in the §0.5d template: ${unknown.join(", ")}`);
+  if (unknown.length) add("WARN", "0.15", `${tag}: keys not in the §0.15 template: ${unknown.join(", ")}`);
   for (const k of ["id", "oldId", "newId", "menuItemId", "parentId", "boId"])
-    if (k in m) add("ERROR", "0.10/14", `${tag}: carries "${k}" — a menu line references everything by CODE and has no id`);
+    if (k in m) add("ERROR", "0.9/14", `${tag}: carries "${k}" — a menu line references everything by CODE and has no id`);
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(String(m.menuItemCode ?? "")))
-    add("ERROR", "0.5d", `${tag}: menuItemCode is not latin/digits/underscore`);
+    add("ERROR", "0.15", `${tag}: menuItemCode is not latin/digits/underscore`);
   else naming(tag, String(m.menuItemCode), "object");
   if (MENU_ICONS && m.iconName !== undefined && !MENU_ICONS.has(String(m.iconName)))
-    add("ERROR", "0.5e", `${tag}: iconName "${m.iconName}" is not in the icon catalogue — it imports, but the sidebar draws no icon`);
+    add("ERROR", "0.16", `${tag}: iconName "${m.iconName}" is not in the icon catalogue — it imports, but the sidebar draws no icon`);
   if (m.chosenAccessRight === true)
     add("WARN", "5e", `${tag}: chosenAccessRight true — whether menu access rights travel in an archive is [U]`);
 
@@ -956,29 +956,29 @@ menus.forEach(m => {
   if (m.parentMenuItemCode !== undefined) {
     const parent = menuByCode.get(String(m.parentMenuItemCode));
     if (!parent)
-      add("WARN", "0.5d", `${tag}: parent "${m.parentMenuItemCode}" is not in this archive — it must be a GROUP code taken off the stand, never a guess`);
+      add("WARN", "0.15", `${tag}: parent "${m.parentMenuItemCode}" is not in this archive — it must be a GROUP code taken off the stand, never a guess`);
     else if (parent.menuItemType !== "GROUP")
-      add("ERROR", "0.5d", `${tag}: parent "${m.parentMenuItemCode}" is a ${parent.menuItemType} item, not a GROUP`);
+      add("ERROR", "0.15", `${tag}: parent "${m.parentMenuItemCode}" is a ${parent.menuItemType} item, not a GROUP`);
     else if (menus.indexOf(parent) > menus.indexOf(m))
-      add("WARN", "0.5d", `${tag}: listed BEFORE its group — the order proved on import is group first`);
+      add("WARN", "0.15", `${tag}: listed BEFORE its group — the order proved on import is group first`);
   }
 
   if (type === "GROUP") {
     for (const k of ["boPages", "bracketFilter", "boCode", "boName"])
-      if (k in m) add("ERROR", "0.10/14", `${tag}: a GROUP line carries "${k}" — the stand exports a group without it`);
+      if (k in m) add("ERROR", "0.9/14", `${tag}: a GROUP line carries "${k}" — the stand exports a group without it`);
     return;
   }
 
   // type BO
   for (const k of ["boCode", "boName", "boPages", "bracketFilter"])
-    if (!(k in m)) add("ERROR", "0.10/14", `${tag}: a BO line needs "${k}"`);
+    if (!(k in m)) add("ERROR", "0.9/14", `${tag}: a BO line needs "${k}"`);
   const bo = boByCode.get(String(m.boCode));
   if (m.boCode !== undefined && !bo)
-    add("WARN", "0.5d", `${tag}: boCode "${m.boCode}" is not a BO of this archive — it must already be on the stand`);
+    add("WARN", "0.15", `${tag}: boCode "${m.boCode}" is not a BO of this archive — it must already be on the stand`);
   const bf = m.bracketFilter;
   if (bf) {
-    if (bf.boCode !== m.boCode) add("ERROR", "0.5d", `${tag}: bracketFilter.boCode "${bf.boCode}" != boCode "${m.boCode}"`);
-    if (bf.type !== "MENU_ITEM") add("ERROR", "0.5d", `${tag}: bracketFilter.type "${bf.type}", must be MENU_ITEM`);
+    if (bf.boCode !== m.boCode) add("ERROR", "0.15", `${tag}: bracketFilter.boCode "${bf.boCode}" != boCode "${m.boCode}"`);
+    if (bf.type !== "MENU_ITEM") add("ERROR", "0.15", `${tag}: bracketFilter.type "${bf.type}", must be MENU_ITEM`);
     if (Array.isArray(bf.brackets))
       add("ERROR", "5e", `${tag}: bracketFilter.brackets is an ARRAY (the API shape) — in an archive it is a map keyed by 8-char ids`);
     else if (bf.brackets && Object.keys(bf.brackets).length)
@@ -986,26 +986,26 @@ menus.forEach(m => {
   }
   const bp = m.boPages;
   if (!bp) return;
-  for (const k of BO_PAGES_KEYS) if (!(k in bp)) add("ERROR", "0.5d", `${tag}: boPages.${k} missing`);
+  for (const k of BO_PAGES_KEYS) if (!(k in bp)) add("ERROR", "0.15", `${tag}: boPages.${k} missing`);
   if ("kanbanFieldId" in bp)
-    add("ERROR", "0.10/14", `${tag}: boPages.kanbanFieldId is the API key — an archive takes kanbanFieldCode`);
+    add("ERROR", "0.9/14", `${tag}: boPages.kanbanFieldId is the API key — an archive takes kanbanFieldCode`);
   if (bp.isKanbanEnabled && !bp.kanbanFieldCode)
-    add("ERROR", "0.5d", `${tag}: kanban enabled without boPages.kanbanFieldCode — no columns`);
+    add("ERROR", "0.15", `${tag}: kanban enabled without boPages.kanbanFieldCode — no columns`);
   if (!bp.isKanbanEnabled && bp.kanbanFieldCode)
-    add("WARN", "0.5d", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" but isKanbanEnabled is false`);
+    add("WARN", "0.15", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" but isKanbanEnabled is false`);
   if (bp.isKanbanEnabled && bp.kanbanFieldCode && bo) {
     const f = bo.dynamicFields?.[bp.kanbanFieldCode];
-    if (!f) add("ERROR", "0.5d", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" is not a field of BO ${bo.code}`);
+    if (!f) add("ERROR", "0.15", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" is not a field of BO ${bo.code}`);
     else if (f.type !== "DROPDOWN_SINGLE")
-      add("ERROR", "0.5d", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" is ${f.type}, the columns need a DROPDOWN_SINGLE`);
+      add("ERROR", "0.15", `${tag}: kanbanFieldCode "${bp.kanbanFieldCode}" is ${f.type}, the columns need a DROPDOWN_SINGLE`);
     if (!bo.kanbanCardTemplates?.[bp.kanbanFieldCode])
-      add("ERROR", "0.5c", `${tag}: BO ${bo.code} has no kanbanCardTemplates.${bp.kanbanFieldCode} — the board dies with «cardTemplate is null»`);
+      add("ERROR", "0.14", `${tag}: BO ${bo.code} has no kanbanCardTemplates.${bp.kanbanFieldCode} — the board dies with «cardTemplate is null»`);
   }
   for (const k of ["isCalendarEnabled", "isTimelineEnabled", "isMapEnabled", "isGroupingEnabled"])
-    if (bp[k]) add("WARN", "0.5d", `${tag}: boPages.${k} — only the list and kanban views were ever shipped, what this one needs is [U]`);
+    if (bp[k]) add("WARN", "0.15", `${tag}: boPages.${k} — only the list and kanban views were ever shipped, what this one needs is [U]`);
   const on = BO_PAGES_KEYS.filter(k => k.startsWith("is") && bp[k]).map(k => bp[k.slice(2, 3).toLowerCase() + k.slice(3, -"Enabled".length) + "Index"]);
   if (new Set(on).size !== on.length || on.some(v => !(v >= 1)))
-    add("WARN", "0.5d", `${tag}: the *Index of the enabled views should be distinct and 1-based, got ${JSON.stringify(on)}`);
+    add("WARN", "0.15", `${tag}: the *Index of the enabled views should be distinct and 1-based, got ${JSON.stringify(on)}`);
 });
 
 // ---------------------------------------------------------------- report

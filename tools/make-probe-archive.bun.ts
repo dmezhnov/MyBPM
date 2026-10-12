@@ -220,7 +220,7 @@ function nativeFlags(): string[] {
  * `url` is accepted by BUTTON and IFRAME only. For CURRENT_USER the 4th part is the view and the columns
  * instead: `SINGLE` / `TABLE`, optionally `/<code>,<code>…` = the CODES of the «Пользователи» fields to
  * show, in that order (e.g. `CURRENT_USER:Текущий пользователь:cur:SINGLE/surname,email`). Without it the
- * widget gets `TABLE` + `fieldRefs: {}`, which the stand turns into «Фамилия» + «Имя» (MYBPM-IMPORTS.md §0.5b).
+ * widget gets `TABLE` + `fieldRefs: {}`, which the stand turns into «Фамилия» + «Имя» (MYBPM-IMPORTS.md §0.13).
  * For SIGNATURE the 4th part is its settings, «;»-separated: the codes of the fields to sign, then
  * `phone=<code of an INPUT_PHONE field>`, `pf=<print form code>,…` (from `--print-form`) and
  * `mass=<code of a BO field>,…` (e.g. `SIGNATURE:ЭЦП/SMS:podpis:Tekst,Otvet;phone=Telefon;pf=Dogovor`).
@@ -321,13 +321,13 @@ function kanbanFlags(): { column: string; locations: Record<string, string[]> }[
  *   `!parent=<код>` put it inside that menu GROUP
  *   `!kanban=<код поля>` turn the kanban view on, columns = that dropdown's options
  *   `!order=<n>`    orderIndex (default 900000 + 10000 per item); the built-in «Системные» is 60000
- *   `!icon=<имя>`   iconName, a name from MYBPM-IMPORTS.md 0.5e (default GROUP `bo-g-draggable`, BO `man-with-company`)
+ *   `!icon=<имя>`   iconName, a name from MYBPM-IMPORTS.md 0.16 (default GROUP `bo-g-draggable`, BO `man-with-company`)
  *   `!panel` `!count` `!hidemob` — isPanel / needCountMenuItem / needHideInMobApp
  *
  *   --menu "Заявки:BO@Zayavki@Заявки"          a plain root item, list view only
  *   --menu "Проба меню:GROUP!order=950000"
  *   --menu "Проба канбана:BO@Proba_menu_bo@Проба меню БО!parent=Proba_menu!kanban=Status"
- * Only the list and kanban views are generated — calendar / timeline / map / grouping are `[U]` (0.5d).
+ * Only the list and kanban views are generated — calendar / timeline / map / grouping are `[U]` (0.15).
  */
 type MenuSpec = {
   code: string; name: string; type: "GROUP" | "BO";
@@ -850,14 +850,14 @@ function addTrackStatus(dateCode: string, y: number) {
  * A process's own BO-reference field (the record a Form step shows) is exported as a SINGLE picker, not
  * the TABLE a panel's nested object is: `viewType: "SINGLE"`, not «добавить для выбора», no dynamic height
  * (read off the export of the API-built probe, 2026-09-27). That export also had NO registry column and empty
- * `fieldRefs` on it — copying that broke 0.10 rule 15 (2026-10-06: a process without PROCESS_STATUS came out
+ * `fieldRefs` on it — copying that broke 0.9 rule 15 (2026-10-06: a process without PROCESS_STATUS came out
  * with not one registry column and a selector showing nothing). So here the field IS a registry column (a BO
- * reference is safe under the search-index sort defect, 0.5c) and shows the spec's `show` fields of its target.
+ * reference is safe under the search-index sort defect, 0.14) and shows the spec's `show` fields of its target.
  */
 let processCol = 0;
 for (const f of PROCESS_SPEC?.fields ?? []) {
   if ((f.type ?? "BO") !== "BO") continue; // e.g. a Timer's FULL_DATE: an ordinary field, left as generated
-  if (!f.show?.length) throw new Error(`--process-spec: field «${f.label}» needs show: [<field codes of ${f.refBoCode}>] — a reference must display at least one field of its target (MYBPM-IMPORTS.md 0.10 rule 15)`);
+  if (!f.show?.length) throw new Error(`--process-spec: field «${f.label}» needs show: [<field codes of ${f.refBoCode}>] — a reference must display at least one field of its target (MYBPM-IMPORTS.md 0.9 rule 15)`);
   const df: any = dynamicFields[codeOf(f.label)];
   Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: true, tableColOrderIndex: processCol++ });
   df.boRefStruct.fieldRefs = Object.fromEntries(f.show.map((c, i) => [c, { toShow: true, orderIndex: i }]));
@@ -865,7 +865,7 @@ for (const f of PROCESS_SPEC?.fields ?? []) {
 }
 
 /**
- * Every process gets the system field `PROCESS_STATUS` (MYBPM-IMPORTS.md 0.10 rule 18) — the BO-reference
+ * Every process gets the system field `PROCESS_STATUS` (MYBPM-IMPORTS.md 0.9 rule 18) — the BO-reference
  * to the stand's built-in dictionary «Статус процесса». Its id differs per stand, but the importer resolves the
  * reference by `boInfo.code` and the default row by its code `CREATED` (MYBPM-IMPORTS.md 0.2a), so the two ids
  * are minted here; `--process-status <refBoId>:<CREATED row id>` only overrides them. The constructor
@@ -973,7 +973,7 @@ for (const t of natives) {
  * PRINT FORMS — `--print-form "<Имя>:<код>:<file.docx>[:PDF|DOCX]"`, repeatable. The BO lists them in
  * `printForms`, and the .docx template itself travels in the archive as an `ExportStructFileDto` line
  * (base64 `content`), written BEFORE the BoStructDto as a stand export does; the import uploads it as a new
- * file (MYBPM-IMPORTS.md §0.5b «Print forms»). The last part is the output type, PDF by default.
+ * file (MYBPM-IMPORTS.md §0.13 «Print forms»). The last part is the output type, PDF by default.
  */
 const printForms: { name: string; printFormCode: string; fileId: string; fileType: string; orderIndex: number; newId: string }[] = [];
 const printFormFiles: object[] = [];
@@ -1087,7 +1087,7 @@ for (const k of kanbans) {
   kanbanCardTemplates[columnCode] = { kanbanFields };
 }
 // every other DROPDOWN_SINGLE gets a minimal template too: without one the BO's map, kanban view and kanban
-// editor die with «cardTemplate is null» once it holds a record (MYBPM-IMPORTS.md 0.5c, MYBPM-UI-API.md §5l)
+// editor die with «cardTemplate is null» once it holds a record (MYBPM-IMPORTS.md 0.14, MYBPM-UI-API.md §5l)
 if (CATEGORY === "BO" || CATEGORY === "BO_DICTIONARY") {
   const headerCode = Object.entries<any>(dynamicFields).find(([, f]) => f.type === "INPUT_TEXT")?.[0];
   for (const [code, f] of Object.entries<any>(dynamicFields)) {
@@ -1332,25 +1332,25 @@ for (const m of menuFlags()) {
 
 // ---- assemble ----
 
-// 0.10 rule 15 — a hard stop, not a warning: a registry with no column answers AccessDenied and lists
+// 0.9 rule 15 — a hard stop, not a warning: a registry with no column answers AccessDenied and lists
 // nothing, a reference showing no field of its target renders an empty selector (2026-10-06: a process
 // shipped without PROCESS_STATUS had neither). A composite has no form and no registry columns of its own.
 for (const l of lines as any[]) {
   if (!l["@class"].endsWith(".BoStructDto") || l.category === "BO_COMPOSITE") continue;
-  // 0.10 rule 18 — the platform's mandatory system fields
+  // 0.9 rule 18 — the platform's mandatory system fields
   const df = l.dynamicFields ?? {};
   if (l.category === "BO_PROCESS" && !(df.PROCESS_STATUS?.isRequired && df.PROCESS_STATUS?.defaultValue))
-    throw new Error(`BO ${l.code}: a business process without a required PROCESS_STATUS with its CREATED default (MYBPM-IMPORTS.md 0.10 rule 18)`);
+    throw new Error(`BO ${l.code}: a business process without a required PROCESS_STATUS with its CREATED default (MYBPM-IMPORTS.md 0.9 rule 18)`);
   if (l.category === "BO_DICTIONARY" && !(df.code?.isRequired && df.label?.isRequired))
-    throw new Error(`BO ${l.code}: a dictionary without the required system fields code + label (MYBPM-IMPORTS.md 0.10 rule 18)`);
+    throw new Error(`BO ${l.code}: a dictionary without the required system fields code + label (MYBPM-IMPORTS.md 0.9 rule 18)`);
   const all = [...Object.values<any>(l.dynamicFields ?? {}), ...Object.values<any>(l.nativeFields ?? {})];
   if (!all.some(f => f.tableColToShow === true))
-    throw new Error(`BO ${l.code}: no field has tableColToShow: true — every BO shows at least one registry column (MYBPM-IMPORTS.md 0.10 rule 15)`);
+    throw new Error(`BO ${l.code}: no field has tableColToShow: true — every BO shows at least one registry column (MYBPM-IMPORTS.md 0.9 rule 15)`);
   for (const f of Object.values<any>(l.dynamicFields ?? {})) {
     if ((f.type !== "BO" && f.type !== "CO") || l.category === "BO_PANEL") continue;
-    if (f.boRefStruct?.boInfo?.code === "Person") continue; // the stand fills Фамилия + Имя itself (0.5b)
+    if (f.boRefStruct?.boInfo?.code === "Person") continue; // the stand fills Фамилия + Имя itself (0.13)
     if (!Object.values<any>(f.boRefStruct?.fieldRefs ?? {}).some(r => r?.toShow === true))
-      throw new Error(`BO ${l.code}.${f.code}: the reference shows no field of ${f.boRefStruct?.boInfo?.code} — add !show=<codes> / spec show (MYBPM-IMPORTS.md 0.10 rule 15)`);
+      throw new Error(`BO ${l.code}.${f.code}: the reference shows no field of ${f.boRefStruct?.boInfo?.code} — add !show=<codes> / spec show (MYBPM-IMPORTS.md 0.9 rule 15)`);
   }
 }
 
