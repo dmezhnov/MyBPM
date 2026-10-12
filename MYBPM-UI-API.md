@@ -1139,7 +1139,10 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   minute ranked above all three. Rules: when you may need to undo, **leave at least a minute between
   applies**; undoing a same-minute batch goes FIRST-applied first. Before undoing ONE import, check that it is the one
   with `canRollback:true`; undoing a CHAIN is safe only all the way back to the import that CREATED the
-  objects, whose rollback deletes them.
+  objects, whose rollback deletes them. A rollback works as a re-import of that snapshot and inherits the import's
+  defects `[I]`: undoing a re-import of an existing BO did NOT bring back a SIGNATURE phone or a radio's
+  dictionary, and it ADDED one more copy of every print form instead of removing the copies `[C]`. Check
+  those by hand after an undo.
 - **`load-business-object-name` is not an existence check** `[C]`: after the rollback it still answered
   the deleted BO's name, while `load-bo-id-by-code` gave `No bo with code` and
   `load-business-object-by-id` «бизнес-объект не существует». Verify a removal with those two.
@@ -3180,7 +3183,13 @@ POST v2/signature/save-signature-settings     BODY (not params):
   UI shows the matching message instead of a checkbox: `signFieldMissing` («в БО … необходимо добавить
   виджет ЭЦП/SMS»), `signFieldUnsupported` («…добавить такой-же тип подписания») and `signFieldEmpty`
   («…указать подписываемые поля/документы»). With the widget added the flag moved from Missing to
-  Unsupported. What «the same type» means was NOT found `[U]`: clearing the phone did not change it.
+  Unsupported, and **nothing on the stand clears it** `[C]`: ticked fields and a print form on the linked
+  widget, the same widget code, even the same widget id, no phone on either side, a stand restart — the
+  linked BO kept `signFieldUnsupported` (and the mass FIELD row kept `signFieldEmpty` as well). Across a
+  whole company every linked BO with a SIGNATURE, hand-made ones included, carried it. The criterion is
+  server-side only `[U]`, the client merely prints the flag. `load-mass-print-forms` answers one row per
+  SIGNATURE widget of every BO referenced by ANY BO field (not only the mass fields), and its `pfRecords`
+  stayed empty, so the UI cannot pick a mass print form at all.
   `save-signature-settings` still ACCEPTS a mass print form the list does not offer, and the export carries it.
 - **Code** — `save-signature-code {boId, signatureId, code}` (params) is **asynchronous**: an immediate
   `load-signature-code` still returns the old code. **Lock** — `load-access-group {boId, signatureId}` /
@@ -3195,7 +3204,9 @@ POST v2/signature/save-signature-settings     BODY (not params):
   `sign-otp`, `save-signed-data`, `load-signatures-list`) was NOT run: it sends a real SMS `[U]`. In
   scripts the result is `#получи подписи` → `Object/MybpmSignature[]` (`MYBPM-IMPORTS.md` §12a).
 - **The archive form** (`signatures.<code>`) and what survives an import: `MYBPM-IMPORTS.md` §0.5b «SIGNATURE
-  round-trips». In short, everything travels by CODE except `massPrintFormCodes`.
+  round-trips». In short, everything travels by CODE except `massPrintFormCodes`, which no import brings
+  back (`[I]`: nothing is offered to resolve it against); re-importing onto the SAME BO also clears the phone
+  and duplicates the print forms (trap 71).
 
 #### System fields (natives) — settings `[C]`
 
@@ -3245,6 +3256,12 @@ call has its args in the PARAMS:
 
 An export carries the template itself: `printForms[]` on the BO and one `ExportStructFileDto` line per file
 (`MYBPM-IMPORTS.md` §0.5b «Print forms»).
+
+- **`save-file-Id` can take minutes** `[C]`: one call answered after more than 2 minutes. A browser call
+  keeps running after the automation's timeout, so a «retry» created a second form; the code is not unique
+  (both got `PF_regiona`). Read `load-print-forms` before retrying. `delete-print-form` is asynchronous as
+  well — the form is still listed for a few seconds.
+- **Re-imports and rollbacks multiply forms** (trap 71): a re-import matches forms by `newId`, not by code.
 
 #### A nested table (`type:"BO"`, `viewType:"TABLE"`) on a record card `[C]`
 
@@ -4751,6 +4768,11 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     SCRIPT_SETTINGS replace (a language missing from the map is switched off), PHYSICAL_REMOVAL only adds/updates,
     AUDIT_TRAIL overwrites the FIRST audit row whatever its journal, NAVIGATOR / OTP lose the key / the department,
     MESSENGER does nothing. Export the target stand's kind first, edit that, and keep it to restore. §5n.
+71. **Re-importing a stand export onto the BO it came from is not a no-op** `[C]` — every print form gets a
+    copy (same name and code; forms are matched by `newId`, which each export renews), the SIGNATURE phone is
+    cleared, `massPrintFormCodes` is not restored, and rolling the import back adds one more copy of each form
+    and restores neither the phone nor a radio's dictionary. Drop `printForms` from such an archive, then
+    check phone and forms by hand. §5 «Rollback trap», §5i, `MYBPM-IMPORTS.md` §0.5b.
 
 ## 12. Open questions
 
@@ -4781,7 +4803,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   client side repairs it, and the creation ROUTE was ruled out earlier.
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — see trap 42.
-- SIGNATURE: which «same signature type» the referenced BO needs for MASS signing
-  (`signFieldUnsupported`), why `massPrintFormCodes` is dropped by an import, and what a real signing
-  (OTP code / EDS through NCALayer) writes into the record. The settings themselves are answered in §5i.
+- SIGNATURE: what clears `signFieldUnsupported` for MASS signing — nothing on the stand does (§5i), a
+  vendor question — and what a real signing (OTP code / EDS through NCALayer) writes into the record.
 - Whether `PARTICIPANTS` («Участники») is reachable at all — no palette item, no generator.
