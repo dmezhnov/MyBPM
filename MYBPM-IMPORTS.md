@@ -3028,6 +3028,12 @@ Four things you cannot do — do not look for a workaround:
    - the **exact field codes** of every BO you read or write (case-sensitive: `Argument` ≠ `argument`);
    - for a dictionary row constant — the dictionary's `boCode` and the row's `boiId`;
    - for a process script — the `targetArrowId` of every outgoing arrow you exit by.
+
+   **The user does not give the method copy → deliver no file.** The parameter ids cannot be guessed, and a
+   body whose `VAR_REF`s name ids the method does not have reads nothing. Write the pseudocode of step 1,
+   say exactly what you need (the copy of the empty method with its name, parameters and return type) and
+   stop. A method WITHOUT parameters still needs the copy: it names the method the body goes into. Field
+   codes, `boiId`s and arrow ids are the same — never invented, asked for.
 3. **Build two flat maps** — `blocks` and `expressions` — inside the envelope of 0S.3. Nothing nests
    inline: a block names its expressions by id, an expression names its operands by id.
 4. **Chain the statements** with `downBlockId` (0S.5), then point `startBlockIds` at the root.
@@ -3188,7 +3194,11 @@ and the bound is evaluated ONCE on entry — reassigning its variable inside the
 nothing. `FROM_CIRCLE` = break, `FROM_CIRCLE_ITER` = continue (both name their loop block; `FROM_CIRCLE` is the
 one that is exercised — prefer a guard `ЕСЛИ` over continue).
 `FROM_METHOD_BY_ARROW` leaves a **process** script through a named arrow. An exit block never has a
-`downBlockId`. **Keep exactly ONE `FROM_METHOD` per method, at the end** (0S.9).
+`downBlockId`. **A process script ends by the figure it sits in** `[C]`: a **Script** figure (exactly ONE
+outgoing arrow) ends in a plain `{"exitType":"FROM_METHOD","type":"BlockExit"}` with no return value; a
+**Switch** figure (several named outgoing arrows) ends EVERY path in `FROM_METHOD_BY_ARROW` with one of ITS
+OWN arrow ids and has no plain exit. «A script with two outgoing arrows» is a Switch. No validator catches
+the swapped form — write only these two. **Keep exactly ONE `FROM_METHOD` per method, at the end** (0S.9).
 
 ```json
 {"x":55,"y":44,"methodName":"describe",
@@ -3298,6 +3308,10 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   `#На русском#`). The system `label` of every dictionary row is multilingual — `label` → `VALUE` → `RUS`.
   Plain text fields (`code`, `name`, `description`) do NOT take that hop.
 - **Writing a field** = `BlockAssign` whose `leftExprId` is the **hop-2 act** of that field.
+- **Clearing a field has no confirmed form** `[U]`: no empty constant of a date, a number or an option is
+  known to empty a field. Do not invent one (`constType:"Date"` without `value` is a guess, not the IDE's
+  `<пусто>`). Write the rest of the script, leave the clearing out, and tell the user it must be done by
+  hand or confirmed on the stand.
 - **A link-many field** read through both hops is a collection: put it in `srcExprId` of a
   `BlockForeach`. Add to it with `F-ADD-K-DYN-R-D-S-boi_fields` (`argExprIds:{"adding":<expr>}`), count
   with `F-COUNT-K-DYN-R-D-S-boi_fields`, create a new instance with
@@ -3393,7 +3407,10 @@ one that is in neither place does not exist. There is still no `indexOf` (only
    paste has no parameter declarations, so the IDE assumes every parameter is a **number**; a bare
    parameter reference types a variable numeric and **string assignments into it vanish without
    an error**. The `'' Concat` gives it the String type. (Passing a parameter directly as an argument of a
-   String action is safe.)
+   String action is safe.) **A BO-typed parameter has no such trick**: a body that reads the fields of a
+   `Bo` parameter does not go through the clipboard — deliver it by 0S.12 item 7b (headless, the hat is
+   sent with it) or inside a structure archive (§5d, the importer keeps the hat and its parameter ids), and
+   tell the user so instead of handing over a clipboard file.
 5. **No chained comparison.** `a > b > c` parses as `(a > b) > c`. Use `And` or nested `ЕСЛИ`.
 6. **Every expression referenced exactly once** (0S.6) — a shared subtree is a DAG and the IDE rejects it.
 7. **Variable names unique within a scope**, loop element names included: no name may be declared again
@@ -3516,7 +3533,7 @@ Run all of it — the IDE will not tell you about any of these:
    still in scope (rule 7).
 6. **Ids are 16 characters** — `branches` and `more` keys too.
 7. Rules 1–6 are mechanical — encode them once in a checker of your own and run it on every file
-   before you deliver it (§0S.13 lists the checkers already written for one project; ask the user
+   before you deliver it (§14 «Tooling that already exists» lists the checkers already written for one project; ask the user
    whether that project's folder is at hand before writing a new one).
 8. **House style** (0S.2a): every name carries its decoration, `#…#` is all lower case, a boolean ends
    in `?`, counters are bare, the header precedes the logic, a module's `ЕСЛИ` holds nothing but `|…|`
@@ -3524,7 +3541,8 @@ Run all of it — the IDE will not tell you about any of these:
 
 ### 0S.12 Delivering the file
 
-1. **Body paste** (the normal case — the method already exists): remove the `BlockFixMethod` entry, point
+1. **Body paste** (the normal case — the method already exists; NOT for a body that reads the fields of a
+   `Bo` parameter, rule 4 of 0S.9 → item 7b): remove the `BlockFixMethod` entry, point
    `startBlockIds` at its `downBlockId`, and copy the hat's `x`/`y` onto that block. A project hat-stripper
    («Tooling that already exists») does exactly this. The stripped body must have exactly one block fewer than the file you built.
 2. **Clipboard**: `wl-copy --type text/plain < file.json`. A bare `wl-copy < file.json` advertises
