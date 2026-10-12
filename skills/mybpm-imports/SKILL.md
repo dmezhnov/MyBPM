@@ -23,7 +23,8 @@ there, and an answer from general knowledge is wrong for this platform.
 | an xlsx that loads records into a BO | `## 0X. COOKBOOK` | `## 19. The Excel format` |
 
 Each cookbook is self-contained for its format: literal templates, the naming and id rules, a hard-rules
-list and a self-check. **Follow it literally and never invent a key, an `actId` or an `opType`** — what
+list and a self-check. The archive cookbook is long: read its core (`### 0.1` … `### 0.11`) in parts,
+then only the optional blocks 0.12–0.18 its «How to read it» list names for your task. **Follow it literally and never invent a key, an `actId` or an `opType`** — what
 the cookbook does not show does not belong in the file. Go into the numbered sections (§1–§20) only when
 the cookbook sends you there or the case is exotic.
 
@@ -36,7 +37,7 @@ the cookbook sends you there or the case is exotic.
    copy them.
 2. **Status markers matter.** `[C]` is confirmed on a stand, `[I]` inferred, `[U]` unverified — do not
    build on `[U]` without telling the user.
-3. **Run the cookbook's self-check before you hand anything over**: `### 0.11`, `### 0S.11`, `### 0X.5`.
+3. **Run the cookbook's self-check before you hand anything over**: `### 0.10`, `### 0S.11`, `### 0X.5`.
 4. When something behaves impossibly, read the trap lists: `## 8. What import does`, `## 17. Traps and defects`.
 
 ## Tools (only when the repository is at hand)
@@ -46,7 +47,7 @@ With a checkout of the MyBPM repository, its `tools/` sits at `../../tools/` (ru
 - `bun tools/validate-archive.bun.ts <file.mybpm.zip>` — checks an archive against §0; FATAL means the
   import will fail. Run it on every archive you build.
 - `bun tools/make-probe-archive.bun.ts …` — a stand-verified archive generator; prefer it over writing a
-  builder (`### 0.12 Building and delivering` shows the commands).
+  builder (`### 0.11 Building and delivering` shows the commands).
 
 Without the repository, build the zip yourself exactly as `### 0.1 The artefact` says and walk
 the self-check by hand.
