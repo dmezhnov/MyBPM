@@ -131,3 +131,32 @@ Gaps found and repaired (commit of 2026-10-12):
 optional blocks after it: old 0.10/0.11/0.12 → 0.9/0.10/0.11 (hard rules / self-check / building), old
 0.5a/0.5b/0.5c/0.5d/0.5e → 0.12/0.13/0.14/0.15/0.16 (system fields / widgets / kanban / menu items / icons),
 old 0.9/0.9a → 0.17/0.18 (other kinds / business process). The validator's rule ids follow the new numbers.
+
+## Round 6 — the reordered §0 (core 0.1–0.11 + optional 0.12–0.18)
+
+Purpose: after the renumbering, does a weak model read the WHOLE core and find the optional block its task
+needs? Cases 21–33 verbatim (new numbers) plus three new ones; the wrapper also asks the agent to list, first
+in `notes.md`, the sections and line ranges it read. Result dir `tools/out/eval6-2026-10-12/caseNN/`.
+
+| # | cell | case (verbatim to the agent) | intent check (by hand) |
+|---|---|---|---|
+| 34 | M terse | Учёт оборудования: в карточке видно, кто и когда завёл запись, и есть кнопка «Списать». | `CREATED_BY` + `CREATED_AT` in `nativeFields` (0.12), a `buttons` widget (0.13) |
+| 35 | C spec | Бизнес-процесс «Заявка на закупку»: заявитель заполняет форму (Наименование, Количество, Сумма), руководитель согласует или отклоняет; при отклонении процесс завершается. В боковом меню — пункт «Закупки» с иконкой корзины. | target BO + process from 0.18, menu item (0.15) with a cart icon from 0.16 |
+| 36 | S terse stand | На стенде есть группа БО «Склад» (code `Warehouse`, orderIndex 400000). Сделай в ней справочник единиц измерения. | group line verbatim, BO_DICTIONARY (0.17) |
+
+### Round 6 results
+
+Every agent read the core 0.1–0.11 in full (lines 48–886, in one to five reads) and opened exactly the
+optional blocks its task needed (0.12/0.13 for 30/34, 0.14/0.15 for 24/26/32, 0.16 for 26/35, 0.17 for the
+dictionaries and the composite, 0.18 for 29/35). Format: 15 archives 0/0/0 (case32 0/0/2 = the two expected
+«menu-only» WARNs); 33 rightly built nothing and asked for the export. Intent: all right — the ES workaround
+no longer applied by default (name field first everywhere), dictionaries built in the same archive (25, 30),
+processes complete (29, 35), stand data used verbatim (31, 36).
+
+Two gaps, repaired:
+1. **Counter vs form order** (27): a progress bar on top of the form (`y` 0) with the name field first in
+   `dynamicFields` drew a WARN — the validator compared `tableColOrderIndex` with `y`, while §0.5 says the
+   counter follows the order of entries. Validator now checks only that the values are 0..n-1; §0.5 states
+   that the two orders are independent.
+2. **`CREATED_BY` and a stand id** (30, 34): both agents doubted whether the Person target needs
+   `oldRefBoId`. §0.12 now says: no `oldRefBoId`, resolved by the code `Person`.
