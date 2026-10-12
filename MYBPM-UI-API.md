@@ -2198,7 +2198,7 @@ body   {"name":"<any label>",
   `exprValueType`, `constType`, `type`). The server stores it, then cannot decode the BO's script module
   any more: every read and write of every version of that BO's scripts — including `apply-update-cmd`,
   `undo`, `delete-local-method`, `remove-bo-script-version` — answers `IllegalArgumentException: No enum
-  constant …`, so nothing can repair it through the API `[C]` (one probe BO lost this way;
+  constant …`, so nothing can repair it through the API or a structure import (trap 59) `[C]` (one probe BO lost this way;
   other BOs unaffected). A wrong STRING value (`actId`, argument key, `enumValue`) is harmless — the
   validator reports it.
 - Work on a **test version** (`in-test-bo-script-version` / the «Версия: N (Тест)» switch in the dialog) —
@@ -4699,7 +4699,13 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `load-bo-scripts` / `load-bo-script-versions` on the deleted `boId` still answer the same
     `IllegalArgumentException`, and both analyses still fail. Re-wiring the module with `save-bo-scripts`
     (all hooks `null`, empty `fieldScripts`) answers 200 and changes nothing either — the bad script def is a
-    separate document, and `v2/script` has no call that overwrites a def without decoding it first. Only the
+    separate document, and `v2/script` has no call that overwrites a def without decoding it first (`copy-bo-script-version`,
+    `unset-in-work-version`, an `apply-update-cmd` that `Set`s `blocks`/`expressions` to `{}` — all the same 500).
+    **A structure import does not repair it either** `[C]`: an archive carrying the BO's scripts (same BO
+    `oldId`, same script ids, even the broken module id as the `compositeId` prefix) analyses clean, but
+    `apply-import` answers the same 500 while the BO exists and the import stays `ANALYZED` — cancel it; a
+    structure-only archive of that BO applies. After the BO is deleted the scripts archive applies and brings
+    the BO back under its old id with a new script version, yet `load-bo-script-versions` still fails. Only the
     vendor (database) can repair it. Also: each analysis takes ~23 s here — poll until `done: true`, an early
     `is-analyze-done` answers `{done:false}` (an object, not `false`).
 60. **The direct code setters validate nothing** `[C]` — `save-business-object-code` /
@@ -4753,10 +4759,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
-- **Is there any repair for a BO whose script module no longer decodes** (§11 trap 49)? Candidates
-  ruled out: deleting the BO and re-wiring with `save-bo-scripts` (trap 59). Never tried: a
-  structure import carrying that BO's scripts, `copy-bo-script-version`. Left: a vendor-side database fix.
-  The deleted probe BO «Проба скрипт архивом» left its broken module on `<stand>`.
 - **Field scripts on `FILE_UPLOAD`, `CHECKLIST` and `CO`** — the only three field types whose
   «Изменение поля» was not seen firing (§6b): the value shapes are `[U]`, and a burst that
   touched the first two coincided with a 30-second outage of the stand (trap 52). Next attempt: through

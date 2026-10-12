@@ -5171,8 +5171,13 @@ Scripts:
     `remove-bo-script-version` all answer `IllegalArgumentException: No enum constant …OpType.GreaterEq`
     — so the bad value cannot be overwritten either. Other BOs' scripts keep working, but the company-wide
     code-usage analysis now fails, so the «Изменение кода» dialog of EVERY BO and field is dead
-    (`MYBPM-UI-API.md` trap 59). No API repair was found — deleting the BO leaves its script module behind,
-    still broken, and `save-bo-scripts` does not reach the bad def; it needs the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
+    (`MYBPM-UI-API.md` trap 59). No API or import repair exists — deleting the BO leaves its script module behind,
+    still broken; `save-bo-scripts`, `copy-bo-script-version`, `unset-in-work-version` and a blind
+    `apply-update-cmd` that `Set`s `blocks`/`expressions` to `{}` all decode first and fail; a structure import
+    carrying the BO's scripts is refused at `apply-import` with the same 500 while the BO exists (import status
+    stays `ANALYZED`; a structure-only archive of the same BO applies), and after deletion it applies — the BO
+    comes back under its old id with a new script version — yet the versions still do not decode. It needs
+    the vendor (database). Hence: every enum-typed key (`opType`, `exitType`, `exprValueType`,
     `constType`, block/expression `type`, `varType`) takes ONLY a value listed in §10–§12a — a
     string-typed key (`actId`, `enumValue`, `varName`) is safe to get wrong, the validator reports it.
     **A wrong SHAPE is the same trap** `[I]` (reported from another stand, not reproduced on purpose — it is
