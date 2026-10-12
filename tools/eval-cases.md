@@ -70,3 +70,59 @@ Grade a run directory with `bun tools/grade-eval.bun.ts <runDir> [snapshotDir] [
 archives by hand as well: the validator checks
 FORMAT, not INTENT, and every round so far has had at least one case that scored clean while building
 the wrong kind of object.
+
+## Round 5 — the matrix «complexity × detail of the request»
+
+Purpose: §0 grew from ~400 to ~1400 lines since round 4b (widgets, kanban, menu, print forms, rules
+15-18, the 0.6a English naming), and the user's goal moved from «the format is self-sufficient» to «the
+dumbest model does it right WHATEVER the complexity of the task and the detail of its wording». So the
+cases form a matrix: S/M/C = simple / medium / complex, `terse` = one phrase, `spec` = a written
+specification, `stand` = the request also SUPPLIES stand data (the path no earlier round exercised).
+Same wrapper as above; result dir `tools/out/eval5-2026-10-12/caseNN/`.
+
+| # | cell | case (verbatim to the agent) | intent check (by hand) |
+|---|---|---|---|
+| 21 | S terse | Сделай справочник валют. | BO_DICTIONARY, `code`+`label` required system fields, `dictionaryFields` `["CODE","LABEL"]`, English codes |
+| 22 | S terse | Нужен реестр сотрудников компании. | plain BO, sensible fields, ≥1 registry column, no invented references |
+| 23 | S spec | БО «Заявка на отпуск». Поля: ФИО сотрудника (текст, обязательное); Период отпуска (период дат, обязательное); Тип отпуска (выпадающий список: ежегодный, без содержания, учебный); Комментарий (многострочный текст); Согласовано (галочка). | exactly these 5 fields and types, PERIOD, local list as object, `is_*` checkbox, kanban template on the dropdown (rule 16) |
+| 24 | M terse | Учёт обращений в техподдержку: канбан по статусу и пункт в боковом меню. | BO + status DROPDOWN + card template + MenuItemStructDto with kanban `boPages` and `kanbanFieldCode` |
+| 25 | M terse | Каталог товаров, категория товара выбирается из справочника категорий. | dictionary + BO in ONE archive, DROPDOWN_SINGLE `FROM_BO` by the dictionary's code (not degraded) |
+| 26 | M spec | Две сущности в одном архиве. «Клиент»: Название (обязательное, уникальное), Телефон, Email, ИИН/БИН. «Сделка»: Название, Клиент (ссылка на «Клиент», одиночная), Сумма (число), Этап (список: новая, переговоры, договор, закрыта), Срок (дата). Нужен канбан сделок по этапу. В меню — группа «Продажи» с двумя пунктами: «Клиенты» и «Сделки» (у сделок канбан первой вкладкой). Иконка группы — что-нибудь про деньги. | intra-archive BO ref by oldId, Client line first, kanban + menu group + 2 items, icon from 0.5e named in notes |
+| 27 | M spec | Форма «Карточка пациента» с вкладками «Общее», «Анамнез», «Документы». На «Общее»: ФИО, Дата рождения, Пол (единичный выбор: мужской/женский), Телефон. На «Анамнез»: заголовок раздела «История болезни», Хронические заболевания (многострочный текст), Чек-лист обследований (ОАК, ОАМ, ЭКГ, флюорография). На «Документы»: Сканы документов (несколько файлов, плиткой). Сверху карточки — прогресс-бар этапов лечения: поступил, обследование, лечение, выписан. | TAB_GROUP with 3 tabs + `tabCodePath` per field, RADIO local, CHECKLIST via `defaultValue`, FILE_UPLOAD `params.viewType` TILE, PROGRESS_BAR, heading not equal to a label, counter unbroken |
+| 28 | C terse | Сделай мини-CRM для автосервиса. | several related BOs in one archive, references wired intra-archive, at least one dictionary or local list, nothing invented on the stand |
+| 29 | C terse | Нужен бизнес-процесс согласования договора. | BO_PROCESS, 3rd line, PROCESS_STATUS with CREATED default + DEFAULT_VALUE line, never a local «Статус» |
+| 30 | C spec | Справочник «Отделы». БО «Сотрудник»: ФИО (обязательное), Отдел (из справочника «Отделы»), Дата приёма, Активен (галочка), системные поля «Дата создания» и «Автор», виджет «Текущая дата». БО «Контрагент»: Название, Контактное лицо, Телефон. Составной объект «Все контакты» из «Сотрудник» и «Контрагент»: общий столбец «Имя» (ФИО сотрудника / Название контрагента) и «Телефон» (у сотрудника телефона нет — только у контрагента). Меню: группа «Кадры» с пунктами «Сотрудники», «Контрагенты», «Все контакты». | 4 BO lines + CO with `boFieldCodes` that exist in the sources, natives in `nativeFields`, widget in `currentDates`, menu 1 group + 3 items |
+| 31 | C spec stand | Данные стенда: группа БО «Продажи» — code `Sales`, orderIndex 200000 (существует). На стенде есть БО «Сделки» (id `Kq3vT9xLm2Pw8Rz1`, код `Deals`, поля `title`, `amount`) и «Клиенты» (id `Ab7nC4dE5fG6hJ8k`, код `Clients`, поле `name`). Сделай панель «Рабочий стол продавца»: реестр сделок (колонки название и сумма) и реестр клиентов (колонка имя). Положи её в группу «Продажи». | BO_PANEL, two `type:"BO"` registry fields with the GIVEN ids/codes, group line = Sales/«Продажи»/200000 verbatim, no invented BOs |
+| 32 | M spec stand | На стенде уже есть БО «Заявки» (код `Request`) с выпадающим списком «Статус» (код `status`), у которого уже есть шаблон карточки канбана. Добавь в боковое меню пункт «Заявки — доска», который открывает канбан по статусу. | menu-only archive: one MenuItemStructDto, `boCode` Request, kanban on, `kanbanFieldCode` status, no BO line |
+| 33 | S spec stand | На стенде есть БО «Заявки» (код `Request`, id `Rq1aB2cD3eF4gH5i`, группа `Support`/«Поддержка»/orderIndex 300000). Удали из него поле «Комментарий» (код `comment`) и добавь поле «Приоритет» (список: низкий, средний, высокий). | says a field cannot be deleted by import; adds the field WITHOUT rebuilding the BO from nothing — or explains that the full current line is needed (a partial BO line resets keys) |
+
+### Round 5 results — `FATAL/ERROR/WARN` (0.6a WARNs not counted) and the intent check
+
+| # | r5 | intent r5 | r5b | intent r5b |
+|---|---|---|---|---|
+| 21 | 0/0/0 | dictionary right, but `code`/`label` hidden from the registry (ES defect over-applied) | 0/0/0 | right |
+| 22 | 0/0/1 | ФИО hidden, a date moved first (ES) | 0/0/0 | right, adds a «Должности» dictionary in the same archive |
+| 23 | 0/0/7 | checkbox moved to column 0, strings hidden (ES) | 0/0/0 | right |
+| 24 | 0/0/1 | right (BO + kanban + menu), strings hidden (ES) | — | |
+| 25 | 0/0/2 | **category degraded to INPUT_TEXT** — the dictionary was not built | 0/0/0 | dictionary + FROM_BO dropdown in one archive |
+| 26 | 0/0/4 | right (intra-archive ref, kanban, menu group + 2 items, `phosphor:money`) | — | |
+| 27 | 0/0/2 | right (3 tabs, tabCodePath, RADIO, CHECKLIST defaultValue, TILE, PROGRESS_BAR) | — | |
+| 28 | 0/0/0 | right (3 BOs wired), strings hidden (ES) | — | |
+| 29 | refused | «a Form step needs a stand id» — the target BO was not built | 0/0/0 | contract BO + process built, but the CREATED line and the slots were GUESSED → 0.9a |
+| 30 | 0/0/0 | right (dictionary, natives, widget, composite, menu) | — | |
+| 31 | 0/0/0 | right (panel on the GIVEN ids, group verbatim) | — | |
+| 32 | 0/0/2 | right (menu-only archive) | — | |
+| 33 | 0/2/1 | **template BO line over an existing BO** (resets header, y=1000) | no archive | right: asks for the export, field deletion = constructor/API (first r5b agent gave up after the ToC — the document does not fit one Read) |
+
+Gaps found and repaired (commit of 2026-10-12):
+1. **The search-index sort workaround was read as the default** (8 of 13): §0.5 now states the default
+   registry (name field first and visible), §0.5c applies the workaround only when the user says the
+   stand has the defect; same in `MYBPM-UI-API.md` §0U.5 rule 11.
+2. **«New or existing?» was never asked** (25, 29): §0.2a opens with «Decide FIRST»: not said to exist →
+   build it in this archive with its supporting objects; never degrade a NEW object.
+3. **Changing an existing BO** (33): a new row in the §0.2a table + rule 19 — only via a fresh export;
+   an import never deletes.
+4. **Heights**: 0.8 now lists every type (TEXTAREA = 4).
+5. **orderIndex**: the template annotation says CHANGE IT.
+6. **No literal process in §0** (29b guessed the CREATED line and the slot names): new 0.9a, the whole
+   seven-line process from the stand-verified generator.
