@@ -4715,7 +4715,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `apply-import` answers the same 500 while the BO exists and the import stays `ANALYZED` — cancel it; a
     structure-only archive of that BO applies. After the BO is deleted the scripts archive applies and brings
     the BO back under its old id with a new script version, yet `load-bo-script-versions` still fails. Only the
-    vendor (database) can repair it. Also: each analysis takes ~23 s here — poll until `done: true`, an early
+    vendor (database) can repair it: on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~23 s here — poll until `done: true`, an early
     `is-analyze-done` answers `{done:false}` (an object, not `false`).
 60. **The direct code setters validate nothing** `[C]` — `save-business-object-code` /
     `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
