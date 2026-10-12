@@ -30,7 +30,7 @@ Prompt wrapper (same for every case, RU):
 | 11 | Библиотека: справочник «Жанр» + «Книга» | DROPDOWN_SINGLE FROM_BO by code, Person reference |
 | 12 | Реестр договоров | SIGNATURE, IFRAME, CAPTCHA, CURRENT_DATE widgets, FILE_UPLOAD single |
 
-Not covered yet (next rounds): Part II Block IDE scripts (§0S) and Part III record xlsx (§0X).
+Part II (§0S, Block IDE scripts) is evaluated below, «Part II — the §0S eval». Not covered yet: Part III record xlsx (§0X).
 
 ## Rounds
 
@@ -160,3 +160,65 @@ Two gaps, repaired:
    that the two orders are independent.
 2. **`CREATED_BY` and a stand id** (30, 34): both agents doubted whether the Person target needs
    `oldRefBoId`. §0.12 now says: no `oldRefBoId`, resolved by the code `Person`.
+
+# Part II — the §0S eval (Block IDE scripts)
+
+Same idea as Part I, other artefact: a fresh `haiku` subagent per case writes a Block IDE script from
+`MYBPM-IMPORTS.md` alone (`tools/` forbidden, no clipboard, no stand, cannot ask). The cases, the prompt wrapper
+and a `spec.json` per case (what the task supplied: parameter ids, field codes, arrow ids, callees) are generated
+by `tools/eval-script-cases.bun.ts <runDir> [41,…]`; the agent gets only «read `<dir>/prompt.txt` and do it».
+Graded by `tools/grade-script-eval.bun.ts <runDir>` → `tools/validate-script.bun.ts --spec` (0S.11 self-check,
+the machine-checkable rules of 0S.9, enum values, the actId catalogue of 0S.8 + §12a, the 0S.2a house style as
+WARN), and by hand: a pseudocode dump of every script, read for intent. A user who supplies the copy of the
+empty method is the normal case, so most tasks carry one.
+
+| # | cell | what the case checks (by hand) |
+|---|---|---|
+| 41 | S terse, nothing supplied | no method copy → what does it deliver |
+| 42 | S spec + copy | vowels: rule 4, counted loop, `#Подстрока(i-1,i)`, one `FROM_METHOD` |
+| 43 | S spec + copy | `is_even`: no `Eq` on numbers |
+| 44 | S spec + copy | 12-digit IIN regex, boolean return |
+| 45 | M spec, hook | save hook: `THIS_PROCESS`, `More`, write via the VALUE act, closing `FROM_METHOD` |
+| 46 | M spec + copy | nested table total: foreach, two hops on the element, `Mul`; a `Bo` parameter |
+| 47 | M terse + copy | «Фамилия И. О.»: three text params, guarded `#Подстрока` |
+| 48 | M spec + copy | dictionary lookup: `findByFilter`, `label` → VALUE → RUS, break |
+| 49 | C spec, process | two outgoing arrows (a Switch): exits by the GIVEN arrow ids |
+| 50 | C spec + copy | a call: `ExprCall.args` keyed by the callee's parameter id; a `Bo` parameter |
+| 51 | C spec, field hook | SingleSelect option compare, today's date, CLEARING a date |
+| 52 | C terse + copy | IIN checksum: weights, mod 11 without `Eq` |
+| 53 | M spec, process | one outgoing arrow (a Script figure): plain `FROM_METHOD` (added in round 1b) |
+
+### Round S1 — results (`FATAL/ERROR/WARN` by the validator as it stands after the repairs)
+
+Every agent read §0S whole (lines ~2972–3572) and opened §12a/§15/§16 only for its specific need. Format was
+clean everywhere; intent was right in 42–45, 47, 48, 52 (52 got the two-pass weights and expressed equality as
+«not less and not more»). Four gaps, all of them facts that existed in the reference part but not in §0S:
+
+| # | S1 | intent S1 | gap |
+|---|---|---|---|
+| 41 | no script | right, but the agent had to invent the policy: §0S had no rule for «the user does not give the copy» | 1 |
+| 46 | 0/1/0 | right algorithm; delivered a clipboard body that reads a `Bo` parameter | 2 |
+| 49 | 0/0/0 | right; flagged Script vs Switch as ambiguous (the split was only in §16) | 3 |
+| 50 | 0/1/0 | right call; same `Bo` parameter problem as 46 | 2 |
+| 51 | 0/1/0 | right compare and date; INVENTED an empty `Date` constant to clear the field | 4 |
+
+Repairs in §0S: (1) 0S.2 step 2 — no copy → no file, say what is needed; (2) rule 4 of 0S.9 + 0S.12 item 1 —
+a body reading a `Bo` parameter's fields goes by 7b or inside an archive, not through the clipboard (§14 said
+so, §0S did not); (3) 0S.5 — a Script figure ends in a plain `FROM_METHOD`, a Switch ends every path by one of
+its arrows; (4) 0S.7 — clearing a field has no confirmed form `[U]`, do not invent one. Also 0S.11 item 7
+pointed at a non-existent «§0S.13» → §14 «Tooling that already exists». The validator learned all four.
+
+### Round S1b — the five gap cases and the new 53 against the repaired §0S
+
+| # | S1b | intent |
+|---|---|---|
+| 41 | no script | right: refuses by the 0S.2 rule, writes the pseudocode and names what it needs |
+| 46 | 0/0/0 | right: the whole method WITH its hat, for 7b or an archive, and says why |
+| 49 | 0/0/0 | right: «two arrows = a Switch», no hesitation |
+| 50 | 0/0/0 | right: same route as 46 |
+| 51 | 0/0/0 | right: no invented constant, the clearing left out and handed to the user |
+| 53 | 0/0/0 | right: a Script figure ends in a plain `FROM_METHOD` |
+
+Open after S1b: how to clear a field from a script is still `[U]` (a stand question, not a document one); no
+script of this eval was pasted or translated on a stand — the validator checks shape, `translate-script` would
+check types.
