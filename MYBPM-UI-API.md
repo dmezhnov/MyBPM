@@ -4805,4 +4805,3 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   exporter simply omits them — see trap 42.
 - SIGNATURE: what clears `signFieldUnsupported` for MASS signing — nothing on the stand does (§5i), a
   vendor question — and what a real signing (OTP code / EDS through NCALayer) writes into the record.
-- Whether `PARTICIPANTS` («Участники») is reachable at all — no palette item, no generator.
