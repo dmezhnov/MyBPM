@@ -35,7 +35,7 @@ structure/behaviour but never isolated, `[U]` unverified — do not build on it 
 The mistakes worth not repeating live in *Traps and defects*.
 
 - An export without `AccessStructDto` is not a defect — some exports carry none.
-- The canonical list of field types is the enum `ApiFormFieldType` (server sources, not public); §0.5a
+- The canonical list of field types is the enum `ApiFormFieldType` (server sources, not public); §0.12
   below is that list.
 - **v4.24 importer sources are not available — a dead end, do not re-open it.** The `mybpm-api` docker image
   carries only an old jar, `/app/project/mybpm.register-<tenant>-0.0.20.jar` (decompile with CFR;
@@ -52,6 +52,16 @@ self-contained **for the FORMAT** but not for the target: the inputs of 0.2a bel
 see 0.2a. Sections 1–8 explain *why*; this one is *what to type*. Follow it literally, change only what step 2
 says you may change, and **never invent a key name** — a key you cannot find in this section does not
 belong in the file.
+
+**How to read it.** §0 is long — read it in parts (offset/limit, or jump to a heading by its text).
+Always read the **core, 0.1–0.11**: every archive needs all of it. Then read ONLY the optional blocks
+your task names:
+
+- system fields (author, creation/change date, «системные поля») → 0.12
+- widgets (button, iframe, signature, captcha, current date / current user) → 0.13
+- a kanban view → 0.14
+- a sidebar menu item → 0.15, and its icon → 0.16
+- a dictionary, panel, composite or process instead of a plain BO → 0.17; a business process also → 0.18
 
 ### 0.1 The artefact
 
@@ -94,16 +104,16 @@ Rules, all `[C]`:
 4. **Write line 1** = the group DTO, template 0.3.
 5. **Write line 2** = the BO DTO, template 0.4, with one entry of template 0.5 per field inside
    `dynamicFields` — and, if the form also carries «системные поля» or «виджеты», their own maps
-   (0.5a `nativeFields`, 0.5b `signatures` / `buttons` / `iframes` / `captcha` / `currentDates` /
+   (0.12 `nativeFields`, 0.13 `signatures` / `buttons` / `iframes` / `captcha` / `currentDates` /
    `currentUser`). Those three families never share a map.
 6. **Lay the fields out** by the one rule in 0.8 — the `y` counter runs through the widget and system
    fields too, they live on the same grid.
-7. If the object is not a plain BO (dictionary / panel / composite / process), apply the diff in 0.9
+7. If the object is not a plain BO (dictionary / panel / composite / process), apply the diff in 0.17
    **on top of** the same two lines.
 7a. If the user also wants the object **in the sidebar menu** (navigation: an item that opens the BO,
    optionally inside a menu group, optionally with extra views such as a kanban), append the menu lines
-   of 0.5d AFTER the BO lines — optional, and never added unasked.
-8. **Check against 0.10 and 0.11**, then zip as in 0.1 and deliver as in 0.12.
+   of 0.15 AFTER the BO lines — optional, and never added unasked.
+8. **Check against 0.9 and 0.10**, then zip as in 0.1 and deliver as in 0.11.
 
 A `CompanyMetadataStructDto` line is **not** needed and must be omitted unless the archive references
 the built-in Person / Department / PersonGroup BOs (§1).
@@ -186,7 +196,7 @@ is silent AND merges by code into whatever it hits.
 
 **A панель cannot be built at all without stand ids — say that, build nothing else.** Every
 `dynamicFields` entry of a `BO_PANEL` is a `type: "BO"` registry widget and each one needs the
-`oldRefBoId` of a BO that already exists on the stand (0.9, §5a). If those ids were not supplied there is
+`oldRefBoId` of a BO that already exists on the stand (0.17, §5a). If those ids were not supplied there is
 nothing left to degrade — a panel without registries is an empty panel. STOP, deliver no archive, and
 report which ids you need.
 
@@ -208,7 +218,7 @@ it; 0.2a applies only when a **stand id or a stand code** is what is missing.
 
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
 reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
-shipped unless the user asked for one (§0.10 rule 10 — it REPLACES the rights set on the stand).
+shipped unless the user asked for one (§0.9 rule 10 — it REPLACES the rights set on the stand).
 
 Where the user reads these off a stand (routes in `MYBPM-UI-API.md` §0U, recipe R4): `load-bo-groups {forEdit: true}` → the group
 names (without `forEdit` the empty groups are missing), `load-bo-records-by-group-id` → the BOs of a group with their codes and ids,
@@ -258,7 +268,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
   "oldId": "WbX5Wa8gcabbVbF1",              ← id of the BO — MINT YOUR OWN (0.7); becomes its real id on the stand
   "code": "Cookbook_demo",                  ← code of the BO: English, first letter capital, snake_case, ≤ 30 chars (0.6a)
-  "category": "BO",                         ← BO | BO_DICTIONARY | BO_PANEL | BO_COMPOSITE | BO_PROCESS (0.9)
+  "category": "BO",                         ← BO | BO_DICTIONARY | BO_PANEL | BO_COMPOSITE | BO_PROCESS (0.17)
   "kind": "GENERAL",
   "boGroupOldId": "3H84o9iM@G4jaOL3",       ← = oldId of line 1, character for character
   "instanceViewType": "FORM",               ← FORM = a record opens as a dialog, TAB = as a page tab
@@ -269,7 +279,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "recordName": {"rus": "Демо из кукбука"}, ← same text (shown nowhere; the constructor keeps it = name)
   "staticValue": {},
   "description": "",
-  "orderIndex": 47480000,                   ← CHANGE IT: the BO's place in its group, a DIFFERENT number per BO — e.g. 100000, 200000, 300000 for three BOs; 47480000 is the sample's (0.10 rule 17)
+  "orderIndex": 47480000,                   ← CHANGE IT: the BO's place in its group, a DIFFERENT number per BO — e.g. 100000, 200000, 300000 for three BOs; 47480000 is the sample's (0.9 rule 17)
   "dynamicFields": { "<fieldCode>": { …template 0.5… } },   ← one entry per field, keyed by field code
   "nativeFields": {},
   "dictionaryFields": [],
@@ -282,7 +292,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "isTouchEnabled": true,                  ← «Помечать новые (непросмотренные) записи»
   "hideAddButtonFromRegistry": false,      ← true = no create button in the registry
   "kanbanCardTemplates": {},                ← empty ONLY when the BO has no DROPDOWN_SINGLE; otherwise one
-                                              template per dropdown (0.5c), or kanban AND map die
+                                              template per dropdown (0.14), or kanban AND map die
   "timelineTemplates": {},
   "calendarCardTemplates": {"header":{},"content":{},"footer":{},"headerDelFieldCodes":{},"contentFieldCodes":{},"footerDelFieldCodes":{}},
   "signatures": {},
@@ -365,16 +375,16 @@ everything after it on that line — the shipped line must be pure minified JSON
 FIRST field only: the second field carries `1`, the third `2`, and so on, in the order the entries sit in
 `dynamicFields` — that order is the registry's column order. Leaving `0` on every field leaves the column
 order undefined. The counter runs over **every entry of `dynamicFields`, with no exceptions**; the things
-that do not carry the key and do not advance it live in OTHER maps — the system fields of 0.5a
-(`nativeFields`) and the six widget maps of 0.5b.
+that do not carry the key and do not advance it live in OTHER maps — the system fields of 0.12
+(`nativeFields`) and the six widget maps of 0.13.
 
-**«Widget» in this document means ONLY a member of the six maps of 0.5b** — `SIGNATURE`, `BUTTON`,
+**«Widget» in this document means ONLY a member of the six maps of 0.13** — `SIGNATURE`, `BUTTON`,
 `IFRAME`, `CAPTCHA`, `CURRENT_DATE`, `CURRENT_USER`. The palette's «Виджеты» section is a different
 thing and is not a guide to the archive: `TAB_GROUP` and `PROGRESS_BAR` stand there, and they are
 ORDINARY `dynamicFields` entries. So `STATIC_TEXT`, `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`,
 `FILE_UPLOAD`, `CHECKLIST`, `GEO_POINT` all sit in `dynamicFields`, all carry the full template of this
 section, and all take their turn in the `tableColOrderIndex` counter. Anything in `dynamicFields`
-without the key is rule 6 of 0.10 — the key is not optional for «non-input» fields.
+without the key is rule 6 of 0.9 — the key is not optional for «non-input» fields.
 
 **To make a field required or unique, write `true` in `isRequired` / `isUnique`. To turn something off,
 write `false` — never delete the key** (§8: a dropped key keeps the stand's old value).
@@ -391,11 +401,11 @@ amount, the main reference). Put the name field FIRST in `dynamicFields`, so it 
 0 and `y: 0`. Long texts (`TEXTAREA`), headings, files, tabs and checklists are `false`. Do NOT hide
 string fields from the registry and do NOT move a number or a date to the front «to be safe»: that
 workaround exists for ONE stand defect and is applied **only when the user says the target stand has
-it** (0.5c «The Elasticsearch sort defect»). Without such a statement, ignore that paragraph.
+it** (0.14 «The Elasticsearch sort defect»). Without such a statement, ignore that paragraph.
 A `DROPDOWN_SINGLE` additionally needs `fieldOptionsStruct` (§5) — a dictionary by CODE, or a local list.
 
-**The documented exceptions to «never drop a key»: the composite, and `PROCESS_STATUS` (0.9a).** A `BO_COMPOSITE` has no form, so
-its fields carry no `gridPosition`, no `tableColOrderIndex` and no `removeType` (0.9, §5b) — an archive
+**The documented exceptions to «never drop a key»: the composite, and `PROCESS_STATUS` (0.18).** A `BO_COMPOSITE` has no form, so
+its fields carry no `gridPosition`, no `tableColOrderIndex` and no `removeType` (0.17, §5b) — an archive
 built without exactly those three imports `[C]`. Nowhere else may a key of this template be
 absent.
 
@@ -492,7 +502,7 @@ The types that need extra keys — every shape `[C]`:
 - `TAB_GROUP` — its own code is `tabs` (`tabs_*` when the BO has several, 0.6a); `"fieldTabs"` keyed by the tab code (`tab_*`):
   `{"tab_main": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"tab_main","newId":"<16 chars>"}}`
   Fields on a tab carry `tabCodePath: {tabGroupCode, tabCode}` — both CODES. **A widget on a tab (an entry of
-  any of the six maps of 0.5b) carries the same object under the key `tabCode` instead** `[C]`: the import puts
+  any of the six maps of 0.13) carries the same object under the key `tabCode` instead** `[C]`: the import puts
   it on that tab and the export writes it back the same way, and its `gridPosition.y` counts from the top of
   the tab like a field's. `tabCodePath` on a widget is silently IGNORED `[C]` — the widget lands outside the
   tabs at its `y` in the form's stack, overlapping whatever sits there. **A TAB_GROUP must have a
@@ -525,509 +535,6 @@ The types that need extra keys — every shape `[C]`:
 Cell heights the constructor itself assigns: 4 rows for a plain field, **6** for `BO` / `CO` / `LINK` /
 `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for `STATIC_TEXT` /
 `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`.
-
-### 0.5a System fields — `nativeFields`, NOT `dynamicFields`
-
-«Системные поля» of the palette are a separate archetype and live in their own map of `BoStructDto`,
-keyed by the native type, which is also the field's code and its `nativeFieldId` `[C]`:
-
-```text
-"nativeFields": {
-  "CREATED_AT": {
-    "newId": "<16 chars>", "nativeFieldId": "CREATED_AT", "archetype": "NATIVE",
-    "boRefStruct": {"fieldRefs": {}},
-    "label": {"rus": "Дата создания", "kaz": "Құрылған күні", "qaz": "Qurylǵan kúni", "eng": "Date of creation"},
-    "staticValue": {}, "chosenAccessRight": false, "unacceptableValue": false, "isSystem": false,
-    "isCodeReadonly": false, "needLoadFromInTables": false, "useAsKeyInMigration": false,
-    "needUploadToOutTable": false, "needChangeParentBoByLinkedBo": false, "needFreezeWhenScroll": false,
-    "needMarkNew": false,
-    "type": "FULL_DATE",                                   ← fixed by the platform, see the table
-    "groupingInfo": {}, "gridPosition": {"x":0,"y":<y>,"cols":15,"rows":4},
-    "fieldTabs": {}, "gantTableLocations": {}, "boFieldCodes": [], "linkedCoSettings": {},
-    "questionnaires": {}, "progressSteps": {}, "params": {}
-  }
-}
-```
-
-| native type | UI label | `type` | note |
-|---|---|---|---|
-| `CREATED_AT` | Дата создания | `FULL_DATE` | |
-| `LAST_MODIFIED_AT` | Дата последнего изменения | `FULL_DATE` | |
-| `CREATED_BY` | Автор | `BO` | + `viewType: "SINGLE"` and `boRefStruct.boInfo` = `Person` / «Пользователи» / `BO`, 6 rows |
-| `LAST_MODIFIED_BY` | Автор последнего изменения | `BO` | same |
-| `OPEN_COUNT` | Счетчик открытий | `INPUT_NUMBER` | |
-| `IN_MIGRATION_UPDATED_AT` | Дата обновления IN миграции | `FULL_DATE` | |
-
-`PARTICIPANTS` («Участники») is in the enum but **cannot be created**: the palette never offers it and
-`generate-business-form-field-by-native` answers with an empty body `[C]`. Each system field may be placed
-**once** per BO.
-
-**What travels for a system field** `[C]`:
-
-| key in `nativeFields.<TYPE>` | export writes it | import applies it |
-|---|---|---|
-| `label` (rename), `hideLabel` | yes | yes |
-| `viewType` `TABLE`/`SINGLE` + `boRefStruct.fieldRefs.<code of a «Пользователи» field>.toShow` (`CREATED_BY`, `LAST_MODIFIED_BY` only) | yes, by field CODE (`surname`, `name`, `adGuid`, `Position__Object_`…) | yes |
-| `chosenAccessRight` | yes | yes — but see the lock |
-| `needUploadToOutTable` | **no** (`false` even when the stand has `true`) | **no** |
-| `needLoadFromInTables`, `inMigrationTimezoneMinutes`, `isRequired` | — (the stand never stores them on a native) | no |
-| `isReadonly` | — | irrelevant: a native is always read-only |
-
-- **The lock does NOT travel.** The export puts it into the `AccessStructDto` under
-  `fieldAccessStructMap.<NATIVE_TYPE>`; the import ignores that entry (keying it by the native's
-  `newId` or by `N-<TYPE>` does not work either), while a dynamic field's lock in the same archive is applied. Since
-  `chosenAccessRight: true` IS applied, the imported BO shows an orange lock over rights that are «всем».
-  So leave `chosenAccessRight: false` on natives in an archive and set native rights over the API after the
-  import (`MYBPM-UI-API.md` §5i «System fields (natives) — settings»).
-- The constructor offers no settings on `CREATED_AT`, `LAST_MODIFIED_AT`, `OPEN_COUNT`,
-  `IN_MIGRATION_UPDATED_AT` beyond the label; `CREATED_BY` / `LAST_MODIFIED_BY` add the view and columns.
-
-### 0.5b Widgets — six maps of their own
-
-«Виджеты» are neither `dynamicFields` nor `nativeFields`: each family has its own map in `BoStructDto`,
-keyed by the widget's CODE `[C]`:
-
-| widget | UI label | map | extra keys |
-|---|---|---|---|
-| `SIGNATURE` | ЭЦП / СМС | `signatures` | `fieldCodes`, `massFieldCodes`, `printFormCodes`, `massPrintFormCodes` (all may be `{}`), `signingPhoneCode` — see «SIGNATURE round-trips» below |
-| `BUTTON` | Кнопка | `buttons` | `url`, `fieldCodes` (`{"<field code>": "<archetype>"}`) |
-| `IFRAME` | Блок IFrame | `iframes` | `url` |
-| `CAPTCHA` | Блок captcha | `captcha` | — (code only; a captcha blocks API saves, see «CAPTCHA round-trips» below) |
-| `CURRENT_DATE` `CURRENT_DAY` `CURRENT_MONTH` `CURRENT_DAY_AND_MONTH` `CURRENT_YEAR` | Текущая дата / день / месяц / день и месяц / год | `currentDates` | `widgetType` repeats the type (code only; the value is never stored, see «CURRENT_* date widgets round-trip» below) |
-| `CURRENT_USER` | Текущий пользователь | `currentUser` | `viewType: "TABLE"`, `fieldRefs` |
-
-One entry looks like this — there are no boolean flags at all, unlike a dynamic field:
-
-```text
-"buttons": {"button": {"label": {"rus": "Кнопка"},
-  "gridPosition": {"x":0,"y":<y>,"cols":15,"rows":4},
-  "code": "button", "type": "BUTTON", "newId": "<16 chars>",
-  "url": "", "fieldCodes": {}}}
-```
-
-Heights: 4 rows for a button and the CURRENT_* widgets, 6 for `SIGNATURE` / `CAPTCHA` / `CURRENT_USER`,
-8 for `IFRAME`. A widget's code and url survive an import and can be read back through the widget's own
-controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may be placed **once** per BO;
-`BUTTON`, `IFRAME` and `CAPTCHA` may repeat.
-
-**A button's and an iframe's settings round-trip through an archive** `[C]`: code, `url` and `fieldCodes` of
-every button, and the iframe's code and `url`. A button's `fieldCodes` is its «Поля для отправки»: a
-map from field CODE to that field's archetype:
-
-```text
-"buttons": {"plugin": {"label": {"rus": "Плагин"}, "gridPosition": {"x":0,"y":22,"cols":15,"rows":4},
-  "code": "plugin", "type": "BUTTON", "newId": "<16 chars>",
-  "url": "call/plugin/<plugin name>/<anything>", "fieldCodes": {"text": "DYNAMIC", "answer": "DYNAMIC"}}}
-```
-
-The import turns the codes back into the ids of the copy's own fields. What a url does on the record
-card `[C]`:
-
-- **empty** — nothing besides the button's field script. **This is the button to build**: put the logic
-  into a script on «Изменение поля» (below).
-- `call/plugin/<name>/…` — calls a plugin installed on the SERVER under `<name>`. An unknown name gives
-  «No such plugin». `fieldCodes` only matters to such a plugin.
-- `client/save-current-boi` — **does nothing, the record is not saved** (no component of the client
-  listens to that event).
-- `create-boi/<field code>/<from->to, …>` — **does nothing on the record card** (only another, unused
-  form handles it).
-- anything else, `https://…` included — nothing. A button never navigates.
-
-An iframe `url` must be `https:`. The stand silently drops an `http:` url, both from the settings
-dialog and over the API. The iframe shows the same fixed url on every record, and it is not told which
-record it is on.
-
-**A script on a button = a field script on the button's code** — the ordinary «На изменение поля»
-trigger. A click fires it, and each further click fires it again; leave `url` empty for a script-only
-button (`MYBPM-UI-API.md` §5i «A BUTTON runs a script»). On a stand it is wired by `fieldId`
-through `save-bo-scripts` `[C]`. In an archive it is
-`fieldScripts: {"<button code>": "<scriptId>"}` (§5d, `tools/add-bo-scripts.bun.ts --bodies` with hook
-`field:<button code>`), keyed like any field `[C]`.
-
-**CURRENT_USER («Текущий пользователь») round-trips through an archive** `[C]`:
-the code, `viewType`, the columns and the lock.
-
-```text
-"currentUser": {"current_user": {"label": {"rus": "Текущий пользователь"},
-  "gridPosition": {"x":0,"y":38,"cols":15,"rows":6},
-  "code": "current_user", "type": "CURRENT_USER", "newId": "<16 chars>",
-  "viewType": "SINGLE",
-  "fieldRefs": {"surname": {"toShow": true, "orderIndex": 0},
-                "email":   {"toShow": true, "orderIndex": 1},
-                "name":    {"toShow": false, "orderIndex": 2147483647}, …}}}
-```
-
-- **What the widget is**: on a record card it shows the person who OPENS the card, never the author. A
-  record stores no value for it. To record who created or changed a record, use the system fields
-  `CREATED_BY` / `LAST_MODIFIED_BY` (§0.5a).
-- `viewType` is `TABLE` or `SINGLE`, nothing else.
-- `fieldRefs` is keyed by the CODES of the «Пользователи» (Person) BO's fields. The export lists all of
-  them; hidden ones have `toShow: false` and `orderIndex: 2147483647`. Codes on one stand:
-  «Фамилия» = `surname`, «Имя» = `name`, «Почта» = `email`, «Роль» = `accessLevel`, «Должность» =
-  `position`. Codes may differ on another stand: read them from an export of that stand.
-- **`fieldRefs: {}` and no `viewType` are safe**: the imported widget is `TABLE` with
-  «Фамилия» + «Имя» shown, the server's own default. **A partial map is enough too**:
-  `{"surname": {"toShow": true, "orderIndex": 0}, "accessLevel": {"toShow": true, "orderIndex": 1}}`
-  imports as exactly «Фамилия», «Роль», with every unlisted field hidden.
-  `tools/make-probe-archive.bun.ts --widget "CURRENT_USER:<label>:<code>:SINGLE/surname,email"` writes it
-  that way. Without the 4th part it writes `TABLE` + `{}`.
-- The widget's **lock** travels as a normal `fieldAccessStructMap.<widget code>` entry of the
-  `AccessStructDto` (§7). Shipping an `AccessStructDto` replaces the BO's rights (§0.10 rule 10), so do it
-  only for a BO the archive creates, or when asked.
-- One CURRENT_USER per BO.
-
-**SIGNATURE («ЭЦП / СМС») round-trips through an archive** `[C]`, both as a copy under a new BO code
-(new `oldId`, new `newId`s) and as an archive generated by `tools/make-probe-archive.bun.ts`: the code,
-the signed fields, the mass field, the phone, the print forms and the lock come back (re-importing onto
-the SAME BO behaves differently — see `signingPhoneCode` and «Print forms» below):
-
-```text
-"signatures": {"signature": {"label": {"rus": "ЭЦП/SMS"},
-  "gridPosition": {"x":0,"y":48,"cols":15,"rows":6},
-  "code": "signature", "type": "SIGNATURE", "newId": "<16 chars>",
-  "fieldCodes": {"text":   {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []},
-                 "regions": {"boRefCode": "<code of the linked BO>", "ownerFieldArchetype": "DYNAMIC",
-                             "fieldCodes": [{"fieldCode": "regions", "refBoCode": "<code of the linked BO>",
-                                             "refFieldCode": {"fieldCode": "name", "archetype": "DYNAMIC"},
-                                             "archetype": "DYNAMIC"}]}},
-  "massFieldCodes": {"regions": {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []}},
-  "printFormCodes": {"Dogovor": 1},
-  "massPrintFormCodes": {"<code of the linked BO>": {"<its print form code>": 1}},
-  "signingPhoneCode": "Telefon"}}
-```
-
-- **`fieldCodes`** = «Поля для подписания», keyed by this BO's field CODE. A plain field is
-  `{"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []}`. For a BO field the inner `fieldCodes` lists the
-  linked BO's fields to sign («Регионы - Название»). After the import `load-signature-settings` returned only the listed child,
-  not the BO field itself (the constructor still drew both chips), so list the child you want.
-- **`massFieldCodes`** = the BO fields whose LINKED records are signed in bulk. Each must be a `BO` field.
-  On the stand the bulk documents can only be chosen when the linked BO has its OWN SIGNATURE widget with
-  something to sign (`MYBPM-UI-API.md` §5i).
-- **`printFormCodes`** = «Документы для подписания», `{<print form code of THIS BO>: 1}`. The code must be in
-  the BO's `printForms` (below). **`massPrintFormCodes`** = `{<linked BO code>: {<its print form code>: 1}}`.
-  **It never survives an import** `[C]`: not as a copy, not re-imported onto the same BO, and not when the
-  linked BO and that print form travel in the SAME archive. Cause `[I]`: the stand never offers a linked BO's print form for mass signing
-  (`signFieldUnsupported`, `MYBPM-UI-API.md` §5i). After the import set it over the API: `save-signature-settings` with
-  `addMassPfRecord: [{boId, printFormId}]` is accepted (`MYBPM-UI-API.md` §5i).
-- **`signingPhoneCode`** = «Указать номер для подписания», the CODE of an `INPUT_PHONE` field. Leave it out
-  for none. A copy (a new BO) gets it, but **re-importing onto the SAME BO clears the phone** `[C]`. Set it again with `save-signature-settings {signingPhoneId}`.
-- The **lock** travels as `fieldAccessStructMap.<signature code>` of the `AccessStructDto` (§7), with
-  `view.orgUnitIds` like `"D-<department id>"`. The export also adds an `ExportStructInstanceDto` line for each
-  group it names. An `AccessStructDto` replaces the BO's rights (§0.10 rule 10).
-- On the record card the signing TYPE (ЭЦП or SMS) is chosen by the user per signing. It is not part of the
-  archive.
-- Generator: `--widget "SIGNATURE:ЭЦП/SMS:signature:text,answer;phone=phone;pf=contract;mass=regions"`.
-  The 4th part holds the codes of the fields to sign, then optional `phone=`, `pf=` and `mass=`. The
-  validator checks every code against the BO.
-
-**CAPTCHA («Блок captcha») round-trips through an archive — and BLOCKS every save that changes a record**
-`[C]`: the code (renamed in the archive too) and the lock come back.
-
-```text
-"captcha": {"captcha": {"label": {"rus": "Блок captcha"},
-  "gridPosition": {"x":0,"y":54,"cols":15,"rows":6},
-  "code": "captcha", "type": "CAPTCHA", "newId": "<16 chars>"}}
-```
-
-- The entry has **no setting of its own** beyond the code. The map key and `code` are the same code.
-  Without one the server derives `Blok_captcha` from the label.
-- The **lock** (who sees the widget, VIEW only) travels as `fieldAccessStructMap.<captcha code>` of the
-  `AccessStructDto` (§7). «Только участники» exported as `"view": {"denyAll": true, "participants": true, …}`.
-  An `AccessStructDto` replaces the BO's rights (§0.10 rule 10).
-- **The server enforces it.** With a CAPTCHA on the BO, `validate-apply-remove-draft` of a draft that
-  CHANGED a value, or of a NEW record, answers `CaptchaNotVerified` («Капча не верифицирована») until the
-  captcha of that draft is solved on the card. A draft with no changes still saves. The four-call record
-  cycle (`apply-and-remove-draft`) is refused the same way. So **a BO with a
-  captcha cannot take records from the record API (`MYBPM-UI-API.md` §6a) or any headless client**.
-  Whether Block IDE scripts and the xlsx import are blocked too is `[U]`. Put a captcha only on a BO that
-  people fill in by hand.
-- `CAPTCHA` may repeat on a BO (the palette keeps offering it). Height 6 rows.
-
-**CURRENT_* date widgets («Текущая дата / день / месяц / день и месяц / год») round-trip through an archive**
-`[C]`: every code and every lock comes back as written, in a copy and in a generated archive.
-
-```text
-"currentDates": {"current_date": {"label": {"rus": "Текущая дата"},
-  "gridPosition": {"x":0,"y":60,"cols":15,"rows":4},
-  "code": "current_date", "type": "CURRENT_DATE", "newId": "<16 chars>", "widgetType": "CURRENT_DATE"}}
-```
-
-- **All five types share ONE map**, `currentDates`, keyed by the widget code. `type` and `widgetType`
-  both carry the type. There is no other setting: the gear holds only the code.
-- Without a code the server derives one from the label, transliterating «й» as `yi`: «Текущая дата» →
-  `Tekuschaya_data`, «Текущий день и месяц» → `Tekuschiyi_den_i_mesyac`.
-- The **lock** (VIEW only) travels as `fieldAccessStructMap.<widget code>` of the `AccessStructDto` (§7),
-  like CAPTCHA and CURRENT_USER. An `AccessStructDto` replaces the BO rights (§0.10 rule 10).
-- **The widget stores nothing.** The card shows the server time from when the draft was opened. It is a
-  disabled date picker in the format `dd.MM.yyyy` / `dd` / `LLLL` (the month name, «октябрь») / `dd.MM` /
-  `yyyy`. `load-field-data` returns that time as an ISO string, a new one for every draft. A value
-  written into it over the API is accepted and then ignored. `load-boi-values` does not list the widget at all.
-  Do not use it as a «date of creation» field: that is the native `CREATED_AT` (§0.5a).
-- The palette offers each type once per BO, but **the server accepts a second widget of the same type**
-  over the API, with its own code. Height 4 rows.
-- Generator: `--widget "CURRENT_DATE:Сегодня:Segodnya"` (any of the five types). The validator checks
-  that `widgetType` equals `type`.
-
-**Print forms (`printForms`) travel WITH their .docx template** `[C]`. A BO lists
-them as
-
-```text
-"printForms": [{"name": "Договор", "printFormCode": "Dogovor", "fileId": "<24 hex>",
-                "fileType": "PDF", "orderIndex": 0, "newId": "<16 chars>"}]
-```
-
-and the archive carries the file itself in a separate line, placed BEFORE the `BoStructDto` in an export:
-
-```text
-{"@class": "kz.greetgo.mybpm.reg.structure.model.dto.ExportStructFileDto", "fileId": "<the same 24 hex>",
- "name": "dogovor.docx", "content": "<the .docx, base64>",
- "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-```
-
-- `fileType` is the OUTPUT format, `PDF` or `DOCX`. The template is always a .docx.
-- **The import uploads the file anew**: the imported form gets a NEW `fileId` and keeps the original name. A generated archive needs only an id that ties `printForms[].fileId` to its
-  `ExportStructFileDto`. The generator uses 24 upper-case hex characters, which is what the stand writes.
-- The code comes from the name if you build the form on the stand («Договор» → `Dogovor`). In an archive
-  it is whatever `printFormCode` says. **The code is not unique**: two forms of one BO with the same name
-  both get the same code (`PF_regiona`) `[C]`.
-- **A re-import matches print forms by `newId`, NOT by `printFormCode`** `[C]`. The same archive applied
-  twice updates its form in place. A fresh stand EXPORT of the same BO gives every form a new `newId`, so
-  re-importing it onto that BO ADDS a copy of each form (same name, same code), and a SIGNATURE that lists
-  the code picks up the copy too. **A rollback does not remove such copies — it adds one more** of each
-  (0.12 «Rollback»). Before re-importing an export onto the BO it came from, drop its `printForms` (and their
-  `ExportStructFileDto` lines) unless the forms changed; delete stray copies with `delete-print-form`
-  (`MYBPM-UI-API.md` §5i «Print forms»).
-- Generator: `--print-form "Договор:Dogovor:path/to/template.docx[:PDF|DOCX]"`, repeatable. A minimal
-  three-part .docx (`[Content_Types].xml`, `_rels/.rels`, `word/document.xml`) is accepted. Template
-  placeholders were not explored `[U]`. The stand-side API for print forms is `MYBPM-UI-API.md` §5i
-  «Print forms».
-
-### 0.5c Kanban — the card template travels in the archive `[C]`
-
-A kanban is TWO things, and the archive can carry BOTH:
-
-- the **card template**, which lives ON THE BO in `kanbanCardTemplates`. **Ship it, or the kanban view
-  dies with «cardTemplate is null»**.
-  It belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here.
-  **Give EVERY `DROPDOWN_SINGLE` one, even when nobody asked for a kanban** `[C]`: without it the
-  BO's MAP view and the constructor's kanban editor die the same way once a record exists (§2 «BO views»). A
-  BO already broken so is repaired by re-importing its line with the template (keep the `kanbanFields` wrapper —
-  without it the import is APPLIED and changes nothing); `save-kanban-card-template` does not repair it.
-- the **place that shows the board**, with its column field `[C]`. Two exist:
-  - the **BO's own registry** (opened from «Бизнес-объекты», not from a menu) needs NO switch: its view chooser
-    lists «Канбан по полю: <label>» for every `DROPDOWN_SINGLE` of the BO by itself, and the board renders
-    (columns = the options, cards = the template). **A local list («Задать вручную», `FROM_FIELD`) qualifies
-    exactly like a dictionary (`FROM_BO`)** `[C]`: `v2/kanban/load-kanban-fields` lists both kinds and the
-    board of a local list shows its options as columns — whatever an editor's empty-state text says about
-    «выпадающий список типа СПРАВОЧНИК»;
-  - a **SIDEBAR MENU ITEM** shows it only when switched on — `boPages.isKanbanEnabled` + the column field; a menu
-    line of the SAME archive does it by code, `boPages.kanbanFieldCode` (0.5d, §5e), or
-    `v2/menu-item/save-menu-item-bo-pages` after the import (`MYBPM-UI-API.md` §4). Give the user a menu item
-    when the board must be one click away.
-  Nowhere else: the constructor offers a `BO` / `CO` reference field only Табличный / Множественный / Одиночный /
-  Карточкой and a panel registry only Табличный / Множественный. The client's `viewType` enum also lists
-  `KANBAN` / `CALENDAR` / `MAP` / `TIMELINE`, but no screen sets them — never ship them in a field's `viewType`.
-
-```text
-"kanbanCardTemplates": {
-  "Status": {                          ← CODE of the DROPDOWN whose options become the columns
-    "kanbanFields": {
-      "Naimenovanie": {"cardOrderIndex": 0, "locationType": "HEADER",  "archetype": "DYNAMIC"},
-      "Ispolnitel":   {"cardOrderIndex": 0, "locationType": "CONTENT", "archetype": "DYNAMIC"},
-      "CREATED_BY":   {"cardOrderIndex": 1, "locationType": "CONTENT", "archetype": "NATIVE"},
-      "Kommentariyi": {"cardOrderIndex": 0, "locationType": "FOOTER",  "archetype": "DYNAMIC"}
-    }
-  }
-}
-```
-
-- The outer key is the code of a `DROPDOWN_*` field of THIS BO; one entry per field you want to offer as
-  a kanban (a BO may carry several).
-- The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
-  `archetype: "DYNAMIC"`, or a key of `nativeFields` (the native type itself) with `archetype: "NATIVE"`.
-  Ids never appear here, exactly like everywhere else in a `BoStructDto`.
-- `locationType` is `HEADER` | `CONTENT` | `FOOTER`; `cardOrderIndex` orders the fields inside one
-  location and is a plain int.
-- `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
-  writes exactly this.
-
-With the template shipped, `v2/kanban/load-kanban-template` returns a `cardTemplate` instead of NPE-ing,
-the board renders its columns, and `load-bracket-kanban-cards` returns the cards with their
-header/content/footer values `[C]`. **On a stand with the sort defect the cards still do not appear in
-the UI** — a second, unrelated defect of every NEW BO there blocks the default sort (`MYBPM-UI-API.md` §7;
-what an archive can do about it is the next paragraph).
-
-**The Elasticsearch sort defect — what the archive must do about it, ONLY on a stand known to have it**
-`[C]`. **Apply this paragraph only when the user says the target stand
-has the defect** (or you saw a new BO's registry there show «из N» over an empty table). Otherwise build
-the default registry of 0.5 — name field first and visible — and do not mention the defect. On such a stand every BO created by the current version (archive AND constructor
-alike) gets an index in which a string field cannot be sorted once any record holds a value in it. The
-registry sorts by default by its FIRST column, and clicking any column header sorts by that column —
-so a registry (and a kanban, same query) whose columns include a FILLED string field shows «из N» with an
-empty table and invisible cards. Old BOs never fail; a field left empty everywhere sorts fine. **Nothing
-repairs the index; the only measure that holds is to keep string fields that will hold values OUT of the
-registry columns**: `tableColToShow: false` on them. Seen failing: `INPUT_TEXT` and `DROPDOWN_SINGLE`;
-assume every field whose value is a string does (`TEXTAREA`, `INPUT_EMAIL`, `INPUT_PHONE`, `LINK`,
-`*_LANG` `[I]`). Seen safe as columns: `INPUT_NUMBER`, `CHECKBOX`, `DATE`, a `BO` reference,
-`CREATED_AT` — put one of them first (`tableColOrderIndex` 0). Reordering alone is NOT enough — the text column breaks the
-moment someone clicks its header. Two limits: `sortFieldId` changes nothing, and a BO with **no**
-registry column at all answers «У Вас недостаточно прав на поля, которые выведены в реестр» — keep at
-least one safe column. Whether another stand has the defect is unknown `[U]`: if a new BO's registry
-there shows rows with text columns on, ignore this paragraph.
-One archive with the BO + its card template + a menu group + a menu item with `kanbanFieldCode` renders the
-whole board with its columns straight after ПРИМЕНИТЬ `[C]` (§5e).
-
-### 0.5d Sidebar menu items — `MenuItemStructDto` lines `[C]`
-
-Optional lines AFTER the BO lines (step 7a). A menu item is NAVIGATION: a row in the sidebar that opens
-a BO's records (or a folder that holds such rows). Views such as a kanban are an option ON an item, not
-the reason for it. One line per menu item; a group and the items inside it are separate lines.
-**Everything is referenced BY CODE** — the parent group, the BO, a view's field — and a menu line has
-**no id at all**: the stand mints the menu item's id itself. Copy the templates literally and change
-only the values marked `←`.
-
-**An item that opens a BO** — the usual case, the list view only, at the root of the sidebar:
-
-```json
-{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
- "menuItemCode":"Requests",                  ← your code, latin, unique among MENU codes
- "menuItemName":"Заявки",                        ← the text in the sidebar
- "boCode":"Request",                             ← the BO's `code`
- "boName":"Заявки",                              ← the BO's `name.rus`
- "iconName":"man-with-company",
- "orderIndex":950000,                            ← position among its siblings
- "boPages":{"isKanbanEnabled":false,"kanbanIndex":0,
-            "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
-            "isListEnabled":true,"listIndex":1,
-            "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0},
- "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
- "bracketFilter":{"boCode":"Request","type":"MENU_ITEM","brackets":{}},
- "menuItemType":"BO"}
-```
-
-(This list-only shape is what the stand EXPORTS for such an item, and it IMPORTS as is `[C]`.)
-
-**A group** (a folder in the sidebar) — only when the user wants the items grouped:
-
-```json
-{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
- "menuItemCode":"Probe_menu",            ← your code
- "menuItemName":"Проба меню",          ← the text in the sidebar
- "iconName":"bo-g-draggable",
- "orderIndex":950000,
- "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
- "menuItemType":"GROUP"}
-```
-
-To put a BO item inside the group, add `"parentMenuItemCode":"<the GROUP's menuItemCode>"` to the item
-(right after `menuItemName`); without the key the item is a root.
-
-**`boPages` = the set of views of that item.** Six views exist; each has an `is*Enabled` flag and an
-`*Index` = its tab position, 1-based, counted over the ENABLED views only (disabled ones carry 0). Always
-write all twelve keys. What each view needs besides its flag:
-
-| View | Keys | Needs on the BO / on the item | Status |
-|------|------|-------------------------------|--------|
-| list (registry) | `isListEnabled`, `listIndex` | nothing | `[C]` |
-| kanban | `isKanbanEnabled`, `kanbanIndex` | `kanbanFieldCode` = code of a `DROPDOWN_SINGLE` of the BO (the columns) AND that field's card template in the BO's `kanbanCardTemplates` (0.5c) | `[C]` |
-| calendar | `isCalendarEnabled`, `calendarIndex` | the BO's `isCalendarEnabled: true` and a date field (`FULL_DATE` with `needShowToCalendar`) — nothing on the item | `[C]` |
-| timeline («Диаграмма Ганта») | `isTimelineEnabled`, `timelineIndex` | **`timelineFieldCode`** = code of a `PERIOD` / `PERIOD_TIME` field of the BO (the import resolves it into the item's `timelineFieldId`); the BO needs nothing else — a timeline template exists by itself for every such field | `[C]` |
-| map | `isMapEnabled`, `mapIndex` | the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card template for every dropdown (0.5c) — nothing on the item | `[C]` |
-| grouping | `isGroupingEnabled`, `groupingIndex` | nothing works: the registry grouping view is 404 on the server (§2 «BO views») — never enable it | `[C]` dead |
-
-List, kanban, calendar, timeline and map are proven; grouping is dead.
-**Do not switch on grouping (or any view not marked `[C]` above) in an archive** — if the user asks for it, say it
-does not work and ship the rest. The kanban variant of `boPages` (kanban first tab, list second):
-
-```text
-"boPages":{"isKanbanEnabled":true,"kanbanIndex":1,
-           "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
-           "isListEnabled":true,"listIndex":2,
-           "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0,
-           "kanbanFieldCode":"status"}          ← code of a DROPDOWN of that BO = the columns
-```
-
-Rules:
-
-- **A `GROUP` line carries NO `boPages`, NO `bracketFilter`, NO `boCode`/`boName`** — the stand exports
-  it exactly like that, and the import accepts it.
-- **A `BO` line carries both `boPages` and `bracketFilter`**; `bracketFilter.boCode` repeats `boCode`,
-  `brackets: {}` = no record filter (every record is shown); a non-empty filter imports whole `[C]` (shape in §5e).
-- `kanbanFieldCode` appears ONLY when the kanban is on. It must be a `DROPDOWN_SINGLE` of that BO and the
-  outer key of its `kanbanCardTemplates` — the columns alone give a board the stand cannot draw (0.5c).
-- `boCode` may name a BO of THIS archive (the usual case) or a BO that is ALREADY on the stand — then it
-  is a stand code, ask for it as in 0.2a (the importer resolves both). The same goes for
-  `parentMenuItemCode`: a group of this archive, or the code of an existing group taken off the stand —
-  **never guess a stand group's code**, menu codes made in the UI look like `GruppatqrXI0InJC5abW8w`
-  (a transliteration plus random characters) and cannot be derived from the name. If the user gives no
-  group code, ship your own GROUP line or make the item a root (drop `parentMenuItemCode`).
-- `orderIndex`: the built-in root «Системные» is 60000; put your own roots after it (e.g.
-  950000), children count inside their parent (e.g. 10000).
-- Put the GROUP line BEFORE its children. (The importer probably tolerates any order `[I]`, but the one
-  order proved on import is group first.)
-- **Icons** `[C]`: `iconName` takes ANY name of the catalogue in **0.5e**, written with
-  its prefix exactly as listed there — `"phosphor:house-line"`, `"menu-item:025-building"`. Without a
-  wish from the user keep the defaults: `bo-g-draggable` for a group, `man-with-company` for a BO item,
-  `bo-d-draggable` for a dictionary (these three have no prefix). **The importer does not check the
-  name**: a name that is not in 0.5e analyses clean, applies (`APPLIED`), is stored verbatim — and the
-  sidebar shows an EMPTY place where the icon should be. So every `iconName` must be copied from 0.5e;
-  when the user describes an icon by meaning («домик», «деньги», «люди»), pick the closest name from
-  0.5e and SAY which one you took. Never compose a name from memory of the Phosphor icon set: the stand
-  ships only part of it (`phosphor:seal-check`, `ranking`, `toolbox`, `gavel` do not exist there).
-- Menu access rights travel `[C]` (§5e): `chosenAccessRight: true` plus an `accessGroup` key —
-  the same shape as `AccessStructDto.boAccessStruct` (`denyAll`, per action `{denyAll, participants,
-  fromFields, orgUnitIds:["G-<group id>"]}`, only `view` matters for navigation). Without `accessGroup`
-  keep `chosenAccessRight: false`. **Menu rights do not cascade** `[C]`: a closed GROUP item only drops out of
-  the sidebar root, every item is filtered by its own `view` — put the rule on each item that must be
-  hidden. Menu rights hide a SCREEN, never records: a user with an open item but no BO `view` gets an empty
-  registry, and the reverse — records stay reachable whatever the menu says — is why the BO's own rights
-  (§7) are the protection.
-- **A `menuItemCode` that already exists on the stand is an EDIT of that item, not a new one** `[C]`
-  (§5e): the import overwrites its name, order, views and filter in place, keeping its id. So a menu
-  code of your own must be new to the stand — never reuse a code seen on the stand unless the user asked
-  to change THAT item. Re-importing your own regenerated archive is safe for the same reason: it updates
-  your item instead of adding a second one.
-- **A menu-only archive is legal** `[C]`: one `MenuItemStructDto` line and nothing else (no group line,
-  no BO line) imports fine when its `boCode` is already on the stand — the way to add or change a sidebar
-  item for an existing BO. The `boCode` is then a stand code: ask for it (0.2a).
-
-### 0.5e Menu icons — the whole catalogue `[C]`
-
-Every value `iconName` of a menu line (0.5d) may take besides the three defaults. It is the list the
-sidebar's «Изменить иконку» picker offers — 1153 names in two namespaces — and every one of them exists
-on the stand as the file `/assets/icons/<namespace>/<name>.svg`; the sidebar
-draws the icon from that file. The archive route: 0.5d «Icons» and §5e.
-
-How to write a name: `<namespace>:<name>`, e.g. `phosphor:rocket`, `menu-item:025-building`. Names in
-«» contain a SPACE, and the space is part of the name (`"menu-item:002-price tag"` — stored and drawn
-as is `[C]`, the frontend URL-encodes it). «tab N (head icon X)» is the picker's N-th tab from the left and the picture on its header — it
-only helps to find an icon in the UI and means nothing in the archive. The list lives in the stand's
-frontend and may grow with a new build: `tools/menu-icons.bun.ts --stand https://<stand> --check --md`
-re-reads it from a stand and prints this block again.
-
-`phosphor:` —
-- tab 1 (head icon `recycle`, 111): arrow-arc-left arrow-arc-right arrow-bend-double-up-left arrow-bend-double-up-right arrow-bend-down-left arrow-bend-down-right arrow-bend-left-down arrow-bend-left-up arrow-bend-right-down arrow-bend-right-up arrow-bend-up-left arrow-bend-up-right arrow-circle-down arrow-circle-down-left arrow-circle-down-right arrow-circle-left arrow-circle-right arrow-circle-up arrow-circle-up-left arrow-circle-up-right arrow-clockwise arrow-counter-clockwise arrow-down arrow-down-left arrow-down-right arrow-elbow-down-left arrow-elbow-down-right arrow-elbow-left arrow-elbow-left-down arrow-elbow-left-up arrow-elbow-right arrow-elbow-right-down arrow-elbow-right-up arrow-elbow-up-left arrow-elbow-up-right arrow-fat-down arrow-fat-left arrow-fat-line-down arrow-fat-line-left arrow-fat-line-right arrow-fat-line-up arrow-fat-lines-down arrow-fat-lines-left arrow-fat-lines-right arrow-fat-lines-up arrow-fat-right arrow-fat-up arrow-left arrow-line-down arrow-line-down-left arrow-line-down-right arrow-line-left arrow-line-right arrow-line-up arrow-line-up-left arrow-line-up-right arrow-right arrow-square-down arrow-square-down-left arrow-square-down-right arrow-square-in arrow-square-left arrow-square-out arrow-square-right arrow-square-up arrow-square-up-left arrow-square-up-right arrow-u-down-left arrow-u-down-right arrow-u-left-down arrow-u-left-up arrow-u-right-down arrow-u-right-up arrow-u-up-left arrow-u-up-right arrow-up arrow-up-left arrow-up-right arrows-clockwise arrows-counter-clockwise arrows-down-up arrows-horizontal arrows-in arrows-in-cardinal arrows-in-line-horizontal arrows-in-line-vertical arrows-in-simple arrows-left-right arrows-out arrows-out-cardinal arrows-out-line-horizontal arrows-out-line-vertical arrows-out-simple arrows-vertical caret-circle-double-down caret-circle-double-left caret-circle-double-right caret-circle-double-up caret-circle-down caret-circle-left caret-circle-right caret-circle-up caret-double-down caret-double-left caret-double-right caret-double-up caret-down caret-left caret-right caret-up recycle
-- tab 2 (head icon `radio`, 54): address-book asterisk asterisk-simple at broadcast chat chat-centered chat-centered-dots chat-centered-text chat-circle chat-circle-dots chat-circle-text chat-dots chat-teardrop chat-teardrop-dots chat-teardrop-text chat-text chats chats-circle chats-teardrop envelope envelope-open envelope-simple envelope-simple-open export hash hash-straight megaphone megaphone-simple paper-plane paper-plane-right paper-plane-tilt peace phone phone-call phone-disconnect phone-incoming phone-outgoing phone-slash phone-x quotes radio rss rss-simple share share-network star star-half sticker thumbs-down thumbs-up translate voicemail yin-yang
-- tab 3 (head icon `game-controller`, 42): alien baseball basketball club confetti crown crown-simple diamond dice-five dice-four dice-one dice-six dice-three dice-two finn-the-human flying-saucer football game-controller ghost heart heart-break heart-straight heart-straight-break horse mask-happy mask-sad medal parachute pinwheel poker-chip puzzle-piece scroll skull soccer-ball spade spiral strategy sword target tennis-ball trophy volleyball
-- tab 4 (head icon `microphone-stage`, 86): airplay aperture article article-medium article-ny-times camera camera-rotate camera-slash closed-captioning copyleft copyright corners-in corners-out disc ear ear-slash eject eject-simple equalizer faders faders-horizontal fast-forward fast-forward-circle film-script film-slate film-strip frame-corners gif headphones headset image image-square microphone microphone-slash microphone-stage music-note music-note-simple music-notes music-notes-plus music-notes-simple newspaper newspaper-clipping pause pause-circle piano-keys picture-in-picture play play-circle playlist queue record repeat repeat-once rewind rewind-circle screencast shuffle shuffle-angular shuffle-simple skip-back skip-back-circle skip-forward skip-forward-circle sliders sliders-horizontal speaker-high speaker-low speaker-none speaker-simple-high speaker-simple-low speaker-simple-none speaker-simple-slash speaker-simple-x speaker-slash speaker-x stop stop-circle television television-simple video-camera video-camera-slash wave-sawtooth wave-sine wave-square wave-triangle webcam
-- tab 5 (head icon `lock-key`, 35): circle-wavy circle-wavy-check circle-wavy-question circle-wavy-warning detective fingerprint fingerprint-simple info key keyhole lock lock-key lock-key-open lock-laminated lock-laminated-open lock-open lock-simple lock-simple-open password prohibit prohibit-inset question shield shield-check shield-checkered shield-chevron shield-plus shield-slash shield-star shield-warning vault wall warning warning-circle warning-octagon
-- tab 6 (head icon `google-chrome-logo`, 48): android-logo angular-logo app-store-logo apple-logo apple-podcasts-logo behance-logo codepen-logo codesandbox-logo discord-logo dribbble-logo facebook-logo figma-logo framer-logo github-logo gitlab-logo gitlab-logo-simple google-chrome-logo google-logo google-photos-logo google-play-logo google-podcasts-logo instagram-logo linkedin-logo linux-logo medium-logo messenger-logo microsoft-excel-logo microsoft-powerpoint-logo microsoft-teams-logo microsoft-word-logo ny-times-logo phosphor-logo pinterest-logo reddit-logo sketch-logo slack-logo snapchat-logo spotify-logo square-logo stack-overflow-logo stripe-logo telegram-logo tiktok-logo twitch-logo twitter-logo whatsapp-logo windows-logo youtube-logo
-- tab 7 (head icon `palette`, 88): align-bottom align-bottom-simple align-center-horizontal align-center-horizontal-simple align-center-vertical align-center-vertical-simple align-left align-left-simple align-right align-right-simple align-top align-top-simple bezier-curve bounding-box circle circle-dashed circle-half circle-half-tilt circle-notch circles-four circles-three circles-three-plus columns crop cube cylinder diamonds-four drop-half drop-half-bottom eraser eye eye-closed eye-slash eyedropper eyedropper-sample flow-arrow gradient grid-four hexagon highlighter-circle intersect layout line-segment line-segments magic-wand marker-circle octagon paint-brush paint-brush-broad paint-brush-household paint-bucket paint-roller palette pen pen-nib pen-nib-straight pencil pencil-circle pencil-line pencil-simple pencil-simple-line perspective placeholder polygon rectangle rows ruler scissors scribble-loop selection selection-all selection-background selection-foreground selection-inverse selection-plus selection-slash sidebar sidebar-simple square square-half square-half-bottom squares-four stack stack-simple stamp swatches triangle vignette
-- tab 8 (head icon `heartbeat`, 18): activity bandaids barbell bed brain face-mask first-aid first-aid-kit flask hand-soap heartbeat lifebuoy pill prescription syringe test-tube toilet toilet-paper
-- tab 9 (head icon `paperclip`, 115): archive archive-box archive-tray briefcase briefcase-metal cards clipboard clipboard-text copy copy-simple cursor-text file file-arrow-down file-arrow-up file-audio file-cloud file-code file-css file-csv file-doc file-dotted file-html file-image file-jpg file-js file-jsx file-lock file-minus file-pdf file-plus file-png file-ppt file-rs file-search file-text file-ts file-tsx file-video file-vue file-x file-xls file-zip files floppy-disk floppy-disk-back folder folder-dotted folder-lock folder-minus folder-notch folder-notch-minus folder-notch-open folder-notch-plus folder-open folder-plus folder-simple folder-simple-dotted folder-simple-lock folder-simple-minus folder-simple-plus folder-simple-star folder-simple-user folder-star folder-user folders funnel funnel-simple kanban list list-bullets list-checks list-dashes list-numbers list-plus note note-blank note-pencil notebook notepad paperclip paperclip-horizontal presentation presentation-chart printer projector-screen projector-screen-chart push-pin push-pin-simple push-pin-simple-slash push-pin-slash sort-ascending sort-descending text-aa text-align-center text-align-justify text-align-left text-align-right text-bolder text-h text-h-five text-h-four text-h-one text-h-six text-h-three text-h-two text-indent text-italic text-outdent text-strikethrough text-t text-underline textbox trash trash-simple tray
-- tab 10 (head icon `desktop-tower`, 119): app-window backspace battery-charging battery-charging-vertical battery-empty battery-full battery-high battery-low battery-medium battery-plus battery-warning battery-warning-vertical bell bell-ringing bell-simple bell-simple-ringing bell-simple-slash bell-simple-z bell-slash bell-z bluetooth bluetooth-connected bluetooth-slash bluetooth-x browser browsers cell-signal-full cell-signal-high cell-signal-low cell-signal-medium cell-signal-none cell-signal-slash cell-signal-x check check-circle check-square check-square-offset checks cloud-arrow-down cloud-arrow-up cloud-check cloud-slash command computer-tower cursor desktop desktop-tower device-mobile device-mobile-camera device-mobile-speaker device-tablet device-tablet-camera device-tablet-speaker dots-nine dots-six dots-six-vertical dots-three dots-three-circle dots-three-circle-vertical dots-three-outline dots-three-outline-vertical dots-three-vertical download download-simple flashlight gauge gear gear-six hard-drive hard-drives key-return keyboard laptop lightbulb lightbulb-filament lightning lightning-slash link link-break link-simple link-simple-break link-simple-horizontal link-simple-horizontal-break magnifying-glass magnifying-glass-minus magnifying-glass-plus monitor monitor-play mouse mouse-simple notification nut option plug plugs plugs-connected power qr-code radio-button scan sign-in sign-out sim-card spinner spinner-gap swap tabs toggle-left toggle-right upload upload-simple vibrate wifi-high wifi-low wifi-medium wifi-none wifi-slash wifi-x wrench
-- tab 11 (head icon `currency-dollar`, 74): armchair backpack bag bag-simple balloon barcode bathtub beer-bottle binoculars brandy buildings cake cardholder coat-hanger coffee coin coin-vertical coins cookie cooking-pot credit-card currency-btc currency-circle-dollar currency-cny currency-dollar currency-dollar-simple currency-eth currency-eur currency-gbp currency-inr currency-jpy currency-krw currency-kzt currency-ngn currency-rub egg egg-crack eyeglasses factory fork-knife gift hamburger handbag handbag-simple knife ladder ladder-simple lamp martini money needle package pizza popcorn receipt rug scales shopping-bag shopping-bag-open shopping-cart shopping-cart-simple shower storefront sunglasses t-shirt tag tag-chevron tag-simple ticket tote tote-simple trademark-registered wallet wine
-- tab 12 (head icon `code`, 23): brackets-angle brackets-curly brackets-round brackets-square bug bug-beetle bug-droid code code-simple cpu database git-branch git-commit git-diff git-fork git-merge git-pull-request magnet magnet-straight robot terminal terminal-window tree-structure
-- tab 13 (head icon `map-pin-line`, 50): airplane airplane-in-flight airplane-landing airplane-takeoff airplane-tilt anchor anchor-simple barricade bicycle boat bus car car-simple compass crosshair crosshair-simple door flag flag-banner flag-checkered gas-pump globe globe-hemisphere-east globe-hemisphere-west globe-simple globe-stand headlights house house-line house-simple jeep map-pin map-pin-line map-trifold navigation-arrow path police-car rocket rocket-launch signpost suitcase suitcase-simple taxi traffic-cone traffic-sign traffic-signal train train-regional train-simple truck
-- tab 14 (head icon `person`, 47): baby gender-female gender-intersex gender-male gender-neuter gender-nonbinary gender-transgender hand hand-eye hand-fist hand-grabbing hand-palm hand-pointing hand-waving hands-clapping handshake identification-badge identification-card person person-simple person-simple-run person-simple-walk smiley smiley-blank smiley-meh smiley-nervous smiley-sad smiley-sticker smiley-wink smiley-x-eyes user user-circle user-circle-gear user-circle-minus user-circle-plus user-focus user-gear user-list user-minus user-plus user-rectangle user-square user-switch users users-four users-three wheelchair
-- tab 15 (head icon `alarm`, 20): alarm calendar calendar-blank calendar-check calendar-plus calendar-x clock clock-afternoon clock-clockwise clock-counter-clockwise hourglass hourglass-high hourglass-low hourglass-medium hourglass-simple hourglass-simple-high hourglass-simple-low hourglass-simple-medium timer watch
-- tab 16 (head icon `graduation-cap`, 14): book book-bookmark book-open bookmark bookmark-simple bookmarks bookmarks-simple books chalkboard chalkboard-simple chalkboard-teacher exam graduation-cap student
-- tab 17 (head icon `calculator`, 57): bank calculator chart-bar chart-bar-horizontal chart-line chart-line-up chart-pie chart-pie-slice divide equals function graph infinity math-operations minus minus-circle number-circle-eight number-circle-five number-circle-four number-circle-nine number-circle-one number-circle-seven number-circle-six number-circle-three number-circle-two number-circle-zero number-eight number-five number-four number-nine number-one number-seven number-six number-square-eight number-square-five number-square-four number-square-nine number-square-one number-square-seven number-square-six number-square-three number-square-two number-square-zero number-three number-two number-zero percent plus plus-circle plus-minus radical table trend-down trend-up x x-circle x-square
-- tab 18 (head icon `bird`, 46): atom bird butterfly cactus campfire cat cloud cloud-fog cloud-lightning cloud-moon cloud-rain cloud-snow cloud-sun dog drop fire fire-simple fish fish-simple flame flower flower-lotus leaf moon moon-stars mountains paw-print planet rainbow rainbow-cloud snowflake sparkle star-four sun sun-dim sun-horizon thermometer thermometer-cold thermometer-hot thermometer-simple tree tree-evergreen umbrella umbrella-simple waves wind
-- not in any tab, file exists: pause-slash
-
-`menu-item:` —
-- tab 11 (head icon `currency-dollar`, 105): 001-dollar 001-notebook 002-credit-card «002-price tag» 003-auction 003-banknote 004-calculator «004-speech bubble» «005-asset management» 005-diamond «006-bar graph» 006-dollar-symbol 007-coin 007-euro 008-bank 008-bitcoin 009-worker 009-yen 010-partners 010-pound 011-piggy-bank «011-return of investment» 012-balance 012-money-bag 013-balance 013-recruitment 014-atm «014-income statement» 015-percent 015-startup 016-presentation 016-wallet 017-money-exchange 017-salary 018-briefcase «018-credit card» 019-briefcase 019-search 020-contract 020-idea 021-badges «021-pie chart» 022-growth 022-presentation 023-money 023-profits 024-oil 024-smartphone 025-building 025-profit 026-moneybox 026-notes 027-finance 027-safebox 028-gold-ingots 028-success 029-euro 029-vision 030-credit-card-1 030-exchange «031-id card» 031-target 032-manager 032-planning 033-clipboard 033-pyramid-chart 034-envelope «034-flow chart» 035-employee 035-pie-chart 036-bank 036-calculator 037-light-bulb 037-target 038-check 038-deadline «039-digital currency» 039-income «040-hierarchical structure» 040-point-of-service «041-bar graph» 041-currency 042-funnel 042-wallet 043-ipo 043-smartphone 044-analytics 044-certificate 045-businessman 045-ruby «046-atm machine» 046-umbrella 047-abacus 047-contract «048-chinese yuan» «049-gold bar» 049-key 050-security 050-tax clipboard office-building planning task to-do-list to-do
 
 ### 0.6 Codes the stand generates: label → code
 
@@ -1138,22 +645,764 @@ That gives one full-width field per row, in order. Only reach for multi-column l
 three fields per row) after reading §4 — the compaction rules there are subtle and a wrong `y` silently
 reshuffles the form.
 
-### 0.9 The other four kinds — the diff from the plain-BO template
+### 0.9 Hard rules — violating any one of these breaks the import
+
+1. Every `BoGroupStructDto` carries a `code` — the stand matches groups BY `code`; a line without one
+   RENAMES a fixed stand group (0.3, §8). Several group lines are fine when each has its own `code`.
+   A line for an EXISTING group repeats that group's `name` and `orderIndex` exactly — the import
+   overwrites both (0.3).
+2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
+3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
+4. Every line carries its `"@class"` with the full package
+   `kz.greetgo.mybpm.reg.structure.model.dto.<DtoName>`.
+5. `dynamicFields` is an object keyed by field code, and the key equals the field's `code`.
+6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
+   only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
+   `BO_COMPOSITE`, which has no form (0.17, §5b), and `tableColOrderIndex` / `removeType` on a process's
+   `PROCESS_STATUS`, copied as 0.18 prints it.
+7. Codes ≤ 30 characters, latin letters, digits and `_`, named by the convention of 0.6a.
+8. Ids are 16 chars over `A-Za-z0-9@~`, deterministic, and the three equalities of 0.7 hold.
+9. `isRequired` + `isReadonly` both true = an unsaveable record.
+10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **replaces** the rights set by
+    hand on the stand with the archive's (§7, §8). Its `orgUnitIds` are `G-<group id>` of the TARGET
+    stand — ids from another stand grant nothing.
+11. Records (instance data) do NOT go into this archive — they are an xlsx, **Part III** of this document.
+12. A `STATIC_TEXT` heading must not repeat any field label of the same BO (0.5). «Контакты» as a
+    heading над полем «Контакты» breaks the Excel import of records (Part III, §19): the header row is
+    matched against ALL fields including the headings, and the column becomes ambiguous. Name the
+    heading for the SECTION («Контактные данные»), not for the field under it.
+13. A field goes into the map that matches its ARCHETYPE: an ordinary field into `dynamicFields`, a
+    «системное поле» into `nativeFields` (0.12), a widget into `signatures` / `buttons` / `iframes` /
+    `captcha` / `currentDates` / `currentUser` (0.13). Putting a widget or a native type into
+    `dynamicFields` is not a valid archive.
+14. A menu line (0.15) names its parent, its BO and — only when a kanban is on — its column field BY
+    CODE, and carries no id.
+    A `GROUP` line has no `boPages` / `bracketFilter`; a `BO` line has both. A `kanbanFieldCode` whose BO
+    carries no card template for that field gives a kanban that cannot be drawn (0.14).
+15. **Every BO shows at least one field in its registry** (`tableColToShow: true` on at least one
+    field) **and every `BO` / `CO` reference field shows at least one field of its target**
+    (`boFieldCodes` / `boFieldRefs` with `toShow: true`). Without a column the registry answers `AccessDenied` and lists nothing; without a
+    shown field the reference renders empty (`MYBPM-UI-API.md` §0U.5 rule 11, traps 48 and 53).
+16. **Every `DROPDOWN_SINGLE` of a BO has a kanban card template** — `kanbanCardTemplates.<dropdown code> =
+    {"kanbanFields": {"<a field code>": {"cardOrderIndex": 0, "locationType": "HEADER", "archetype": "DYNAMIC"}}}`,
+    even when no kanban was asked for. Without it the BO's map, kanban and kanban editor die with «cardTemplate
+    is null» once a record exists (0.14, §2 «BO views», trap 32).
+17. **Every BO line has a numeric `orderIndex` of its own** — a missing one lands as `null` (top of the group),
+    and the template's 47480000 shared by several BOs makes them impossible to reorder by drag; a re-import also
+    MOVES an existing BO to the archive's group and place (§2 «BO place in the sidebar»).
+18. **The platform's mandatory system fields are always shipped.** Every business process (`BO_PROCESS`) carries `PROCESS_STATUS` (§5c: `type: "BO"`,
+    `isSystem`, `isRequired`, `defaultValue` = the `CREATED` row + its `DEFAULT_VALUE` line); every
+    dictionary (`BO_DICTIONARY`) carries `code` and `label`, both `isRequired` (0.17). The importer does not
+    add them and does not complain when they are missing — the archive looks fine and the object is broken.
+    Its ids are resolved by code on import (0.2a), so nothing stops you shipping it — never a process without it.
+19. **A BO that already exists on the stand is changed only through its fresh export line**, never through a
+    line rebuilt from the template of 0.4 — that resets its header settings and moves it (0.2a, last row). An
+    import never deletes a field, tab or option (§8).
+
+### 0.10 Self-check before shipping
+
+- [ ] `unzip -l` shows exactly two members, both inside one `data-*/` folder.
+- [ ] `unzip -p <zip> 'data-*/metadata.mybpm'` prints `objectCount-<N>`, and
+      `unzip -p <zip> 'data-*/0000001.mybpm' | wc -l` prints the same N.
+- [ ] Every line parses on its own (`unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
+      Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
+      MUST fail — that proves it is JSONL.
+- [ ] `boGroupOldId` == the group's `oldId`.
+- [ ] 0.9 rule 15, on EVERY BO including a process: at least one field has `tableColToShow: true`, and every
+      `BO` / `CO` field has a `fieldRefs` entry with `toShow: true`. `tools/validate-archive.bun.ts` reports
+      both as `ERROR §0.9/15`.
+- [ ] 0.9 rule 18: every `BO_PROCESS` has `PROCESS_STATUS` (required, system, with its `CREATED` default and
+      the `DEFAULT_VALUE` line); every `BO_DICTIONARY` has `code` + `label`, both required. The validator
+      reports a missing one as `ERROR §0.9/18`; the generator refuses to build without them.
+- [ ] Every `dynamicFields` key equals its entry's `code`, and every `newId` is distinct.
+- [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
+      `code`; no widget or native type hides in `dynamicFields`.
+- [ ] The `y` of each field == previous `y` + previous `rows`.
+- [ ] `tableColOrderIndex` runs 0, 1, 2… down `dynamicFields` — not `0` on every field (0.5).
+- [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
+      `fieldOption`, its `label` a plain string (0.5).
+- [ ] Every new code follows 0.6a: English snake_case; objects, groups and menu items `Capitalised`, the
+      rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab; ≤ 30 chars.
+- [ ] Every group line has a `code`: an existing group's code confirmed by the user, or a new code for a
+      group the archive creates (0.2a, 0.3).
+- [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
+      an EARLIER line of this same archive (0.2a).
+- [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
+      gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
+      a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
+- [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
+- [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.9 rule 12).
+- [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
+      table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
+      15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
+- [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
+      `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`, `FILE_UPLOAD` (0.5; exempt: a `BO_COMPOSITE`, and a
+      process's `PROCESS_STATUS` copied from 0.18).
+- [ ] `dictionaryFields` is present on EVERY BO line — `[]` everywhere, `["CODE","LABEL"]` on a
+      dictionary (0.17).
+- [ ] For every object the request names: if it was NOT said to exist on the stand, it is BUILT in this
+      archive (a dictionary for a «из справочника» dropdown, the target BO of a reference) — not degraded to
+      text or a local list; if it WAS said to exist, its id / code came from the user (0.2a «Decide FIRST»).
+- [ ] Registry columns are the default of 0.5: the name field first and visible. String fields were hidden
+      only if the user said the stand has the Elasticsearch sort defect (0.14).
+- [ ] Nothing was quietly built INSTEAD of what was asked: no panel turned into a set of plain BOs, no
+      составной объект turned into a plain BO because «the ids are unknown» (it takes codes, 0.2a), no
+      `TAB_GROUP` replaced by `STATIC_TEXT` headings, no `PROCESS_STATUS` faked as a local dropdown
+      (0.2a, 0.17). Only a missing stand id or stand code ever justifies a degrade.
+- [ ] Menu lines (0.15), if any: every `menuItemCode` is NEW to the stand (an existing one is edited in
+      place) unless the user asked to change that very item;
+      every `parentMenuItemCode` is a GROUP line of this archive or a code the
+      user gave off the stand; every `boCode` is a BO line of this archive or a stand code; every
+      `kanbanFieldCode` is a `DROPDOWN_SINGLE` of that BO AND a key of its `kanbanCardTemplates`; no
+      `GROUP` line carries `boPages` or `bracketFilter`; every `iconName` is one of the three defaults
+      or a name copied from 0.16 WITH its prefix (the importer accepts a wrong name silently).
+
+### 0.11 Building and delivering
+
+Ready-made generator — prefer it over writing a new builder.
+`--group-code`, `--group-name` and `--group-order` are required (0.3): for an existing group copy its
+`code`, `name` and `orderIndex` from `load-bo-groups` (the import overwrites the last two), for a new
+group choose a new code, a name and a place:
+
+```
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Cookbook_demo --name "Демо из кукбука" \
+    --field "Наименование:INPUT_TEXT" --field "Сумма:INPUT_NUMBER" --field "Активен:CHECKBOX"
+```
+
+(`--category`, `--field "Метка:BO@<boId>@<boCode>"`, `--source` / `--co-field`, `--process-figure`,
+`--process-status`, `--kanban`, `--menu`, `--with-metadata`, `--out` — see the file's header comment,
+§5a–5c and §5e.)
+
+A BO plus a sidebar item that opens it — plain navigation, list view only (0.15; this output is
+byte-identical to the 0.15 template and passes `tools/validate-archive.bun.ts`):
+
+```
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Request --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
+    --menu "Заявки:BO@Request@Заявки!code=Requests!order=950000"
+```
+
+Add `!parent=<GROUP code>` to put the item into a group (plus a `--menu "Имя:GROUP!code=…"` if the group
+travels in the same archive), `!kanban=<dropdown code>` for a board, `!icon=<name from 0.16>` for an
+icon (`!icon=phosphor:rocket`, `!icon=menu-item:025-building`). A BO with a kanban and its own
+sidebar group, all in one archive (0.14, 0.15):
+
+```
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Proba_menu_bo --name "Проба меню БО" \
+    --field "Наименование:INPUT_TEXT!req" --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово" \
+    --kanban "Статус:HEADER=Наименование" \
+    --menu "Проба меню:GROUP!code=Proba_menu!order=950000" \
+    --menu "Проба канбана из меню:BO@Proba_menu_bo@Проба меню БО!code=Proba_menu_kanban!parent=Proba_menu!kanban=Status!order=950100"
+```
+
+The generator names fields, options and tabs the way the STAND does (0.6 transliteration), not by 0.6a:
+it is a probe tool. For a real archive rename them to the convention (the BO code is `--code`, a menu code
+`!code=`).
+
+The generator covers ALL 27 field types, the six system fields and all ten widgets `[C]`:
+
+```
+bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Proba_vseh_tipov --name "Проба все типы" --with-metadata \
+    --field "Выпадающий список:DROPDOWN_SINGLE@Dolzh@Должность" \
+    --field "Единичный выбор:RADIO_BUTTON_GROUP#Да|Нет" \
+    --field "Опросник:QUESTIONNAIRE#Колонка 1|^Строка 1" \
+    --field "Прогресс-бар:PROGRESS_BAR#Новый|В работе|Готово" \
+    --field "Вкладки:TAB_GROUP#Общее|Документы" \
+    --field "Загрузка файла:FILE_UPLOAD!multiple" \
+    --field "Текст:STATIC_TEXT#<h2>Заголовок секции</h2>" \
+    --field "Вложенный объект:BO@I1fVTkYPTSg7X8b8@Person" \
+    --field "Составной объект:CO@@feclOAWUnwXFQ8c@Sostavnoyi_obekt__4046" \
+    --native CREATED_AT --native CREATED_BY --native OPEN_COUNT \
+    --widget "BUTTON:Кнопка:button:https://example.org/hook" \
+    --widget "CURRENT_USER:Текущий пользователь:cur_user"
+```
+
+`#…` means a different thing per type: options for `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` /
+`CHECKLIST`, steps for `PROGRESS_BAR`, tabs for `TAB_GROUP`, the HTML itself for `STATIC_TEXT`, and
+«колонки, then rows prefixed with `^`» for `QUESTIONNAIRE`. `!multiple` / `!tile` / `!camera` are the
+`FILE_UPLOAD` settings (`params.viewType` MULTIPLE / TILE, `params.contentType` FOR_CAMERA). `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`.
+
+`I1fVTkYPTSg7X8b8` and `@feclOAWUnwXFQ8c` in that command are **ids ON THE `<company-a>` STAND** — `Person` and
+one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
+archive aimed at another stand (0.2a).
+
+If you must build the zip yourself, STORED entries are enough. Bun has no zip API; `tools/zip.ts` writes a
+STORED archive with UTF-8 names (run this as a `*.bun.ts` from the repository root):
+
+```ts
+import { zip } from "./tools/zip.ts";
+const lines = [line1, line2];               // objects, in order
+const d = "data-2026-09-18T10-43-21-715";
+const enc = new TextEncoder();
+const payload = lines.map((o) => JSON.stringify(o)).join("\n") + "\n";
+await Bun.write("out.mybpm.zip", zip([
+  { name: `${d}/0000001.mybpm`, data: enc.encode(payload) },
+  { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${lines.length}`) },
+]));
+```
+
+**Delivering it — the minimum** `[C]` (the full transport is `MYBPM-UI-API.md` §5 / R3,
+this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, one deliberate step writes.
+
+- **UI**: open `<stand>/settings?settingsOpenPageUrl=import_export&formType=import` (navigate by URL — the
+  «Настройки» item sits wherever that company put it in the sidebar), «Импортировать файл», pick the zip.
+  A log row «Импорт проанализирован» appears — nothing is written yet. Click the row: «Ошибки» (must be
+  empty), one node per object with its pre-apply diff («Добавленные поля» …), and «Описание импорта» —
+  **required**, applying without it ends in `DESCRIPTION_ERROR`. Then ПРИМЕНИТЬ → «Импорт выполнен».
+- **API**: `bun tools/api-import-structure.bun.ts <archive.mybpm.zip> --stand https://<stand>
+  [--token-file PATH] [--apply --description "что и зачем"]` — without `--apply` it stops at the dry run
+  (status `ANALYZED`) and prints the errors and the per-object list; `--cancel` drops it. Token = the
+  browser's `localStorage.LOCAL_PRIVATE_SwebToken` without its JSON quotes, or `$MYBPM_TOKEN`. The calls
+  underneath, all `POST <stand>/web/import-structure/<method>`: `import-file` (multipart, field `file`) →
+  `insert-file-data` → `analyze-file-data` → read `load-import-errors` / `load-import-bo-infos` →
+  `save-import-description` → `apply-import`. Only ONE import may be open per company at a time.
+- **Calling a `/web` endpoint by hand** (the rollback below, the script check of §5d): `POST`, header
+  `token: <the token, no quotes>`, `Content-Type: application/json`, and ALWAYS the envelope
+  `{"useParamsFromBody": true, "params_Lr1oSgwPR8": {…}, "body_o1nhHUG480": {…}}`. In this document
+  `P {…}` means «goes into `params_Lr1oSgwPR8`», `B {…}` «goes into `body_o1nhHUG480`» (send `{}` for
+  the other half); a key in the wrong half has answered 200 and done nothing. Answer = the bare DTO / string.
+- **Rollback**: `import-structure/load-import-rollback-preview` `P {importId}` lists what it would
+  delete / restore; `v2/process-indicator/pre-create-process` `P {}` → a fresh `processId`; then
+  `import-structure/rollback-import` `P {importId, processId}` → `{"type":"ROLLED_BACK"}` undoes it (BOs
+  and menu items alike; the process may finish at 25 %, do not wait for 100). Only the import the stand
+  flags `canRollback: true` can be undone, and «latest» is the stand's ranking, not yours — the log keeps
+  minutes, and inside one minute the FIRST-applied import counts as the newest. Undoing an import that UPDATED something restores the SNAPSHOT it
+  found, silently dropping anything applied after it; undoing a chain is safe only all the way back to
+  the import that CREATED the objects. When you may need to undo, leave a minute between applies. A
+  create + update applied in one minute is undone create first (the BO is deleted); the update then
+  offers a RESTORE of that BO — leave it APPLIED, whether undoing it brings the BO back is `[U]`.
+  A rollback works as a re-import of that snapshot and inherits the import's
+  defects `[I]`: undoing a re-import of an existing BO did NOT bring back a SIGNATURE phone or a radio's
+  dictionary, and it ADDED one more copy of every print form instead of removing the copies `[C]`. Check
+  those by hand after an undo.
+
+**Always read the analysis result before pressing ПРИМЕНИТЬ** — «В Составном объекте не достаёт БО»
+does not block applying. Over the API read `load-import-errors` of the SAME `importId` (it carries the UI
+dialog's errors) AND `load-import-data.status` (`INTERNAL_ERROR` = an analyzer crash, no error record).
+
+---
+
+**Optional blocks, 0.12–0.18.** Read only the block your task needs (the list is at the top of §0); the
+core 0.1–0.11 above applies to every one of them.
+
+### 0.12 System fields — `nativeFields`, NOT `dynamicFields`
+
+«Системные поля» of the palette are a separate archetype and live in their own map of `BoStructDto`,
+keyed by the native type, which is also the field's code and its `nativeFieldId` `[C]`:
+
+```text
+"nativeFields": {
+  "CREATED_AT": {
+    "newId": "<16 chars>", "nativeFieldId": "CREATED_AT", "archetype": "NATIVE",
+    "boRefStruct": {"fieldRefs": {}},
+    "label": {"rus": "Дата создания", "kaz": "Құрылған күні", "qaz": "Qurylǵan kúni", "eng": "Date of creation"},
+    "staticValue": {}, "chosenAccessRight": false, "unacceptableValue": false, "isSystem": false,
+    "isCodeReadonly": false, "needLoadFromInTables": false, "useAsKeyInMigration": false,
+    "needUploadToOutTable": false, "needChangeParentBoByLinkedBo": false, "needFreezeWhenScroll": false,
+    "needMarkNew": false,
+    "type": "FULL_DATE",                                   ← fixed by the platform, see the table
+    "groupingInfo": {}, "gridPosition": {"x":0,"y":<y>,"cols":15,"rows":4},
+    "fieldTabs": {}, "gantTableLocations": {}, "boFieldCodes": [], "linkedCoSettings": {},
+    "questionnaires": {}, "progressSteps": {}, "params": {}
+  }
+}
+```
+
+| native type | UI label | `type` | note |
+|---|---|---|---|
+| `CREATED_AT` | Дата создания | `FULL_DATE` | |
+| `LAST_MODIFIED_AT` | Дата последнего изменения | `FULL_DATE` | |
+| `CREATED_BY` | Автор | `BO` | + `viewType: "SINGLE"` and `boRefStruct.boInfo` = `Person` / «Пользователи» / `BO`, 6 rows |
+| `LAST_MODIFIED_BY` | Автор последнего изменения | `BO` | same |
+| `OPEN_COUNT` | Счетчик открытий | `INPUT_NUMBER` | |
+| `IN_MIGRATION_UPDATED_AT` | Дата обновления IN миграции | `FULL_DATE` | |
+
+`PARTICIPANTS` («Участники») is in the enum but **cannot be created**: the palette never offers it and
+`generate-business-form-field-by-native` answers with an empty body `[C]`. Each system field may be placed
+**once** per BO.
+
+**What travels for a system field** `[C]`:
+
+| key in `nativeFields.<TYPE>` | export writes it | import applies it |
+|---|---|---|
+| `label` (rename), `hideLabel` | yes | yes |
+| `viewType` `TABLE`/`SINGLE` + `boRefStruct.fieldRefs.<code of a «Пользователи» field>.toShow` (`CREATED_BY`, `LAST_MODIFIED_BY` only) | yes, by field CODE (`surname`, `name`, `adGuid`, `Position__Object_`…) | yes |
+| `chosenAccessRight` | yes | yes — but see the lock |
+| `needUploadToOutTable` | **no** (`false` even when the stand has `true`) | **no** |
+| `needLoadFromInTables`, `inMigrationTimezoneMinutes`, `isRequired` | — (the stand never stores them on a native) | no |
+| `isReadonly` | — | irrelevant: a native is always read-only |
+
+- **The lock does NOT travel.** The export puts it into the `AccessStructDto` under
+  `fieldAccessStructMap.<NATIVE_TYPE>`; the import ignores that entry (keying it by the native's
+  `newId` or by `N-<TYPE>` does not work either), while a dynamic field's lock in the same archive is applied. Since
+  `chosenAccessRight: true` IS applied, the imported BO shows an orange lock over rights that are «всем».
+  So leave `chosenAccessRight: false` on natives in an archive and set native rights over the API after the
+  import (`MYBPM-UI-API.md` §5i «System fields (natives) — settings»).
+- The constructor offers no settings on `CREATED_AT`, `LAST_MODIFIED_AT`, `OPEN_COUNT`,
+  `IN_MIGRATION_UPDATED_AT` beyond the label; `CREATED_BY` / `LAST_MODIFIED_BY` add the view and columns.
+
+### 0.13 Widgets — six maps of their own
+
+«Виджеты» are neither `dynamicFields` nor `nativeFields`: each family has its own map in `BoStructDto`,
+keyed by the widget's CODE `[C]`:
+
+| widget | UI label | map | extra keys |
+|---|---|---|---|
+| `SIGNATURE` | ЭЦП / СМС | `signatures` | `fieldCodes`, `massFieldCodes`, `printFormCodes`, `massPrintFormCodes` (all may be `{}`), `signingPhoneCode` — see «SIGNATURE round-trips» below |
+| `BUTTON` | Кнопка | `buttons` | `url`, `fieldCodes` (`{"<field code>": "<archetype>"}`) |
+| `IFRAME` | Блок IFrame | `iframes` | `url` |
+| `CAPTCHA` | Блок captcha | `captcha` | — (code only; a captcha blocks API saves, see «CAPTCHA round-trips» below) |
+| `CURRENT_DATE` `CURRENT_DAY` `CURRENT_MONTH` `CURRENT_DAY_AND_MONTH` `CURRENT_YEAR` | Текущая дата / день / месяц / день и месяц / год | `currentDates` | `widgetType` repeats the type (code only; the value is never stored, see «CURRENT_* date widgets round-trip» below) |
+| `CURRENT_USER` | Текущий пользователь | `currentUser` | `viewType: "TABLE"`, `fieldRefs` |
+
+One entry looks like this — there are no boolean flags at all, unlike a dynamic field:
+
+```text
+"buttons": {"button": {"label": {"rus": "Кнопка"},
+  "gridPosition": {"x":0,"y":<y>,"cols":15,"rows":4},
+  "code": "button", "type": "BUTTON", "newId": "<16 chars>",
+  "url": "", "fieldCodes": {}}}
+```
+
+Heights: 4 rows for a button and the CURRENT_* widgets, 6 for `SIGNATURE` / `CAPTCHA` / `CURRENT_USER`,
+8 for `IFRAME`. A widget's code and url survive an import and can be read back through the widget's own
+controller (`MYBPM-UI-API.md` §5i). `SIGNATURE` and every CURRENT_* widget may be placed **once** per BO;
+`BUTTON`, `IFRAME` and `CAPTCHA` may repeat.
+
+**A button's and an iframe's settings round-trip through an archive** `[C]`: code, `url` and `fieldCodes` of
+every button, and the iframe's code and `url`. A button's `fieldCodes` is its «Поля для отправки»: a
+map from field CODE to that field's archetype:
+
+```text
+"buttons": {"plugin": {"label": {"rus": "Плагин"}, "gridPosition": {"x":0,"y":22,"cols":15,"rows":4},
+  "code": "plugin", "type": "BUTTON", "newId": "<16 chars>",
+  "url": "call/plugin/<plugin name>/<anything>", "fieldCodes": {"text": "DYNAMIC", "answer": "DYNAMIC"}}}
+```
+
+The import turns the codes back into the ids of the copy's own fields. What a url does on the record
+card `[C]`:
+
+- **empty** — nothing besides the button's field script. **This is the button to build**: put the logic
+  into a script on «Изменение поля» (below).
+- `call/plugin/<name>/…` — calls a plugin installed on the SERVER under `<name>`. An unknown name gives
+  «No such plugin». `fieldCodes` only matters to such a plugin.
+- `client/save-current-boi` — **does nothing, the record is not saved** (no component of the client
+  listens to that event).
+- `create-boi/<field code>/<from->to, …>` — **does nothing on the record card** (only another, unused
+  form handles it).
+- anything else, `https://…` included — nothing. A button never navigates.
+
+An iframe `url` must be `https:`. The stand silently drops an `http:` url, both from the settings
+dialog and over the API. The iframe shows the same fixed url on every record, and it is not told which
+record it is on.
+
+**A script on a button = a field script on the button's code** — the ordinary «На изменение поля»
+trigger. A click fires it, and each further click fires it again; leave `url` empty for a script-only
+button (`MYBPM-UI-API.md` §5i «A BUTTON runs a script»). On a stand it is wired by `fieldId`
+through `save-bo-scripts` `[C]`. In an archive it is
+`fieldScripts: {"<button code>": "<scriptId>"}` (§5d, `tools/add-bo-scripts.bun.ts --bodies` with hook
+`field:<button code>`), keyed like any field `[C]`.
+
+**CURRENT_USER («Текущий пользователь») round-trips through an archive** `[C]`:
+the code, `viewType`, the columns and the lock.
+
+```text
+"currentUser": {"current_user": {"label": {"rus": "Текущий пользователь"},
+  "gridPosition": {"x":0,"y":38,"cols":15,"rows":6},
+  "code": "current_user", "type": "CURRENT_USER", "newId": "<16 chars>",
+  "viewType": "SINGLE",
+  "fieldRefs": {"surname": {"toShow": true, "orderIndex": 0},
+                "email":   {"toShow": true, "orderIndex": 1},
+                "name":    {"toShow": false, "orderIndex": 2147483647}, …}}}
+```
+
+- **What the widget is**: on a record card it shows the person who OPENS the card, never the author. A
+  record stores no value for it. To record who created or changed a record, use the system fields
+  `CREATED_BY` / `LAST_MODIFIED_BY` (§0.12).
+- `viewType` is `TABLE` or `SINGLE`, nothing else.
+- `fieldRefs` is keyed by the CODES of the «Пользователи» (Person) BO's fields. The export lists all of
+  them; hidden ones have `toShow: false` and `orderIndex: 2147483647`. Codes on one stand:
+  «Фамилия» = `surname`, «Имя» = `name`, «Почта» = `email`, «Роль» = `accessLevel`, «Должность» =
+  `position`. Codes may differ on another stand: read them from an export of that stand.
+- **`fieldRefs: {}` and no `viewType` are safe**: the imported widget is `TABLE` with
+  «Фамилия» + «Имя» shown, the server's own default. **A partial map is enough too**:
+  `{"surname": {"toShow": true, "orderIndex": 0}, "accessLevel": {"toShow": true, "orderIndex": 1}}`
+  imports as exactly «Фамилия», «Роль», with every unlisted field hidden.
+  `tools/make-probe-archive.bun.ts --widget "CURRENT_USER:<label>:<code>:SINGLE/surname,email"` writes it
+  that way. Without the 4th part it writes `TABLE` + `{}`.
+- The widget's **lock** travels as a normal `fieldAccessStructMap.<widget code>` entry of the
+  `AccessStructDto` (§7). Shipping an `AccessStructDto` replaces the BO's rights (§0.9 rule 10), so do it
+  only for a BO the archive creates, or when asked.
+- One CURRENT_USER per BO.
+
+**SIGNATURE («ЭЦП / СМС») round-trips through an archive** `[C]`, both as a copy under a new BO code
+(new `oldId`, new `newId`s) and as an archive generated by `tools/make-probe-archive.bun.ts`: the code,
+the signed fields, the mass field, the phone, the print forms and the lock come back (re-importing onto
+the SAME BO behaves differently — see `signingPhoneCode` and «Print forms» below):
+
+```text
+"signatures": {"signature": {"label": {"rus": "ЭЦП/SMS"},
+  "gridPosition": {"x":0,"y":48,"cols":15,"rows":6},
+  "code": "signature", "type": "SIGNATURE", "newId": "<16 chars>",
+  "fieldCodes": {"text":   {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []},
+                 "regions": {"boRefCode": "<code of the linked BO>", "ownerFieldArchetype": "DYNAMIC",
+                             "fieldCodes": [{"fieldCode": "regions", "refBoCode": "<code of the linked BO>",
+                                             "refFieldCode": {"fieldCode": "name", "archetype": "DYNAMIC"},
+                                             "archetype": "DYNAMIC"}]}},
+  "massFieldCodes": {"regions": {"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []}},
+  "printFormCodes": {"Dogovor": 1},
+  "massPrintFormCodes": {"<code of the linked BO>": {"<its print form code>": 1}},
+  "signingPhoneCode": "Telefon"}}
+```
+
+- **`fieldCodes`** = «Поля для подписания», keyed by this BO's field CODE. A plain field is
+  `{"ownerFieldArchetype": "DYNAMIC", "fieldCodes": []}`. For a BO field the inner `fieldCodes` lists the
+  linked BO's fields to sign («Регионы - Название»). After the import `load-signature-settings` returned only the listed child,
+  not the BO field itself (the constructor still drew both chips), so list the child you want.
+- **`massFieldCodes`** = the BO fields whose LINKED records are signed in bulk. Each must be a `BO` field.
+  On the stand the bulk documents can only be chosen when the linked BO has its OWN SIGNATURE widget with
+  something to sign (`MYBPM-UI-API.md` §5i).
+- **`printFormCodes`** = «Документы для подписания», `{<print form code of THIS BO>: 1}`. The code must be in
+  the BO's `printForms` (below). **`massPrintFormCodes`** = `{<linked BO code>: {<its print form code>: 1}}`.
+  **It never survives an import** `[C]`: not as a copy, not re-imported onto the same BO, and not when the
+  linked BO and that print form travel in the SAME archive. Cause `[I]`: the stand never offers a linked BO's print form for mass signing
+  (`signFieldUnsupported`, `MYBPM-UI-API.md` §5i). After the import set it over the API: `save-signature-settings` with
+  `addMassPfRecord: [{boId, printFormId}]` is accepted (`MYBPM-UI-API.md` §5i).
+- **`signingPhoneCode`** = «Указать номер для подписания», the CODE of an `INPUT_PHONE` field. Leave it out
+  for none. A copy (a new BO) gets it, but **re-importing onto the SAME BO clears the phone** `[C]`. Set it again with `save-signature-settings {signingPhoneId}`.
+- The **lock** travels as `fieldAccessStructMap.<signature code>` of the `AccessStructDto` (§7), with
+  `view.orgUnitIds` like `"D-<department id>"`. The export also adds an `ExportStructInstanceDto` line for each
+  group it names. An `AccessStructDto` replaces the BO's rights (§0.9 rule 10).
+- On the record card the signing TYPE (ЭЦП or SMS) is chosen by the user per signing. It is not part of the
+  archive.
+- Generator: `--widget "SIGNATURE:ЭЦП/SMS:signature:text,answer;phone=phone;pf=contract;mass=regions"`.
+  The 4th part holds the codes of the fields to sign, then optional `phone=`, `pf=` and `mass=`. The
+  validator checks every code against the BO.
+
+**CAPTCHA («Блок captcha») round-trips through an archive — and BLOCKS every save that changes a record**
+`[C]`: the code (renamed in the archive too) and the lock come back.
+
+```text
+"captcha": {"captcha": {"label": {"rus": "Блок captcha"},
+  "gridPosition": {"x":0,"y":54,"cols":15,"rows":6},
+  "code": "captcha", "type": "CAPTCHA", "newId": "<16 chars>"}}
+```
+
+- The entry has **no setting of its own** beyond the code. The map key and `code` are the same code.
+  Without one the server derives `Blok_captcha` from the label.
+- The **lock** (who sees the widget, VIEW only) travels as `fieldAccessStructMap.<captcha code>` of the
+  `AccessStructDto` (§7). «Только участники» exported as `"view": {"denyAll": true, "participants": true, …}`.
+  An `AccessStructDto` replaces the BO's rights (§0.9 rule 10).
+- **The server enforces it.** With a CAPTCHA on the BO, `validate-apply-remove-draft` of a draft that
+  CHANGED a value, or of a NEW record, answers `CaptchaNotVerified` («Капча не верифицирована») until the
+  captcha of that draft is solved on the card. A draft with no changes still saves. The four-call record
+  cycle (`apply-and-remove-draft`) is refused the same way. So **a BO with a
+  captcha cannot take records from the record API (`MYBPM-UI-API.md` §6a) or any headless client**.
+  Whether Block IDE scripts and the xlsx import are blocked too is `[U]`. Put a captcha only on a BO that
+  people fill in by hand.
+- `CAPTCHA` may repeat on a BO (the palette keeps offering it). Height 6 rows.
+
+**CURRENT_* date widgets («Текущая дата / день / месяц / день и месяц / год») round-trip through an archive**
+`[C]`: every code and every lock comes back as written, in a copy and in a generated archive.
+
+```text
+"currentDates": {"current_date": {"label": {"rus": "Текущая дата"},
+  "gridPosition": {"x":0,"y":60,"cols":15,"rows":4},
+  "code": "current_date", "type": "CURRENT_DATE", "newId": "<16 chars>", "widgetType": "CURRENT_DATE"}}
+```
+
+- **All five types share ONE map**, `currentDates`, keyed by the widget code. `type` and `widgetType`
+  both carry the type. There is no other setting: the gear holds only the code.
+- Without a code the server derives one from the label, transliterating «й» as `yi`: «Текущая дата» →
+  `Tekuschaya_data`, «Текущий день и месяц» → `Tekuschiyi_den_i_mesyac`.
+- The **lock** (VIEW only) travels as `fieldAccessStructMap.<widget code>` of the `AccessStructDto` (§7),
+  like CAPTCHA and CURRENT_USER. An `AccessStructDto` replaces the BO rights (§0.9 rule 10).
+- **The widget stores nothing.** The card shows the server time from when the draft was opened. It is a
+  disabled date picker in the format `dd.MM.yyyy` / `dd` / `LLLL` (the month name, «октябрь») / `dd.MM` /
+  `yyyy`. `load-field-data` returns that time as an ISO string, a new one for every draft. A value
+  written into it over the API is accepted and then ignored. `load-boi-values` does not list the widget at all.
+  Do not use it as a «date of creation» field: that is the native `CREATED_AT` (§0.12).
+- The palette offers each type once per BO, but **the server accepts a second widget of the same type**
+  over the API, with its own code. Height 4 rows.
+- Generator: `--widget "CURRENT_DATE:Сегодня:Segodnya"` (any of the five types). The validator checks
+  that `widgetType` equals `type`.
+
+**Print forms (`printForms`) travel WITH their .docx template** `[C]`. A BO lists
+them as
+
+```text
+"printForms": [{"name": "Договор", "printFormCode": "Dogovor", "fileId": "<24 hex>",
+                "fileType": "PDF", "orderIndex": 0, "newId": "<16 chars>"}]
+```
+
+and the archive carries the file itself in a separate line, placed BEFORE the `BoStructDto` in an export:
+
+```text
+{"@class": "kz.greetgo.mybpm.reg.structure.model.dto.ExportStructFileDto", "fileId": "<the same 24 hex>",
+ "name": "dogovor.docx", "content": "<the .docx, base64>",
+ "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+```
+
+- `fileType` is the OUTPUT format, `PDF` or `DOCX`. The template is always a .docx.
+- **The import uploads the file anew**: the imported form gets a NEW `fileId` and keeps the original name. A generated archive needs only an id that ties `printForms[].fileId` to its
+  `ExportStructFileDto`. The generator uses 24 upper-case hex characters, which is what the stand writes.
+- The code comes from the name if you build the form on the stand («Договор» → `Dogovor`). In an archive
+  it is whatever `printFormCode` says. **The code is not unique**: two forms of one BO with the same name
+  both get the same code (`PF_regiona`) `[C]`.
+- **A re-import matches print forms by `newId`, NOT by `printFormCode`** `[C]`. The same archive applied
+  twice updates its form in place. A fresh stand EXPORT of the same BO gives every form a new `newId`, so
+  re-importing it onto that BO ADDS a copy of each form (same name, same code), and a SIGNATURE that lists
+  the code picks up the copy too. **A rollback does not remove such copies — it adds one more** of each
+  (0.11 «Rollback»). Before re-importing an export onto the BO it came from, drop its `printForms` (and their
+  `ExportStructFileDto` lines) unless the forms changed; delete stray copies with `delete-print-form`
+  (`MYBPM-UI-API.md` §5i «Print forms»).
+- Generator: `--print-form "Договор:Dogovor:path/to/template.docx[:PDF|DOCX]"`, repeatable. A minimal
+  three-part .docx (`[Content_Types].xml`, `_rels/.rels`, `word/document.xml`) is accepted. Template
+  placeholders were not explored `[U]`. The stand-side API for print forms is `MYBPM-UI-API.md` §5i
+  «Print forms».
+
+### 0.14 Kanban — the card template travels in the archive `[C]`
+
+A kanban is TWO things, and the archive can carry BOTH:
+
+- the **card template**, which lives ON THE BO in `kanbanCardTemplates`. **Ship it, or the kanban view
+  dies with «cardTemplate is null»**.
+  It belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here.
+  **Give EVERY `DROPDOWN_SINGLE` one, even when nobody asked for a kanban** `[C]`: without it the
+  BO's MAP view and the constructor's kanban editor die the same way once a record exists (§2 «BO views»). A
+  BO already broken so is repaired by re-importing its line with the template (keep the `kanbanFields` wrapper —
+  without it the import is APPLIED and changes nothing); `save-kanban-card-template` does not repair it.
+- the **place that shows the board**, with its column field `[C]`. Two exist:
+  - the **BO's own registry** (opened from «Бизнес-объекты», not from a menu) needs NO switch: its view chooser
+    lists «Канбан по полю: <label>» for every `DROPDOWN_SINGLE` of the BO by itself, and the board renders
+    (columns = the options, cards = the template). **A local list («Задать вручную», `FROM_FIELD`) qualifies
+    exactly like a dictionary (`FROM_BO`)** `[C]`: `v2/kanban/load-kanban-fields` lists both kinds and the
+    board of a local list shows its options as columns — whatever an editor's empty-state text says about
+    «выпадающий список типа СПРАВОЧНИК»;
+  - a **SIDEBAR MENU ITEM** shows it only when switched on — `boPages.isKanbanEnabled` + the column field; a menu
+    line of the SAME archive does it by code, `boPages.kanbanFieldCode` (0.15, §5e), or
+    `v2/menu-item/save-menu-item-bo-pages` after the import (`MYBPM-UI-API.md` §4). Give the user a menu item
+    when the board must be one click away.
+  Nowhere else: the constructor offers a `BO` / `CO` reference field only Табличный / Множественный / Одиночный /
+  Карточкой and a panel registry only Табличный / Множественный. The client's `viewType` enum also lists
+  `KANBAN` / `CALENDAR` / `MAP` / `TIMELINE`, but no screen sets them — never ship them in a field's `viewType`.
+
+```text
+"kanbanCardTemplates": {
+  "Status": {                          ← CODE of the DROPDOWN whose options become the columns
+    "kanbanFields": {
+      "Naimenovanie": {"cardOrderIndex": 0, "locationType": "HEADER",  "archetype": "DYNAMIC"},
+      "Ispolnitel":   {"cardOrderIndex": 0, "locationType": "CONTENT", "archetype": "DYNAMIC"},
+      "CREATED_BY":   {"cardOrderIndex": 1, "locationType": "CONTENT", "archetype": "NATIVE"},
+      "Kommentariyi": {"cardOrderIndex": 0, "locationType": "FOOTER",  "archetype": "DYNAMIC"}
+    }
+  }
+}
+```
+
+- The outer key is the code of a `DROPDOWN_*` field of THIS BO; one entry per field you want to offer as
+  a kanban (a BO may carry several).
+- The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
+  `archetype: "DYNAMIC"`, or a key of `nativeFields` (the native type itself) with `archetype: "NATIVE"`.
+  Ids never appear here, exactly like everywhere else in a `BoStructDto`.
+- `locationType` is `HEADER` | `CONTENT` | `FOOTER`; `cardOrderIndex` orders the fields inside one
+  location and is a plain int.
+- `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
+  writes exactly this.
+
+With the template shipped, `v2/kanban/load-kanban-template` returns a `cardTemplate` instead of NPE-ing,
+the board renders its columns, and `load-bracket-kanban-cards` returns the cards with their
+header/content/footer values `[C]`. **On a stand with the sort defect the cards still do not appear in
+the UI** — a second, unrelated defect of every NEW BO there blocks the default sort (`MYBPM-UI-API.md` §7;
+what an archive can do about it is the next paragraph).
+
+**The Elasticsearch sort defect — what the archive must do about it, ONLY on a stand known to have it**
+`[C]`. **Apply this paragraph only when the user says the target stand
+has the defect** (or you saw a new BO's registry there show «из N» over an empty table). Otherwise build
+the default registry of 0.5 — name field first and visible — and do not mention the defect. On such a stand every BO created by the current version (archive AND constructor
+alike) gets an index in which a string field cannot be sorted once any record holds a value in it. The
+registry sorts by default by its FIRST column, and clicking any column header sorts by that column —
+so a registry (and a kanban, same query) whose columns include a FILLED string field shows «из N» with an
+empty table and invisible cards. Old BOs never fail; a field left empty everywhere sorts fine. **Nothing
+repairs the index; the only measure that holds is to keep string fields that will hold values OUT of the
+registry columns**: `tableColToShow: false` on them. Seen failing: `INPUT_TEXT` and `DROPDOWN_SINGLE`;
+assume every field whose value is a string does (`TEXTAREA`, `INPUT_EMAIL`, `INPUT_PHONE`, `LINK`,
+`*_LANG` `[I]`). Seen safe as columns: `INPUT_NUMBER`, `CHECKBOX`, `DATE`, a `BO` reference,
+`CREATED_AT` — put one of them first (`tableColOrderIndex` 0). Reordering alone is NOT enough — the text column breaks the
+moment someone clicks its header. Two limits: `sortFieldId` changes nothing, and a BO with **no**
+registry column at all answers «У Вас недостаточно прав на поля, которые выведены в реестр» — keep at
+least one safe column. Whether another stand has the defect is unknown `[U]`: if a new BO's registry
+there shows rows with text columns on, ignore this paragraph.
+One archive with the BO + its card template + a menu group + a menu item with `kanbanFieldCode` renders the
+whole board with its columns straight after ПРИМЕНИТЬ `[C]` (§5e).
+
+### 0.15 Sidebar menu items — `MenuItemStructDto` lines `[C]`
+
+Optional lines AFTER the BO lines (step 7a). A menu item is NAVIGATION: a row in the sidebar that opens
+a BO's records (or a folder that holds such rows). Views such as a kanban are an option ON an item, not
+the reason for it. One line per menu item; a group and the items inside it are separate lines.
+**Everything is referenced BY CODE** — the parent group, the BO, a view's field — and a menu line has
+**no id at all**: the stand mints the menu item's id itself. Copy the templates literally and change
+only the values marked `←`.
+
+**An item that opens a BO** — the usual case, the list view only, at the root of the sidebar:
+
+```json
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
+ "menuItemCode":"Requests",                  ← your code, latin, unique among MENU codes
+ "menuItemName":"Заявки",                        ← the text in the sidebar
+ "boCode":"Request",                             ← the BO's `code`
+ "boName":"Заявки",                              ← the BO's `name.rus`
+ "iconName":"man-with-company",
+ "orderIndex":950000,                            ← position among its siblings
+ "boPages":{"isKanbanEnabled":false,"kanbanIndex":0,
+            "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
+            "isListEnabled":true,"listIndex":1,
+            "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0},
+ "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
+ "bracketFilter":{"boCode":"Request","type":"MENU_ITEM","brackets":{}},
+ "menuItemType":"BO"}
+```
+
+(This list-only shape is what the stand EXPORTS for such an item, and it IMPORTS as is `[C]`.)
+
+**A group** (a folder in the sidebar) — only when the user wants the items grouped:
+
+```json
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
+ "menuItemCode":"Probe_menu",            ← your code
+ "menuItemName":"Проба меню",          ← the text in the sidebar
+ "iconName":"bo-g-draggable",
+ "orderIndex":950000,
+ "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
+ "menuItemType":"GROUP"}
+```
+
+To put a BO item inside the group, add `"parentMenuItemCode":"<the GROUP's menuItemCode>"` to the item
+(right after `menuItemName`); without the key the item is a root.
+
+**`boPages` = the set of views of that item.** Six views exist; each has an `is*Enabled` flag and an
+`*Index` = its tab position, 1-based, counted over the ENABLED views only (disabled ones carry 0). Always
+write all twelve keys. What each view needs besides its flag:
+
+| View | Keys | Needs on the BO / on the item | Status |
+|------|------|-------------------------------|--------|
+| list (registry) | `isListEnabled`, `listIndex` | nothing | `[C]` |
+| kanban | `isKanbanEnabled`, `kanbanIndex` | `kanbanFieldCode` = code of a `DROPDOWN_SINGLE` of the BO (the columns) AND that field's card template in the BO's `kanbanCardTemplates` (0.14) | `[C]` |
+| calendar | `isCalendarEnabled`, `calendarIndex` | the BO's `isCalendarEnabled: true` and a date field (`FULL_DATE` with `needShowToCalendar`) — nothing on the item | `[C]` |
+| timeline («Диаграмма Ганта») | `isTimelineEnabled`, `timelineIndex` | **`timelineFieldCode`** = code of a `PERIOD` / `PERIOD_TIME` field of the BO (the import resolves it into the item's `timelineFieldId`); the BO needs nothing else — a timeline template exists by itself for every such field | `[C]` |
+| map | `isMapEnabled`, `mapIndex` | the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card template for every dropdown (0.14) — nothing on the item | `[C]` |
+| grouping | `isGroupingEnabled`, `groupingIndex` | nothing works: the registry grouping view is 404 on the server (§2 «BO views») — never enable it | `[C]` dead |
+
+List, kanban, calendar, timeline and map are proven; grouping is dead.
+**Do not switch on grouping (or any view not marked `[C]` above) in an archive** — if the user asks for it, say it
+does not work and ship the rest. The kanban variant of `boPages` (kanban first tab, list second):
+
+```text
+"boPages":{"isKanbanEnabled":true,"kanbanIndex":1,
+           "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
+           "isListEnabled":true,"listIndex":2,
+           "isMapEnabled":false,"mapIndex":0,"isGroupingEnabled":false,"groupingIndex":0,
+           "kanbanFieldCode":"status"}          ← code of a DROPDOWN of that BO = the columns
+```
+
+Rules:
+
+- **A `GROUP` line carries NO `boPages`, NO `bracketFilter`, NO `boCode`/`boName`** — the stand exports
+  it exactly like that, and the import accepts it.
+- **A `BO` line carries both `boPages` and `bracketFilter`**; `bracketFilter.boCode` repeats `boCode`,
+  `brackets: {}` = no record filter (every record is shown); a non-empty filter imports whole `[C]` (shape in §5e).
+- `kanbanFieldCode` appears ONLY when the kanban is on. It must be a `DROPDOWN_SINGLE` of that BO and the
+  outer key of its `kanbanCardTemplates` — the columns alone give a board the stand cannot draw (0.14).
+- `boCode` may name a BO of THIS archive (the usual case) or a BO that is ALREADY on the stand — then it
+  is a stand code, ask for it as in 0.2a (the importer resolves both). The same goes for
+  `parentMenuItemCode`: a group of this archive, or the code of an existing group taken off the stand —
+  **never guess a stand group's code**, menu codes made in the UI look like `GruppatqrXI0InJC5abW8w`
+  (a transliteration plus random characters) and cannot be derived from the name. If the user gives no
+  group code, ship your own GROUP line or make the item a root (drop `parentMenuItemCode`).
+- `orderIndex`: the built-in root «Системные» is 60000; put your own roots after it (e.g.
+  950000), children count inside their parent (e.g. 10000).
+- Put the GROUP line BEFORE its children. (The importer probably tolerates any order `[I]`, but the one
+  order proved on import is group first.)
+- **Icons** `[C]`: `iconName` takes ANY name of the catalogue in **0.16**, written with
+  its prefix exactly as listed there — `"phosphor:house-line"`, `"menu-item:025-building"`. Without a
+  wish from the user keep the defaults: `bo-g-draggable` for a group, `man-with-company` for a BO item,
+  `bo-d-draggable` for a dictionary (these three have no prefix). **The importer does not check the
+  name**: a name that is not in 0.16 analyses clean, applies (`APPLIED`), is stored verbatim — and the
+  sidebar shows an EMPTY place where the icon should be. So every `iconName` must be copied from 0.16;
+  when the user describes an icon by meaning («домик», «деньги», «люди»), pick the closest name from
+  0.16 and SAY which one you took. Never compose a name from memory of the Phosphor icon set: the stand
+  ships only part of it (`phosphor:seal-check`, `ranking`, `toolbox`, `gavel` do not exist there).
+- Menu access rights travel `[C]` (§5e): `chosenAccessRight: true` plus an `accessGroup` key —
+  the same shape as `AccessStructDto.boAccessStruct` (`denyAll`, per action `{denyAll, participants,
+  fromFields, orgUnitIds:["G-<group id>"]}`, only `view` matters for navigation). Without `accessGroup`
+  keep `chosenAccessRight: false`. **Menu rights do not cascade** `[C]`: a closed GROUP item only drops out of
+  the sidebar root, every item is filtered by its own `view` — put the rule on each item that must be
+  hidden. Menu rights hide a SCREEN, never records: a user with an open item but no BO `view` gets an empty
+  registry, and the reverse — records stay reachable whatever the menu says — is why the BO's own rights
+  (§7) are the protection.
+- **A `menuItemCode` that already exists on the stand is an EDIT of that item, not a new one** `[C]`
+  (§5e): the import overwrites its name, order, views and filter in place, keeping its id. So a menu
+  code of your own must be new to the stand — never reuse a code seen on the stand unless the user asked
+  to change THAT item. Re-importing your own regenerated archive is safe for the same reason: it updates
+  your item instead of adding a second one.
+- **A menu-only archive is legal** `[C]`: one `MenuItemStructDto` line and nothing else (no group line,
+  no BO line) imports fine when its `boCode` is already on the stand — the way to add or change a sidebar
+  item for an existing BO. The `boCode` is then a stand code: ask for it (0.2a).
+
+### 0.16 Menu icons — the whole catalogue `[C]`
+
+Every value `iconName` of a menu line (0.15) may take besides the three defaults. It is the list the
+sidebar's «Изменить иконку» picker offers — 1153 names in two namespaces — and every one of them exists
+on the stand as the file `/assets/icons/<namespace>/<name>.svg`; the sidebar
+draws the icon from that file. The archive route: 0.15 «Icons» and §5e.
+
+How to write a name: `<namespace>:<name>`, e.g. `phosphor:rocket`, `menu-item:025-building`. Names in
+«» contain a SPACE, and the space is part of the name (`"menu-item:002-price tag"` — stored and drawn
+as is `[C]`, the frontend URL-encodes it). «tab N (head icon X)» is the picker's N-th tab from the left and the picture on its header — it
+only helps to find an icon in the UI and means nothing in the archive. The list lives in the stand's
+frontend and may grow with a new build: `tools/menu-icons.bun.ts --stand https://<stand> --check --md`
+re-reads it from a stand and prints this block again.
+
+`phosphor:` —
+- tab 1 (head icon `recycle`, 111): arrow-arc-left arrow-arc-right arrow-bend-double-up-left arrow-bend-double-up-right arrow-bend-down-left arrow-bend-down-right arrow-bend-left-down arrow-bend-left-up arrow-bend-right-down arrow-bend-right-up arrow-bend-up-left arrow-bend-up-right arrow-circle-down arrow-circle-down-left arrow-circle-down-right arrow-circle-left arrow-circle-right arrow-circle-up arrow-circle-up-left arrow-circle-up-right arrow-clockwise arrow-counter-clockwise arrow-down arrow-down-left arrow-down-right arrow-elbow-down-left arrow-elbow-down-right arrow-elbow-left arrow-elbow-left-down arrow-elbow-left-up arrow-elbow-right arrow-elbow-right-down arrow-elbow-right-up arrow-elbow-up-left arrow-elbow-up-right arrow-fat-down arrow-fat-left arrow-fat-line-down arrow-fat-line-left arrow-fat-line-right arrow-fat-line-up arrow-fat-lines-down arrow-fat-lines-left arrow-fat-lines-right arrow-fat-lines-up arrow-fat-right arrow-fat-up arrow-left arrow-line-down arrow-line-down-left arrow-line-down-right arrow-line-left arrow-line-right arrow-line-up arrow-line-up-left arrow-line-up-right arrow-right arrow-square-down arrow-square-down-left arrow-square-down-right arrow-square-in arrow-square-left arrow-square-out arrow-square-right arrow-square-up arrow-square-up-left arrow-square-up-right arrow-u-down-left arrow-u-down-right arrow-u-left-down arrow-u-left-up arrow-u-right-down arrow-u-right-up arrow-u-up-left arrow-u-up-right arrow-up arrow-up-left arrow-up-right arrows-clockwise arrows-counter-clockwise arrows-down-up arrows-horizontal arrows-in arrows-in-cardinal arrows-in-line-horizontal arrows-in-line-vertical arrows-in-simple arrows-left-right arrows-out arrows-out-cardinal arrows-out-line-horizontal arrows-out-line-vertical arrows-out-simple arrows-vertical caret-circle-double-down caret-circle-double-left caret-circle-double-right caret-circle-double-up caret-circle-down caret-circle-left caret-circle-right caret-circle-up caret-double-down caret-double-left caret-double-right caret-double-up caret-down caret-left caret-right caret-up recycle
+- tab 2 (head icon `radio`, 54): address-book asterisk asterisk-simple at broadcast chat chat-centered chat-centered-dots chat-centered-text chat-circle chat-circle-dots chat-circle-text chat-dots chat-teardrop chat-teardrop-dots chat-teardrop-text chat-text chats chats-circle chats-teardrop envelope envelope-open envelope-simple envelope-simple-open export hash hash-straight megaphone megaphone-simple paper-plane paper-plane-right paper-plane-tilt peace phone phone-call phone-disconnect phone-incoming phone-outgoing phone-slash phone-x quotes radio rss rss-simple share share-network star star-half sticker thumbs-down thumbs-up translate voicemail yin-yang
+- tab 3 (head icon `game-controller`, 42): alien baseball basketball club confetti crown crown-simple diamond dice-five dice-four dice-one dice-six dice-three dice-two finn-the-human flying-saucer football game-controller ghost heart heart-break heart-straight heart-straight-break horse mask-happy mask-sad medal parachute pinwheel poker-chip puzzle-piece scroll skull soccer-ball spade spiral strategy sword target tennis-ball trophy volleyball
+- tab 4 (head icon `microphone-stage`, 86): airplay aperture article article-medium article-ny-times camera camera-rotate camera-slash closed-captioning copyleft copyright corners-in corners-out disc ear ear-slash eject eject-simple equalizer faders faders-horizontal fast-forward fast-forward-circle film-script film-slate film-strip frame-corners gif headphones headset image image-square microphone microphone-slash microphone-stage music-note music-note-simple music-notes music-notes-plus music-notes-simple newspaper newspaper-clipping pause pause-circle piano-keys picture-in-picture play play-circle playlist queue record repeat repeat-once rewind rewind-circle screencast shuffle shuffle-angular shuffle-simple skip-back skip-back-circle skip-forward skip-forward-circle sliders sliders-horizontal speaker-high speaker-low speaker-none speaker-simple-high speaker-simple-low speaker-simple-none speaker-simple-slash speaker-simple-x speaker-slash speaker-x stop stop-circle television television-simple video-camera video-camera-slash wave-sawtooth wave-sine wave-square wave-triangle webcam
+- tab 5 (head icon `lock-key`, 35): circle-wavy circle-wavy-check circle-wavy-question circle-wavy-warning detective fingerprint fingerprint-simple info key keyhole lock lock-key lock-key-open lock-laminated lock-laminated-open lock-open lock-simple lock-simple-open password prohibit prohibit-inset question shield shield-check shield-checkered shield-chevron shield-plus shield-slash shield-star shield-warning vault wall warning warning-circle warning-octagon
+- tab 6 (head icon `google-chrome-logo`, 48): android-logo angular-logo app-store-logo apple-logo apple-podcasts-logo behance-logo codepen-logo codesandbox-logo discord-logo dribbble-logo facebook-logo figma-logo framer-logo github-logo gitlab-logo gitlab-logo-simple google-chrome-logo google-logo google-photos-logo google-play-logo google-podcasts-logo instagram-logo linkedin-logo linux-logo medium-logo messenger-logo microsoft-excel-logo microsoft-powerpoint-logo microsoft-teams-logo microsoft-word-logo ny-times-logo phosphor-logo pinterest-logo reddit-logo sketch-logo slack-logo snapchat-logo spotify-logo square-logo stack-overflow-logo stripe-logo telegram-logo tiktok-logo twitch-logo twitter-logo whatsapp-logo windows-logo youtube-logo
+- tab 7 (head icon `palette`, 88): align-bottom align-bottom-simple align-center-horizontal align-center-horizontal-simple align-center-vertical align-center-vertical-simple align-left align-left-simple align-right align-right-simple align-top align-top-simple bezier-curve bounding-box circle circle-dashed circle-half circle-half-tilt circle-notch circles-four circles-three circles-three-plus columns crop cube cylinder diamonds-four drop-half drop-half-bottom eraser eye eye-closed eye-slash eyedropper eyedropper-sample flow-arrow gradient grid-four hexagon highlighter-circle intersect layout line-segment line-segments magic-wand marker-circle octagon paint-brush paint-brush-broad paint-brush-household paint-bucket paint-roller palette pen pen-nib pen-nib-straight pencil pencil-circle pencil-line pencil-simple pencil-simple-line perspective placeholder polygon rectangle rows ruler scissors scribble-loop selection selection-all selection-background selection-foreground selection-inverse selection-plus selection-slash sidebar sidebar-simple square square-half square-half-bottom squares-four stack stack-simple stamp swatches triangle vignette
+- tab 8 (head icon `heartbeat`, 18): activity bandaids barbell bed brain face-mask first-aid first-aid-kit flask hand-soap heartbeat lifebuoy pill prescription syringe test-tube toilet toilet-paper
+- tab 9 (head icon `paperclip`, 115): archive archive-box archive-tray briefcase briefcase-metal cards clipboard clipboard-text copy copy-simple cursor-text file file-arrow-down file-arrow-up file-audio file-cloud file-code file-css file-csv file-doc file-dotted file-html file-image file-jpg file-js file-jsx file-lock file-minus file-pdf file-plus file-png file-ppt file-rs file-search file-text file-ts file-tsx file-video file-vue file-x file-xls file-zip files floppy-disk floppy-disk-back folder folder-dotted folder-lock folder-minus folder-notch folder-notch-minus folder-notch-open folder-notch-plus folder-open folder-plus folder-simple folder-simple-dotted folder-simple-lock folder-simple-minus folder-simple-plus folder-simple-star folder-simple-user folder-star folder-user folders funnel funnel-simple kanban list list-bullets list-checks list-dashes list-numbers list-plus note note-blank note-pencil notebook notepad paperclip paperclip-horizontal presentation presentation-chart printer projector-screen projector-screen-chart push-pin push-pin-simple push-pin-simple-slash push-pin-slash sort-ascending sort-descending text-aa text-align-center text-align-justify text-align-left text-align-right text-bolder text-h text-h-five text-h-four text-h-one text-h-six text-h-three text-h-two text-indent text-italic text-outdent text-strikethrough text-t text-underline textbox trash trash-simple tray
+- tab 10 (head icon `desktop-tower`, 119): app-window backspace battery-charging battery-charging-vertical battery-empty battery-full battery-high battery-low battery-medium battery-plus battery-warning battery-warning-vertical bell bell-ringing bell-simple bell-simple-ringing bell-simple-slash bell-simple-z bell-slash bell-z bluetooth bluetooth-connected bluetooth-slash bluetooth-x browser browsers cell-signal-full cell-signal-high cell-signal-low cell-signal-medium cell-signal-none cell-signal-slash cell-signal-x check check-circle check-square check-square-offset checks cloud-arrow-down cloud-arrow-up cloud-check cloud-slash command computer-tower cursor desktop desktop-tower device-mobile device-mobile-camera device-mobile-speaker device-tablet device-tablet-camera device-tablet-speaker dots-nine dots-six dots-six-vertical dots-three dots-three-circle dots-three-circle-vertical dots-three-outline dots-three-outline-vertical dots-three-vertical download download-simple flashlight gauge gear gear-six hard-drive hard-drives key-return keyboard laptop lightbulb lightbulb-filament lightning lightning-slash link link-break link-simple link-simple-break link-simple-horizontal link-simple-horizontal-break magnifying-glass magnifying-glass-minus magnifying-glass-plus monitor monitor-play mouse mouse-simple notification nut option plug plugs plugs-connected power qr-code radio-button scan sign-in sign-out sim-card spinner spinner-gap swap tabs toggle-left toggle-right upload upload-simple vibrate wifi-high wifi-low wifi-medium wifi-none wifi-slash wifi-x wrench
+- tab 11 (head icon `currency-dollar`, 74): armchair backpack bag bag-simple balloon barcode bathtub beer-bottle binoculars brandy buildings cake cardholder coat-hanger coffee coin coin-vertical coins cookie cooking-pot credit-card currency-btc currency-circle-dollar currency-cny currency-dollar currency-dollar-simple currency-eth currency-eur currency-gbp currency-inr currency-jpy currency-krw currency-kzt currency-ngn currency-rub egg egg-crack eyeglasses factory fork-knife gift hamburger handbag handbag-simple knife ladder ladder-simple lamp martini money needle package pizza popcorn receipt rug scales shopping-bag shopping-bag-open shopping-cart shopping-cart-simple shower storefront sunglasses t-shirt tag tag-chevron tag-simple ticket tote tote-simple trademark-registered wallet wine
+- tab 12 (head icon `code`, 23): brackets-angle brackets-curly brackets-round brackets-square bug bug-beetle bug-droid code code-simple cpu database git-branch git-commit git-diff git-fork git-merge git-pull-request magnet magnet-straight robot terminal terminal-window tree-structure
+- tab 13 (head icon `map-pin-line`, 50): airplane airplane-in-flight airplane-landing airplane-takeoff airplane-tilt anchor anchor-simple barricade bicycle boat bus car car-simple compass crosshair crosshair-simple door flag flag-banner flag-checkered gas-pump globe globe-hemisphere-east globe-hemisphere-west globe-simple globe-stand headlights house house-line house-simple jeep map-pin map-pin-line map-trifold navigation-arrow path police-car rocket rocket-launch signpost suitcase suitcase-simple taxi traffic-cone traffic-sign traffic-signal train train-regional train-simple truck
+- tab 14 (head icon `person`, 47): baby gender-female gender-intersex gender-male gender-neuter gender-nonbinary gender-transgender hand hand-eye hand-fist hand-grabbing hand-palm hand-pointing hand-waving hands-clapping handshake identification-badge identification-card person person-simple person-simple-run person-simple-walk smiley smiley-blank smiley-meh smiley-nervous smiley-sad smiley-sticker smiley-wink smiley-x-eyes user user-circle user-circle-gear user-circle-minus user-circle-plus user-focus user-gear user-list user-minus user-plus user-rectangle user-square user-switch users users-four users-three wheelchair
+- tab 15 (head icon `alarm`, 20): alarm calendar calendar-blank calendar-check calendar-plus calendar-x clock clock-afternoon clock-clockwise clock-counter-clockwise hourglass hourglass-high hourglass-low hourglass-medium hourglass-simple hourglass-simple-high hourglass-simple-low hourglass-simple-medium timer watch
+- tab 16 (head icon `graduation-cap`, 14): book book-bookmark book-open bookmark bookmark-simple bookmarks bookmarks-simple books chalkboard chalkboard-simple chalkboard-teacher exam graduation-cap student
+- tab 17 (head icon `calculator`, 57): bank calculator chart-bar chart-bar-horizontal chart-line chart-line-up chart-pie chart-pie-slice divide equals function graph infinity math-operations minus minus-circle number-circle-eight number-circle-five number-circle-four number-circle-nine number-circle-one number-circle-seven number-circle-six number-circle-three number-circle-two number-circle-zero number-eight number-five number-four number-nine number-one number-seven number-six number-square-eight number-square-five number-square-four number-square-nine number-square-one number-square-seven number-square-six number-square-three number-square-two number-square-zero number-three number-two number-zero percent plus plus-circle plus-minus radical table trend-down trend-up x x-circle x-square
+- tab 18 (head icon `bird`, 46): atom bird butterfly cactus campfire cat cloud cloud-fog cloud-lightning cloud-moon cloud-rain cloud-snow cloud-sun dog drop fire fire-simple fish fish-simple flame flower flower-lotus leaf moon moon-stars mountains paw-print planet rainbow rainbow-cloud snowflake sparkle star-four sun sun-dim sun-horizon thermometer thermometer-cold thermometer-hot thermometer-simple tree tree-evergreen umbrella umbrella-simple waves wind
+- not in any tab, file exists: pause-slash
+
+`menu-item:` —
+- tab 11 (head icon `currency-dollar`, 105): 001-dollar 001-notebook 002-credit-card «002-price tag» 003-auction 003-banknote 004-calculator «004-speech bubble» «005-asset management» 005-diamond «006-bar graph» 006-dollar-symbol 007-coin 007-euro 008-bank 008-bitcoin 009-worker 009-yen 010-partners 010-pound 011-piggy-bank «011-return of investment» 012-balance 012-money-bag 013-balance 013-recruitment 014-atm «014-income statement» 015-percent 015-startup 016-presentation 016-wallet 017-money-exchange 017-salary 018-briefcase «018-credit card» 019-briefcase 019-search 020-contract 020-idea 021-badges «021-pie chart» 022-growth 022-presentation 023-money 023-profits 024-oil 024-smartphone 025-building 025-profit 026-moneybox 026-notes 027-finance 027-safebox 028-gold-ingots 028-success 029-euro 029-vision 030-credit-card-1 030-exchange «031-id card» 031-target 032-manager 032-planning 033-clipboard 033-pyramid-chart 034-envelope «034-flow chart» 035-employee 035-pie-chart 036-bank 036-calculator 037-light-bulb 037-target 038-check 038-deadline «039-digital currency» 039-income «040-hierarchical structure» 040-point-of-service «041-bar graph» 041-currency 042-funnel 042-wallet 043-ipo 043-smartphone 044-analytics 044-certificate 045-businessman 045-ruby «046-atm machine» 046-umbrella 047-abacus 047-contract «048-chinese yuan» «049-gold bar» 049-key 050-security 050-tax clipboard office-building planning task to-do-list to-do
+
+### 0.17 The other four kinds — the diff from the plain-BO template
 
 All four are still the SAME two lines of 0.3 + 0.4; only `category` and a few keys change.
 
 | Kind | `category` | What changes |
 |---|---|---|
 | Бизнес-объект | `BO` | nothing — the template as is |
-| Справочник | `BO_DICTIONARY` | the value of `dictionaryFields` **changes** to `["CODE","LABEL"]` (the key itself is on every BO, see below), and `dynamicFields` **starts** with the two REQUIRED system fields below — never drop either (0.10 rule 18); extra fields may follow |
+| Справочник | `BO_DICTIONARY` | the value of `dictionaryFields` **changes** to `["CODE","LABEL"]` (the key itself is on every BO, see below), and `dynamicFields` **starts** with the two REQUIRED system fields below — never drop either (0.9 rule 18); extra fields may follow |
 | Панель | `BO_PANEL` | every entry of `dynamicFields` is a `type: "BO"` widget (extra keys in 0.5) with `"isReadonly": true`, `"isKindAddForSelect": true`, `"rows": 6`+ and `boRefStruct.fieldRefs` (the columns, at least one `toShow: true`) — it shows the whole registry; for a list the user fills instead add `"readFromRegistry": false` and drop `isReadonly` (§5a) — each one needs an `oldRefBoId` off the stand, so **with no ids a panel cannot be built at all** (0.2a) |
 | Составной объект | `BO_COMPOSITE` | `"bos": [{"code","name","boCategory"}]` = the source BOs **by code — no id exists here, so this kind is never degraded to a plain `BO`** (0.2a). The code is resolved against the lines of THIS archive first and otherwise on the stand, so the sources may travel in the same archive, in any order (§5b). Every field carries `"boFieldCodes": [{"boCode","fieldCode"}]` (one link = простой атрибут, two+ = составной) — **every `fieldCode` must exist in that source BO or the import dies with `INTERNAL_ERROR`** (§5b) — and **no** `gridPosition` / `tableColOrderIndex` / `removeType` |
-| Бизнес-процесс | `BO_PROCESS` | **copy the whole literal of 0.9a** — a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself — it is mandatory on every process (0.10 rule 18) |
+| Бизнес-процесс | `BO_PROCESS` | **copy the whole literal of 0.18** — a **third line** `BoProcessVersionsStructDto` (§5c) whose `oldId` = the BO's `oldId`; the importer does NOT create `PROCESS_STATUS`, ship that field yourself — it is mandatory on every process (0.9 rule 18) |
 
 **`dictionaryFields` is a key of EVERY BO, not a dictionary-only key.** The template of 0.4 already
 carries `"dictionaryFields": []` and it stays there on a plain BO, a panel, a composite and a process.
 The row above CHANGES its value, it does not ADD the key — deleting it from a non-dictionary is rule 6
-of 0.10 all over again: import merges, a missing key keeps whatever the stand already had.
+of 0.9 all over again: import merges, a missing key keeps whatever the stand already had.
 
 **`dictionaryFields` is the literal `["CODE","LABEL"]`, in capitals** — it is an enum, not a list of
 field codes. The two system fields it refers to have the LOWERCASE codes `code` and `label`. Both
@@ -1178,14 +1427,14 @@ unlike any other reference — its ids need not be asked for: the importer resol
 - ship `PROCESS_STATUS` exactly as §5c prints it, **with `defaultValue` = the `CREATED` row id** and the
   `DEFAULT_VALUE` line for that row; both ids may be your own minted ones, used consistently. Without the
   default no record of the process can be saved (§5c);
-- `PROCESS_STATUS` is mandatory on EVERY business process (0.10 rule 18). The importer would take a
+- `PROCESS_STATUS` is mandatory on EVERY business process (0.9 rule 18). The importer would take a
   process without it and even run it (§5c) — that is not a licence: such a process is broken (no status,
   no default registry column).
 - **Never substitute a local dropdown «Статус» for it** — that is an ordinary field with a similar name,
   nothing on the stand treats it as the process status, and the archive looks complete while it is not.
   And never paste `<company-a>`'s `Q0zI~z9Ra2R7Q3yd`.
 
-### 0.9a A business process — the whole archive, literally `[C]`
+### 0.18 A business process — the whole archive, literally `[C]`
 
 The archive below is what the generator writes for the process «согласование заявки»:
 Enter → Form (the request record) → Script → Switch (ЕСЛИ the request's «Одобрено») → Exit «Да» / Exit
@@ -1295,240 +1544,6 @@ That Switch reads `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрен�
 act id the middle part is a FIELD CODE (`F-<field code>-K-DYN-S-boi_fields`), so rename it together with
 the field. Other conditions, loops and writes: Part II (§16 «Business-process scripts», §12a).
 
-### 0.10 Hard rules — violating any one of these breaks the import
-
-1. Every `BoGroupStructDto` carries a `code` — the stand matches groups BY `code`; a line without one
-   RENAMES a fixed stand group (0.3, §8). Several group lines are fine when each has its own `code`.
-   A line for an EXISTING group repeats that group's `name` and `orderIndex` exactly — the import
-   overwrites both (0.3).
-2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
-3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
-4. Every line carries its `"@class"` with the full package
-   `kz.greetgo.mybpm.reg.structure.model.dto.<DtoName>`.
-5. `dynamicFields` is an object keyed by field code, and the key equals the field's `code`.
-6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
-   only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
-   `BO_COMPOSITE`, which has no form (0.9, §5b), and `tableColOrderIndex` / `removeType` on a process's
-   `PROCESS_STATUS`, copied as 0.9a prints it.
-7. Codes ≤ 30 characters, latin letters, digits and `_`, named by the convention of 0.6a.
-8. Ids are 16 chars over `A-Za-z0-9@~`, deterministic, and the three equalities of 0.7 hold.
-9. `isRequired` + `isReadonly` both true = an unsaveable record.
-10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **replaces** the rights set by
-    hand on the stand with the archive's (§7, §8). Its `orgUnitIds` are `G-<group id>` of the TARGET
-    stand — ids from another stand grant nothing.
-11. Records (instance data) do NOT go into this archive — they are an xlsx, **Part III** of this document.
-12. A `STATIC_TEXT` heading must not repeat any field label of the same BO (0.5). «Контакты» as a
-    heading над полем «Контакты» breaks the Excel import of records (Part III, §19): the header row is
-    matched against ALL fields including the headings, and the column becomes ambiguous. Name the
-    heading for the SECTION («Контактные данные»), not for the field under it.
-13. A field goes into the map that matches its ARCHETYPE: an ordinary field into `dynamicFields`, a
-    «системное поле» into `nativeFields` (0.5a), a widget into `signatures` / `buttons` / `iframes` /
-    `captcha` / `currentDates` / `currentUser` (0.5b). Putting a widget or a native type into
-    `dynamicFields` is not a valid archive.
-14. A menu line (0.5d) names its parent, its BO and — only when a kanban is on — its column field BY
-    CODE, and carries no id.
-    A `GROUP` line has no `boPages` / `bracketFilter`; a `BO` line has both. A `kanbanFieldCode` whose BO
-    carries no card template for that field gives a kanban that cannot be drawn (0.5c).
-15. **Every BO shows at least one field in its registry** (`tableColToShow: true` on at least one
-    field) **and every `BO` / `CO` reference field shows at least one field of its target**
-    (`boFieldCodes` / `boFieldRefs` with `toShow: true`). Without a column the registry answers `AccessDenied` and lists nothing; without a
-    shown field the reference renders empty (`MYBPM-UI-API.md` §0U.5 rule 11, traps 48 and 53).
-16. **Every `DROPDOWN_SINGLE` of a BO has a kanban card template** — `kanbanCardTemplates.<dropdown code> =
-    {"kanbanFields": {"<a field code>": {"cardOrderIndex": 0, "locationType": "HEADER", "archetype": "DYNAMIC"}}}`,
-    even when no kanban was asked for. Without it the BO's map, kanban and kanban editor die with «cardTemplate
-    is null» once a record exists (0.5c, §2 «BO views», trap 32).
-17. **Every BO line has a numeric `orderIndex` of its own** — a missing one lands as `null` (top of the group),
-    and the template's 47480000 shared by several BOs makes them impossible to reorder by drag; a re-import also
-    MOVES an existing BO to the archive's group and place (§2 «BO place in the sidebar»).
-18. **The platform's mandatory system fields are always shipped.** Every business process (`BO_PROCESS`) carries `PROCESS_STATUS` (§5c: `type: "BO"`,
-    `isSystem`, `isRequired`, `defaultValue` = the `CREATED` row + its `DEFAULT_VALUE` line); every
-    dictionary (`BO_DICTIONARY`) carries `code` and `label`, both `isRequired` (0.9). The importer does not
-    add them and does not complain when they are missing — the archive looks fine and the object is broken.
-    Its ids are resolved by code on import (0.2a), so nothing stops you shipping it — never a process without it.
-19. **A BO that already exists on the stand is changed only through its fresh export line**, never through a
-    line rebuilt from the template of 0.4 — that resets its header settings and moves it (0.2a, last row). An
-    import never deletes a field, tab or option (§8).
-
-### 0.11 Self-check before shipping
-
-- [ ] `unzip -l` shows exactly two members, both inside one `data-*/` folder.
-- [ ] `unzip -p <zip> 'data-*/metadata.mybpm'` prints `objectCount-<N>`, and
-      `unzip -p <zip> 'data-*/0000001.mybpm' | wc -l` prints the same N.
-- [ ] Every line parses on its own (`unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
-      Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
-      MUST fail — that proves it is JSONL.
-- [ ] `boGroupOldId` == the group's `oldId`.
-- [ ] 0.10 rule 15, on EVERY BO including a process: at least one field has `tableColToShow: true`, and every
-      `BO` / `CO` field has a `fieldRefs` entry with `toShow: true`. `tools/validate-archive.bun.ts` reports
-      both as `ERROR §0.10/15`.
-- [ ] 0.10 rule 18: every `BO_PROCESS` has `PROCESS_STATUS` (required, system, with its `CREATED` default and
-      the `DEFAULT_VALUE` line); every `BO_DICTIONARY` has `code` + `label`, both required. The validator
-      reports a missing one as `ERROR §0.10/18`; the generator refuses to build without them.
-- [ ] Every `dynamicFields` key equals its entry's `code`, and every `newId` is distinct.
-- [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
-      `code`; no widget or native type hides in `dynamicFields`.
-- [ ] The `y` of each field == previous `y` + previous `rows`.
-- [ ] `tableColOrderIndex` runs 0, 1, 2… down `dynamicFields` — not `0` on every field (0.5).
-- [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
-      `fieldOption`, its `label` a plain string (0.5).
-- [ ] Every new code follows 0.6a: English snake_case; objects, groups and menu items `Capitalised`, the
-      rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab; ≤ 30 chars.
-- [ ] Every group line has a `code`: an existing group's code confirmed by the user, or a new code for a
-      group the archive creates (0.2a, 0.3).
-- [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
-      an EARLIER line of this same archive (0.2a).
-- [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
-      gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
-      a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
-- [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
-- [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.10 rule 12).
-- [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
-      table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
-      15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
-- [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
-      `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`, `FILE_UPLOAD` (0.5; exempt: a `BO_COMPOSITE`, and a
-      process's `PROCESS_STATUS` copied from 0.9a).
-- [ ] `dictionaryFields` is present on EVERY BO line — `[]` everywhere, `["CODE","LABEL"]` on a
-      dictionary (0.9).
-- [ ] For every object the request names: if it was NOT said to exist on the stand, it is BUILT in this
-      archive (a dictionary for a «из справочника» dropdown, the target BO of a reference) — not degraded to
-      text or a local list; if it WAS said to exist, its id / code came from the user (0.2a «Decide FIRST»).
-- [ ] Registry columns are the default of 0.5: the name field first and visible. String fields were hidden
-      only if the user said the stand has the Elasticsearch sort defect (0.5c).
-- [ ] Nothing was quietly built INSTEAD of what was asked: no panel turned into a set of plain BOs, no
-      составной объект turned into a plain BO because «the ids are unknown» (it takes codes, 0.2a), no
-      `TAB_GROUP` replaced by `STATIC_TEXT` headings, no `PROCESS_STATUS` faked as a local dropdown
-      (0.2a, 0.9). Only a missing stand id or stand code ever justifies a degrade.
-- [ ] Menu lines (0.5d), if any: every `menuItemCode` is NEW to the stand (an existing one is edited in
-      place) unless the user asked to change that very item;
-      every `parentMenuItemCode` is a GROUP line of this archive or a code the
-      user gave off the stand; every `boCode` is a BO line of this archive or a stand code; every
-      `kanbanFieldCode` is a `DROPDOWN_SINGLE` of that BO AND a key of its `kanbanCardTemplates`; no
-      `GROUP` line carries `boPages` or `bracketFilter`; every `iconName` is one of the three defaults
-      or a name copied from 0.5e WITH its prefix (the importer accepts a wrong name silently).
-
-### 0.12 Building and delivering
-
-Ready-made generator — prefer it over writing a new builder.
-`--group-code`, `--group-name` and `--group-order` are required (0.3): for an existing group copy its
-`code`, `name` and `orderIndex` from `load-bo-groups` (the import overwrites the last two), for a new
-group choose a new code, a name and a place:
-
-```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Cookbook_demo --name "Демо из кукбука" \
-    --field "Наименование:INPUT_TEXT" --field "Сумма:INPUT_NUMBER" --field "Активен:CHECKBOX"
-```
-
-(`--category`, `--field "Метка:BO@<boId>@<boCode>"`, `--source` / `--co-field`, `--process-figure`,
-`--process-status`, `--kanban`, `--menu`, `--with-metadata`, `--out` — see the file's header comment,
-§5a–5c and §5e.)
-
-A BO plus a sidebar item that opens it — plain navigation, list view only (0.5d; this output is
-byte-identical to the 0.5d template and passes `tools/validate-archive.bun.ts`):
-
-```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Request --name "Заявки" --field "Наименование:INPUT_TEXT!req" \
-    --menu "Заявки:BO@Request@Заявки!code=Requests!order=950000"
-```
-
-Add `!parent=<GROUP code>` to put the item into a group (plus a `--menu "Имя:GROUP!code=…"` if the group
-travels in the same archive), `!kanban=<dropdown code>` for a board, `!icon=<name from 0.5e>` for an
-icon (`!icon=phosphor:rocket`, `!icon=menu-item:025-building`). A BO with a kanban and its own
-sidebar group, all in one archive (0.5c, 0.5d):
-
-```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Proba_menu_bo --name "Проба меню БО" \
-    --field "Наименование:INPUT_TEXT!req" --field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово" \
-    --kanban "Статус:HEADER=Наименование" \
-    --menu "Проба меню:GROUP!code=Proba_menu!order=950000" \
-    --menu "Проба канбана из меню:BO@Proba_menu_bo@Проба меню БО!code=Proba_menu_kanban!parent=Proba_menu!kanban=Status!order=950100"
-```
-
-The generator names fields, options and tabs the way the STAND does (0.6 transliteration), not by 0.6a:
-it is a probe tool. For a real archive rename them to the convention (the BO code is `--code`, a menu code
-`!code=`).
-
-The generator covers ALL 27 field types, the six system fields and all ten widgets `[C]`:
-
-```
-bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --code Proba_vseh_tipov --name "Проба все типы" --with-metadata \
-    --field "Выпадающий список:DROPDOWN_SINGLE@Dolzh@Должность" \
-    --field "Единичный выбор:RADIO_BUTTON_GROUP#Да|Нет" \
-    --field "Опросник:QUESTIONNAIRE#Колонка 1|^Строка 1" \
-    --field "Прогресс-бар:PROGRESS_BAR#Новый|В работе|Готово" \
-    --field "Вкладки:TAB_GROUP#Общее|Документы" \
-    --field "Загрузка файла:FILE_UPLOAD!multiple" \
-    --field "Текст:STATIC_TEXT#<h2>Заголовок секции</h2>" \
-    --field "Вложенный объект:BO@I1fVTkYPTSg7X8b8@Person" \
-    --field "Составной объект:CO@@feclOAWUnwXFQ8c@Sostavnoyi_obekt__4046" \
-    --native CREATED_AT --native CREATED_BY --native OPEN_COUNT \
-    --widget "BUTTON:Кнопка:button:https://example.org/hook" \
-    --widget "CURRENT_USER:Текущий пользователь:cur_user"
-```
-
-`#…` means a different thing per type: options for `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` /
-`CHECKLIST`, steps for `PROGRESS_BAR`, tabs for `TAB_GROUP`, the HTML itself for `STATIC_TEXT`, and
-«колонки, then rows prefixed with `^`» for `QUESTIONNAIRE`. `!multiple` / `!tile` / `!camera` are the
-`FILE_UPLOAD` settings (`params.viewType` MULTIPLE / TILE, `params.contentType` FOR_CAMERA). `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`.
-
-`I1fVTkYPTSg7X8b8` and `@feclOAWUnwXFQ8c` in that command are **ids ON THE `<company-a>` STAND** — `Person` and
-one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
-archive aimed at another stand (0.2a).
-
-If you must build the zip yourself, STORED entries are enough. Bun has no zip API; `tools/zip.ts` writes a
-STORED archive with UTF-8 names (run this as a `*.bun.ts` from the repository root):
-
-```ts
-import { zip } from "./tools/zip.ts";
-const lines = [line1, line2];               // objects, in order
-const d = "data-2026-09-18T10-43-21-715";
-const enc = new TextEncoder();
-const payload = lines.map((o) => JSON.stringify(o)).join("\n") + "\n";
-await Bun.write("out.mybpm.zip", zip([
-  { name: `${d}/0000001.mybpm`, data: enc.encode(payload) },
-  { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${lines.length}`) },
-]));
-```
-
-**Delivering it — the minimum** `[C]` (the full transport is `MYBPM-UI-API.md` §5 / R3,
-this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, one deliberate step writes.
-
-- **UI**: open `<stand>/settings?settingsOpenPageUrl=import_export&formType=import` (navigate by URL — the
-  «Настройки» item sits wherever that company put it in the sidebar), «Импортировать файл», pick the zip.
-  A log row «Импорт проанализирован» appears — nothing is written yet. Click the row: «Ошибки» (must be
-  empty), one node per object with its pre-apply diff («Добавленные поля» …), and «Описание импорта» —
-  **required**, applying without it ends in `DESCRIPTION_ERROR`. Then ПРИМЕНИТЬ → «Импорт выполнен».
-- **API**: `bun tools/api-import-structure.bun.ts <archive.mybpm.zip> --stand https://<stand>
-  [--token-file PATH] [--apply --description "что и зачем"]` — without `--apply` it stops at the dry run
-  (status `ANALYZED`) and prints the errors and the per-object list; `--cancel` drops it. Token = the
-  browser's `localStorage.LOCAL_PRIVATE_SwebToken` without its JSON quotes, or `$MYBPM_TOKEN`. The calls
-  underneath, all `POST <stand>/web/import-structure/<method>`: `import-file` (multipart, field `file`) →
-  `insert-file-data` → `analyze-file-data` → read `load-import-errors` / `load-import-bo-infos` →
-  `save-import-description` → `apply-import`. Only ONE import may be open per company at a time.
-- **Calling a `/web` endpoint by hand** (the rollback below, the script check of §5d): `POST`, header
-  `token: <the token, no quotes>`, `Content-Type: application/json`, and ALWAYS the envelope
-  `{"useParamsFromBody": true, "params_Lr1oSgwPR8": {…}, "body_o1nhHUG480": {…}}`. In this document
-  `P {…}` means «goes into `params_Lr1oSgwPR8`», `B {…}` «goes into `body_o1nhHUG480`» (send `{}` for
-  the other half); a key in the wrong half has answered 200 and done nothing. Answer = the bare DTO / string.
-- **Rollback**: `import-structure/load-import-rollback-preview` `P {importId}` lists what it would
-  delete / restore; `v2/process-indicator/pre-create-process` `P {}` → a fresh `processId`; then
-  `import-structure/rollback-import` `P {importId, processId}` → `{"type":"ROLLED_BACK"}` undoes it (BOs
-  and menu items alike; the process may finish at 25 %, do not wait for 100). Only the import the stand
-  flags `canRollback: true` can be undone, and «latest» is the stand's ranking, not yours — the log keeps
-  minutes, and inside one minute the FIRST-applied import counts as the newest. Undoing an import that UPDATED something restores the SNAPSHOT it
-  found, silently dropping anything applied after it; undoing a chain is safe only all the way back to
-  the import that CREATED the objects. When you may need to undo, leave a minute between applies. A
-  create + update applied in one minute is undone create first (the BO is deleted); the update then
-  offers a RESTORE of that BO — leave it APPLIED, whether undoing it brings the BO back is `[U]`.
-  A rollback works as a re-import of that snapshot and inherits the import's
-  defects `[I]`: undoing a re-import of an existing BO did NOT bring back a SIGNATURE phone or a radio's
-  dictionary, and it ADDED one more copy of every print form instead of removing the copies `[C]`. Check
-  those by hand after an undo.
-
-**Always read the analysis result before pressing ПРИМЕНИТЬ** — «В Составном объекте не достаёт БО»
-does not block applying. Over the API read `load-import-errors` of the SAME `importId` (it carries the UI
-dialog's errors) AND `load-import-data.status` (`INTERNAL_ERROR` = an analyzer crash, no error record).
-
 ---
 
 ## 1. Zip layout and parsing
@@ -1580,8 +1595,8 @@ A `BoStructDto` has these keys: `oldId code category kind boGroupOldId instanceV
 bos boTabs printForms name recordName staticValue description orderIndex dynamicFields nativeFields
 dictionaryFields actual isCalendarEnabled isMapEnabled isGroupingEnabled isCodeReadonly
 chosenAccessRight isTouchEnabled hideAddButtonFromRegistry kanbanCardTemplates timelineTemplates calendarCardTemplates signatures buttons
-iframes currentDates captcha currentUser`. The last six are the widget maps (§0.5b), `nativeFields`
-holds the system fields (§0.5a). A key whose value is `null` on the stand is left out: a panel built in
+iframes currentDates captcha currentUser`. The last six are the widget maps (§0.13), `nativeFields`
+holds the system fields (§0.12). A key whose value is `null` on the stand is left out: a panel built in
 the constructor has no `instanceViewType` at all `[C]`, while one that came in by import carries the `FORM` it was given. The export also writes, after `instanceViewType`, the registry's
 default sort **`sortFieldCode`** (a field CODE) + **`sortFieldOrder`** (`ASC`|`DESC`) — absent while the
 sort is unset. They travel both ways `[C]`: the export writes the stand's sort, and an archive's pair sets the
@@ -1615,7 +1630,7 @@ The record card's right-hand rail (constructor: card editor → `+` on the rail)
 
 | key | values | what it does |
 |---|---|---|
-| `boTabs` | a MAP `{"<TYPE>": <orderIndex>}`, types `CHAT` «Чат», `PEOPLE` «Люди», `FILES` «Файлы», `HISTORY` «История», `PRINT_FORM` «Печатные формы», `TELEGRAM`, `WHATSAPP` | one icon per tab on the record card, top to bottom by the number. CHAT = the record's chat with its participants, PEOPLE = its participants, FILES = files attached to the record («Загрузить файл»), HISTORY = the change journal (§3 «Field flags»), PRINT_FORM = the print forms (`printForms`, §0.5b) |
+| `boTabs` | a MAP `{"<TYPE>": <orderIndex>}`, types `CHAT` «Чат», `PEOPLE` «Люди», `FILES` «Файлы», `HISTORY` «История», `PRINT_FORM` «Печатные формы», `TELEGRAM`, `WHATSAPP` | one icon per tab on the record card, top to bottom by the number. CHAT = the record's chat with its participants, PEOPLE = its participants, FILES = files attached to the record («Загрузить файл»), HISTORY = the change journal (§3 «Field flags»), PRINT_FORM = the print forms (`printForms`, §0.13) |
 | `messengerFieldCode` | a field code of this BO; absent when unset | the **Telegram** link field — the field whose value (a login for `INPUT_TEXT`, a phone for `INPUT_PHONE`) ties a record to a messenger chat |
 | `whatsAppFieldCode` | the same | the **WhatsApp** link field |
 
@@ -1653,7 +1668,7 @@ The registry views «Календарь», «Карта», «Группиров�
   them** (and with `true` / the map sets them again). Ship the stand's values on every re-import.
 - **A map needs a kanban card template for EVERY `DROPDOWN_SINGLE` of the BO** — not only for a kanban. An archive BO
   with a dropdown and an empty `kanbanCardTemplates` loses its map, its kanban view and the constructor's kanban
-  editor to «cardTemplate is null» as soon as it holds a record (0.5c). Give each dropdown a template
+  editor to «cardTemplate is null» as soon as it holds a record (0.14). Give each dropdown a template
   (`"<dropdown code>": {"kanbanFields": {"<name field code>": {"cardOrderIndex": 0, "locationType": "HEADER",
   "archetype": "DYNAMIC"}}}`); its fields are what the map popup shows.
 - **Grouping renders nothing on this build** — the registry «Группировка» calls server methods that answer 404
@@ -1872,8 +1887,8 @@ has its own generator and its own place in the archive:
 | archetype | what it is | constructor endpoint | in the archive |
 |---|---|---|---|
 | `DYNAMIC` | an ordinary field | `generate-business-form-field {boId, fieldType, fieldBoId?}` | `dynamicFields`, keyed by code |
-| `NATIVE` | a system field | `generate-business-form-field-by-native {nativeType}` | `nativeFields`, keyed by the native type (§0.5a) |
-| `WIDGET` | a widget | `generate-business-form-widget {widgetType}` | one of six widget maps, keyed by code (§0.5b) |
+| `NATIVE` | a system field | `generate-business-form-field-by-native {nativeType}` | `nativeFields`, keyed by the native type (§0.12) |
+| `WIDGET` | a widget | `generate-business-form-widget {widgetType}` | one of six widget maps, keyed by code (§0.13) |
 
 A widget DTO carries `widgetType` and a **null** `type`; a native one carries `nativeFieldType` plus the
 `type` the platform fixed for it. The client resolves a form element as
@@ -2173,7 +2188,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 
 - `category: BO_DICTIONARY`, `dictionaryFields: ["CODE","LABEL"]`, system fields `code` (`INPUT_TEXT`,
   `isSystem`, `isUnique`, `isRequired`) and `label` (`INPUT_TEXT_LANG`, `isSystem`, `isRequired`). **Both are
-  mandatory on every dictionary** (0.10 rule 18) — never drop or rename them, whatever extra fields follow.
+  mandatory on every dictionary** (0.9 rule 18) — never drop or rename them, whatever extra fields follow.
 - A dictionary MAY carry extra fields (e.g. `lower_limit`, `fixed_amount`, `rate`, `starting_price`).
 - **A hand-built dictionary archive imports cleanly** `[C]`: the three keys above
   plus ordinary `dynamicFields` are enough, `nativeFields` stays `{}`, and the stand rebuilds exactly the
@@ -2383,9 +2398,9 @@ that field is the only link between them. An export of one process carries 7 obj
   `isKindAddForSelect: false`, `tableColToShow: false`, no `tableColOrderIndex`, `oldRefBoId` = the
   target BO's stand id, `boRefStruct.boInfo = {code, name, boCategory}` of the target, `fieldRefs: {}`.
   **That is the EXPORT's shape — never copy its `tableColToShow: false` and empty `fieldRefs` into an archive
-  you write** (0.10 rule 15). An archive gives the field `tableColToShow: true` + a `tableColOrderIndex` (a BO
-  reference is a safe column under the sort defect, 0.5c) and `fieldRefs` with at least one field of the
-  target, `toShow: true`. A process built without `PROCESS_STATUS` (itself forbidden by 0.10 rule 18; its `label`
+  you write** (0.9 rule 15). An archive gives the field `tableColToShow: true` + a `tableColOrderIndex` (a BO
+  reference is a safe column under the sort defect, 0.14) and `fieldRefs` with at least one field of the
+  target, `toShow: true`. A process built without `PROCESS_STATUS` (itself forbidden by 0.9 rule 18; its `label`
   is the default registry column of a process) and with its one reference field in the export's shape comes out
   with NO registry column and a selector showing nothing `[C]`.
 - **A whole configured process travels in one archive and runs** `[C]`:
@@ -2395,7 +2410,7 @@ that field is the only link between them. An export of one process carries 7 obj
   `make-probe-archive.bun.ts --process-spec <spec.json>` — the SAME spec `tools/process-builder.ts` builds
   through the API (`tools/process-probe.spec.json`; a field entry needs `refBoCode` AND `show: [<target
   field codes>]` for the archive — the generator refuses a reference without `show` and any BO without a
-  registry column, 0.10 rule 15).
+  registry column, 0.9 rule 15).
 - **`PROCESS_STATUS` is not created by the importer** `[C]`. The constructor gives every process the
   system field `PROCESS_STATUS` («Статус процесса», `type: "BO"`, `isSystem`, `isCodeReadonly`,
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
@@ -2408,7 +2423,7 @@ that field is the only link between them. An export of one process carries 7 obj
   the record SHOWS, not what drives the process — shipping without it costs the status, not the run.
   It also costs the registry column: `PROCESS_STATUS` is the column a constructor-built process shows.
   **This is a fact about the importer, not an option** — shipping a process without `PROCESS_STATUS` is
-  forbidden (0.10 rule 18).
+  forbidden (0.9 rule 18).
 - **…and it must carry its DEFAULT VALUE, or no record of the process can be saved** `[C]`.
   The field is required; the constructor defaults it to the dictionary row `CREATED`
   («Только что создан»). Shipped without a default, every `validate-apply-remove-draft` of a process
@@ -2564,7 +2579,7 @@ about the IDE, not about the platform).
   `isWork` version with a new `boScriptModId`, and the previous work version stays with `isWork:false`.
   **Read back the module id AFTER every import** — translating the
   old module shows the old body and looks like the import failed. The check, all `POST
-  <stand>/web/v2/…` in the envelope of 0.12 `[C]`: `bo-scripts-editor/load-bo-script-versions` `P {boId}` → take the row with
+  <stand>/web/v2/…` in the envelope of 0.11 `[C]`: `bo-scripts-editor/load-bo-script-versions` `P {boId}` → take the row with
   `isWork: true`, its `boScriptModId`; then `script/translate-script` `P {scriptModuleId: <that id>,
   scriptId: <an id from your archive — kept verbatim>}` → `{"success":true}` or a
   `diagnosticMessageList`. An import NEVER reports a broken body; this call is the only validator. (The
@@ -2691,7 +2706,7 @@ these lines (plus `CompanyMetadataStructDto`) — no group, no BO; the analysis 
 
 ## 5e. Sidebar menu items inside the archive (`MenuItemStructDto`) `[C]`
 
-The cookbook templates are 0.5d. The export screen has a separate «Элементы меню» basket
+The cookbook templates are 0.15. The export screen has a separate «Элементы меню» basket
 (`MYBPM-UI-API.md` §0U R4a, «Export tab»). A generated archive of BO + card template + menu GROUP + menu
 BO item with a kanban imports and applies, and the board is drawn.
 
@@ -2759,7 +2774,7 @@ fills `menuInfo` instead of `structureInfo`:
 `menuItemState: "UPDATE"` with `oldDisplayName` = the current name and
 `changedAspects: ["display_name","order_index","bracket_filter","bo_pages","linked_bo"]` — the last three
 listed even when they did not change, so `changedAspects` is not a real diff for them. So a code clash
-EDITS the customer's item — the reason 0.5d forbids reusing a stand menu code unasked. A **menu-only
+EDITS the customer's item — the reason 0.15 forbids reusing a stand menu code unasked. A **menu-only
 archive** (one line, no `BoGroupStructDto`, no `BoStructDto`) analyses and applies, the BO resolved by
 `boCode` off the stand.
 
@@ -2773,12 +2788,12 @@ answers `{"type":"ROLLED_BACK"}` and the BO and the menu items are gone.
 is stored exactly as shipped. Nothing validates it: a made-up name (`phosphor:no-such-icon-xyz`) passes
 the dry run clean (`load-import-errors` empty, `conflicts: {}`), is stored, and the sidebar draws NO icon
 for it. The frontend fetches `<ns>:<name>` as `/assets/icons/<ns>/<name>.svg`, so «a valid icon» =
-«that file exists»: a made-up name answers 404, while all 1153 names of the picker answer 200 (0.5e).
+«that file exists»: a made-up name answers 404, while all 1153 names of the picker answer 200 (0.16).
 Both namespaces are in live use (`phosphor:house`, `menu-item:022-presentation`) — the `menu-item:` set
 is not a leftover.
 
 **Rolling back an UPDATE restores a snapshot, and the stand may pick the wrong import as «latest»** `[C]`
-— the rules are in 0.12 «Rollback» (the full run: `MYBPM-UI-API.md` §5 «Rollback trap»): the preview of an import that UPDATED a menu item lists
+— the rules are in 0.11 «Rollback» (the full run: `MYBPM-UI-API.md` §5 «Rollback trap»): the preview of an import that UPDATED a menu item lists
 `restoreItems` (`action: "RESTORE"`, the BO and the menu line) and no `deleteItems`; only the import that
 created them lists `deleteItems`.
 
@@ -2789,7 +2804,7 @@ group (`boCode:"PersonGroup"`); the import applies it (an item reset to «все
 **Calendar and timeline views travel** `[C]`: `boPages` in the export carries
 `timelineFieldCode` (the `PERIOD` field's CODE) instead of `timelineFieldId`, the import resolves it.
 
-Open `[U]`: where else a kanban can be switched on besides a menu item (0.5c).
+Open `[U]`: where else a kanban can be switched on besides a menu item (0.14).
 
 ## 6. References between BOs
 
@@ -2914,7 +2929,7 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   `kanbanCardTemplates.*.kanbanFields` too.
 - BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — and an empty one is
   exactly why «kanban does not work for imported BOs», and why their MAP view fails too (§2 «BO views»). Fill it
-  for every dropdown: §0.5c, 0.10 rule 16, `MYBPM-UI-API.md` §7.
+  for every dropdown: §0.14, 0.9 rule 16, `MYBPM-UI-API.md` §7.
 
 ### BO groups on import — matched by `code` `[C]`
 
@@ -5174,7 +5189,7 @@ Scripts:
     hook whose only statement calls a local method, `BlockAssign` + `ExprCall`, args `{}`). Not repeated.
 32. **A `DROPDOWN_SINGLE` without a kanban card template kills the map and the kanban** `[C]` — an
     archive BO with `kanbanCardTemplates: {}` and a dropdown answers «cardTemplate is null» in its «Карта» view,
-    its kanban and the constructor's kanban editor once it holds a record. Ship a template per dropdown (0.5c);
+    its kanban and the constructor's kanban editor once it holds a record. Ship a template per dropdown (0.14);
     a re-import with one repairs the BO.
 33. **The registry «Группировка» is dead** `[C]` — the server answers 404 to its data calls;
     `isGroupingEnabled` / `groupingInfo` store and travel but nothing renders (§2 «BO views»).
@@ -5202,8 +5217,8 @@ Scripts:
     cancel or not (0S.7).
 40. **Re-importing a stand export onto the BO it came from is not a no-op** `[C]` — it ADDS a copy of every
     print form (forms are matched by `newId`, which every export renews), clears a SIGNATURE's phone and never
-    brings back `massPrintFormCodes`; a rollback of it adds yet another print-form copy (0.5b «SIGNATURE
-    round-trips», «Print forms»; 0.12 «Rollback»).
+    brings back `massPrintFormCodes`; a rollback of it adds yet another print-form copy (0.13 «SIGNATURE
+    round-trips», «Print forms»; 0.11 «Rollback»).
 
 Records (Excel): the traps of that format live in `MYBPM-UI-API.md` §11 (8 — numeric cells, 9 — header
 detection, 10 — never index columns by position, 13 — the SINGLE-side link column) and are not renumbered
@@ -5213,7 +5228,7 @@ here; the rules themselves are §0X.4.
 
 - SIGNATURE: what clears `signFieldUnsupported` («такой-же тип подписания») on a referenced BO — nothing on
   the stand does (`MYBPM-UI-API.md` §5i), so only the vendor can answer; until then `massPrintFormCodes`
-  never survives an import (§0.5b «SIGNATURE round-trips»).
+  never survives an import (§0.13 «SIGNATURE round-trips»).
 - Whether an xlsx UPDATE of an existing record runs any hook (a created record runs none, §15) — needs a BO
   with scripts AND a unique field to match on.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.

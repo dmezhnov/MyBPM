@@ -517,7 +517,7 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
 
 Controller **`v2/menu-item`** (the `business-objects` menu-access endpoints fail with `NoBoWithId`).
 **Or ship the items IN the structure archive** `[C]`: a `MenuItemStructDto` line per item,
-everything by code, the item's views (list, kanban) included (`MYBPM-IMPORTS.md` 0.5d / §5e) — then R3
+everything by code, the item's views (list, kanban) included (`MYBPM-IMPORTS.md` 0.15 / §5e) — then R3
 alone builds BO + menu (+ kanban), and a rollback of that import removes the menu items too. The API
 route below is for items on BOs that are already on the stand, and for access rights.
 
@@ -881,7 +881,7 @@ Everything in this section is `[C]`.
   (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
   archive addresses it (`MYBPM-IMPORTS.md` §5e); the kebab's «Изменить код» edits it.
 - **Menu items also travel in a structure archive** `[C]` — `MenuItemStructDto`, parent /
-  BO / kanban column field all by code (`MYBPM-IMPORTS.md` 0.5d, §5e); export them with the menu basket
+  BO / kanban column field all by code (`MYBPM-IMPORTS.md` 0.15, §5e); export them with the menu basket
   of §0U R4a.
 - **A menu item's kanban URL mislabels its ids** `[C]`: opening a BO item with the kanban on
   goes to `/business-objects/viewing-single/bo/<menuItemId>/kanban-view?businessObjectId=…&fieldId=…&menuItemId=…&boId=…`,
@@ -891,7 +891,7 @@ Everything in this section is `[C]`.
 - `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages` = the item's views: list, kanban,
   calendar, timeline, map, grouping, each an `is*Enabled` flag + an `*Index` (tab order, 1-based over the
   enabled views). List, kanban, calendar, timeline and map work `[C]`, grouping is dead server-side; what
-  each needs on the BO is the table of `MYBPM-IMPORTS.md` 0.5d. Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
+  each needs on the BO is the table of `MYBPM-IMPORTS.md` 0.15. Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
   the board and its COLUMNS on for THIS item; the CARD lives on the BO and must come from the archive (§7).
 - Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"<namespace>:<name>"}` (empty 200).
   **Valid names = the catalogue below** (1153 names, `phosphor:*` AND `menu-item:*`); the server accepts
@@ -958,7 +958,7 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 - **WRONG** (fails with `NoBoWithId` for menu items): `v2/business-objects/load|save-business-menu-access-group`.
 - **They travel in an archive** `[C]`: the item's `MenuItemStructDto` gets `chosenAccessRight:true`
   + `accessGroup` (the `AccessStructDto` action shape, `orgUnitIds:["G-<id>"]`)
-  (`MYBPM-IMPORTS.md` §0.5d, §5e). The calendar and timeline views of
+  (`MYBPM-IMPORTS.md` §0.15, §5e). The calendar and timeline views of
   `boPages` travel too — the timeline as `timelineFieldCode` (a `PERIOD` field's code) — `[C]`;
   set them over the API with `save-menu-item-bo-pages` params `{menuItemId}`, body = the whole `boPages`
   (`timelineFieldId` = a field of `v2/timeline/load-fields {boId}` — the BO's `PERIOD`/`PERIOD_TIME` fields).
@@ -1633,7 +1633,7 @@ arrows and validation of any existing process — the cheapest read-back there i
 #### Both archive routes `[C]`
 
 `tools/make-probe-archive.bun.ts --category BO_PROCESS [--process-figure "<Type>@x,y"]…` builds the archive,
-always with the required `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.10 rule 18; `--process-status <refBoId>:<CREATED row id>`
+always with the required `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.9 rule 18; `--process-status <refBoId>:<CREATED row id>`
 only overrides its minted ids) (shape in `MYBPM-IMPORTS.md` §5c); the UI route and
 `tools/api-import-structure.bun.ts` both apply it with zero analysis errors, and the diagram comes back
 identical (`validate-def` clean).
@@ -1647,7 +1647,7 @@ identical (`validate-def` clean).
   **together with its `defaultValue`** — see the next
   block. **A process without that field still RUNS** `[C]` on ordinary and DEV records — the field gives
   the record its status, it does not drive the process (`MYBPM-IMPORTS.md` §5c). Skipping it is not
-  an option: every process ships `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.10 rule 18).
+  an option: every process ships `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.9 rule 18).
 
 #### The same configured process through an ARCHIVE — export, generate, import, run `[C]`
 
@@ -2701,7 +2701,7 @@ cycle (§6b) and the card.
 
 ### 5i. Every field type, widget and system field — constructor UI and API `[C]`
 
-Three families, three palette sections, three generator endpoints. The archive half is in `MYBPM-IMPORTS.md` §0.5 / §0.5a / §0.5b.
+Three families, three palette sections, three generator endpoints. The archive half is in `MYBPM-IMPORTS.md` §0.5 / §0.12 / §0.13.
 
 #### The palette — what the constructor really offers `[C]`
 
@@ -2899,7 +2899,7 @@ is read by its PREFIX:
 
 - **«Поля для отправки» = `save-button-field-ids` = the archive's `fieldCodes`.** The card does not send
   them anywhere. They are meant for the server plugin. In an archive they are a map
-  `{"<field code>": "<archetype>"}` (`MYBPM-IMPORTS.md` §0.5b). An import turns it back into the field
+  `{"<field code>": "<archetype>"}` (`MYBPM-IMPORTS.md` §0.13). An import turns it back into the field
   ids that `load-button-field-ids` returns `[C]`.
 - A button has its own lock: `v2/button/load-access-group {boId, buttonId}` answers
   `{all, view, edit, create, …}` with `accessForAll: true` by default. `save-access-group` was not tried `[U]`.
@@ -2930,7 +2930,7 @@ is read by its PREFIX:
   `v2/business-object-instance/remove-all-for-single-view-type {boId, fieldId}`. That is the call that
   trims existing records' values down to one. For this widget there are no stored values, so it is harmless.
   The UI save that follows sends the DTO with `viewType:"SINGLE"` and the ticked `boFieldRefs`.
-- All four survive an export and an import (`MYBPM-IMPORTS.md` §0.5b, «CURRENT_USER round-trips»):
+- All four survive an export and an import (`MYBPM-IMPORTS.md` §0.13, «CURRENT_USER round-trips»):
   `currentUser.<code>` carries `viewType` and `fieldRefs` keyed by the «Пользователи» field CODES, and the
   lock is a normal `fieldAccessStructMap.<widget code>` entry of the `AccessStructDto`.
 
@@ -2960,7 +2960,7 @@ is read by its PREFIX:
   the native `CREATED_AT`.
 - The palette offers each type once per BO; **the server accepts a second widget of the same type** (it
   gets its own derived code).
-- Archive: `currentDates.<code>` + `fieldAccessStructMap.<code>`, both survive (`MYBPM-IMPORTS.md` §0.5b,
+- Archive: `currentDates.<code>` + `fieldAccessStructMap.<code>`, both survive (`MYBPM-IMPORTS.md` §0.13,
   «CURRENT_* date widgets round-trip»).
 
 #### The CAPTCHA widget («Блок captcha») — settings and what it does to saves `[C]`
@@ -2990,7 +2990,7 @@ is read by its PREFIX:
   no human to read the image cannot save records of a BO with a captcha.** Whether scripts and the xlsx
   import are blocked too is `[U]`. Removing the widget (`deletedFieldIds`) makes saving work again at once.
 - The positive path (a solved captcha, then a save) is `[U]`: solving the image needs a person.
-- Archive: `captcha.<code>` + `fieldAccessStructMap.<code>`, both survive (`MYBPM-IMPORTS.md` §0.5b,
+- Archive: `captcha.<code>` + `fieldAccessStructMap.<code>`, both survive (`MYBPM-IMPORTS.md` §0.13,
   «CAPTCHA round-trips»).
 
 #### The SIGNATURE widget («ЭЦП / СМС») — settings `[C]`
@@ -3048,7 +3048,7 @@ POST v2/signature/save-signature-settings     BODY (not params):
   button stays disabled while the record's phone field is empty. The rest of the flow (`generate-code`,
   `sign-otp`, `save-signed-data`, `load-signatures-list`) is `[U]`: it sends a real SMS. In
   scripts the result is `#получи подписи` → `Object/MybpmSignature[]` (`MYBPM-IMPORTS.md` §12a).
-- **The archive form** (`signatures.<code>`) and what survives an import: `MYBPM-IMPORTS.md` §0.5b «SIGNATURE
+- **The archive form** (`signatures.<code>`) and what survives an import: `MYBPM-IMPORTS.md` §0.13 «SIGNATURE
   round-trips». In short, everything travels by CODE except `massPrintFormCodes`, which no import brings
   back (`[I]`: nothing is offered to resolve it against); re-importing onto the SAME BO also clears the phone
   and duplicates the print forms (trap 71).
@@ -3081,7 +3081,7 @@ block.
 - **The archive does NOT carry a native's lock**: the export writes it (`AccessStructDto.fieldAccessStructMap.
   <NATIVE_TYPE>`), the import ignores it — and still sets `chosenAccessRight: true`, so the copy shows an
   orange lock over rights that are «всем». A dynamic field's lock in the same archive arrives. After an
-  import, set native locks with `save-field-access-group` (`MYBPM-IMPORTS.md` §0.5a «What travels»).
+  import, set native locks with `save-field-access-group` (`MYBPM-IMPORTS.md` §0.12 «What travels»).
 
 #### Print forms (`v2/print-form`) over the API `[C]`
 
@@ -3099,7 +3099,7 @@ call has its args in the PARAMS:
 | other | `delete-print-form {boId, printFormId}`, `remove-draft {draftId}`, `save-print-form-order-indexes`, `load/save-access-group {boId, printFormId}`, `load-test-values` / `save-test-value` | `[U]` except delete |
 
 An export carries the template itself: `printForms[]` on the BO and one `ExportStructFileDto` line per file
-(`MYBPM-IMPORTS.md` §0.5b «Print forms»).
+(`MYBPM-IMPORTS.md` §0.13 «Print forms»).
 
 - **`save-file-Id` can take minutes** `[C]` (more than 2 minutes). A browser call
   keeps running after the automation's timeout, so a «retry» creates a second form; the code is not unique
@@ -3298,7 +3298,7 @@ fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the
 - **A BO with a `DROPDOWN_SINGLE` that has no kanban card template cannot show its map** `[C]`: as soon as it holds a
   record, `load-bracket-boi-points` answers NullPointerException «cardTemplate is null» and the map stays empty;
   the kanban view and the constructor's kanban editor die with the same error. A BO built in the constructor gets
-  the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.5c), and
+  the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.14), and
   an archive BO with a dropdown imported without one is broken this way (trap 61).
 - `v2/kanban/save-kanban-card-template` does NOT repair it (it fills another store, §7). **A re-import with
   `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor come back, records kept.
@@ -3745,14 +3745,14 @@ A kanban is two independent pieces:
    A local-list dropdown (`FROM_FIELD`) qualifies exactly like a dictionary one (`FROM_BO`) `[C]`:
    `v2/kanban/load-kanban-fields {boId}` lists both and the board shows the local options as columns.
    A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
-   (`MYBPM-IMPORTS.md` 0.5c).
+   (`MYBPM-IMPORTS.md` 0.14).
 2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO without it carries `{}`,
    so `BoDto.toKanbanCardTemplate` NPEs and the view shows «cardTemplate is null». **Ship the template
-   inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
+   inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.14, keyed by the
    dropdown's CODE, the card fields by CODE with `locationType` + `archetype`.
 
 **The template, as it goes into the BO's line of the archive** (`BoStructDto`, next to `dynamicFields`;
-same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
+same block: `MYBPM-IMPORTS.md` §0.14) `[C]`:
 
 ```text
 "kanbanCardTemplates": {
@@ -4527,7 +4527,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     copy (same name and code; forms are matched by `newId`, which each export renews), the SIGNATURE phone is
     cleared, `massPrintFormCodes` is not restored, and rolling the import back adds one more copy of each form
     and restores neither the phone nor a radio's dictionary. Drop `printForms` from such an archive, then
-    check phone and forms by hand. §5 «Rollback trap», §5i, `MYBPM-IMPORTS.md` §0.5b.
+    check phone and forms by hand. §5 «Rollback trap», §5i, `MYBPM-IMPORTS.md` §0.13.
 
 ## 12. Open questions
 
