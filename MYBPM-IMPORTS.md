@@ -2514,6 +2514,13 @@ clipboard is no longer the only write channel** (§14 is about the IDE, not abou
   full read-back route, tree and wiring included: `MYBPM-UI-API.md` §5g.)
   The first import also produced a version «2» with `isTest:true` carrying the same script ids, although
   the archive had **no `testScripts`** — a test version is created for you.
+- **No archive updates an existing version** `[C]`: with the `compositeId` prefix set to the CURRENT work
+  version's `boScriptModId` the import still added a new work version with its own id; the old one kept
+  its body and dropped to `isWork:false, isTest:false`, and the test version kept its OLD body. After a
+  re-import, refresh the test version yourself if you test there. Dead versions are removed with
+  `v2/bo-scripts-editor/remove-bo-script-version` `P {boId, boScriptsId}` (`MYBPM-UI-API.md` §5g) — **it
+  removes the WORK version too, without a warning**, after which ordinary records run nothing; take the
+  id from a row with `isWork:false, isTest:false`.
 - **An empty hook stays empty**: a hook id with no `ScriptDefStructDto` translates to «Не определён
   скрипт». The imported ТОЧКА ВХОДА → ВЫЙТИ def translates `{"success":true}`.
 
