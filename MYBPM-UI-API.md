@@ -12,26 +12,22 @@ records — → `MYBPM-IMPORTS.md`. This document is the transport and the stand
 cookbook: how to authenticate, one complete request with its complete answer, how to find an endpoint
 this document does not list, and then a numbered recipe with literal payloads per task (create a BO of
 any of the five kinds, import a structure archive, hand out rights, build a menu, import records from
-Excel, export). Sections 1–12 are the evidence behind it and the material for non-trivial cases; §0U is
+Excel, export). Sections 1–12 are the material for non-trivial cases; §0U is
 enough to drive a stand. Its counterparts for files are `MYBPM-IMPORTS.md` §0 (archives), §0S (Block
 IDE scripts) and §0X (records in xlsx) — the four cookbooks are independent, read the one you need.
 
 **Placeholders.** This document describes the PLATFORM, not one installation of it, so every host and
 company name is replaced by a placeholder: `<stand>` is the host of a MyBPM stand (an archive never
-carries it — the user is the only source, §0U.1), `<company-a>` … `<company-d>` are the companies
-(tenants) the facts were collected on, and `<COMPANY_A>` is the `companyCode` of `<company-a>`.
+carries it — the user is the only source, §0U.1), `<company-a>` … `<company-d>` are companies
+(tenants), and `<COMPANY_A>` is the `companyCode` of `<company-a>`.
 `<company-a>` and `<company-c>` live on the same `<stand>`. Where a fact depends on WHICH installation
 it came from, the origin mark carries the platform build instead of a name. The document describes the
 LATEST platform implementation, so it carries no dates.
 
 **A tenant's display name and its `companyCode` are different strings** `[C]`
-(`GET /web/v2/auth/load-auth-info` → `{companyId:"…", companyCode:"<COMPANY_A>", …}`): the company this
-document calls `<company-a>`, with its 14 BO groups and the probe group «Бизнес-объект», answers a code
-that looks nothing like its name. Do not take that code for a second company.
+(`GET /web/v2/auth/load-auth-info` → `{companyId:"…", companyCode:"<COMPANY_A>", …}`): a company
+answers a code that may look nothing like its name. Do not take that code for a second company.
 
-**Evidence base.** MyBPM v4.24, four companies across two stands: build `S4.24.25.632/C4.24.25.264`
-(BO constructor, structure import, records, kanban, menu items in an archive), build `4.24.25.614` (API,
-menus, rights, kanban, Excel links) and builds `4.24.25.570/.614` (Excel record import).
 **Status markers**: `[C]` confirmed on a stand, `[I]` inferred, `[U]` unverified.
 
 ---
@@ -41,8 +37,8 @@ menus, rights, kanban, Excel links) and builds `4.24.25.570/.614` (Excel record 
 **Read this section if your job is «do X on a live MyBPM stand»** — create a business object, import a
 structure archive, hand out access rights, build a menu, import records from Excel, or read any of it
 back. It is self-contained: the transport, the authentication, one complete request with its complete
-answer, and then one numbered recipe per task with literal payloads. Sections 1–12 are the evidence
-behind it and the material for exotic cases; this one is *what to send*.
+answer, and then one numbered recipe per task with literal payloads. Sections 1–12 are the material
+for exotic cases; this one is *what to send*.
 
 Two rules that apply to every recipe:
 
@@ -54,8 +50,7 @@ Two rules that apply to every recipe:
   it did not do (§0U.2).
 
 *(`tools/follow-cookbook-stand.bun.ts` in this folder is a client written from this section and nothing else —
-both the proof that the section is sufficient and a worked example of R1/R4. Its request stream is
-identical, payload for payload, to the stand-verified `tools/create-bo-constructor.bun.ts`.)*
+a worked example of R1/R4.)*
 
 ### 0U.1 What you must have before the first call
 
@@ -97,15 +92,15 @@ Content-Type: application/json
   «Illegal Session», as in route B). `GET /web/v2/auth/load-auth-info` with that header names the user
   and lists their `functionCodes` — the quickest check that the login landed on the intended account.
 - Wrong credentials answer **HTTP 200** with
-  `{"message":"Не верен пользователь и/или пароль","errorType":"IllegalLoginOrPassword",…}` `[C]`
-  (probed on `<stand>` with a nonexistent user). So a failed login looks exactly like any other
+  `{"message":"Не верен пользователь и/или пароль","errorType":"IllegalLoginOrPassword",…}` `[C]`.
+  So a failed login looks exactly like any other
   error (§0U.2) — check `errorType`, never the HTTP status.
 - `POST /web/v2/auth/load-token` (empty params and body) returns the token of the CURRENT session, and
   `GET /web/v2/auth/load-auth-info` describes who you are. `GET /web/v2/auth/logout` ends the session.
 
 #### Route B — take the token out of a logged-in browser
 
-The route that is **confirmed** `[C]` and the one every recipe below was verified with:
+The **confirmed** route `[C]`:
 
 ```js
 localStorage.LOCAL_PRIVATE_SwebToken     // in DevTools on a page of the stand
@@ -142,8 +137,8 @@ token: <the token, no quotes>
 Answer — HTTP 200, the DTO itself, no wrapper:
 
 ```json
-{"id":"OpmGDzaQRUT27jky","name":"Проба UI 2026-09-18","code":"Proba_UI_2026_09_18",
- "boCategory":"BO","isDictionary":false,"formFields":[…],"nameMap":{"KAZ":null,"ENG":null,"RUS":"Проба UI 2026-09-18","QAZ":null},…}
+{"id":"OpmGDzaQRUT27jky","name":"Проба UI","code":"Proba_UI",
+ "boCategory":"BO","isDictionary":false,"formFields":[…],"nameMap":{"KAZ":null,"ENG":null,"RUS":"Проба UI","QAZ":null},…}
 ```
 
 Rules that hold for every endpoint `[C]`:
@@ -190,8 +185,7 @@ The endpoint list here will always be partial. **Grep the client bundle offline 
 browser**, needs no auth and no browser at all `[C]`:
 
 1. `curl -sS <stand>/ | grep -o 'src="[^"]*"'` → `runtime.<hash>.js`, `main.<hash>.js`.
-2. `runtime.*.js` contains ONE object literal `{<chunkId>:"<16-hex hash>",…}` (201 entries on
-   4.24.25.632). Parse it and fetch every `<stand>/<chunkId>.<hash>.js`. The app code is in those lazy
+2. `runtime.*.js` contains ONE object literal `{<chunkId>:"<16-hex hash>",…}`. Parse it and fetch every `<stand>/<chunkId>.<hash>.js`. The app code is in those lazy
    chunks — `main.js` is vendor code and contains none of it.
 3. Grep the downloaded chunks:
    - `grep -ho 'ControllerPrefix("[^"]*")' *.js | sort -u` → every controller on the stand (≈100).
@@ -234,7 +228,7 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    DTO throws `UndeclaredThrowableException`. For a rename the `businessObject` may be partial.
    **Never send a `code`**: the server transliterates it from the name and cuts it to 30 characters.
 4. **Wait 3 seconds.** A field save that lands within ~1 s of the rename makes the server append a
-   16-character uniquifier to the just-generated code («Test_koda_4_2026_09_18HXpmEa21vtnNLVsl»), and a
+   16-character uniquifier to the just-generated code («Test_koda_4HXpmEa21vtnNLVsl»), and a
    BO code is **never regenerated** afterwards (trap 24).
 5. **Read the BO back** — `load-business-object-by-id` — `P {"businessObjectId":"<boId>"}` → the full
    constructor DTO. You need it whole for step 7.
@@ -395,7 +389,7 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
      changed fields, added tabs/widgets).
    **Read this before applying — all three, an empty `errorRecords` alone is not a guarantee.** The analysis
    errors of the UI «Ошибки» tab come back in `load-import-errors` of the SAME `importId` `[C]` (another
-   import's errors look empty — that is how they once seemed missing); an analyzer crash is not an error
+   import's errors look empty); an analyzer crash is not an error
    record but `load-import-data` → `status:"INTERNAL_ERROR"` + a Java stack in `error`; and errors raised
    only while APPLYING never reach either — they are in the apply process (trap 57).
 5. `save-import-description` — `P {"importId":…,"value":"что и зачем импортируем"}` → empty body.
@@ -433,7 +427,7 @@ All of these but the last are `POST /web/v2/business-objects/<call>` (envelope �
 | the dictionary options of a field | `load-dictionary-bo-field-options` | `{"boId":…}` |
 | how many records match a filter | `v2/business-object-instance/load-bo-instance-bracket-table` | see R6 |
 
-**The archive's `oldId` becomes the BO's real id on the stand** `[C]` (six times over), and an
+**The archive's `oldId` becomes the BO's real id on the stand** `[C]`, and an
 imported field/tab id equals the archive's `newId`. That is how a generated archive and later API calls
 are stitched together. A BO created in the constructor gets a platform id instead — ids are 16 characters
 over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do not "clean" them.
@@ -441,7 +435,7 @@ over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do no
 #### R4a — EXPORT a BO's structure (or menu items) through the API `[C]`
 
 The reverse of an import, and the only way to read the real serialization of something built by hand
-(that is how `kanbanCardTemplates` and `MenuItemStructDto` were decoded). Controller **`struct`** — a
+(`kanbanCardTemplates`, `MenuItemStructDto`). Controller **`struct`** — a
 basket the stand keeps per user, then one download. **The controller is `/web/struct/<method>`, NOT under
 `/web/v2`** (trap 41) — a `v2/struct/…` call answers 404 and an in-page helper that parses the body silently
 takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
@@ -457,11 +451,9 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 
 - **Read the basket first and restore it afterwards** — it is the user's own selection on the
   «Импорт/Экспорт» screen, not scratch space.
-- **Both basket writes work over the API** `[C]` — the HTTP 400 «Failed to read request»
-  once written up here as a defect was a wrong BODY: **`remove-*` takes an array of id STRINGS**
+- **Both basket writes work over the API** `[C]`: **`remove-*` takes an array of id STRINGS**
   (`["zm8ufIOguCPru0bu"]`), not the records that `save-*` takes. Sending records to `remove-*` — with or
-  without the `isMenuExport:true` flag the basket adds — gives exactly that 400. Verified by removing the
-  one BO in a basket and saving it back: count 1 → 0 → 1, the record byte-identical to the original.
+  without the `isMenuExport:true` flag the basket adds — gives HTTP 400 «Failed to read request».
   The UI alternative: `/settings?settingsOpenPageUrl=import_export&formType=export`, the ⊕ next to a
   basket caption opens a checkbox popover (closing it saves), the row's delete icon removes one (it opens
   a confirm whose buttons are `.confirm-button-block .ok-btn`).
@@ -483,7 +475,7 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 - **The company-settings basket** `[C]`: `load-settings-export-kinds` → `[{kind, selected}]` (14 kinds),
   `change-settings-export-kind` **P** `{kind, value}` (in B it does nothing), `count-settings-export-kinds`,
   `clear-settings-export-kinds`. A ticked kind exports as one `CompanySettingsStructDto {kind, payloadJson}` line;
-  exercised for `SCRIPT_SETTINGS` (§5o) and for every kind (§5n «Every kind of the settings basket»).
+  see §5o (`SCRIPT_SETTINGS`) and §5n «Every kind of the settings basket».
   Untick it afterwards — it is the user's selection too.
 - Getting the bytes OUT of the browser: fetch the zip inside the page and POST the `arrayBuffer` to a
   local `Bun.serve` — the same 127.0.0.1 bridge the import dry run used (§5).
@@ -547,7 +539,7 @@ route below is for items on BOs that are already on the stand, and for access ri
 5. A record filter: `load-bracket-filter` — `P {"menuItemId":…}` **creates** the filter record if it is
    missing → `POST /web/v2/bracket-filter/save` — `B {"id":…,"boId":…,"brackets":[<root>]}`. A bracket is
    `{id,parentId,parentTreeIds,connectionType,notType,dynamicFilters,nativeFilters,brackets}`.
-   Semantics, verified by record counts: filters inside ONE bracket are AND-ed; **a bracket's own filters
+   Semantics: filters inside ONE bracket are AND-ed; **a bracket's own filters
    are IGNORED if it has sub-brackets**; siblings combine by the EARLIER sibling's `connectionType`.
 6. **Verify a filter without saving it**: `POST /web/v2/business-object-instance/load-bo-instance-bracket-table`
    — `B {"boId":…,"dynamicFilters":[],"nativeFilters":[],"search":"","paging":…,"ordering":null,"state":"ALL","brackets":[…]}`
@@ -597,7 +589,7 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`needBoiId:true` adds a last
    column «Внутренний айди»** holding each record's id — **a re-import does NOT match rows by it** `[C]`:
    the header is accepted and the value ignored; re-importing its own export into a BO with no unique field
-   created a duplicate record. Rows match by the unique field only (`MYBPM-IMPORTS.md` §19.5). In the UI it
+   creates a duplicate record. Rows match by the unique field only (`MYBPM-IMPORTS.md` §19.5). In the UI it
    is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default.
    **`boFieldIds` decides the columns** `[C]`: a non-empty list = exactly those fields in that order; an
    EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
@@ -605,8 +597,7 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    fields, pre-ticked with the registry columns; it sends what is ticked, in ticking order. No field flag
    hides a field from an API export — list the fields you want. **An EMPTY list exports the nested blocks
    EMPTY** `[C]`: their caption and sub-headers are there, every sub-cell is blank and a TABLE reference is
-   not expanded into repeated rows, although the links exist — the same BO with its field ids listed gave
-   the child codes and the repeated rows. To read links back from a file, always list the fields.
+   not expanded into repeated rows, although the links exist. To read links back from a file, always list the fields.
    A sub-column that is itself a reference (a nested reference inside the target) is in no template and
    no export: the stand drops it from the block (`MYBPM-IMPORTS.md` 0X.4 rule 6).
 7. **Verify** by exporting the registry again and rebuilding the data model from the cells. **File order
@@ -668,7 +659,7 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
     go through `javascript_tool` (`el.click()` matched on `innerText`), text through the native value
     setter — `computer type` silently drops spaces and punctuation.
 11. **Every BO shows at least one field in its registry, and every BO-reference field shows at least one
-    field of the BO it points at** — a rule from the platform team. A BO with no
+    field of the BO it points at**. A BO with no
     `tableColToShow` field answers `AccessDenied` in its registry and lists no rows (trap 48). A reference
     with every `boFieldRefs[].toShow: false` renders an empty selector on the card (trap 53). The API
     creates both states by default, so set a column (`editedFields: [{fieldId, tableColToShow:true,
@@ -742,9 +733,9 @@ something behaves impossibly** · §12 what is still unknown.
   `token` header — no XHR sniffing needed. `[C]` Sent WITH the quotes the stand answers
   `SecurityError` «Illegal Session» (HTTP 200 body, not a 401), so that error means «bad token», not
   «expired session». In the browser the Angular client reads the same key, so a curl/Bun client outside the
-  browser needs nothing else: **no cookies** (`document.cookie` is empty on this stand) and no company
+  browser needs nothing else: **no cookies** (`document.cookie` is empty) and no company
   header — the token alone selects the tenant.
-- **A browser is not the only way to get a token** — the stand has a headless login `[C]` (both paths run):
+- **A browser is not the only way to get a token** — the stand has a headless login `[C]`:
   `POST /web/v2/auth/v3/login`, standard envelope, body
   `{"dXNlcm5hbWU=":"<base64 of the login>","cGFzc3dvcmQ=":"<base64 of the password>",
   "timeOffsetZoneInMinutes":-300,"timezoneRegion":"Asia/Almaty","clientType":"WEB","userAgent":"curl",
@@ -762,7 +753,7 @@ something behaves impossibly** · §12 what is still unknown.
   service itself; `5675` — structure import; `7094`/`7584` — process indicator). Pull them all without a
   browser, no auth needed for static assets:
   1. `curl -sS https://<stand>/ | grep -o 'src="[^"]*"'` → `runtime.<hash>.js`, `main.<hash>.js`;
-  2. `runtime.*.js` contains ONE object literal `{<chunkId>:"<16-hex hash>",…}` (201 entries on 4.24.25.614)
+  2. `runtime.*.js` contains ONE object literal `{<chunkId>:"<16-hex hash>",…}`
      — parse it and fetch every `https://<stand>/<chunkId>.<hash>.js`;
   3. grep the downloaded chunks. A controller is `…setControllerPrefix("v2/business-objects")`, and each
      method reads `postJson("/load-bo-groups",{},{boId:u})` — body first, params second, so the call maps
@@ -771,7 +762,7 @@ something behaves impossibly** · §12 what is still unknown.
   and misses anything that fires before the logger is installed.
 - A stand export carries no host/URL — record the stand URL in the project memory.
 - URL patterns: BO constructor `/business-objects/editing/<boId>/object-editing`; its editable list is
-  `/business-objects/editing`. `/business-objects/viewing-list` (Системные → Бизнес) is the read-only
+  `/business-objects/editing`. `/business-objects/viewing-list` (sidebar «Бизнес») is the read-only
   twin — it has no create/edit controls at all. See §5b.
 
 ## 2. Working method (user's rules)
@@ -787,9 +778,9 @@ something behaves impossibly** · §12 what is still unknown.
   `[C]`: an `autoMode` block in the user's `~/.claude/settings.json`, with an `environment`
   line («the user owns the stands *.mybpm.kz») and an `allow` line (any action on the stand through
   claude-in-chrome, in-page API writes included), each list starting with `"$defaults"`. With it,
-  in-page `save-business-object-portion`, JS clicks on «СОХРАНИТЬ» and `push-step-forcibly` all passed
+  in-page `save-business-object-portion`, JS clicks on «СОХРАНИТЬ» and `push-step-forcibly` pass
   with no prompt.
-- **The constructor's «СОХРАНИТЬ» ignored two real mouse clicks and saved on `button.click()` from JS**
+- **The constructor's «СОХРАНИТЬ» ignores real mouse clicks and saves on `button.click()` from JS**
   `[C]` (`mybpm-ng-action-buttons button.main`, with a field-settings panel open). This is the
   opposite of the Form dialog's checkboxes (§5f). If a click sends nothing, check the XHR log, then try
   the other kind of click.
@@ -819,9 +810,8 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
   Mapping: «Автор (инициатор)» = `authorsField.accessForAuthor`; «Содержимое поля» =
   `fromFields[fieldId].accessForContent`. `accessForAuthor` is true on every `fromFields` entry of
   `all`/`view` by default, and it opens nothing (below).
-- **What each subject opens** `[C]` — measured as a second, non-admin user reading the registry
-  (`load-bo-instance-bracket-table` → `totalHits`) of a probe BO with one Person field, `view` set to
-  `accessForAll:false` plus ONE subject at a time:
+- **What each subject opens** `[C]` — for a non-admin user reading the registry
+  (`load-bo-instance-bracket-table` → `totalHits`), `view` set to `accessForAll:false` plus ONE subject:
 
   | subject (`view`) | the user sees |
   |---|---|
@@ -841,23 +831,21 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
   «Вас добавили» (`type:"ADD_PARTICIPANTS"`) for the added person (`v2/user-notification/count` →
   `events`). A user named in the field of a record they are NOT a participant of does not see it under
   `participants:true` alone.
-  Not measured: `accessForHead` / `accessForEmployees` / `accessForDepartment` / `…ParentDepartment` /
-  `…ChildDepartment` (need an org structure around the test user) and `authorsField.fieldIds`. The latter is
+  Not measured `[U]`: `accessForHead` / `accessForEmployees` / `accessForDepartment` / `…ParentDepartment` /
+  `…ChildDepartment` and `authorsField.fieldIds`. The latter is
   `[I]` the Person fields of the AUTHOR's own record — `load-org-field-record-list` lists, under each Person
   field, the Person BO's own Person fields (`Преемник`, `Предшественник`), and `load-field-access-author-person-list
   {name:"Сотрудник"}` serves the author row the same way.
   **Re-sending `fromFields:{}` does NOT remove a field entry** — the server keeps it; set its flags to
-  `false` instead. Once, a record the user created right after the first rights save showed up although no
-  subject covered it; two later records under the same rights did not, and the first one vanished after the
-  next save — treat a just-created record's visibility as unreliable for a minute, re-check after a re-save.
+  `false` instead. Treat the visibility of a record created right after a rights save as unreliable for a
+  minute — it may show although no subject covers it; re-check after a re-save.
 - `save-access-group` body `{businessObjectId, accessGroup:<the same object>}`.
   **Groups persist only through `orgUnitToAdd` (full unit records) / `orgUnitToDelete`, NOT through
   `orgUnitRecordList`** `[C]` — the UI sends `orgUnitToAdd: []` for groups that are already there.
   The UI follows the save with `save-business-object-portion`, body
   `{jsonPart:"{\"businessObject\":{\"id\":\"<bo>\",\"nameMap\":{},\"recordNameMap\":{},\"chosenAccessRight\":true}}",orderIndex:0,isLast:true,id:null}`.
 - `load-org-field-record-list` params `{businessObjectId}` → the Person fields usable in rights
-  `[{id,name,kind}]`. Some reference fields are not offered (returned `[]` for a BO with a «Сотрудник»
-  field; its type was not checked).
+  `[{id,name,kind}]`. Some reference fields are not offered (a «Сотрудник» field may come back `[]`).
 - `load-org-unit-record-list` params `{filter:"", skipFirstCount:0}` → groups (and users). **Group ids in
   the API have no `G-` prefix**; the archive's `orgUnitIds` use `G-<id>`.
 - Field rights: `load-field-access-group` params `{businessObjectId, fieldId}`;
@@ -870,22 +858,20 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
   tab chip orange `[C]`. To reset a tab: `accessForAll:true`, `orgUnitToDelete` = the
   current `orgUnitRecordList`, then the flag `false`.
   **Tab rules travel in an archive** `[C]` as
-  `AccessStructDto.fieldAccessStructMap.<TAB_GROUP code>.tabAccessStructMap.<tab code>` (export with
-  «Права доступа» → import of a copy → the same lock on the same tab); details in `MYBPM-IMPORTS.md` §7.
+  `AccessStructDto.fieldAccessStructMap.<TAB_GROUP code>.tabAccessStructMap.<tab code>`; details in
+  `MYBPM-IMPORTS.md` §7.
 - **Field and tab ids on the stand equal `newId` in an imported archive** — that is how a generated archive
   and the API are stitched together.
 - Also seen on the controller: `load-field-access-author-person-list`. Dictionary options:
   `load-dictionary-bo-field-options {boId}`.
-- **Group rights travel in an archive** `[C]`: view → one group, edit →
-  another, exported with «Права доступа», reset to «всем», the export imported → both groups back. (The
-  2026-09 note «import wipes group rights» came from an older build and did not reproduce.) An archive
-  WITHOUT an access DTO left the rights untouched. The export also writes each mentioned group as an
-  `ExportStructInstanceDto` (`boCode:"PersonGroup"`). A later UI reading once showed «Из поля →
-  Содержимое поля» unchecked after a re-import — re-check `fromFields` after an import that carried rights.
+- **Group rights travel in an archive** `[C]` (export with «Права доступа»; the import puts the groups
+  back). An archive WITHOUT an access DTO leaves the rights untouched. The export also writes each mentioned
+  group as an `ExportStructInstanceDto` (`boCode:"PersonGroup"`). «Из поля → Содержимое поля» may come back
+  unchecked after a re-import — re-check `fromFields` after an import that carried rights.
 
 ## 4. Sidebar menu — controller `v2/menu-item`
 
-All verified on the `<company-c>` stand by building 5 menu groups + 36 items via the API. `[C]`
+Everything in this section is `[C]`.
 
 - `create-menu-item` body = the item itself:
   `{id, type: GROUP|BO, displayName, displayNameMap{RUS}, boId, iconName, orderIndex, isPanel:false,
@@ -911,8 +897,6 @@ All verified on the `<company-c>` stand by building 5 menu groups + 36 items via
   **Valid names = the catalogue below** (1153 names, `phosphor:*` AND `menu-item:*`); the server accepts
   anything, so a wrong name is found only as a blank in the sidebar. Built-in items inside «Системные»
   use system icons (portfolio, no-color-settings, no-color-archive, man-with-company) — leave them alone.
-  (Not «only the 1048 `phosphor:*` strings» — the 105 `menu-item:*` names of the picker's commerce tab
-  count too.)
 - UI: the sidebar row kebab (⋮) offers Отображать в моб. приложении / Изменить код / Права доступа /
   Переименовать / Изменить иконку / Разгруппировать / Удалить. Sidebar names are `<input>` values inside
   `app-bo-record`; clicking `.container` puts the id into the URL.
@@ -923,15 +907,14 @@ Every value `iconName` may take besides the defaults (GROUP `bo-g-draggable`, BO
 dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `save-menu-item-icon-name`
 / `create-menu-item` here, and a `MenuItemStructDto` line in an archive (R6, §5).
 
-- **The server checks nothing** `[C]`: `create-menu-item` and `save-menu-item-icon-name` stored
-  `menu-item:025-building`, `menu-item:002-price tag` (with the space) and the made-up
-  `phosphor:no-such-icon-xyz` verbatim, and an archive import accepted the made-up name the same way
-  (dry run clean, `APPLIED`). A wrong name shows up only in the sidebar — an EMPTY place instead of an
+- **The server checks nothing** `[C]`: `create-menu-item`, `save-menu-item-icon-name` and an archive
+  import store any name verbatim — a name with a space, a made-up name — and the dry run stays clean and applies (`APPLIED`).
+  A wrong name shows up only in the sidebar — an EMPTY place instead of an
   icon. So copy every name from the list below; when the user describes an icon by meaning («домик»,
   «деньги»), take the closest name and say which one you took.
 - **How the frontend draws a name**: `<namespace>:<name>` is fetched as
-  `/assets/icons/<namespace>/<name>.svg` (read off the network log; a name with a space is URL-encoded
-  and drawn). So «valid» = «the file exists»: all 1153 names below answer HTTP 200, the made-up one 404.
+  `/assets/icons/<namespace>/<name>.svg` (a name with a space is URL-encoded
+  and drawn). So «valid» = «the file exists»: all 1153 names below answer HTTP 200, a made-up one 404.
   Two namespaces, both used by the stand's own items (`phosphor:house`, `menu-item:022-presentation`).
 - Plausible Phosphor names that are NOT on the stand (404): `seal-check`, `ranking`, `toolbox`, `gavel`
   — never compose a name from memory of the Phosphor set.
@@ -974,9 +957,9 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
   saving). Only `view` matters for navigation.
 - **WRONG** (fails with `NoBoWithId` for menu items): `v2/business-objects/load|save-business-menu-access-group`.
 - **They travel in an archive** `[C]`: the item's `MenuItemStructDto` gets `chosenAccessRight:true`
-  + `accessGroup` (the `AccessStructDto` action shape, `orgUnitIds:["G-<id>"]`); an import put a group
-  back on an item reset to «всем» (`MYBPM-IMPORTS.md` §0.5d, §5e). The calendar and timeline views of
-  `boPages` travel too — the timeline as `timelineFieldCode` (a `PERIOD` field's code) — `[C]` same day;
+  + `accessGroup` (the `AccessStructDto` action shape, `orgUnitIds:["G-<id>"]`)
+  (`MYBPM-IMPORTS.md` §0.5d, §5e). The calendar and timeline views of
+  `boPages` travel too — the timeline as `timelineFieldCode` (a `PERIOD` field's code) — `[C]`;
   set them over the API with `save-menu-item-bo-pages` params `{menuItemId}`, body = the whole `boPages`
   (`timelineFieldId` = a field of `v2/timeline/load-fields {boId}` — the BO's `PERIOD`/`PERIOD_TIME` fields).
 - **No cascade; each item is filtered by its own `view`** `[C]` (a non-admin user's `load-nav-items`, the
@@ -997,7 +980,7 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
   8-char ids, `fieldCode` instead of `fieldId`) imports whole — `MYBPM-IMPORTS.md` §5e.
 - A bracket: `{id, parentId, parentTreeIds, connectionType, notType: DEFAULT|NOT, dynamicFilters,
   nativeFilters, brackets}`.
-- **Semantics, verified by record counts** `[C]`: filters inside ONE bracket are AND-ed; a bracket's own
+- **Semantics** `[C]`: filters inside ONE bracket are AND-ed; a bracket's own
   filters are **IGNORED if it has sub-brackets**; siblings combine by the EARLIER sibling's
   `connectionType` — so put the OR on the first sibling.
 - Dynamic filter types: person link `type:"BO"`, `businessObjectId` = the company's `personBoId`,
@@ -1011,22 +994,21 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 ## 5. Structure archive (`.mybpm.zip`) — import (UI and API) and export
 
 What the archive CONTAINS and what import DOES → `MYBPM-IMPORTS.md` §1-8. This section is only the UI
-route to upload/download one. Evidence: `<stand>` company **`<company-a>`**, v4.24.25.614. `[C]`
+route to upload/download one. `[C]`
 
-**One domain hosts several companies (tenants).** `<stand>` serves `<company-c>` AND `<company-a>` (and `<COMPANY_A>`
-appears in `<company-a>`'s import log). The sidebar content differs completely per company — do not assume a
+**One domain hosts several companies (tenants).** The sidebar content differs completely per company — do not assume a
 screen exists just because another company on the same host has it.
 
 ### Route
 
-Sidebar group **«Системные»** (a collapsed menu GROUP, first item, click to expand) → **«Настройки»** →
+Sidebar item **«Настройки»** (top level by default, or inside the company's own menu group — see below) →
 `/settings`, then the left sub-menu → **«Импорт/Экспорт»**.
 
 - Direct URLs (work, no clicking needed): `/settings?settingsOpenPageUrl=import_export&formType=import`
   and `…&formType=export`. **Clicking the Импорт/Экспорт tab labels did nothing — navigate by URL.** `[C]`
 - **«Бизнес», «Компания», «Настройки», «Аналитика» sit at the TOP LEVEL of the sidebar by default** —
-  outside any group (user). `<company-a>` is the exception: someone there collected them into a
-  menu group called «Системные». **The group is a per-company menu arrangement, not a platform
+  outside any group. A company may collect them into a menu group (e.g. «Системные»).
+  **The group is a per-company menu arrangement, not a platform
   constant** — in another company look for these items at the sidebar's top level, or inside whatever
   group that company made. Never navigate by the path «Системные → …»; navigate by the item name, or by
   URL (`/settings…`, `/business-objects/viewing-list`).
@@ -1060,10 +1042,9 @@ Sidebar group **«Системные»** (a collapsed menu GROUP, first item, cl
    «Импорт проанализирован»**. *Nothing has been written to the stand yet.*
 2. **Click that log row** → a full-screen dialog opens:
    - left tree: **«Информация»**, **«Ошибки»**, then one node per BO in the archive, labelled
-     **`<вид объекта>/<имя БО>`** — the first half is the object's CATEGORY, not its BO group `[C]`
-     (a `BO_DICTIONARY` whose `boGroupOldId` pointed at «Бизнес-объект» was listed as
-     «Справочник/Проба справочник импорт UI» and landed in «Бизнес-объект» all the same;
-     `load-import-bo-infos` returns that same `boCategory` per row);
+     **`<вид объекта>/<имя БО>`** — the first half is the object's CATEGORY (a `BO_DICTIONARY` is
+     «Справочник/…» whatever its `boGroupOldId`), not its BO group `[C]`;
+     `load-import-bo-infos` returns that same `boCategory` per row;
    - «Информация» = Дата импорта / Автор импорта / Импортированный файл (read-only) + **«Описание
      импорта»**, a required free-text area — this is where the log's description column comes from;
    - «Ошибки» = a table Бизнес объект / Тип ошибки with a detail pane («Выберите ошибку из списка» when
@@ -1074,19 +1055,15 @@ Sidebar group **«Системные»** (a collapsed menu GROUP, first item, cl
 3. Only ПРИМЕНИТЬ writes; the row then flips to «Импорт выполнен». So an archive can be inspected
    against the stand before it touches anything — use it as a dry run.
 - API behind the screen: the same endpoints the API route drives — the full list, the upload call and the
-  order are in «Import through the API» below. (The `file_upload` call itself was never sniffed and never
-  had to be: the client's code names it — `postFileJson("/import-file", file, {})`.)
-- The log confirms **the outer file name is free**: entries include `TestSumProcess.mybpm.zip` and a
-  Cyrillic `Тест вставки текста в поле типа текст.mybpm.zip`. `[C]`
-- The log also confirms **cross-tenant import works**: `<company-a>` holds imports of
-  `MyBPM-export-<COMPANY_A>-…` and `MyBPM-export-<company-d>-…` archives. `[C]`
+  order are in «Import through the API» below. The upload is `postFileJson("/import-file", file, {})`.
+- **The outer file name is free** — Cyrillic and spaces included. `[C]`
+- **Cross-tenant import works**: an archive exported from one company imports into another. `[C]`
 - «Описание импорта» is a free-text field stored per import — so the dialog asks for a description
   (the field was never opened; the dialog's exact contents are `[U]`).
 
 ### Import through the API — the whole cycle without a browser `[C]`
 
-Done end to end on `<company-a>`: BO «Проба API» was created by this route
-alone. Driver: `~/programming/MyBPM/tools/api-import-structure.bun.ts` (Bun, `fetch` + `FormData`;
+Driver: `~/programming/MyBPM/tools/api-import-structure.bun.ts` (Bun, `fetch` + `FormData`;
 `--apply` / `--cancel` / `--import-id` / `--description`, token from `$MYBPM_TOKEN` or `--token-file`).
 
 Controller prefix is **`import-structure`**, NOT `v2/…` → `POST https://<stand>/web/import-structure/<m>`,
@@ -1108,7 +1085,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 
 - **Polling**: `POST /web/v2/process-indicator/load-state-short {processId}` → `{label,percentage,isFinished}`
   every ~1 s (the client uses 2 s); `…/load-state`, `…/delete`, `…/cancel` also exist. Steps 2/3 each
-  return their own processId; on this 1-BO archive both were already finished on the first poll.
+  return their own processId.
 - **Everything up to step 4 writes nothing to the stand** — status stays `ANALYZED`. So the API route is a
   real dry run: upload, read `load-import-errors` + `load-import-bo-infos`, and only then decide.
   `/import-structure/cancel-import {importId}` drops it, `/remove-import` deletes the log row.
@@ -1118,35 +1095,31 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   carry `canRollback:false` + `newerAppliedImportsCount:N`, and `rollback-import` on them answers the body
   `{"message":"RwFGhT3idZ :: Rollback is allowed only for the latest applied import", …}` — and the
   `processId` you passed is then never finished, so a poll loop on it spins until your timeout.
-  **Executed end to end** `[C]`: the preview answers
+  The preview answers `[C]`
   `{rollbackAvailable, canRollback, newerAppliedImportsCount, restoreItems:[], deleteItems:[{action:"DELETE",
   category:"BUSINESS_OBJECT"|"MENU", code:"<code>#BUSINESS_OBJECT"|"<code>#MENU", name, structTypes}]}` —
   exactly what was created, nothing else; after `rollback-import` the BO answers `NoBoWithId` and the menu
-  items are gone. The process finished with `percentage: 25` and `isFinished: true` — do not wait for 100.
+  items are gone. The process finishes with `percentage: 25` and `isFinished: true` — do not wait for 100.
 - **An import never deletes** `[C]` (`MYBPM-IMPORTS.md` §8): fields, TAB_GROUPs and single tabs that a
   re-imported archive no longer carries stay on the BO with the same ids, and the fields on a dropped tab
   keep their `tabId`. Delete them with `deletedFieldIds` of `save-business-object-portion` (R1).
-- **Rollback trap: «latest» is not the order you applied in, and a rollback restores a SNAPSHOT** `[C]`
- . Three imports touching one menu item were applied A (23:08),
-  B (23:09), C (23:09) — the log keeps minutes only. The stand ranked them A < C < B: B had
-  `canRollback:true`, C `newerAppliedImportsCount:1`. An import that UPDATES something stores the state it
+- **Rollback trap: «latest» is not the order you applied in, and a rollback restores a SNAPSHOT** `[C]`.
+  An import that UPDATES something stores the state it
   found and puts it back on rollback (`restoreItems`, `action:"RESTORE"`), without looking at what came
-  after. So rolling back in the order the stand allowed: B → the item got A's name back and **C's change,
-  applied later, was silently lost**; then C → the item got **B's** name back — a state from an import
-  that was already rolled back; then A (`deleteItems`) removed the BO and the item, and the stand was
-  clean again. **The ranking rule** `[C]` (three runs, the same every time): imports are ordered by the
+  after: a later import's change to the same object is **silently lost**, and rolling back the next import
+  may restore a state from an import that was already rolled back; the rollback of the import that
+  CREATED the objects (`deleteItems`) removes them. **The ranking rule** `[C]`: imports are ordered by the
   MINUTE of `imported_at` (the upload time, minute precision), and **inside one minute the order is
-  REVERSED — the import applied FIRST counts as the newest**. a, b, c applied in that order within one
-  minute came back `newerAppliedImportsCount` a 0 / b 1 / c 2 (`canRollback` on a); d applied the next
-  minute ranked above all three. Rules: when you may need to undo, **leave at least a minute between
+  REVERSED — the import applied FIRST counts as the newest** (`canRollback` on it); an import applied the
+  next minute ranks above all of them. Rules: when you may need to undo, **leave at least a minute between
   applies**; undoing a same-minute batch goes FIRST-applied first. Before undoing ONE import, check that it is the one
   with `canRollback:true`; undoing a CHAIN is safe only all the way back to the import that CREATED the
   objects, whose rollback deletes them. A rollback works as a re-import of that snapshot and inherits the import's
   defects `[I]`: undoing a re-import of an existing BO did NOT bring back a SIGNATURE phone or a radio's
   dictionary, and it ADDED one more copy of every print form instead of removing the copies `[C]`. Check
   those by hand after an undo.
-- **`load-business-object-name` is not an existence check** `[C]`: after the rollback it still answered
-  the deleted BO's name, while `load-bo-id-by-code` gave `No bo with code` and
+- **`load-business-object-name` is not an existence check** `[C]`: after a rollback it still answers
+  the deleted BO's name, while `load-bo-id-by-code` gives `No bo with code` and
   `load-business-object-by-id` «бизнес-объект не существует». Verify a removal with those two.
 - Enums in chunk `5675`: import status `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
   INTERNAL_ERROR|CANCELED`; apply result `APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|HANDLING_ERROR`; struct
@@ -1160,19 +1133,17 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   imported_at, status, canRollback, newerAppliedImportsCount, …}]` `[C]`. The one reliable way to tell
   whether an import whose call was cut off (a 45-s `javascript_tool` limit) got applied.
 
-### The dry run as a VALIDATOR — 13 eval archives against `<stand>` `[C]`
+### The dry run as a VALIDATOR
 
-The upload→insert→analyze→`load-import-errors`→`cancel-import` cycle above is the only validator we have
-that is the platform itself. It was run over all 13 archives the §0 eval generated (`tools/out/eval*/`,
-[[cookbook-eval-dumb-model]]): **12 analysed clean** (`status:"ANALYZED"`, `error:null`, `conflicts:{}`,
-`errorRecords:[]`), one failed — and failed exactly as §0.2a predicts.
+The upload→insert→analyze→`load-import-errors`→`cancel-import` cycle above is the only validator
+that is the platform itself `[C]`. A clean archive analyses as `status:"ANALYZED"`, `error:null`,
+`conflicts:{}`, `errorRecords:[]`; a composite whose source BOs are missing fails as §0.2a predicts (below).
 
 - **`load-import-bo-infos` is also an INTENT check, not just a format one** `[C]`. It answers
   `[{importRecordId,name,boCategory,structTypes}]` BEFORE anything is written, so it says in one call
   whether the archive builds a `BO` / `BO_DICTIONARY` / `BO_PANEL` / `BO_COMPOSITE` / `BO_PROCESS` —
   the one thing `tools/validate-archive.bun.ts` structurally cannot check («the grader checks FORMAT,
-  not INTENT»). Verified: case03 → `Обращение гражданина:BO_PROCESS`, case04 → `Города Казахстана:BO_DICTIONARY`,
-  case06 → `Клиенты:BO, Рабочий стол менеджера:BO_PANEL, Сделки:BO, Задачи:BO`, case07 → `Все контакты:BO_COMPOSITE`.
+  not INTENT»).
 - **An `errorRecord` looks like this** `[C]` — `load-import-errors {importId,pageId:null}` returns
   `{id,importId,nextPageId,errorRecords:[…]}`, each record:
   ```json
@@ -1183,50 +1154,47 @@ that is the platform itself. It was run over all 13 archives the §0 eval genera
    "newFieldInfo":null,"errorType":"CO_UNSATISFIED_DEPENDENCY",
    "fieldMismatchData":null,"processData":null}
   ```
-  `ownerBoInfo` = who is broken, `requiredBoInfo` = what it needs and BY WHICH CODE. That is the analysis
-  the §0.2a paragraph on composites was written from, now confirmed on a stand: a composite whose `bos[]`
+  `ownerBoInfo` = who is broken, `requiredBoInfo` = what it needs and BY WHICH CODE. A composite whose `bos[]`
   names a code the stand does not have **fails loudly at ANALYZE time**, nothing is silently merged.
-- **The intra-archive reference survives the analyzer and the apply** `[C]`: case01 («Ученик» → «Класс» by
-  `oldId`) and case06 (a `BO_PANEL` plus the three BOs it shows, same archive) both analysed with zero
-  errors, so the importer resolves a reference to a line of the SAME archive. APPLY `[C]` too: a TABLE field
+- **The intra-archive reference survives the analyzer and the apply** `[C]`: the importer resolves a
+  reference (by `oldId`, or a `BO_PANEL` plus the BOs it shows) to a line of the SAME archive. APPLY `[C]` too: a TABLE field
   pointing at a BO on an earlier line of its archive applied clean, the target kept its `oldId` as its id and
   the field's `refBoId` read back as that id (`MYBPM-IMPORTS.md` §0.2a).
-- WARNs of `tools/validate-archive.bun.ts` are confirmed to be style only: every 0-FATAL/0-ERROR archive
-  analysed clean whatever its WARN count (case05b had 8).
+- WARNs of `tools/validate-archive.bun.ts` are style only `[C]`: a 0-FATAL/0-ERROR archive
+  analyses clean whatever its WARN count.
 
-**Follow-up probe — «а если положить эти БО в тот же архив?»** `[C]`. Yes, and it is the
-right way to ship a composite: case07's `BO_COMPOSITE` plus two plain BOs with the codes it names
-(`Klienty`, `Postavshchiki`) in ONE archive analyses `ANALYZED`, 0 errors — `load-import-bo-infos` lists
-all three. Line order is irrelevant (the composite placed BEFORE its sources analyses the same).
-Archives: `tools/out/probe-co-inarchive-<date>.mybpm.zip`, `…/probe-co-order-…`.
+**A composite's sources may travel in the same archive** `[C]`, and it is the
+right way to ship a composite: a `BO_COMPOSITE` plus the plain BOs with the codes it names
+in ONE archive analyses `ANALYZED`, 0 errors — `load-import-bo-infos` lists
+all of them. Line order is irrelevant (the composite placed BEFORE its sources analyses the same).
 
-The first version of that probe found a **new failure mode**: the sources were in the archive but their
-field codes (`Familiya`/`Imya`/`Telefon`) did not cover what the composite's `boFieldCodes` asked for
-(`Naimenovanie`/`Telefon`/`Email`), and the import came back **`status:"INTERNAL_ERROR"`** with a Java
+**A missing FIELD code crashes the analyzer** `[C]`: when the sources are in the archive but their
+field codes do not cover what the composite's `boFieldCodes` asks for, the import comes back
+**`status:"INTERNAL_ERROR"`** with a Java
 stack trace in `load-import-data.error` — `Optional.orElseThrow` in
-`StructureImportAnalyzer.fieldCodeToId` ← `analyzeFieldStructs` ← `analyzeCoStruct`. So a missing FIELD
-code crashes the analyzer, while a missing BO code is reported politely as `CO_UNSATISFIED_DEPENDENCY`.
-`INTERNAL_ERROR` from an import is therefore worth reading as «a reference inside the archive does not
+`StructureImportAnalyzer.fieldCodeToId` ← `analyzeFieldStructs` ← `analyzeCoStruct` — while a missing BO
+code is reported politely as `CO_UNSATISFIED_DEPENDENCY`.
+Read `INTERNAL_ERROR` from an import as «a reference inside the archive does not
 resolve», not «the stand is broken». Details in `MYBPM-IMPORTS.md`, the `bos[]` bullet.
 
-**How the run was driven, without ever handing a token to the shell.** The extension refuses to return
-`localStorage.LOCAL_PRIVATE_SwebToken` (§10), but a `fetch` INSIDE the page may read it. The archives
-were served to the page over plain HTTP from the machine —
-`Bun.serve({port:8787,hostname:"127.0.0.1"})` with `Access-Control-Allow-Origin:*` — and
+**Driving the cycle from the page, without handing a token to the shell.** The extension refuses to return
+`localStorage.LOCAL_PRIVATE_SwebToken` (§10), but a `fetch` INSIDE the page may read it. Serve the archives
+to the page over plain HTTP from the machine —
+`Bun.serve({port:8787,hostname:"127.0.0.1"})` with `Access-Control-Allow-Origin:*` and
+`Access-Control-Allow-Private-Network:true` —
 **an https page may fetch `http://127.0.0.1`** `[C]` (localhost is a trustworthy origin, no mixed-content
-block; `Access-Control-Allow-Private-Network:true` was sent too). The page then did
+block). The page then does
 `fetch(zip) → blob → FormData → /web/import-structure/import-file`, i.e. the whole §5 cycle per archive.
-Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four lines of `Bun.serve`).
 
 ### Verifying an import through the API (no screenshots)
 
 `POST /web/v2/business-objects/…` with the §1 envelope:
 
-- `load-bo-id-by-code {boCode}` → the BO id. On the API-imported probe it returned exactly the archive's
-  `oldId` — confirms again that **the archive's `oldId` becomes the stand's BO id** `[C]`.
+- `load-bo-id-by-code {boCode}` → the BO id. It returns exactly the archive's
+  `oldId` — **the archive's `oldId` becomes the stand's BO id** `[C]`.
 - `load-business-object-name {boId}` → the BO's name; `load-bo-groups {forEdit: true}` (PARAMS) → every group
   with `{id,name,code,orderIndex,kind}` — **without `forEdit` the groups that hold no BO are silently left out**
-  `[C]` (15 of 22 on `<stand>`), so a before/after snapshot must take `forEdit: true`
+  `[C]`, so a before/after snapshot must take `forEdit: true`
   (the way to prove an import renamed nothing — **groups are matched by
   `code`; a group line without `code` renames one fixed group, and a line WITH an existing code still
   overwrites that group's `name` and `orderIndex` with its own** `[C]`, `MYBPM-IMPORTS.md` §0.3/§8). Undo a rename
@@ -1246,7 +1214,7 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 - `import-structure/load-import-file-records` — body `{paging:{offset,limit}}` (without `paging`: NPE) → the
   import log, newest first, `{id,fileName,description,imported_at,status,canRollback,…}`;
 - **`apply-import` can answer an ERROR** instead of `{type:"APPLIED"}` — then the import stays `ANALYZED`
-  and the `processId` never runs; test the answer for `errorType` before polling (seen: «Нет скриптов для
+  and the `processId` never runs; test the answer for `errorType` before polling (e.g. «Нет скриптов для
   экспорта у БО с кодом …» — scripts onto an existing BO with an empty script module, `MYBPM-IMPORTS.md`
   §5d). `cancel-import {importId}` then closes it (`CANCELED`);
 - `load-bo-fields-for-drag {boId}` → the BO's fields as `{label,type,…}`; **`code` comes back `null`** here,
@@ -1256,15 +1224,14 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 
 ### Export tab
 
-- Layout on `S4.24.25.632` `[C]`: **four baskets, each with its own grey ⊕** —
-  «Бизнес-объекты (N)», «Элементы меню», «Аналитика», «Настройки» — not the three toggles
-  «Глобальные методы / Элементы меню / Отчеты» an earlier reading of this screen recorded. Each basket has
+- Layout `[C]`: **four baskets, each with its own grey ⊕** —
+  «Бизнес-объекты (N)», «Элементы меню», «Аналитика», «Настройки». Each basket has
   an API (§0U R4a). The BO basket has «Очистить все» — each row labelled **`<группа БО>/<имя БО>`** (e.g.
   «Бизнес-объект/БО с текстом») with three checkboxes **Структура / Права доступа / Скрипты** (they decide
   which DTO lines the archive gets: `BoStructDto` / `AccessStructDto` / `BoScriptVersionsStructDto` +
   `ScriptDefStructDto`, `MYBPM-IMPORTS.md` §5d) and two
   per-row icons; a right pane **«Зависимости:»** («Зависимости не найдены» when none); button **«Выгрузить»**.
-- The basket is PERSISTED state — it still held 2 BOs from an earlier session on open. Check/clear it
+- The basket is PERSISTED state — it keeps a selection from an earlier session. Check/clear it
   before exporting so you do not ship someone else's selection.
 - **BOs get into the basket through the grey ⊕ right of the «Бизнес-объекты (N)» caption** `[C]`
  : it opens a dropdown «Какой элемент хотите найти?» — a search box over ALL BOs of the
@@ -1273,29 +1240,23 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
   The sidebar's drop hint «перетащите бизнес объекты сюда» belongs to the MENU editor, not here.
 - **To take a BO OUT of the basket use the row's trash icon**, not the ⊕ dropdown `[C]`: unticking the
   row there does NOT remove it. The trash icon asks «Удаление элемента — Удаление элемента `<имя БО>`»
-  with ДА / НЕТ; ДА only drops it from the basket — **the BO itself is untouched** (verified: the BO was
-  still in the constructor afterwards). The other per-row icon is a collapse chevron.
-- **The whole screen has an API** — baskets + download, see §0U R4a; the basket writes included (the old
-  «they resist a hand-built call» was a wrong body — `remove-*` takes id strings).
+  with ДА / НЕТ; ДА only drops it from the basket — **the BO itself is untouched**. The other per-row icon is a collapse chevron.
+- **The whole screen has an API** — baskets + download, see §0U R4a; the basket writes included (`remove-*` takes id strings).
 
 ### Checking the result of a structure import
 
-- **BO constructor: the sidebar item «Бизнес»** → `/business-objects/viewing-list` `[C]`. In `<company-a>` it
-  lives inside the menu group «Системные»; by default it is a top-level sidebar item — see the Route
-  note above, the grouping is per-company. Left panel = the
-  list of BO GROUPS (`<company-a>` has 14: Тест, Системные, Инициатива, АВР, Задача, Компания, Встреча, Визит,
-  Контактные данные, Расположение, Другое, Fix, Tests, Бизнес-объект); the chevron on a group expands it
+- **BO constructor: the sidebar item «Бизнес»** → `/business-objects/viewing-list` `[C]`. By default it is a top-level sidebar item; a company may move it into a menu group (e.g.
+  «Системные») — see the Route note above, the grouping is per-company. Left panel = the
+  list of BO GROUPS; the chevron on a group expands it
   into its BOs (grey rows underneath). This is the place to verify that an import did not rename a group.
 - **This list is invisible to text extraction** `[C]`: `get_page_text`, `read_page` and even
-  `document.body.textContent` return only the outer chrome (`body.textContent` was 278 chars and held the
-  sidebar, not the list). Read it from **screenshots**, not from the DOM.
+  `document.body.textContent` return only the outer chrome (the sidebar, not the list). Read it from **screenshots**, not from the DOM.
 - Clicking a BO opens its registry: `/business-objects/viewing-list/bo/<boId>/list-view?…`.
-- **The stand keeps the archive's `oldId` as the BO id** `[C]` — the probe BO generated with
-  `oldId: "Zyvu00@DV5VPL69g"` got exactly that id in the registry URL. So deterministic generator ids are
+- **The stand keeps the archive's `oldId` as the BO id** `[C]` — it is exactly the id in the registry URL. So deterministic generator ids are
   also the stand's ids, and a re-import of the same archive addresses the same BO.
 - **Fields are matched by `newId`, not by code** `[C]`. A second archive with the same BO
-  `oldId` but fresh field `newId`s passed the analysis with no error and no conflict. It then ADDED a second
-  copy of every field to that BO, with the same codes, and rewrote the BO's code and name. To copy a BO,
+  `oldId` but fresh field `newId`s passes the analysis with no error and no conflict. It then ADDS a second
+  copy of every field to that BO, with the same codes, and rewrites the BO's code and name. To copy a BO,
   change its `oldId` and the field `newId`s, not only its `code` (`MYBPM-IMPORTS.md` §0.7).
 - What an imported BO looks like straight away `[C]`: registry columns = the fields with
   `tableColToShow:true`, in `tableColOrderIndex` order; «Добавить» opens the form with the archive's
@@ -1308,8 +1269,7 @@ Script: session scratchpad `serve-archives.bun.ts` (not committed — it is four
 ## 5b. Creating a BO in the constructor — no archive at all `[C]`
 
 A BO does **not** have to come from a `.mybpm.zip`. The constructor creates one directly, and the same
-six `/web/v2/business-objects/*` calls do it headlessly. Two probe BOs on `<company-a>` prove both routes:
-«Проба UI» (`OpmGDzaQRUT27jky`) and «Проба API-конструктор» (`~hb30v0XyMtGsBLj`), both in group «Бизнес-объект» (`N50iWQkw0iySlAKo`).
+six `/web/v2/business-objects/*` calls do it headlessly.
 
 ### Where the create controls live
 
@@ -1322,8 +1282,8 @@ six `/web/v2/business-objects/*` calls do it headlessly. Two probe BOs on `<comp
   expand chevron: «Добавить панель / Добавить бизнес-объект / Добавить составной объект /
   Добавить справочник / Добавить бизнес-процесс / Изменить код / Переименовать / Удалить».
 - The caption-level green ⊕ offers the same list plus «Группа», but it creates with `boGroupId: null`;
-  the client then looks for a group of `kind: DEFAULT` and **all 14 `<company-a>` groups are `kind: MANUAL`**,
-  so nothing is created and the page is left half-rendered. **Always create from the group's ⋮.**
+  the client then looks for a group of `kind: DEFAULT`, and **when no group is `kind: DEFAULT` (e.g. every group is `kind: MANUAL`)**
+  nothing is created and the page is left half-rendered. **Always create from the group's ⋮.**
 - **There is no dialog and no name prompt**: the click creates the BO immediately as
   «Бизнес объект №N» and routes to its constructor. Created is created — undo means deleting it.
 
@@ -1391,15 +1351,7 @@ settings).
 
 ### 5c. The matrix «4 routes × 5 object kinds» — column «Справочник» `[C]`
 
-A dictionary is created by all four routes with NO route-specific machinery; four probes live in group
-«Бизнес-объект» (`N50iWQkw0iySlAKo`):
-
-| route | probe | id |
-|---|---|---|
-| constructor UI | «Проба справочник UI» | `L@Qf3i2HSH~JqglG` |
-| constructor API | «Проба справочник API» | `~LnUPP4RmTVmuZZo` |
-| archive import UI | «Проба справочник импорт UI» | `lEIvD4e6k5AojKC5` |
-| archive import API | «Проба справочник импорт API» | `fArbAncLamdx5agj` |
+A dictionary is created by all four routes with NO route-specific machinery.
 
 - **Constructor.** Group kebab → «Добавить справочник» = `create-bo {boGroupId, boCategory:
   "BO_DICTIONARY"}`; everything after that is the plain BO cycle of §5b, with **no extra call**.
@@ -1417,23 +1369,14 @@ A dictionary is created by all four routes with NO route-specific machinery; fou
   in `dynamicFields` (MYBPM-IMPORTS.md §5) is all the importer needs; extra fields are ordinary entries.
   `tools/make-probe-archive.bun.ts --category BO_DICTIONARY --field "Метка:TYPE"` builds it.
 - **The importer honours `boGroupOldId` for a dictionary** — it does NOT route it to a group of
-  `kind: DICTIONARY`, unlike the constructor's caption-level ⊕. Group count stayed 14, nothing renamed.
-- `tools/api-import-structure.bun.ts` was **executed for the first time from the shell** (`--token-file`
-  with the token in the session scratchpad) and drove the whole cycle: dry run → `--import-id … --apply`.
-  The archive's `oldId` became the stand's BO id for the third time (`fArbAncLamdx5agj`).
+  `kind: DICTIONARY`, unlike the constructor's caption-level ⊕; no group is created or renamed.
+- `tools/api-import-structure.bun.ts` runs **from the shell** (`--token-file`
+  with the token in the session scratchpad) and drives the whole cycle: dry run → `--import-id … --apply`.
 
 ### 5d. The matrix «4 routes × 5 object kinds» — column «Панель» `[C]`
 
 A panel is an ordinary BO with `boCategory: "BO_PANEL"`; all four routes need **no panel-specific
-machinery**. Four probes in group «Бизнес-объект» (`N50iWQkw0iySlAKo`), each holding one nested object
-pointing at «Проба UI» (`OpmGDzaQRUT27jky`):
-
-| route | probe | id |
-|---|---|---|
-| constructor UI | «Проба панель UI» | `YquiOukznt5OrCnl` |
-| constructor API | «Проба панель API» | `q8WVtZ6NL4S7LXzJ` |
-| archive import UI | «Проба панель импорт UI» | `OoXWIvbALVI9u392` |
-| archive import API | «Проба панель импорт API» | `qZgw7EkXvHSt7ydQ` |
+machinery**.
 
 - **Constructor.** Group kebab → «Добавить панель» = `create-bo {boGroupId, boCategory: "BO_PANEL"}`,
   nothing else; the editor route is the same `…/object-editing`, and the DTO carries no panel-specific
@@ -1441,8 +1384,7 @@ pointing at «Проба UI» (`OpmGDzaQRUT27jky`):
   born EMPTY).
 - **A panel is built of NESTED OBJECTS — registry widgets, not «виджеты».** The palette («Элементы
   страницы» / «Виджеты» / «Системные поля» / **«Вложенные объекты»**) ends with a list of the company's
-  BOs; dragging one in calls **`generate-business-form-field {boId, fieldType: "BO", fieldBoId: <BO id>}`**
-  — the `fieldBoId` parameter that had been `[U]` until now. The saved field is
+  BOs; dragging one in calls **`generate-business-form-field {boId, fieldType: "BO", fieldBoId: <BO id>}`**. The saved field is
   `type:"BO", viewType:"TABLE", isKindAddForSelect:true, refBoId:<BO id>, gridPosition.rows:6`
   (`readFromRegistry` comes back `null` even though the client sends `true` — `null` IS «on», see §5h
   «Читать из реестра»).
@@ -1454,30 +1396,28 @@ pointing at «Проба UI» (`OpmGDzaQRUT27jky`):
   `BO_PANEL`) — the export basket takes it all the same.
 - **Archive.** `category: "BO_PANEL"` and the nested object as a plain `dynamicFields` entry
   (`type:"BO"`, `oldRefBoId: <BO id on the stand>`, `boRefStruct.boInfo.code`, `isKindAddForSelect:true`);
-  `oldRefBoId` resolved against the stand on import, the field came back with `refBoId` set.
+  `oldRefBoId` is resolved against the stand on import, the field gets `refBoId` set.
   `tools/make-probe-archive.bun.ts --category BO_PANEL --field "Метка:BO@<boId>@<boCode>"` builds it.
   The import dialog's tree labels a panel node with the **bare BO name, no `<вид объекта>/` prefix**
   (a dictionary gets «Справочник/…») `[C]`.
-- `<company-a>`'s own panel «Главная» (`cd2gCP8IyobPtcy0`, code `Glavnaya`) exported cleanly: the same
-  `BoStructDto`, three `dynamicFields` of `type: "BO"`, each with `boRefStruct.fieldRefs` (which columns
+- A real dashboard panel exports as the same
+  `BoStructDto`, with `dynamicFields` of `type: "BO"`, each with `boRefStruct.fieldRefs` (which columns
   of the target BO to show, `toShow`/`orderIndex`/`gridPosition` per field) and a `bracketFilter`
-  («Мои встречи» = `nativeFilters: {type: "CREATED_BY", isCurrentUser: true}`). That pair —
-  `fieldRefs` + `bracketFilter` — is what makes a real dashboard; the probes ship neither.
+  (e.g. «Мои встречи» = `nativeFilters: {type: "CREATED_BY", isCurrentUser: true}`). That pair —
+  `fieldRefs` + `bracketFilter` — is what makes a real dashboard; the probe generator ships neither.
 
 ### 5e. The matrix «4 routes × 5 object kinds» — column «Составной объект» `[C]`
 
 A composite object (`boCategory: "BO_COMPOSITE"`) is the ONE kind that needs machinery of its own: it has
-its own editor route, its own controller and a DRAFT protocol. Probe: «Проба составной UI»
-(`ybaA@lqdUMgVNnBo`, code `Sostavnoyi_obekt__6962`), sources «Проба UI» (`OpmGDzaQRUT27jky`)
-and «Проба API-конструктор» (`~hb30v0XyMtGsBLj`).
+its own editor route, its own controller and a DRAFT protocol.
 
 - **Creation is the same as every other kind**: group kebab ⋮ → «Добавить составной объект» =
   `create-bo {boGroupId, boCategory: "BO_COMPOSITE"}`, created immediately as «Составной объект №N».
 - **The editor is `/business-objects/editing/<coId>/composite-editing`**, NOT `…/object-editing`.
   Left pane = the source BOs and their attributes; right pane = the composite's own attributes, split into
   «Составные атрибуты» and «Простые атрибуты». No palette, no form canvas — a composite has no layout.
-- **Its code is NOT regenerated by the rename** `[C]`: the probe kept `Sostavnoyi_obekt__6962` from the
-  auto-name after being renamed to «Проба составной UI». (For a BO built in the constructor the
+- **Its code is NOT regenerated by the rename** `[C]`: it keeps the code generated from the
+  auto-name «Составной объект №N» (e.g. `Sostavnoyi_obekt__6962`). (For a BO built in the constructor the
   code follows the first naming save — see §5b. The composite editor's name input does not do that.)
 
 #### Controller `v2/co` — the whole surface
@@ -1532,8 +1472,7 @@ and «Проба API-конструктор» (`~hb30v0XyMtGsBLj`).
 `create-bo {boGroupId, boCategory:"BO_COMPOSITE"}` → `v2/co/generate-draft {coId}` →
 `add-bo-to-co` per source → `load-bo-fields-for-co {boId}` for the `fieldId`s →
 `add-co-field-to-simple` / `add-co-field-to-composite` with `[{boId, fieldId}]` →
-`apply-and-remove-draft {draftId}`. Ran clean on the first attempt; probe «Проба составной API»
-`J7APr3Sq8wvImvNF`, verified both through the API and on screen.
+`apply-and-remove-draft {draftId}`.
 
 - **`add-co-field-to-simple` creates ONE attribute PER LINK in its body**, exactly like dropping N ticked
   rows on the pane. A «составной атрибут» is therefore built in two calls: create it with the FIRST link,
@@ -1546,8 +1485,8 @@ and «Проба API-конструктор» (`~hb30v0XyMtGsBLj`).
 - **A composite attribute's code is transliterated from the SOURCE field's label**, not asked for:
   «Наименование» → `Naimenovanie`. `change-co-field-label` renames the attribute afterwards.
 - **`save-business-object-portion` DOES rename a composite** (the plain `{id, nameMap, recordNameMap,
-  description}` patch of §5b) **and the code does NOT follow the name** `[C]` — `Sostavnoyi_obekt__6963`
-  from the auto-name survived. So the composite behaves the same through both routes, unlike a plain BO
+  description}` patch of §5b) **and the code does NOT follow the name** `[C]` — the code from the
+  auto-name survives. So the composite behaves the same through both routes, unlike a plain BO
   whose code follows the first naming save. Corollary: the §5b rename race cannot bite here.
 - **Reading a committed composite needs a draft of its own** — `load-co-fields-*` take `{coId, draftId}`
   and `apply-and-remove-draft` destroyed the one you had. `generate-draft` → read → `remove-draft`.
@@ -1555,7 +1494,7 @@ and «Проба API-конструктор» (`~hb30v0XyMtGsBLj`).
 
 #### In an archive
 
-`TestComposite.mybpm.zip` (`~/Downloads`, the only `BO_COMPOSITE` export we have) is ONE `BoStructDto`
+A `BO_COMPOSITE` export is ONE `BoStructDto`
 plus a `BoGroupStructDto` and the metadata — 3 objects, no `AccessStructDto`:
 
 - `category: "BO_COMPOSITE"`, `kind: "GENERAL"`, ordinary `name`/`recordName`/`orderIndex`;
@@ -1565,25 +1504,16 @@ plus a `BoGroupStructDto` and the metadata — 3 objects, no `AccessStructDto`:
   `links` of the live API — the same relation expressed in codes;
 - `boRefStruct.fieldRefs: {}`, `linkedCoSettings: {}` present but empty.
 
-**Both archive routes are closed** `[C]` — probes «Проба составной импорт UI»
-(`Ydcir@tyWppurNGY`) and «Проба составной импорт API» (`mgGrtPrg7@oXWVMx`), generated by
-`tools/make-probe-archive.bun.ts --category BO_COMPOSITE --source … --co-field …` and shipped by the two
-routes of this section. The importer resolves `bos` **by code** into the stand's real `boId`s and
-`boFieldCodes` into the live `links` — read back identical to a composite built in the constructor.
+**Both archive routes work** `[C]` — `tools/make-probe-archive.bun.ts --category BO_COMPOSITE --source …
+--co-field …` builds the archive, either route of this section ships it. The importer resolves `bos`
+**by code** into the stand's real `boId`s and `boFieldCodes` into the live `links` — the result is
+identical to a composite built in the constructor.
 Details and the failure mode in `MYBPM-IMPORTS.md` §5b.
 
 ### 5f. The matrix «4 routes × 5 object kinds» — column «Бизнес-процесс» `[C]`
 
 A business process (`boCategory: "BO_PROCESS"`) is the second kind with machinery of its own: its own
-editor route, TWO controllers and a versioned diagram. Probes in group «Бизнес-объект»
-(`N50iWQkw0iySlAKo`):
-
-| route | probe | id |
-|---|---|---|
-| конструктор UI | «Проба процесс UI» | `wy6aMlbuQ6LoCFYd` |
-| конструктор API | «Проба процесс API» | `kzk2E83IWByEju0S` |
-| архив UI | «Проба процесс импорт UI» | `ID7UFuWR8PunADHB` |
-| архив API | «Проба процесс импорт API» | `B0oV1N6CanuJ0faO` |
+editor route, TWO controllers and a versioned diagram.
 
 - **Creation is the same as every other kind**: group kebab ⋮ → «Добавить бизнес-процесс» =
   `create-bo {boGroupId, boCategory: "BO_PROCESS"}`, created immediately as «Бизнес-процесс №N».
@@ -1592,9 +1522,9 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   the diagram canvas. There is **no field palette and no form canvas in this editor** — the process's
   fields are still edited through the ordinary BO constructor.
 - **The platform pre-builds two things at creation** `[C]`: the field `PROCESS_STATUS` («Статус процесса»,
-  `type: "BO"`, `isSystem`, `isRequired`, pointing at the built-in dictionary «Статус процесса» — on
-  `<company-a>` `Q0zI~z9Ra2R7Q3yd`, group «Другое»), and **version 1 with a single `Enter` figure**.
-- **The BO code FOLLOWS the rename** here (`Proba_process_UI_2026_09_18`), like a plain BO and unlike a
+  `type: "BO"`, `isSystem`, `isRequired`, pointing at the built-in dictionary «Статус процесса» — code
+  `PROCESS_STATUS`, its id differs per stand), and **version 1 with a single `Enter` figure**.
+- **The BO code FOLLOWS the rename** here, like a plain BO and unlike a
   composite — the name input of the process editor writes through the ordinary BO writer.
 - A fresh process does not validate: `validate-def` answers «Нет точка окончания» +
   «Из фигуры должен быть выход» until an Exit is wired in.
@@ -1621,7 +1551,7 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   version, a copy of that one with the SAME figure ids, `isWork:false, isTest:false`;
   `in-test-bo-process-version` makes it THE test version — the old `isWork+isTest` one keeps only
   `isWork` — and `load-dev-bo-process-id` now returns it (the editable, DEV-record version).
-  `in-work-bo-process-version` is the same for «в работу» (not re-run here). What each exports and imports
+  `in-work-bo-process-version` is the same for «в работу». What each exports and imports
   as: `MYBPM-IMPORTS.md` §5c (work → `workProcess`, test → `processVersions.<id>`, the rest not exported).
 - **Run ways — WHEN the process starts** (`process_run_way_settings`, a button of the process BO's
   editor) — the `bo-process-editor2` draft family, all `[C]`:
@@ -1643,19 +1573,17 @@ editor route, TWO controllers and a versioned diagram. Probes in group «Биз�
   ```
   A `SCHEDULED` run way has no process field; its settings go one key per update, as the client sends
   them — `runWayMap.<id>.schedule.repeatType` (`EVERYDAY`…), `.repeatUntilType` (`NO_END_DATE |
-  REPEAT_COUNT | EXPIRATION_DATE`), `.startTime` (a real UTC instant, `"2026-09-30T12:31:00Z"`),
+  REPEAT_COUNT | EXPIRATION_DATE`), `.startTime` (a real UTC instant, `"YYYY-MM-DDThh:mm:00Z"`),
   `.startRepeatTime` (a date, `"…T00:00:00Z"`), `.endRepeatTime`, `.repeatCount`, `.interval`,
   `.daysOfWeek`, `.dayOfMonth` `[C]` (stored and read back as sent). **It has not been seen
-  to fire** `[U]` — no process record 35–48 minutes after `startTime`, not even at the top of the next hour,
-  and still none within 16 hours, after both start times had passed
-  (`MYBPM-IMPORTS.md` §5c `runWayMap`).
+  to fire** `[U]` — no process record even 16 hours after `startTime` (`MYBPM-IMPORTS.md` §5c `runWayMap`).
   A `dotPath` with `value: undefined` (i.e. the key left out of the JSON) deletes, e.g.
   `runWayMap.<id>` removes a run way. The process field must be a `type:"BO"` field of the process BO with
   `viewType` `SINGLE` or `FIELDS` (the dialog lists no other); `fieldIdsSet` holds ids of the TARGET BO's
   fields (the dialog offers that reference's `boFieldRefs` — an archive-built reference already lists
   every target field there, `toShow:false`). **The client refuses every edit on a WORK version**
   («you_cant_change_published_bo_process_version»), **the server does not**: the draft cycle above
-  applied on a version that was `isWork+isTest` and the run ways worked at once on ordinary records.
+  applies on an `isWork+isTest` version and the run ways work at once on ordinary records.
   What they do (a target record's creation / field change creates a NEW process record pointing at it),
   the controls, and the archive form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) —
   `MYBPM-IMPORTS.md` §5c `runWayMap`.
@@ -1699,8 +1627,7 @@ px — drop in the upper left of the canvas so it is not cut off by the window e
 
 `create-bo {boGroupId, boCategory:"BO_PROCESS"}` → rename via `save-business-object-portion` →
 `load-dev-bo-process-id` → `load-bo-process-def` (to find the Enter) → `load-new-ids {count: 2·N}` →
-one `apply-update-cmd` chaining N figures after the Enter → `validate-def`. Ran clean on the first
-attempt; probe `kzk2E83IWByEju0S`, `validate-def` empty. `--show <boId>` prints versions, figures,
+one `apply-update-cmd` chaining N figures after the Enter → `validate-def`. `--show <boId>` prints versions, figures,
 arrows and validation of any existing process — the cheapest read-back there is.
 
 #### Both archive routes `[C]`
@@ -1708,26 +1635,24 @@ arrows and validation of any existing process — the cheapest read-back there i
 `tools/make-probe-archive.bun.ts --category BO_PROCESS [--process-figure "<Type>@x,y"]…` builds the archive,
 always with the required `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.10 rule 18; `--process-status <refBoId>:<CREATED row id>`
 only overrides its minted ids) (shape in `MYBPM-IMPORTS.md` §5c); the UI route and
-`tools/api-import-structure.bun.ts` both applied it with zero analysis errors, and the diagram came back
-identical (`validate-def` clean, Enter → Exit rendered on screen).
+`tools/api-import-structure.bun.ts` both apply it with zero analysis errors, and the diagram comes back
+identical (`validate-def` clean).
 
 - **An imported version is `isWork: true` — «Версия: 1 (Опубликованный)»**, while a version created in
   the constructor is `isTest: true` / «Версия: 1 (Тест)» `[C]`. The import publishes the process.
 - **Figure and arrow ids survive the import** `[C]` — the stand's def carries the archive's own ids,
-  exactly like `oldId` → `boId` (that happened for the 5th and 6th time here).
+  exactly like `oldId` → `boId`.
 - **The importer does NOT create `PROCESS_STATUS`** `[C]`: the process imported without it has only the
   archive's own fields, while every constructor-made process has it. Ship it in `dynamicFields`
   **together with its `defaultValue`** — see the next
-  block. **A process without that field still RUNS** `[C]`: Enter → Script → Script → Exit
-  imported with no `PROCESS_STATUS` went to its Exit on an ordinary and on a DEV record — the field gives
-  the record its status, it does not drive the process (`MYBPM-IMPORTS.md` §5c). That is a probe result, not
+  block. **A process without that field still RUNS** `[C]` on ordinary and DEV records — the field gives
+  the record its status, it does not drive the process (`MYBPM-IMPORTS.md` §5c). Skipping it is not
   an option: every process ships `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.10 rule 18).
 
 #### The same configured process through an ARCHIVE — export, generate, import, run `[C]`
 
-The API probe «Проба БП API» (Enter → Form «Заявка» → Script → Switch on «Заявка».«Одобрить»
-→ Exit «Да» / Exit «Нет», §«Running a process on a record» point 6) was exported, a generator taught to
-emit the same thing from the same spec, and the result imported and run:
+A configured process (Enter → Form «Заявка» → Script → Switch on «Заявка».«Одобрить»
+→ Exit «Да» / Exit «Нет», §«Running a process on a record» point 6) goes through an archive in four steps:
 
 1. **Export** through the `struct` basket (§0U R4a) from inside the page — read the basket, put the
    process BO (+ its Заявка BO) in, `pre-create-process` → `struct/export-company-structure`, POST the
@@ -1742,18 +1667,18 @@ emit the same thing from the same spec, and the result imported and run:
    is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is
    an arrow of the diagram, `PROCESS_STATUS` has a `defaultValue`).
 3. **Import** through the §5 API cycle from the page (bridge `GET` → `FormData` → `import-file` → insert →
-   analyze → apply): analysis clean, `validate-def []`, both scripts `translate-script success`. Figure
+   analyze → apply); expect a clean analysis, `validate-def []` and `translate-script success` for every script. Figure
    and arrow ids are the archive's; the VERSION id is the stand's own, scripts re-keyed to it.
-4. **Run** with `window.mybpmProcess.run(…)` (`create-process-constructor.bun.ts --page-script`): both
-   branches reached on DEV records AND on ordinary records (`"state":"ALL"` in the run spec) — the
-   imported version reads `isWork: true, isTest: true`.
+4. **Run** with `window.mybpmProcess.run(…)` (`create-process-constructor.bun.ts --page-script`): it
+   runs on DEV records AND on ordinary records (`"state":"ALL"` in the run spec) — the
+   imported version is `isWork: true, isTest: true`.
 
 - **A Script / Switch figure shipped without its `ScriptDefStructDto` passes every check and then FAILS**
   `[C]`: analysis clean, apply fine, `validate-def []`; on the first record `load-process-steps`
   shows that figure `FAILED` with «Скрипт не определен» (`script.not.found`, `NoScriptWithId`) and the process
   stops — it does not «run empty». Every Script / Switch needs its def line, even with no acts
   (`validate-archive` reports it as an ERROR; format in `MYBPM-IMPORTS.md` §5c).
-- **The first import ran NOTHING — `PROCESS_STATUS` without a default blocks every record** `[C]`. The
+- **`PROCESS_STATUS` without a default blocks every record** `[C]`. The
   field is `isRequired`; the constructor defaults it to the «Статус процесса» row `CREATED`. Imported
   without a default, `validate-apply-remove-draft` on a new process record answers **200** with the form
   command `ALERT_SAVE_BUTTON_NOTIFICATION` «validate_required_title» — no record, no process, and nothing
@@ -1762,16 +1687,14 @@ emit the same thing from the same spec, and the result imported and run:
   line for the `CREATED` row with a `DEFAULT_VALUE` source `[C]` (the line alone and the key
   alone each leave `"[]"` on a new BO; both together take — `make-probe-archive.bun.ts` writes both;
   the line is NOT ignored). **Both ids are resolved BY CODE on import, so none has to be read off the stand**
-  `[C]`: the dictionary is built in with the fixed code `PROCESS_STATUS`, yet its id differs between stands
-  (`Q0zI~z9Ra2R7Q3yd` / `0sKQwbF6d25F6DvG`), and so does the `CREATED` row id. Two archives imported into one
-  stand — one with the other stand's dictionary id, one with a made-up dictionary id AND a made-up row id
-  (used consistently in the field and in the line's `compositeId`) — both came in with this stand's own
-  `refBoId` and `CREATED` row id in `defaultValue`, and a record of each saved (`CLOSE_DIALOG_SAVE`). The
-  importer matches the line by `boCode: "PROCESS_STATUS"` + the row's unique `code` field `CREATED`, and
+  `[C]`: the dictionary is built in with the fixed code `PROCESS_STATUS`, yet its id differs between stands,
+  and so does the `CREATED` row id. Any ids (another stand's or made-up ones, used consistently in the
+  field and in the line's `compositeId`) come in as this stand's own `refBoId` and `CREATED` row id in
+  `defaultValue`. The importer matches the line by `boCode: "PROCESS_STATUS"` + the row's unique `code` field `CREATED`, and
   the field by `boRefStruct.boInfo.code`. The generator mints both ids; mismatched ids between the field and
   the line are not checked `[U]`. (To read the stand's own ids anyway: `load-bo-dictionary-list`, or
   `formFields[code=PROCESS_STATUS]` → `refBoId` / `defaultValue` of any process.)
-  `runOnTestRecord` now throws on that form command instead of reporting an empty run.
+  `runOnTestRecord` throws on that form command instead of reporting an empty run.
 - **Re-importing the same code adds a version** `[C]`: version 2 `isWork+isTest`, version 1 demoted to
   `isWork:false, isTest:false`; the field default was NOT repaired by that re-import (it carried the line
   but not the key).
@@ -1779,22 +1702,18 @@ emit the same thing from the same spec, and the result imported and run:
   clean, `validate-def []`, figure/arrow/field ids = the export's, but (a) the `processVersions` form comes
   in as a **test-only** version (`isWork:false, isTest:true`) — it runs on DEV records, an ordinary record
   gets no process (`load-process-steps` = `[]`); (b) every record is refused — the export carries no
-  `defaultValue` on `PROCESS_STATUS`. Adding `defaultValue` + `defaultValueMap` to that one field and
-  re-importing fixed it: both branches reached on DEV records. So: **export → patch the default (and move
+  `defaultValue` on `PROCESS_STATUS`; adding `defaultValue` + `defaultValueMap` to that one field
+  fixes it. So: **export → patch the default (and move
   `processVersions.<id>` to `workProcess` if ordinary records must run it) → import.** The BO the Form
   points at, shipped in the same export, merged into the existing one by CODE (its export `oldId` differs
-  from its stand id). Probe: «Проба БП экспорт как есть» `W7AckAuPtOhZsatz`.
+  from its stand id).
 - **A run is over only when no step is `STAND` or `GO`** `[C]`: right after the Form is released the
-  Switch reads `GO` for a moment; a poll that stopped at «no `STAND`» reported an unfinished run.
+  Switch reads `GO` for a moment; a poll that stops at «no `STAND`» reports an unfinished run.
   `runOnTestRecord` waits for both.
-- Probes left on `<stand>` (group «Бизнес-объект»): «Проба БП архив» (no default — its records
-  cannot be saved; versions 1-2), «Проба БП архив-2» (same defect), «Проба БП архив-3»
-  (the working one, with 2 DEV + 2 ordinary process records and their Заявки).
 
 #### Configuring the figures — what each settings dialog writes `[C]`
 
-Probe «Проба БП» (`7zJ~KDo4TeqT~pxZ`, version `3Fv2pBOX@Dq2fJhI`, group «Бизнес-объект»):
-Enter → Form → Script → Switch → two Exits. Every setting is ONE `apply-update-cmd` (named as below)
+Every setting is ONE `apply-update-cmd` (named as below)
 followed by `validate-def {boProcessId, testMode:true}`; nothing else is written.
 
 - **Form** — born as `{x, y, type:"Form", fieldId:null, createTimer:null, openFormTimer:null,
@@ -1811,7 +1730,7 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
     and does **not** add a slot: validation asks for no second exit. What happens when it fires is `[U]`.
   - Trap: the dialog's checkboxes and unit buttons ignore `el.click()` from JS; the number input does
     take the native-setter trick. Writing the command directly is simpler.
-- **Timer** `[C]` (probe «Проба БП таймер» `UocM4WIwJI3YGSL1`) — born as
+- **Timer** `[C]` — born as
   `{x, y, type:"Timer"}` (drawn with «выберите поле»). Double-click → a popup **«Выберите поле с датой:»**
   listing the process's date fields; one click writes `Set figures.<id>.fieldId = "<fieldId>"` and closes
   it. Nothing else to set — the due time IS that field's value when the process enters the Timer.
@@ -1819,26 +1738,24 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   changed while it stands, `#Обновить таймер для процесса`): `MYBPM-IMPORTS.md` §16 «A Timer». In short:
   the Timer reads its field once, on entry; a later change of the field (form save OR script) does not move
   it, and only `#Обновить таймер для процесса` on that field right after the change does `[C]`.
-- **SingleToParallel / ParallelToSingle** `[C]` (probe «Проба БП параллель»
-  `klMcOWWPP~QYQY8g`) — the palette writes `{x, y, type:"SingleToParallel", outSlotsCount:2}` /
+- **SingleToParallel / ParallelToSingle** `[C]` — the palette writes `{x, y, type:"SingleToParallel", outSlotsCount:2}` /
   `{x, y, type:"ParallelToSingle", inSlotsCount:2}` (slot-drag: 3; the palette also adds `orientation`,
-  not needed); arrows use `out1…outN` / `in` and `in1…inN` / `out` (table «Slots» below). Built through
-  one `apply-update-cmd` with these shapes, `validate-def` → `[]`, and the run behaves as a fork + a real
+  not needed); arrows use `out1…outN` / `in` and `in1…inN` / `out` (table «Slots» below). One
+  `apply-update-cmd` with these shapes builds them, `validate-def` → `[]`, and the run behaves as a fork + a real
   join (`MYBPM-IMPORTS.md` §16 «Parallel branches»). In an archive: `FigureSingleToParallelStruct
-  {outSlotsCount}` / `FigureParallelToSingleStruct {inSlotsCount}` `[C]` (exported, then imported and run).
-- **Terminator** `[C]` (probes «Проба БП терминатор-2» `HPPPJggl~~3b6E62` through
-  the API and «Проба БП терминатор архив» through an archive) — born `{x, y, type:"Terminator",
-  fieldId:""}` (bundle; one `apply-update-cmd` with that shape, `validate-def` → `[]`), slots
+  {outSlotsCount}` / `FigureParallelToSingleStruct {inSlotsCount}` `[C]`.
+- **Terminator** `[C]` (API and archive) — born `{x, y, type:"Terminator",
+  fieldId:""}` (one `apply-update-cmd` with that shape, `validate-def` → `[]`), slots
   `left`/`right`/`top`/`bottom`, nothing to configure. In the archive it is `FigureTerminatorStruct {x, y}`.
   Run: **it ends the whole process** — a Timer standing in the other parallel branch turns `PASSED` with
   no next step the moment the Terminator is passed, and that branch's later figures never run
   (`MYBPM-IMPORTS.md` §16 «A Terminator ends the WHOLE process»). **An Exit ends only its own branch**
-  `[C]` (probe «Проба БП выход в ветке» `OmesDS5B4QycUWMo`): a process may hold
+  `[C]`: a process may hold
   several Exits (`validate-def` → `[]`), and after one branch passes its Exit the other still stands on
   its Timer and later reaches its own Exit (`MYBPM-IMPORTS.md` §16 «An Exit inside one branch»).
-- **Point** `[C]` (probe «Проба БП выход в ветке» `OmesDS5B4QycUWMo`) — not in
-  the palette: right-click an arrow → **«Вставить точку»**. One command
-  `CUT_ARROW_WITHIN_POINT` `[C]` (sent by hand through `apply-update-cmd`, `validate-def` → `[]`):
+- **Point** `[C]` — not in
+  the palette: right-click an arrow → **«Вставить точку»** One command
+  `CUT_ARROW_WITHIN_POINT` `[C]` (can be sent by hand through `apply-update-cmd`, `validate-def` → `[]`):
 
   ```
   Set figures.<pt> = {type:"Point", x, y}
@@ -1848,7 +1765,7 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   ```
 
   (`a` = the arrow's direction at that spot, snapped to 45°; eight slots `angle_0` … `angle_315`: a
-  left-to-right arrow came in at `angle_180` and left at `angle_0`). Dragging from a Point that
+  left-to-right arrow comes in at `angle_180` and leaves at `angle_0`). Dragging from a Point that
   has no outgoing arrow starts a new arrow. At run time it passes instantly as its own step
   (`MYBPM-IMPORTS.md` §16 «A Point»); in an archive it is `FigurePointStruct {x, y}`.
 - **Arrow name** — double-click the arrow → an inline input; Enter →
@@ -1861,8 +1778,8 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   `paste` / `apply-update-cmd` apply to process scripts with those two ids. An EMPTY Script or Switch
   validates clean — `validate-def` checked nothing inside them (while `translate-script` on an empty
   one answers «Не определён модуль»: nothing is stored for that figure yet).
-- **Writing a Script and a Switch headlessly** `[C]` (same probe) — one `apply-update-cmd`
-  each, ids of my own, then `translate-script` → `success:true` and `validate-def` → `[]`:
+- **Writing a Script and a Switch headlessly** `[C]` — one `apply-update-cmd`
+  each, ids of your own, then `translate-script` → `success:true` and `validate-def` → `[]`:
 
   ```
   Script: {"<hat>": {"x":40,"y":40,"downBlockId":"<exit>","type":"BlockFixEntryPoint"},
@@ -1883,8 +1800,7 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
     (`blockExit__targetArrowId_isNull` «Не указан targetArrowId»; `validate-def` then reports it on the
     figure as «В скрипте присутствуют ошибки»). What such a script does at RUN time is `[U]` — keep to
     what the IDE offers.
-- **Slots — the real names, per figure** `[C]` (read off the client bundle, chunk `9839`, the
-  figure factory `switch(v.type)`; `slotByName` falls back as shown):
+- **Slots — the real names, per figure** `[C]` (`slotByName` falls back as shown):
 
   | figure | slot names | wrong or missing name → |
   |---|---|---|
@@ -1898,26 +1814,26 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   | SingleToParallel | `in`, `out1`…`outN` (`outSlotsCount`) | missing → `in`; wrong → not read further |
   | ParallelToSingle | `out`, `in1`…`inN` (`inSlotsCount`) | missing → `in` (absent!); wrong → not read further |
 
-  So `main` on a Switch silently means `up` (the top vertex — what this probe's arrow «Нет» uses), and a
+  So `main` on a Switch silently means `up` (the top vertex), and a
   wrong name on a Form or Timer resolves to nothing. **A Form has three timer slots of its own** — an
   armed timer's exit is presumably an arrow out of `timerCreate` / `timerOpenForm` / `timerTouchDraft`
-  `[I]`. kc-energy's generated archives use Switch `left`/`right`/`down` out and `up` in, Exit `main`/`top`.
-- Dragging out of a slot worked from the Enter but NOT from the Form's right slot (two tries, no picker) —
+  `[I]`. A real project's generated archives use Switch `left`/`right`/`down` out and `up` in, Exit `main`/`top`.
+- Dragging out of a slot works from the Enter but NOT from the Form's right slot (no picker opens) —
   the API route is the reliable one.
 - **The editor remembers the open script** — `load-editor-state` → `{scrollTop, scrollLeft,
   scriptFigureId}`; with `scriptFigureId` set, reopening `…/process-editing` can come up straight in that
   figure's IDE: an empty grey canvas with only `»` at the top left, which looks like a diagram that failed
   to render. `save-editing-script-figure-id {boProcessId, scriptFigureId: null}` (or the IDE's × at the
-  top right) brings the diagram back `[C]`; when exactly it reopens is `[I]` (it did not every time).
+  top right) brings the diagram back `[C]`; it does not reopen every time, when exactly is `[I]`.
 - The IDE of a process record offers three process-only actions — `goForProcess`, `continueProcess`,
   `terminateProcess` (`MYBPM-IMPORTS.md` §12a «Actions that exist only on a PROCESS record»).
 
 #### Running a process on a record `[C]`
 
-Same probe, a TEST version, so only **test records** run it (`boiState: DEV`, registry tab «Тестовые»,
-§5g). The process field «Заявка» is a `BO` reference to «Проба БП заявка» (a CHECKBOX «Одобрить» + an
-INPUT_TEXT «Текст заявки»), and the Form points at it. Everything below was driven with the §6b form
-cycle from inside the page, and every claim was read back with `load-process-steps`.
+A TEST version is run only by **test records** (`boiState: DEV`, registry tab «Тестовые»,
+§5g). In the points below the process field «Заявка» is a `BO` reference to a request BO (a CHECKBOX
+«Одобрить» + an INPUT_TEXT «Текст заявки»), and the Form points at it. Drive it with the §6b form
+cycle from inside the page and read the result back with `load-process-steps`.
 
 1. **The process starts when the record is SAVED, not when it is opened.** `create-draft-with-boi
    {boId:<process BO>, boiState:"DEV"}` → `load-process-steps` = `[]`; `validate-apply-remove-draft` →
@@ -1925,32 +1841,29 @@ cycle from inside the page, and every claim was read back with `load-process-ste
    stands.
 2. **A Form step is released by saving THE record that was in its field when the step was entered.**
    Filling «Заявка» in the same draft as the process record's first save, then
-   `create-draft` + `save-field-value` + `validate-apply-remove-draft` on that Заявка, made Form →
-   Script → Switch → Exit «Да» pass in one go (`scriptRunSuccess: true` on both scripts) and set the
+   `create-draft` + `save-field-value` + `validate-apply-remove-draft` on that Заявка, makes Form →
+   Script → Switch → Exit pass in one go and sets the
    status to «Завершён» (`FINISHED`). Nothing but the record save is needed: no task, no button on the
    process card. **The save must CHANGE a value of that record** `[C]`: a `create-draft` →
-   `validate-apply-remove-draft` with no edit, and one that re-sends the value already stored, both left
-   the Form `STAND` minutes later, while the next save with a changed «Текст заявки» released it at once.
+   `validate-apply-remove-draft` with no edit, and one that re-sends the value already stored, both leave
+   the Form `STAND` (still minutes later), while a save with a changed value releases it at once.
    **The start is asynchronous**: right after the process record's first save `load-process-steps` can
    still be `[]` — poll until a step is `STAND` before saving the Form's record, or the release may land
    before the step exists.
-3. **Filling the field AFTER the Form was entered leaves the step stuck for good** — proven twice,
-   including a controlled run (empty field on save → Form `STAND` → field filled through the process
-   record's form → Заявка saved with a changed value → still `STAND`). A retry does not help
+3. **Filling the field AFTER the Form was entered leaves the step stuck for good** — even when the
+   Заявка is then saved with a changed value. A retry does not help
    (`push-step-retry` → «Нет активных шагов для повторного запуска»; it is only for a step with
    diagnostics). So whatever feeds a Form must fill its field BEFORE the process reaches it: at the
    record's first save, or in a Script placed before the Form.
 4. **Unsticking a step by hand: «Продолжить принудительно»** — the context menu of a STAND step's
    OUTGOING arrow in the diagram → `v2/boi-process/push-step-forcibly P {boProcessId, boiId, arrowId}`
-   → empty 200, and the process runs on from that arrow's target (all later figures ran and the record
-   finished). Given the arrow INTO the standing step (Enter → Form) it did nothing.
+   → empty 200, and the process runs on from that arrow's target. Given the arrow INTO the standing
+   step (Enter → Form) it does nothing.
 5. **A conditional Switch branches on the data** `[C]`: the Switch's script rewritten with
    `apply-update-cmd` to `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрить.#Значение → по стрелке «Да», ИНАЧЕ → по
    стрелке «Нет»` (the JSON: `MYBPM-IMPORTS.md` §16 «A Switch with a condition»; `translate-script`
-   `success:true`, `validate-def` `[]`). Two test runs with the steps above — a DEV Заявка with «Одобрить»
-   `"true"` / `"false"`, a DEV process record pointing at it, the Заявка saved again — ended in
-   `…, Switch PASSED, Exit «Да» PASSED` and `…, Switch PASSED, Exit «Нет» PASSED` respectively. The whole
-   run (both cases) is one in-page script of ~12 calls; no UI.
+   `success:true`, `validate-def` `[]`): «Одобрить» `"true"` ends in `…, Switch PASSED, Exit «Да» PASSED`,
+   `"false"` in `…, Switch PASSED, Exit «Нет» PASSED`. The whole run is one in-page script; no UI.
 
 6. **The whole thing headlessly — `tools/process-builder.ts`** `[C]`: a spec (process
    fields, figures with slots, named arrows, Script/Switch bodies incl. a condition over a path of field
@@ -1959,15 +1872,12 @@ cycle from inside the page, and every claim was read back with `load-process-ste
    Enter is reused, a Form gets `fieldId`, Switch arrows get `name`) → one script `apply-update-cmd` per
    figure (`scriptModuleId` = version, `scriptId` = figure) → `translate-script` → `validate-def`.
    `runOnTestRecord` then runs it: DEV Заявка → DEV process record → poll for `STAND` → Заявка saved with
-   a CHANGED value → steps read back. Probe «Проба БП API» (`zvIXEBMFuEL2CmbB`, version
-   `eNBdDZg~Yk78g1Sp`, spec `tools/process-probe.spec.json`): translate `success` ×2, `validate-def`
-   clean at the first try; runs «Одобрить» = Да → `…, switch PASSED, yes PASSED`, = Нет →
-   `…, no PASSED`, `scriptRunSuccess: true`. Two drivers: `create-process-constructor.bun.ts --spec <f>
+   a CHANGED value → steps read back. Example spec: `tools/process-probe.spec.json`. Two drivers: `create-process-constructor.bun.ts --spec <f>
    [--run '<json>']…` from the shell (token file), or `--page-script`, which prints a snippet defining
    `window.mybpmProcess = {api, build(spec), run(built, spec, run)}` in the stand's page — the token never
-   leaves it (§10), and this is the way it was run.
+   leaves it (§10).
 
-The run-time controller, read off the bundle (chunk `9839`), all `P`: `v2/boi-process/…`
+The run-time controller, all `P`: `v2/boi-process/…`
 
 | call | params | what it does |
 |---|---|---|
@@ -1983,14 +1893,13 @@ The run-time controller, read off the bundle (chunk `9839`), all `P`: `v2/boi-pr
 Plus `v2/boi-process2/load-boi-process-id {boId, boiId, draftId}` → the version a record runs, and in
 `v2/bo-process-editor/`: `load-bo-with-instance-id {boProcessId, poiId, fieldId}` → `{boId, boiId}` of the
 record held in a field (what a Form step opens) `[C]`; `load-on-boi-create-fields {boProcessId}` → the
-fields whose referenced BO can START the process by creating a record there (`[]` on this probe; the editor
-then opens that BO's new-record form instead of `start-dev-process`) `[I]`.
+fields whose referenced BO can START the process by creating a record there (when there are any, the editor
+opens that BO's new-record form instead of `start-dev-process`) `[I]`.
 
 - **In the process EDITOR, a double-click on a standing Form opens the form of its record** (test mode
   only — the diagram on a record's own card does nothing). It is the same `create-draft` as anywhere
   else, with no process context, so saving it from the API is equivalent `[C]`.
-- **A DEV process record lists only DEV records in its reference fields** `[I]`: the «Заявка» picker of
-  a test record said «Данные отсутствуют» while the BO held two ordinary records and no test ones. Make the
+- **A DEV process record lists only DEV records in its reference fields** `[I]` (the picker says «Данные отсутствуют» when the BO holds only ordinary records). Make the
   referenced records with `create-draft-with-boi {…, boiState:"DEV"}` for a test run.
 - `load-boi-values` returns `""` for a `BO` reference field on a process record; read the link with
   `load-bo-with-instance-id` instead `[C]`.
@@ -2023,26 +1932,26 @@ in the UI first (⊕ right of «Бизнес-объекты (N)») remains the m
 The «Зависимости:» pane lists what the selection needs («Структура у "Главная" имеет зависимость от:
 "Встречи", "Инициативы", "Задачи"» with a «Добавить в экспорт» link each and «Подтвердить все
 зависимости»); **unconfirmed dependencies do not block the export** — the archive then holds only the
-selected BOs. The `<company-a>` export came back named `MyBPM-export-<COMPANY_A>-…` — the file name's company slug is
-not the tenant you are working in `[U]`.
+selected BOs. The file name's company slug (`MyBPM-export-<COMPANY>-…`) is not the tenant you
+are working in `[U]`.
 
 ### 5g. Block IDE scripts on a running stand — the API (reading and writing `[C]`, the rest read off the bundle)
 
 The script format, the block/expression templates and the clipboard paste protocol are
-`MYBPM-IMPORTS.md` Part II (§0S is the cookbook). What was missing there was the other half: **where that
+`MYBPM-IMPORTS.md` Part II (§0S is the cookbook). This section is the other half: **where that
 screen is and whether a script can be touched without it.** It can — the client drives scripts through
 two ordinary controllers, so everything §0S says about «the clipboard is the whole delivery channel» is
 true of the IDE, not of the platform.
 
-**Most of this section is read off the client bundle (chunks `9839`, `6543`, `5675`) and still `[I]`.**
-**Six calls were executed and are `[C]`** — `v2/script-browser/load-tree` + `load-children`,
+**Most of this section is still `[I]`.**
+**These calls are `[C]`** — `v2/script-browser/load-tree` + `load-children`,
 `v2/bo-scripts-editor/load-bo-script-versions` + `load-bo-scripts`, `v2/script/load-script-def` and
 `v2/script/translate-script` (the reading half; see «Reading a BO's scripts headlessly» below). The
 WRITING half: **`apply-update-cmd` and `paste` are `[C]`** (below, «Writing a script
 headlessly»), and so are `load-new-ids` + `save-bo-scripts` + `in-work-bo-script-version` (the hook
 wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-method` / `list-local-methods` /
 `delete-local-method` («Local methods without the IDE» below). An archive also creates scripts on import
-(`MYBPM-IMPORTS.md` §5d, verified).
+(`MYBPM-IMPORTS.md` §5d) `[C]`.
 
 | controller | scope | methods |
 |---|---|---|
@@ -2060,10 +1969,9 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   Fill it with ONE `apply-update-cmd` P `{scriptModuleId, scriptId}`: `Set blocks.<hat>` to the whole hat
   with `params {<param id>: {name, order, type}}`, `returnType` and `downBlockId`, plus the body blocks /
   expressions (ids from `load-new-ids`) — then `translate-script` → `success:true`.
-- **A local method with the same name overrides the global one** `[C]` (the screen says so, and it
-  holds): a local `glob_greet` (body «Локально, »+imya) added to the work version made the field script
-  store «Локально, Мир»; after `delete-local-method` the same record cycle stored «Здравствуй, Мир» from the
-  global body again. Both took effect on the next record at once, no version switch.
+- **A local method with the same name overrides the global one** `[C]` (the screen says so); adding
+  it to the work version or removing it with `delete-local-method` takes effect on the next record at once,
+  no version switch.
 - **Local methods without the IDE** `[C]`: `v2/bo-scripts-editor/create-local-method` P `{boScriptsId,
   methodName}` (`boScriptsId` = the version's `boScriptModId`) → `{scriptId, methodName}`; the method
   is added IN PLACE to that version's `methodScriptIds` (no new version, `methodsScriptId` stays null)
@@ -2075,12 +1983,9 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   method you shadow and the same call works against either.
 - **Calling a global method** `[C]`: a BO script calls it like a local one — `ExprCall {funcName:
   "<name>", useArgNames:false, args: {<the global method's param id>: {name, order, exprId}}}`; nothing
-  names the global module. Proven on a record: field script `Привет.#Значение = glob_greet(Имя.#Значение)`
-  → «Мир» stored «Здравствуй, Мир». **A process Script figure calls it the same way** `[C]`: the figure's
-  def (`scriptModuleId` = the process version) got `Итог.#Значение = glob_greet("БП")` (`BlockAssign`,
-  left = `F-VALUE-K-DYN-R-D-S-boi_fields` over `F-Itog-K-DYN-S-boi_fields` over `THIS_PROCESS`) —
-  `translate-script` and `validate-def` clean, a DEV process record passed Enter → Script → Exit and
-  stored «Здравствуй, БП». The archive form and its import semantics (REPLACES the whole list,
+  names the global module. **A process Script figure calls it the same way** `[C]`: the figure's
+  def has `scriptModuleId` = the process version, e.g. `Итог.#Значение = glob_greet("БП")` (`BlockAssign`,
+  left = `F-VALUE-K-DYN-R-D-S-boi_fields` over `F-Itog-K-DYN-S-boi_fields` over `THIS_PROCESS`). The archive form and its import semantics (REPLACES the whole list,
   ids kept verbatim) are `MYBPM-IMPORTS.md` §5d «Company-global methods».
 - **The stand runs a compiled copy of the global module** `[C]`: an `apply-update-cmd` on ANY global
   method refreshes it at once (the next record runs the new body), a structure import does NOT — records
@@ -2094,19 +1999,17 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   the script with one `apply-update-cmd` (`Set` per `blocks.<id>` / `expressions.<id>`). **That is a
   headless delivery path for a script** `[C]`: `paste` alone writes nothing; the
   `apply-update-cmd` that follows (a `Group` of `Set`s, the `backward` a `Group` of `Unset`s) does, then
-  `translate-script` checks and `undo` removes the whole step in one call. Used with no browser UI at all
-  on a 711-block / 1723-expression fragment and on 26 small ones in a row. Into an empty hook the fragment
+  `translate-script` checks and `undo` removes the whole step in one call. Into an empty hook the fragment
   goes with its `BlockFixEntryPoint` hat and a closing `BlockExit FROM_METHOD` (`MYBPM-IMPORTS.md` §0S.12
   item 7, §14 «Validator phases»).
 - **`/paste` breaks parameter references** `[C]`: it gets no target (the client posts only `{copied}`), and
   every VAR_REF to a METHOD PARAMETER comes back rewired to a detached carrier `BlockFixEmpty →
   BlockNewVar «Переменная №N» = 0` (a Number CONST), the body under its own `BlockFixEmpty`, not hung under
-  the hat — on every run, body alone or the whole method with its hat. The IDE writes that answer verbatim.
+  the hat — body alone or the whole method with its hat. The IDE writes that answer verbatim.
   **A method body that reads its parameters is written WITHOUT `paste`** `[C]`: one `apply-update-cmd`
   P `{scriptModuleId, scriptId}` with `Set blocks.<id>` / `Set expressions.<id>` under YOUR ids (any
   16 characters of the id alphabet are taken as they are; `load-new-ids` is optional) plus a `Set` of the
-  whole hat with `downBlockId` = the first body block → `translate-script` `success:true`. The
-  `MYBPM-IMPORTS.md` §0S.10 worked example, written this way, gave the right answers on records
+  whole hat with `downBlockId` = the first body block → `translate-script` `success:true`
   (`MYBPM-IMPORTS.md` §0S.12 item 7b).
 - **`undo` can wipe an imported def** `[C]`: on a method whose def came from an import and was never edited,
   one `undo` after the first `apply-update-cmd` left the def EMPTY, hat included. Keep the hat from
@@ -2157,19 +2060,17 @@ Use it after every script write — an import NEVER reports a broken body (`MYBP
   screens are `/settings?settingsOpenPageUrl=…` → «Глобальные методы» and «Браузер скриптов»
   (controller `v2/script-browser`: `load-tree`, `load-children {folderId}`, `search {query}`,
   `load-exit-variants {scriptModuleId, scriptId}`). «Глобальные методы» is a list on the left
-  («Добавить», search) and the method's IDE canvas on the right; «Браузер скриптов» was not opened.
+  («Добавить», search) and the method's IDE canvas on the right; «Браузер скриптов» is `[U]`.
 - **A freshly imported BO may fail `translate-script` falsely** `[I]`: right after the import, every
-  field act of a script on it answered `exprAct__noDefinitionForActId` for `F-VALUE-K-DYN-R-D-S-boi_fields`
-  (hop 1 typed with no `boCode`; `load-bo-def-list` → 0 BOs), while `load-act-record-list` already knew
-  the fields. A few minutes later — after the BO's script dialog had been opened in the constructor — the
-  same script answered `success:true` and `load-bo-def-list` 257 BOs. Which of the two (time or the
-  dialog) fixed it is not separated. `in-work-bo-script-version` refuses while the error stands (it
+  field act of a script on it may answer `exprAct__noDefinitionForActId` for `F-VALUE-K-DYN-R-D-S-boi_fields`
+  (hop 1 typed with no `boCode`; `load-bo-def-list` → 0 BOs), while `load-act-record-list` already knows
+  the fields. It clears after a few minutes and/or once the BO's script dialog is opened in the
+  constructor — wait, open the dialog, re-run `translate-script`. `in-work-bo-script-version` refuses while the error stands (it
   answers `[{text:"script_on_change_field_cause", …}]` and changes nothing).
 
 #### Writing a script headlessly — `apply-update-cmd` `[C]`
 
-Captured from the IDE itself (a `fetch`/XHR patch, §10) and then used alone to write a 27-block /
-84-expression probe:
+The IDE's own request (§10 shows how to capture it), usable alone:
 
 ```
 POST /web/v2/script/apply-update-cmd
@@ -2196,8 +2097,7 @@ body   {"name":"<any label>",
   is write-only. (`MYBPM-IMPORTS.md` §14 «Validator phases» has the four phases.)
 - **Then `translate-script`** — the only check. It reports wrong `actId`s, argument names, dangling ids
   and types; `success:true` with a `WARN used_deprecated_blocks` means an old-panel element is present.
-- **A wrong SHAPE bricks a module the same way** `[I]` (reported from another stand, deliberately not
-  reproduced): `ExprCall.args` sent as `{"<paramId>":"<exprId>"}` instead of `{"<paramId>":{"exprId":…}}`
+- **A wrong SHAPE bricks a module the same way** `[I]` (do not reproduce it): `ExprCall.args` sent as `{"<paramId>":"<exprId>"}` instead of `{"<paramId>":{"exprId":…}}`
   in a company-global method made the global module undecodable («Failed to decode 'ScriptModuleDto'») — the
   «Глобальные методы» list, every process `validate-def` and the figure script IDE all failed with it.
   Copy object-valued keys (`args`, `argExprIds`, `branches`, `more`, `params`, `valueType`) exactly
@@ -2209,8 +2109,8 @@ body   {"name":"<any label>",
   `exprValueType`, `constType`, `type`). The server stores it, then cannot decode the BO's script module
   any more: every read and write of every version of that BO's scripts — including `apply-update-cmd`,
   `undo`, `delete-local-method`, `remove-bo-script-version` — answers `IllegalArgumentException: No enum
-  constant …`, so nothing can repair it through the API or a structure import (trap 59) `[C]` (one probe BO lost this way;
-  other BOs unaffected). A wrong STRING value (`actId`, argument key, `enumValue`) is harmless — the
+  constant …`, so nothing can repair it through the API or a structure import (trap 59) `[C]` (other BOs
+  are unaffected). A wrong STRING value (`actId`, argument key, `enumValue`) is harmless — the
   validator reports it.
 - Work on a **test version** (`in-test-bo-script-version` / the «Версия: N (Тест)» switch in the dialog) —
   it does not protect against the trap above (all versions are decoded together) but keeps a working
@@ -2218,8 +2118,7 @@ body   {"name":"<any label>",
 
 #### Wiring scripts onto a BO headlessly — `save-bo-scripts` `[C]`
 
-The IDE's own sequence (read off the bundle, then run alone on a BO imported with NO scripts — 4 hooks +
-2 field scripts, all six fired on a record):
+The IDE's own sequence; it works alone, also on a BO that has NO scripts:
 
 1. `v2/bo-scripts-editor/load-bo-script-versions` P `{boId}` → a BO that never had scripts still has one
    version, `isTest:true`, `isWork:false` — take its `boScriptModId`. (A BO without scripts is absent from
@@ -2239,7 +2138,7 @@ The IDE's own sequence (read off the bundle, then run alone on a BO imported wit
    version (a copy, next number).
 
 - The UI lists every field in «Изменение поля» **except `TAB_GROUP` and `PROGRESS_BAR`**; the wiring
-  itself accepts them (an archive put scripts on both, and both fired).
+  itself accepts them, and scripts on both fire `[C]`.
 - When each hook fires, and which record calls trigger it: §6b and `MYBPM-IMPORTS.md` §15 «When each hook
   runs».
 
@@ -2265,7 +2164,7 @@ itself calls to fill its dialogs; `MYBPM-IMPORTS.md` §12a is the complete resul
 A `valueExtType` is `{type, baseType, isArray, boCode?, boId?, enumNativeName?}` — e.g.
 `{type:"Text",baseType:"String"}`, `{type:"Bo",baseType:"BoiRefCode",boCode,boId}` (a record),
 `{type:"Bo",baseType:"BoRefCode",boCode,boId}` (the BO type). Walk: `load-act-record-list` →
-`load-act-details(ret.type)` → `load-act-record-list(ret.type)` … — that is how §12a was produced.
+`load-act-details(ret.type)` → `load-act-record-list(ret.type)` …
 
 #### Where the IDE is and what its panel holds `[C]`
 
@@ -2282,11 +2181,7 @@ pressed. The red dot with a number at the top right is the count of `translate-s
 ### 5h. Field settings — «Обязательное», «Уникальное», «Выпадающий список» `[C]`
 
 What the constructor's gear popover on a field writes, and how to write the same thing through the API
-and through an archive. Two probe BOs on `<company-a>` in group «Бизнес-объект» prove every route:
-«Проба настройки полей» (`yxTzPaWhONPNxk5j`, built by the API) and «Проба настройки полей
-импорт» (`ATyioDPdsxhmVDBO`, built by an archive import), both with the same four fields:
-Наименование (обязательное), Табельный номер (уникальное), Должность (выпадающий список из справочника
-«Должность»), Статус (выпадающий список, локальный).
+and through an archive.
 
 #### Where the controls are, and what each one writes
 
@@ -2347,15 +2242,14 @@ list. So on the DTO that `generate-business-form-field` returned, set:
 
 **«Обязательное» and «Уникальное» also switch the registry column on**: the client calls
 `assignTableColToShow` whenever one of them (or `chosenAccessRight`) is turned ON, i.e. `tableColToShow`
-becomes `true`. Reproduce it, or the BO's registry will differ from a UI-built one — both probe BOs show
-«Наименование» and «Табельный номер» as columns for exactly this reason.
+becomes `true`. Reproduce it, or the BO's registry will differ from a UI-built one.
 
 Where the dictionaries come from: **`load-bo-dictionary-list`** (params and body empty) → every
-`BO_DICTIONARY` of the company (36 on `<company-a>`), and `load-dictionary-bo-field-options {boId}` → its rows
-as ready option DTOs (`Должность` = `kNfvHppcNSR6Wz@B`, code `Dolzh`, 35 rows). **Binding to an EMPTY
+`BO_DICTIONARY` of the company, and `load-dictionary-bo-field-options {boId}` → its rows
+as ready option DTOs (e.g. `Должность` = `kNfvHppcNSR6Wz@B`, code `Dolzh`). **Binding to an EMPTY
 dictionary is legal** and gives an empty dropdown on the form.
 
-Accelerator — `tools/create-bo-constructor.bun.ts`, one call for the whole probe:
+Accelerator — `tools/create-bo-constructor.bun.ts`, one call for the whole BO:
 
 ```
 bun tools/create-bo-constructor.bun.ts --token-file <f> --group "Бизнес-объект" \
@@ -2373,8 +2267,8 @@ contain `@`.)
 
 `MYBPM-IMPORTS.md` §0.5 / §5 — `isRequired` / `isUnique` are plain booleans on the field, and a dropdown
 carries `fieldOptionsStruct`. **An archive names the dictionary by CODE, never by id**, and the importer
-resolves it: the probe shipped `dictionaryBoInfo.code = "Dolzh"` and the stand came back with
-`refBoId = kNfvHppcNSR6Wz@B`. `tools/make-probe-archive.bun.ts` takes the same `--field` grammar with the
+resolves it `[C]`: `dictionaryBoInfo.code = "Dolzh"` is stored as `refBoId` = that dictionary's id on
+the stand. `tools/make-probe-archive.bun.ts` takes the same `--field` grammar with the
 dictionary spelled as a code: `--field "Должность:DROPDOWN_SINGLE@Dolzh@Должность"`.
 
 #### Dates — «Будущие / Прошедшие даты недоступны для выбора» `[C]`
@@ -2389,31 +2283,28 @@ FORBIDDEN** — they are not crossed:
 | «Прошедшие даты недоступны для выбора» | `dateOnlyFuture: true` | today and later |
 
 - Ticking one greys out the other; the UI never sends both `true`. The constructor save is a two-key patch
-  `editedFields: [{fieldId, dateOnlyFuture: false, dateOnlyPast: true}]` (captured). The date
+  `editedFields: [{fieldId, dateOnlyFuture: false, dateOnlyPast: true}]`. The date
   checkboxes do NOT add a registry column.
-- **Proven on all three routes, and on the record card for all six types**: API (`generate-business-form-field`
+- **Works on all three routes, and on the record card for all six types**: API (`generate-business-form-field`
   + the key on the DTO and in `editedFields`), archive (plain booleans on the field, round-trip through
   the export) and the constructor. On a record the nz picker disables whole cells: a day for
   `DATE`/`FULL_DATE`/`PERIOD`/`PERIOD_TIME` (both ends of a range), a month for `YEAR_AND_MONTH`, a
   year for `YEAR`. **Today — and the current month / year — stays selectable in both modes.**
 - **It is a CLIENT-side restriction only.** The server stores a forbidden date without a word through both
   record cycles — §6a (`save-boi-value`) and §6b (`save-field-value` + `validate-apply-remove-draft`,
-  `notValid:false`) — and the card then shows it as is (a past-only field reading 15.05.2027). So an API
-  client writes any date, and a script or an Excel import almost certainly does too `[I]` (not run); enforce
+  `notValid:false`) — and the card then shows it as is. So an API
+  client writes any date, and a script or an Excel import almost certainly does too `[I]`; enforce
   the rule in a «Сохранение» script if it must hold.
-- Probes left on `<stand>`, group «Тест»: «Проба дат» (API, 8 fields — every date type with
-  one flag) and «Проба дат архив» (archive, then one flag flipped in the constructor).
 - Accelerators: both `tools/create-bo-constructor.bun.ts` and `tools/make-probe-archive.bun.ts` take
   `--field "Дата:DATE!dateOnlyPast=true"` — the generic `!key=value` flag sets ANY key of the field
   (dotted for a nested one, `!params.url=…`; the value is parsed as JSON, else kept as a string).
 
 #### Six more gear flags — what each does on a record `[C]`
 
-Proven on all three routes (API, archive, constructor) and on records: «Проба флажков» (API,
-then flipped in the constructor) and «Проба флажков архив» (archive, imported twice), group
-«Тест». The constructor saves each tick as a one-key patch — `editedFields: [{fieldId,
+They work on all three routes (API, archive, constructor). The constructor saves each tick as a one-key
+patch — `editedFields: [{fieldId,
 unacceptableValue: true, hideLabel: true, needFreezeWhenScroll: true}]`, `[{fieldId, isClickable: false}]`,
-`[{fieldId, needShowToCalendar: false}]` (captured).
+`[{fieldId, needShowToCalendar: false}]`.
 
 | flag | effect on the record | enforced by |
 |---|---|---|
@@ -2425,11 +2316,11 @@ unacceptableValue: true, hideLabel: true, needFreezeWhenScroll: true}]`, `[{fiel
 | `needTrackStatus` «Отслеживать статус» | see below | client |
 
 - **`needShowToCalendar` is `true` on EVERY freshly generated field** — `generate-business-form-field`
-  sets it on a text field too, and a BO created by `create-bo` has `isCalendarEnabled: true`. The client
-  logic (bundle): if at least one date field has the flag, only the flagged ones reach the calendar;
-  otherwise all date fields do `[I]` (the second branch not run). The calendar's event title printed
-  «Имя :» / «Статус :» — a field label with an empty value; the card template (`calendarCardTemplates`)
-  was not set up `[U]`.
+  sets it on a text field too, and a BO created by `create-bo` has `isCalendarEnabled: true`. The calendar
+  shows: if at least one date field has the flag, only the flagged ones reach the calendar;
+  otherwise all date fields do `[I]`. The calendar's event title
+  shows «Имя :» / «Статус :» — a field label with an empty value — when no card template
+  (`calendarCardTemplates`) is set up; what a template changes is `[U]`.
 - **«Отслеживать статус» is three fields, not a flag.** Ticking it in the constructor calls
   `generate-business-form-field` twice more and saves (one «Сохранить»):
   1. a `TAB_GROUP` wrapper with `trackedFieldId = <the date field>`, label `null`, one tab «Статус
@@ -2446,7 +2337,7 @@ unacceptableValue: true, hideLabel: true, needFreezeWhenScroll: true}]`, `[{fiel
   day; a period by its END). The value is stored like any dropdown value (`"PLANNED"`, displayValue
   «Запланировано»), shows as a registry column, and **colours the calendar event**: PLANNED `#2F80ED`,
   OVERDUE `#ee5252`, DONE `#27ae60`, CANCELED `#BEBEBE`. `DONE` / `CANCELED` are set by hand. Nothing on the
-  server moves a PLANNED record to OVERDUE when the day passes `[U]` (not observed; the logic is in the
+  server moves a PLANNED record to OVERDUE when the day passes `[U]` (the logic is in the
   client's date component only). A tracked wrapper/dropdown has no settings, hint, integration or delete
   icons in the constructor.
 - **A nested `BO` field built through the API needs what the constructor adds on drop**
@@ -2454,20 +2345,19 @@ unacceptableValue: true, hideLabel: true, needFreezeWhenScroll: true}]`, `[{fiel
   (`{fieldId, label, toShow: <target's tableColToShow>, type, checked: false, orderIndex:
   <tableColOrderIndex>, gridPosition}`; if the target has no registry column, its first field gets
   `toShow`; at most 5 shown, `TAB_GROUP`/`PROGRESS_BAR` never). With `viewType: null` the card renders the
-  field as an empty box — no table, no «Добавить». `tools/create-bo-constructor.bun.ts` now builds both, and
-  `--field "Срок:DATE!track"` there replays the captured «Отслеживать статус» sequence — that code path has not
-  been run yet `[U]`; the archive generator's `!track` is proven.
-- The record picker of a nested field showed «Нет записей» until something was typed into its search
-  box, then listed the target's records `[C]` (both targets tried) — type a letter before concluding the
+  field as an empty box — no table, no «Добавить». `tools/create-bo-constructor.bun.ts` builds both, and
+  `--field "Срок:DATE!track"` there replays the «Отслеживать статус» sequence `[U]`; the archive
+  generator's `!track` is `[C]`.
+- The record picker of a nested field shows «Нет записей» until something is typed into its search
+  box, then lists the target's records `[C]` — type a letter before concluding the
   target is empty.
 
 #### «Поведение» and «Интеграция» — per-type settings `[C]`
 
-Proven on all three routes and on records: «Проба поведения» (API) and «Проба поведения архив»
-(archive, then one field changed in the constructor), group «Тест». In the gear popover the
+They work on all three routes (API, archive, constructor). In the gear popover the
 per-type settings sit under the **«Отображение» / «Поведение»** switch below the common checkboxes; the
 database settings are the popover's 4th icon (puzzle), «Интеграция через БД». The constructor saves them
-as one patch per field — captured: `editedFields: [{fieldId, textCase: "UPPER", maxLength: 7,
+as one patch per field: `editedFields: [{fieldId, textCase: "UPPER", maxLength: 7,
 needLoadFromInTables: true, useAsKeyInMigration: false}]`.
 
 | key | types | where | on the record |
@@ -2488,21 +2378,19 @@ needLoadFromInTables: true, useAsKeyInMigration: false}]`.
   breaks a rule (not only the one just saved), and `validate-apply-remove-draft` then refuses — `formCommands:
   [ALERT_SAVE_BUTTON_NOTIFICATION]` and the dialog «Карточка не соответствует требованиям: 1. Достигнута
   максимальная длина символов 2. Недопустимый текстовый регистр». **The §6a cycle checks nothing**: a record
-  written through `v2/business-object-instance` stored `XYZ` in a lower-case field and 20 characters in a
-  10-character one `[C]`. The form data (`load-field-data`) carries `maxLength` but not `textCase` — the check
+  written through `v2/business-object-instance` stores a wrong-case or over-long value `[C]`. The form data (`load-field-data`) carries `maxLength` but not `textCase` — the check
   lives on the server. The case check lets digits, spaces and punctuation through and applies to Cyrillic.
-  Once the card showed the case warning on a value already fixed by retyping and refused to save; a server
-  read of the same draft was clean — a stale UI state `[I]`, retype or reopen.
+  The card may keep the case warning on a value already fixed by retyping and refuse to save while a server
+  read of the same draft is clean — a stale UI state `[I]`, retype or reopen.
 - **The counter** (`enableSequence`) is filled when a NEW draft is created (`create-draft-with-boi`, i.e.
-  opening «Добавить») — every draft takes a number, a discarded one too (the probe went 1, 2, 3, 4 with only
-  one record saved), and `business-objects/sequence-next {boId, fieldId}` hands out (and uses up) the next
+  opening «Добавить») — every draft takes a number, a discarded one too, and `business-objects/sequence-next {boId, fieldId}` hands out (and uses up) the next
   one. A §6a record gets NO number. The value stays editable on the card. The server stores `params` values
   as strings: an API write of `{enableSequence: true}` comes back `"true"`.
 - **`params.url` on a LINK** (client code, `openLink`): if it starts with `call/plugin/`, a click on the link
   calls `link/call-plugin {boId, boiId, fieldId, fieldValueMap}` and downloads the files the plugin answers
   with (`download-file…`); otherwise the click opens the field's own value (with `www.` turned into
-  `http://`). A plain URL in `params.url` does nothing `[C]` (the link opened its value); a real plugin call
-  was not run.
+  `http://`). A plain URL in `params.url` does nothing `[C]` (the link opens its value); the plugin call itself
+  is `[U]`.
 - **One migration key per BO**: ticking «Ключевое поле в IN-миграции» on a second field shows «Ключевое поле
   миграции уже преднастроено в поле "<label>"» and unticks it again `[C]` (the client checks the unsaved edits
   and the saved BO).
@@ -2517,11 +2405,7 @@ needLoadFromInTables: true, useAsKeyInMigration: false}]`.
 
 #### Reference fields (`BO` / `CO`) — «Отображение» and «Поведение» `[C]`
 
-Proven through the API and on records: «Проба ссылок» (`P`, six `BO` fields) pointing at «Проба
-ссылок цель» (`T`, which has a `BO` field «Родитель» back to `P`), group «Тест»; the same
-settings then went through an archive into «Проба ссылок архив …» and «Проба ссылок CO …» (the import is in
-`MYBPM-IMPORTS.md` §3 «Reference fields»), and `removeType` / `linkedCoSettings` were set in the constructor
-UI with the request captured. The controls are the gear → «Отображение» / «Поведение» of a `BO`/`CO` field (`app-bo-settings-behavior`; «Связь объектов» only
+The archive side is `MYBPM-IMPORTS.md` §3 «Reference fields». The controls are the gear → «Отображение» / «Поведение» of a `BO`/`CO` field (`app-bo-settings-behavior`; «Связь объектов» only
 appears when the referenced BO has a field pointing back).
 
 | key | control | on the record |
@@ -2532,8 +2416,8 @@ appears when the referenced BO has a field pointing back).
 | `removeType` `STRIKETHROUGH` / `HIDE` / `DISCONNECT` | «Поведение» → «При удалении объектов <BO>» «Зачеркнуть / Скрывать из списка / Разорвать связь…» | see below |
 | `needChangeParentBoByLinkedBo` (default `true` on EVERY field) | «При добавлении/изменении объекта(ов)» «Изменить бизнес объект "<BO>"» (`true`) / «Не изменять…» (`false`) | see below |
 | `copyFromFieldId` = another `BO` field of the same BO | «Отображение» → «Логика отображения значения» → «Из другого поля» | the field is filled with a COPY of that field's value on every save of the record (stored, not just shown); emptied when the source is emptied `[C]` |
-| `needMarkNew` | «Поведение» → «Помечать новые» | client code: rows with `isNew` (or state NEW) render in bold and new ones are put on TOP instead of the sort order. `isNew` came back `false` for every record in a one-user probe — the bold was not seen `[I]` |
-| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» (only when the referenced BO is kind `PERSON`) | the person put into the field becomes a participant of the record and gets the bell event «Вас добавили» `[C]` (a second user, also through the script-less §6a cycle); adding MYSELF raised no notification. What a participant gains: §3 «What each subject opens» |
+| `needMarkNew` | «Поведение» → «Помечать новые» | client code: rows with `isNew` (or state NEW) render in bold and new ones are put on TOP instead of the sort order `[I]` |
+| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» (only when the referenced BO is kind `PERSON`) | the person put into the field becomes a participant of the record and gets the bell event «Вас добавили» `[C]` (also through the script-less §6a cycle); adding yourself raises no notification. What a participant gains: §3 «What each subject opens» |
 | `isHeightDynamic` | «Динамическая высота» (`BO` only) | see «Tables» in `MYBPM-IMPORTS.md` §3 |
 | `linkedCoSettings` (a `CO` field) | «Поведение» → «Связь объектов <BO>/<field>» → «Объект из Составного объекта» → pick a source BO → the same «Заполнить поле» / «При удалении» radios | per source BO of the composite: see below |
 
@@ -2543,22 +2427,22 @@ appears when the referenced BO has a field pointing back).
   `delete-bo-instance` (state `REMOVED`) is: **`HIDE`** — left out of the answer, the field looks empty;
   **`STRIKETHROUGH`** — returned with `state: "REMOVED"`, and a TABLE view strikes the row through;
   **`DISCONNECT`** — on this build exactly like `STRIKETHROUGH` (the row is struck, the id stays in the
-  stored value, even with `linkedFieldId` set; re-read after a minute: unchanged) `[C]`. A `SINGLE` chip
+  stored value, even with `linkedFieldId` set) `[C]`. A `SINGLE` chip
   shows a deleted record plainly, with no mark. The stored value is never cleaned by a delete.
 - **M:N = two `TABLE` fields whose `linkedFieldId` point at each other** `[C]` (archive form:
-  `MYBPM-IMPORTS.md` §6; the server offers a `TABLE` back field in `linkedBo.fieldsForLink`). Probe records
-  A1, A2 × B1, B2: **adding is mirrored and APPENDS** — the back field keeps its other records — in the form
+  `MYBPM-IMPORTS.md` §6; the server offers a `TABLE` back field in `linkedBo.fieldsForLink`).
+  **Adding is mirrored and APPENDS** — the back field keeps its other records — in the form
   cycle and in §6a alike. **Removing is not symmetric**: through the form cycle / UI (⊖ = `saveType:"REMOVE"`,
   or a replace without the id) the removed record KEEPS the owner in its back field, so the sides drift
   apart — remove on both sides yourself; through §6a `save-boi-value` (`REMOVE` or replace) the removed
-  record's WHOLE back field is emptied — A2 lost B1 as well when B2 dropped it. Never remove from an M:N
+  record's WHOLE back field is emptied, its other links included. Never remove from an M:N
   field with §6a.
 - **`needChangeParentBoByLinkedBo` decides whether a change of the field is a change of the OWNER record**
   `[C]` (UI and API): with `true` (default) choosing a record puts it into the card's draft only — the card
   shows «Сохранить / Отменить» and closing asks «Несохранённые данные … Закрыть без сохранения?»; «ДА» =
   `remove-draft`, nothing kept. With `false` the same `save-field-value` (`saveType: "ADD"`) is **written
   straight into the record** — the card stays clean, closing sends `remove-draft` and the choice is kept.
-  Proven headlessly too: `create-draft` → `save-field-value` on a `false` field → `remove-draft` leaves the
+  Headlessly the same: `create-draft` → `save-field-value` on a `false` field → `remove-draft` leaves the
   value in the record; on a `true` field the value is gone. Without `saveType` the value replaces, with
   `"ADD"` it is appended, with `"REMOVE"` the listed ids are taken out — what the row's ⊖ in a card's
   table sends `[C]`; `"DELETE"` changes nothing. Editing a referenced record elsewhere does NOT touch the owner's
@@ -2573,8 +2457,7 @@ appears when the referenced BO has a field pointing back).
   field that has it, tick «Помечать новые» again and save (or re-import the archive).
 - **After every constructor save the UI calls `v2/business-object-instance/remove-all-for-single-view-type
   {boId, fieldId}` for each `SINGLE` reference field, and that call TRIMS the stored value of every record to
-  its first id** `[C]` — a `MULTIPLE` field holding two records, switched to `SINGLE` by an API patch, still
-  held both; the call left one. So switching a field to «Одиночный» in the constructor drops the other
+  its first id** `[C]`. So switching a field to «Одиночный» in the constructor drops the other
   links of every record, irreversibly; an API or archive switch leaves them until the next constructor save
   of that BO. The form cycle also keeps only the first id when a `SINGLE` field is given several.
 - **`needMarkNew` and `needAddToParticipants` are DROPPED on a field that is being ADDED** (like
@@ -2598,19 +2481,15 @@ appears when the referenced BO has a field pointing back).
 - **Reading a reference value**: `v2/load-boi-values` answers `""` for every `BO` field; read it with
   `instance-field-form/load-field-data` (a draft of the record) — `storedValue` = `"[\"<boiId>\", …]"` `[C]`.
 - **«Data too large» (`EsDataTooLargeException`) comes and goes** `[C]`: `validate-apply-remove-draft` and even
-  `create-draft` of this BO failed with it a few times, the same calls went through a minute later, and the
-  record that «failed» WAS saved (with its back link). It is the search-index memory breaker of the stand,
+  `create-draft` may fail with it and go through a minute later, and a record whose save «failed» may
+  already BE saved (with its back link). It is the search-index memory breaker of the stand,
   not the payload — retry, then check what was stored before retrying a create.
 - In the export (`MYBPM-IMPORTS.md` §3 «Reference fields») `linkedFieldId` becomes
   `boRefStruct.linkedFieldCode` and `copyFromFieldId` becomes `copyFromFieldCode` — both by CODE — and
   `linkedCoSettings` becomes a map `{"<source BO code>": {linkedFieldCode, removeType}}`. All three import
   back `[C]`.
 
-#### «С фильтром» and «Зависимость полей» of a `BO` field `[C]` (`<stand>`)
-
-Probes, group «Тест»: «Проба зависимости регион / город / филиал / заказ» (API + constructor UI; the
-city has `Регион` → region and a CHECKBOX «Активен», the branch has `Регион`, the order has `Регион`, `Город`,
-`Филиал`, «Активный город», «Активный город API») and their import «… архив».
+#### «С фильтром» and «Зависимость полей» of a `BO` field `[C]`
 
 **How the picker gets its records.** Every view (table, chips, single) asks
 `v2/business-object-instance/load-bracket-ref-boi-table` body `{boId, boiId, draftId, fieldId, refBoId, search,
@@ -2619,9 +2498,9 @@ server itself (`brackets: []`) applies the field's own filter and **leaves out t
 this field** (saved value); anything else comes only from `brackets` the client sends.
 
 **«С фильтром» (`bracketFilterId`)** — gear → «Отображение» → «С фильтром: Заполните» → a filter builder over
-the referenced BO's fields. Works in the UI, through the API and after an import `[C]`: the picker of «Активный
-город» (filter «Активен = да») listed only the active cities.
-- Constructor capture (one save of the BO): the portion carries `editedFields: [{fieldId, bracketFilterId}]`, then
+the referenced BO's fields. Works in the UI, through the API and after an import `[C]`: the picker lists only the
+records that pass the filter.
+- The constructor (one save of the BO): the portion carries `editedFields: [{fieldId, bracketFilterId}]`, then
   `v2/bracket-filter/save` body `{id, boId: <REFERENCED BO>, brackets: [{id, parentId:"", parentTreeIds:[],
   connectionType:"AND", notType:"DEFAULT", dynamicFilters:[{id, fieldId, label, type:"CHECKBOX", value:"true",
   options:[], businessFields:[], businessObjectId:null, chipsMode:false, numberTo:0, numberFrom:0,
@@ -2632,7 +2511,7 @@ the referenced BO's fields. Works in the UI, through the API and after an import
   `{fieldId, bracketFilterId: id}`. **Trap**: `v2/business-objects/load-bo-filter {boId, fieldId}` (what the
   constructor's builder reads) also returns an `id`, but persists nothing — saving under it answers
   `NoBracketFilterWithId`, and a patch with that id is stored as `null`.
-- The server does NOT enforce the filter on save: a §6a record cycle stored an inactive city in the field `[C]`.
+- The server does NOT enforce the filter on save: a §6a record cycle stores a record the filter excludes `[C]`.
 - Export/import: `MYBPM-IMPORTS.md` §3 «Reference fields — «С фильтром» and «Зависимость полей» in an archive».
 
 **«Зависимость полей»** — gear → «Поведение» → «Поле зависимого» (`relMainInnerFieldId`, a `BO` field of the
@@ -2644,24 +2523,19 @@ equals the value of «Зависимость от» (or of that value's inner fi
 - The server builds the filter correctly: `v2/business-object-instance/load-field-relation-bracket-filter` params
   `{boId, boiId, fieldId, draftId}` returns `{brackets:[{dynamicFilters:[{fieldId:<main inner>, type:"BO",
   boiIds:[<value of «Зависимость от» in the DRAFT>]}]}]}`; with an inner field the `boiIds` are that value's inner
-  field (city «Г3 юг» → region Р2 → only branch «Ф2 юг») `[C]`. Passed as `brackets` to
+  field `[C]`. Passed as `brackets` to
   `load-bracket-ref-boi-table` it filters `[C]`.
-- **In the UI it does NOT filter on this build** `[C]` (TABLE and MULTIPLE views, region set and saved): the
-  picker lists every city. The table selector (chunk 1954) fetches the relation filter but its
-  `tap(()=>this.setFieldRelationFilter)` never calls the function; the popover calls it, yet the
-  request still went out with `brackets: []`. The client only blocks the picker («relation_field_is_empty»)
+- **In the UI it does NOT filter on this build** `[C]` (TABLE and MULTIPLE views, «Зависимость от» set and saved):
+  the picker lists every record — the client sends `brackets: []`. The client only blocks the picker («relation_field_is_empty»)
   for the card-style view when «Зависимость от» is empty. Treat the relation as a client defect: if the
   restriction matters, use a script or a «С фильтром» filter instead.
-- The server does not enforce it on save either: region Р1 + southern city + northern branch saved `[C]`.
+- The server does not enforce it on save either: a mismatching combination is saved `[C]`.
 - An archive carries only `relMainInnerFieldCode` — set `relFieldId` / `relInnerFieldId` after the import with
   the patch above (`MYBPM-IMPORTS.md` §3).
-- Side effect seen on the constructor save: the UI also called `save-business-form-field` and made Имя / Регион /
+- Side effect of the constructor save: the UI also called `save-business-form-field` and made Имя / Регион /
   Город registry columns (`tableColToShow`) — mind the search-index sort defect (§7) for a filled text column.
 
 #### «Читать из реестра» (`readFromRegistry`) of a panel's `BO` field `[C]`
-
-Probes: «Проба чтения из реестра» (API + constructor) and «Проба чтения из реестра архив»
-(archive), both `BO_PANEL` over one plain BO with four records.
 
 - **What it does.** Gear → «Поведение» → checkbox «Читать из реестра», shown **only in a panel**
   (`showSettingsReadFromRegistry = ownerBoIsPanel`). ON (the default) — the widget is the WHOLE registry
@@ -2678,15 +2552,15 @@ Probes: «Проба чтения из реестра» (API + constructor) and 
   on an EXISTING field; both directions stored `[C]`.
 - **Defect: the constructor cannot switch it back ON** `[C]`. Ticking the box sends
   `{fieldId, readFromRegistry: true, defaultValue: "", deleteDefaultValue: true}`, and with that exact
-  triple the server leaves `false` (tried twice from the UI, once from the API). `readFromRegistry:true`
+  triple the server leaves `false` (from the UI and from the API alike). `readFromRegistry:true`
   alone, or with only one of the two other keys, IS stored. So turn it on through the API with the bare
   key; the UI shows the box ticked until the next reload.
 - **A panel's record is per user** `[C]` (client: `checkBoiExists(boId, personId)` then
   `createBoiById(boId, personId)`): its `boiId` IS the viewer's `personId`, created on the first visit.
-  So what an OFF field holds is each user's own list `[I]` (one login only). Open a panel by
+  So what an OFF field holds is each user's own list `[I]`. Open a panel by
   `/business-objects/viewing-single/panel?businessObjectId=<panel boId>` — the page adds the rest;
-  `/viewing-list/panel/<boId>` falls through to «Главная». The first visit of a fresh panel answered
-  «Data too large» and hung on skeletons; a reload rendered it.
+  `/viewing-list/panel/<boId>` falls through to «Главная». The first visit of a fresh panel may answer
+  «Data too large» and hang on skeletons; a reload renders it.
 - **A `BO` field added through the API needs `boFieldRefs`** `[C]`: with `[]` (what
   `generate-business-form-field` returns) the registry widget is EMPTY and the page toasts «target is
   marked non-null but is null». The UI's drag fills one entry per field of the target BO —
@@ -2696,16 +2570,15 @@ Probes: «Проба чтения из реестра» (API + constructor) and 
   route must set itself.
 - **Archive** — the export writes `"readFromRegistry": false` and OMITS the key when it is `null`; an
   import stores exactly what it gets — no key → `null` (registry), `false`, `true` — and the imported
-  panel behaved like the constructor one `[C]` (`MYBPM-IMPORTS.md` §5a).
+  panel behaves like a constructor-built one `[C]` (`MYBPM-IMPORTS.md` §5a).
 - Outside a panel the gear has no such checkbox; a form field's runtime still reads
   `readFromRegistry ?? isPanel`, so `true` on an ordinary BO's field would probably render it as a
-  registry too `[U]` — never tried.
+  registry too `[U]`.
 
 #### Per-type settings — checklist, questionnaire, progress bar, tabs, text editor, option colours `[C]`
 
-Probes in group «Тест»: «Проба свойств типов» (API, then the constructor UI) and «Проба свойств
-типов архив» (archive, `MYBPM-IMPORTS.md` §3 «Per-type settings»), records saved through the form
-cycle (§6b) and through the card.
+The archive side is `MYBPM-IMPORTS.md` §3 «Per-type settings»; record behaviour holds for the form
+cycle (§6b) and the card.
 
 | type | gear → where | key (constructor patch) | what it does on a record |
 |---|---|---|---|
@@ -2713,8 +2586,8 @@ cycle (§6b) and through the card.
 | `CHECKLIST` | settings block | `isSelectOnly` «Выбор без редактирования» (`{fieldId, isSelectOnly:true}`) | the item texts are not editable, only ticked (without it a text stays editable even when the field is not appendable) |
 | `CHECKLIST` | settings block | `isRequired` «Обязателен один пункт» | the SERVER refuses a record with no item ticked (`ALERT_SAVE_BUTTON_NOTIFICATION validate_required_title`) |
 | `CHECKLIST` | settings block | `isRequiredAll` «Обязательны все пункты» | **nothing on this build**: stored, exported, imported, but the card (the client maps it to `false`) and the server both saved records with unticked items — through the UI and the form cycle |
-| `QUESTIONNAIRE` | «Отображение» | `questionnaireIsMultiple` «Одиночный / Множественный» (`{fieldId, questionnaireIsMultiple:true}`) | single = radio buttons, one mark per row; multiple = checkboxes, several per row. Only the client keeps a row single — the form cycle stored two marks in one row of a single field. «Поведение» of a questionnaire is empty |
-| `PROGRESS_BAR` | «Поведение» | `isProgressBarSticky` «Фиксация при скроллинге» (`{fieldId, isProgressBarSticky:false}`) | ON: the bar stays at the top of the card while the form scrolls (its grid row gets `div.isSticky`, `position: sticky`); OFF: it scrolls away — both seen on records. `params.isSticky` is only a create-time default, ignore it |
+| `QUESTIONNAIRE` | «Отображение» | `questionnaireIsMultiple` «Одиночный / Множественный» (`{fieldId, questionnaireIsMultiple:true}`) | single = radio buttons, one mark per row; multiple = checkboxes, several per row. Only the client keeps a row single — the form cycle stores two marks in one row of a single field. «Поведение» of a questionnaire is empty |
+| `PROGRESS_BAR` | «Поведение» | `isProgressBarSticky` «Фиксация при скроллинге» (`{fieldId, isProgressBarSticky:false}`) | ON: the bar stays at the top of the card while the form scrolls (its grid row gets `div.isSticky`, `position: sticky`); OFF: it scrolls away. `params.isSticky` is only a create-time default, ignore it |
 | `TAB_GROUP` | settings | `params.showAsStepper` «Показать как степпер» | **nothing on this build** — stored and exported, but no runtime component reads it; the card shows ordinary tabs |
 | `TAB_GROUP` | settings (offered only with ≤ 1 tab) | `params.needDisableTabs` «Отключить вкладки» | the tab strip is hidden; the fields of the tab show as plain form fields |
 | `TAB_GROUP` | tab strip in the body | `tabs[].isRight` | the tab sits at the right end of the strip |
@@ -2747,9 +2620,7 @@ cycle (§6b) and through the card.
 
 #### «Единичный выбор» — `RADIO_BUTTON_GROUP` `[C]`
 
-Three radio groups added over the API to probe «Проба виджетов» (group «Тест»), records made
-through the §6a cycle and looked at on the card, the constructor opened, the BO exported and imported back
-as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the archive side).
+`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the archive side.
 
 - **Over the API** it is the dropdown recipe of R1 with a local list: on the DTO of
   `generate-business-form-field {boId, fieldType:"RADIO_BUTTON_GROUP"}` set `optionSource:"FROM_FIELD"`,
@@ -2773,7 +2644,7 @@ as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the arch
   the «Канбан» tab only when the BO has a dropdown. So `options[].color` of a radio shows nowhere.
 - The server validates nothing about the value: `save-field-value` with a string that is no option id is
   stored, and the registry shows the raw string. On the card a ticked radio cannot be unticked (the client
-  control only sets — bundle chunk 7490).
+  control only sets).
 - The registry column shows the option's label.
 
 #### «История» — `isHistoryTracking` and the BO tab `HISTORY` `[C]`
@@ -2785,7 +2656,7 @@ as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the arch
   the same portion (switch off = `boTabs` without it + `delBoTabs: ["HISTORY"]`). Tab types `CHAT PEOPLE FILES
   HISTORY PRINT_FORM` (+ `TELEGRAM`/`WHATSAPP`), all of them §5k. In an archive the same is
   `boTabs: {"HISTORY": 1}` (a map) — see `MYBPM-IMPORTS.md` «Field flags».
-- **Measured on one record**: no tab, no flag → journal empty; tab only → field edits not logged; tab + flag on
+- **What gets logged**: no tab, no flag → journal empty; tab only → field edits not logged; tab + flag on
   «Текст» → only «Текст» logged, the unflagged «Ответ» edited in the same save is not; flag but tab removed →
   the edit is NOT written at all (turning the tab back on does not reveal it). With the tab on, a NEW record
   also logs `CREATE_BOI` and `ADD_PARTICIPANT` without any flag.
@@ -2809,12 +2680,12 @@ as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the arch
   with the new one at `titleOrderIndex = count`; unselecting sends just that field with `titleToShow: false` (its
   old `titleOrderIndex` stays stored). The flags read back in `formFields` (`null` = never set).
 - **When the name changes**: existing records are renamed ASYNCHRONOUSLY ~3 s after the flags change (order swap
-  and unflagging both measured); a record save renames that record at once.
+  and unflagging alike); a record save renames that record at once.
 - **Archive**: the keys travel on `dynamicFields` (export, copy import → same flags and order, new record named
   from them). For a NATIVE the import applies `nativeFields.<TYPE>.titleToShow` but the export writes `false`
   (see `MYBPM-IMPORTS.md` «Field flags» «Название записи»).
 
-#### What the settings actually DO on a record (runtime, verified in the UI)
+#### What the settings actually DO on a record
 
 - A required field is marked with a red `*` on the record card; saving with it empty is refused with the
   dialog **«Внимание — Карточка не соответствует требованиям: 1. Обязательные поля не заполнены»** and the
@@ -2822,22 +2693,17 @@ as copies (`MYBPM-IMPORTS.md` §3 «Единичный выбор» has the arch
 - A duplicate in a unique field is refused with the field-level tooltip **«Ошибка — Продублировано
   уникальное поле»**; the card stays open and nothing is written.
 - A read-only field renders as a grey `disabled` input, **and a script still writes it** `[C]`
- : a button's «На изменение поля» script filled a read-only INPUT_TEXT on the open
-  card. So «Только для чтения» is the right flag for the fields a script fills — the user cannot type
+  (e.g. a button's «На изменение поля» script fills a read-only INPUT_TEXT on the open card). So «Только для чтения» is the right flag for the fields a script fills — the user cannot type
   into them, the script can. Set on an existing BO as a one-key `editedFields` patch
   `{fieldId, isReadonly: true}` (mirrored into `formFields`).
-- A `FROM_BO` dropdown lists the dictionary's rows (Developer, Manager, General Manager, …), a
+- A `FROM_BO` dropdown lists the dictionary's rows, a
   `FROM_FIELD` one lists its own options — both with a «Поиск» box.
 
 ### 5i. Every field type, widget and system field — constructor UI and API `[C]`
 
-Three families, three palette sections, three generator endpoints. Everything below was done on
-`<company-a>`: «Проба все типы полей» `y5VYjeIOYlfTFjLk` (constructor API, 43 elements),
-«Проба все типы импорт» `w3Y4bI3H2ntf7rcF` (the same 43 through a generated archive, API
-import) and «Проба виджеты конструктор» `zm8ufIOguCPru0bu` (widgets + system fields through
-the tool). The archive half is in `MYBPM-IMPORTS.md` §0.5 / §0.5a / §0.5b.
+Three families, three palette sections, three generator endpoints. The archive half is in `MYBPM-IMPORTS.md` §0.5 / §0.5a / §0.5b.
 
-#### The palette — what the constructor really offers `[C]` (read off the screen and off the bundle)
+#### The palette — what the constructor really offers `[C]`
 
 | section | contents |
 |---|---|
@@ -2942,32 +2808,27 @@ The gear → «Отображение» radio (Одиночный / Множес
 `editedFields: [{fieldId, params: {viewType: "MULTIPLE", contentType: "ALL"}}]`. **The key is
 `params.viewType`, not the top-level `viewType`.** Setting only the top-level key over the API left
 the radio on «Одиночный». Two rules follow:
-- **For a photo to show in the field without downloading it, choose «Плиточный»** — the platform team's
-  rule (not «Множественный»). What we saw: in «Множественный», a PNG written by a script (`convertToFile("karta.png")`) still
-  rendered as a file row with a preview on click. **«Плиточный» writes `params: {viewType: "TILE",
-  contentType: "ALL"}`** `[C]` (`<stand>`, captured off `save-business-object-portion`; the
-  top-level `viewType` stayed `MULTIPLE` and is ignored). After the switch the same PNG showed as a
-  thumbnail tile on the card. Captured values: `MULTIPLE`, `TILE`; the «Одиночный» one is `[U]`.
-- **In MULTIPLE and TILE mode the field's `#Значение` is `File[]`** (TILE `[C]`: the script compiled
-  unchanged after the switch): a script that assigned one file stops
+- **For a photo to show in the field without downloading it, choose «Плиточный»** (not «Множественный»:
+  there a PNG written by a script still renders as a file row with a preview on click). **«Плиточный» writes `params: {viewType: "TILE",
+  contentType: "ALL"}`** `[C]` (the top-level `viewType` is ignored). In «Плиточный» the PNG shows as a
+  thumbnail tile on the card. Known values: `MULTIPLE`, `TILE`; the «Одиночный» one is `[U]`.
+- **In MULTIPLE and TILE mode the field's `#Значение` is `File[]`** (TILE `[C]`): a script that assigned one file stops
   compiling with `blockAssign_arrayAssignNoArray` (`MYBPM-IMPORTS.md` §12a, RestResponse notes).
 - **«Поведение для MP» = `params.contentType`, mobile app only** `[C]`. Enum `ALL` /
   `IMAGE` / `DOCUMENT` / `FOR_CAMERA`; the gear checkbox «Только камера» writes only `FOR_CAMERA` ↔ `ALL`
   (`saveParams` → the same `editedFields` patch with the whole `params`), so it overwrites an `IMAGE` /
-  `DOCUMENT` set over the API or an archive. Over the API (`params` on an added field) all four were stored;
-  they survive a stand export and a copy import. **On the web nothing changes**: all four render
-  `<input type=file accept="*">` without `capture`, and a `.txt` uploaded through `v2/file/upload` and
-  saved by the §6a cycle was stored in the `FOR_CAMERA`, `IMAGE` and `DOCUMENT` fields alike — the server
-  does not check the file kind. The mobile behaviour itself is `[U]`.
+  `DOCUMENT` set over the API or an archive. All four can be set over the API (`params` on an added field)
+  and survive an export and an import. **On the web nothing changes**: all four render
+  `<input type=file accept="*">` without `capture`, and the server does not check the file kind — any file
+  (a `.txt` too) is stored in a `FOR_CAMERA`, `IMAGE` or `DOCUMENT` field. The mobile behaviour itself is `[U]`.
 
 #### GEO_POINT («Карта») is the platform's own map, not Yandex `[C]`
 
-- **The «Карта» field works with Google** (platform team). What the bundle shows (build
-  `C4.24.x`, chunks `2245` / `5214` / `9753`): the company settings screen «Навигатор» goes through the
+- **The «Карта» field works with Google.** The company settings screen «Навигатор» goes through the
   controller `/geo-map/settings` (`load-geo-map-company-fields`, `load-geo-map-company-field-values`,
   `save-geo-map-company-field-values`, all with P `{geoMapType}`). The only `geoMapType` is `GOOGLE_MAP`,
   and the screen takes a Google API key («Google API ключ действителен»). The coordinate picker dialog
-  itself draws Leaflet on `tile.openstreetmap.org` tiles `[I]` (read off the bundle, not seen on screen).
+  itself draws Leaflet on `tile.openstreetmap.org` tiles `[I]`.
 - The consequence: **a GEO_POINT neither uses nor demonstrates a customer's Yandex Maps key.** Its value
   is `{"lat":…,"lon":…}` (§6b). An interactive Yandex map on a card needs an IFRAME widget pointing at your
   own page that loads `api-maps.yandex.ru`, as described in the next section.
@@ -2986,8 +2847,7 @@ a call that puts them into the body answers 200 and writes nothing:
 | CURRENT_* (date family) | `v2/current-date` for the code of ALL five; the lock per type: `v2/current-date` / `current-day` / `current-month` / `current-day-and-month` / `current-year` | `save-current-date-code {boId, currentDateId, code}` (asynchronous, ~3 s), `save-access-group {boId, currentDateId \| currentDayId \| currentMonthId \| currentDayAndMonthId \| currentYearId}` + the group as body | `load-current-date-code` / `load-access-group` (see «The CURRENT_* date widgets» below) |
 | CURRENT_USER | `v2/widget-current-user` | `save-current-user-code {boId, currentUserId, code}` (asynchronous, ~3 s), `save-access-group {boId, currentUserFieldId}` + the group as body | `load-current-user-code` / `load-access-group` / `load-bo-id` (→ the «Пользователи» BO id) |
 
-**An IFRAME shows one fixed url per BO, and the record is NOT passed to it** `[C]` (bundle,
-chunk `6621` `DffIframeComponent`). The card calls `load-iframe-url {boId, iframeId}` and puts the answer
+**An IFRAME shows one fixed url per BO, and the record is NOT passed to it** `[C]`. The card calls `load-iframe-url {boId, iframeId}` and puts the answer
 into `<iframe src>` unchanged, with no placeholders and no record or draft ids. A page inside learns which
 record it sits on only when it is served from the stand's own origin: then it can read the parent
 document. A cross-origin page gets only the stand's origin as its referrer. The settings dialog refuses
@@ -3009,24 +2869,23 @@ A button has no script slot of its own. It gets one the same way as any other fi
 the `fieldScripts` map of `save-bo-scripts` (§5g «Wiring scripts onto a BO headlessly»):
 `fieldScripts: {<button fieldId>: {afterChangeScriptId}}`.
 
-- **The click is a field change.** The widget's click handler (bundle, chunk with `handleButtonUrl`) runs
+- **The click is a field change.** The widget's click handler runs
   `forkJoin([load-button-url, load-button-field-ids, changeValue$()])`. `changeValue$` sends the button's
   value to the draft, and that fires the field's «Изменение поля» script server-side, like
   `save-field-value` does for any field (§6b). Each click fires it again, and its field writes come back
-  in `fieldFormCommands` and show on the open form at once. Verified with a real mouse click on the form
-  and headlessly with `save-field-value {values:[{fieldId:<button id>, value:""}]}`.
+  in `fieldFormCommands` and show on the open form at once. Headlessly the same click is
+  `save-field-value {values:[{fieldId:<button id>, value:""}]}`.
 - **The script is the only thing a button reliably does; leave its `url` EMPTY.** What each url does on the
   record card is in the next section. In short: `call/plugin/…` needs a plugin installed on the server.
   `client/save-current-boi` and `create-boi/…` do nothing on the card. Any other url does nothing either.
-- Worked example: BO «Тест Яндекс API» on `<stand>` / `<company-a>`. Four buttons, each with its own field script:
+- Worked example: buttons, each with its own field script:
   `RestRequest` GET → `resultCode` / `resultAsText` into the record's fields
   (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a).
 
-#### What a BUTTON's `url` does on the record card `[C]` (`<stand>` / `<company-a>`)
+#### What a BUTTON's `url` does on the record card `[C]`
 
-Probe BO «Проба виджетов», four buttons clicked on a record card while the XHR log was
-recorded, then checked against the bundle. The card draws a button with
-`mybpm-ng-widget-button` (chunk `5660`). A click runs `load-button-url` + `load-button-field-ids` +
+The card draws a button with
+`mybpm-ng-widget-button`. A click runs `load-button-url` + `load-button-field-ids` +
 `save-field-value(<button>, "")`, and the last call fires the button's field script. After that the url
 is read by its PREFIX:
 
@@ -3034,8 +2893,8 @@ is read by its PREFIX:
 |---|---|
 | empty | nothing more. **This is the working button: a script on «Изменение поля» does the job** |
 | `call/plugin/<name>/…` | `v2/button/call-button-plugin {boId, boiId, fieldId, draftId}`. `<name>` is a **plugin registered on the server**, not something you write. An unknown name answers HTTP 400 «No such plugin `<name>`» and a red toast. The card sends **no** field values: the plugin reads the record itself |
-| `client/save-current-boi` | **nothing — the record is NOT saved.** The handler emits on `a client event`, and no component of this build subscribes to it. Two clicks: no `validate-apply`, the typed value stayed unsaved, the dialog stayed open |
-| `create-boi/<toFieldCode>/<from->to, …>`, `client/create-boi/…` | **nothing on the card.** Only the «dff» button component handles it (chunk `5584`; chunk `8782` only logs it), and the record card does not use that component. Which screen uses `5584` is `[U]`. Per its code `[I]` it opens a create dialog for the BO behind the BO/CO field `<toFieldCode>`, copies the listed values (`Текст->Название`), and puts the new record into that field |
+| `client/save-current-boi` | **nothing — the record is NOT saved.** No `validate-apply` is sent, the typed value stays unsaved, the dialog stays open |
+| `create-boi/<toFieldCode>/<from->to, …>`, `client/create-boi/…` | **nothing on the card.** Which screen acts on it is `[U]`. It is meant `[I]` to open a create dialog for the BO behind the BO/CO field `<toFieldCode>`, copy the listed values (`Текст->Название`) and put the new record into that field |
 | anything else (`https://…` too) | nothing. A button never navigates |
 
 - **«Поля для отправки» = `save-button-field-ids` = the archive's `fieldCodes`.** The card does not send
@@ -3047,18 +2906,15 @@ is read by its PREFIX:
 
 #### The CURRENT_USER widget («Текущий пользователь») — settings `[C]`
 
-Probe «Проба виджетов». The widget was added over the API, set up in the constructor, over
-the API and by an archive, then checked on a record card.
-
 - **What it shows: the person who OPENS the card, not the record's author.** The card component
-  (`app-widget-current-user`, chunk `950`) asks `v2/widget-current-user/load-bo-id` for the «Пользователи»
+  (`app-widget-current-user`) asks `v2/widget-current-user/load-bo-id` for the «Пользователи»
   BO and shows `[authInfo.personId]`, read-only, through the ordinary nested-record selector. **A record
   stores nothing for it**: `v2/load-boi-values` of a saved record has no entry for the widget's
   `fieldId`. Do not use it to record who created or changed a record. Use the natives `CREATED_BY` /
   `LAST_MODIFIED_BY` for that.
 - **The DTO** from `generate-business-form-widget {widgetType:"CURRENT_USER"}` is `type:"BO"`,
   `boFieldArchetype:"WIDGET"`, `widgetType:"CURRENT_USER"`, `refBoId` = «Пользователи», `isReadonly:true`,
-  `viewType:"TABLE"`, and `boFieldRefs` = every field of «Пользователи» (33 on that stand) with
+  `viewType:"TABLE"`, and `boFieldRefs` = every field of «Пользователи» with
   `toShow:true` only on «Фамилия» (orderIndex 0) and «Имя» (1). One per BO: the palette removes it
   once it is placed. The server gives it a code from the label at the first save (`Tekuschiyi_polzovatel`).
 - **Its settings are the three below plus the lock. There is no field script and no «Поведение» tab:**
@@ -3080,10 +2936,6 @@ the API and by an archive, then checked on a record card.
 
 #### The CURRENT_* date widgets («Текущая дата / день / месяц / день и месяц / год») `[C]`
 
-Probe «Проба виджетов». All five were added over the API, given codes and locks over the API,
-opened on a record card, exported, re-imported as a copy, generated by `tools/make-probe-archive.bun.ts`
-and imported. The copy and the generated BO were deleted afterwards.
-
 - **The DTO** from `generate-business-form-widget {widgetType:"CURRENT_DATE"}` (and the other four):
   `type:null`, `widgetType` = the type, `code:null` (also after the save, like every widget except
   BUTTON), no `gridPosition` (give it one; the constructor uses 4 rows). The server derives the code
@@ -3098,14 +2950,13 @@ and imported. The copy and the generated BO were deleted afterwards.
     with the id key named after the controller (`currentDateId`, `currentDayId`, `currentMonthId`,
     `currentDayAndMonthId`, `currentYearId`) in params and the access group as the body. Only `view` is
     used, and the default is `accessForAll: true`. «Только участники» (`view.accessForAll:false,
-    participants:true`) was saved and read back on all five.
-- **On the card** (chunk `2150` `DffCurrentDateComponent`): a disabled `nz-date-picker` in the format
-  `dd.MM.yyyy` / `dd` / `LLLL` / `dd.MM` / `yyyy`. For the date 01.10.2026 the five show `01.10.2026`, `01`,
-  `октябрь`, `01.10` and `2026`. The placeholder of «день и месяц» is the untranslated key `day_and_month`.
+    participants:true`) works on all five.
+- **On the card**: a disabled `nz-date-picker` in the format
+  `dd.MM.yyyy` / `dd` / `LLLL` / `dd.MM` / `yyyy`. For 1 October of year `YYYY` the five show `01.10.YYYY`, `01`,
+  `октябрь`, `01.10` and `YYYY`. The placeholder of «день и месяц» is the untranslated key `day_and_month`.
 - **Nothing is stored.** `v2/instance-field-form/load-field-data` gives every widget the server time when
-  the DRAFT was created, as an ISO string, and a new draft gives a new time. `save-field-value` with
-  `2020-01-01` into the widget answered normally and the record saved, but the next draft showed the
-  current time again. `load-boi-values` does not list the widgets. For a stored date use a DATE field or
+  the DRAFT was created, as an ISO string, and a new draft gives a new time. A `save-field-value` into
+  the widget is accepted and the record saves, but the next draft shows the current time again. `load-boi-values` does not list the widgets. For a stored date use a DATE field or
   the native `CREATED_AT`.
 - The palette offers each type once per BO; **the server accepts a second widget of the same type** (it
   gets its own derived code).
@@ -3114,22 +2965,18 @@ and imported. The copy and the generated BO were deleted afterwards.
 
 #### The CAPTCHA widget («Блок captcha») — settings and what it does to saves `[C]`
 
-Probe «Проба виджетов». The widget was added over the API, given a code and a lock over the API,
-opened on a record card, exported, re-imported as a copy and removed again.
-
 - **The DTO** from `generate-business-form-widget {widgetType:"CAPTCHA"}`: `type:null`,
   `widgetType:"CAPTCHA"`, label «Блок captcha», `code:null` (also after the save, like every widget but
   BUTTON). The server derives the code `Blok_captcha`. It may repeat on a BO. Height 6 rows.
-- **Settings: the code and the lock, nothing else.** The gear holds only the code (bundle, chunk `2245`:
-  the change-code dialog calls `saveCaptchaCode`). The constructor canvas did not render for DOM reading,
-  so the UI side is read off the bundle only.
+- **Settings: the code and the lock, nothing else.** The gear holds only the code (the change-code
+  dialog calls `saveCaptchaCode`); the gear side is `[I]` (read off the client code, not the screen).
   - code: `v2/captcha/save-captcha-code {boId, captchaId, code}`, **asynchronous**: the old code is
-    still read back 1 s later, the new one after 2 s. **The server does not check the code**: `"Текст"`
-    was stored as is, so check the code yourself against the naming convention (§0U.5 rule 12).
+    still read back 1 s later, the new one after 2 s. **The server does not check the code**: a Cyrillic
+    one is stored as is, so check the code yourself against the naming convention (§0U.5 rule 12).
   - lock: `v2/captcha/load-access-group` / `save-access-group {boId, captchaId}` (params) + the access
     group as the body. Only `view` is used, and the default is `accessForAll: true`.
-- **On the card** (dialog card, chunk `760` `DffCaptchaComponent`): an image, an input and «Подтвердить».
-  It is shown at once. Another card component (chunk `3369`) shows it only after the first value change.
+- **On the card** (dialog card): an image, an input and «Подтвердить».
+  It is shown at once. Another card component shows it only after the first value change.
   - image: `GET /web/v2/captcha/generate?draftId=<draft>` with the `token` header → a PNG of 160×50 with
     five characters. **It is a GET with a query string**: a POST answers `405 Method Not Allowed`.
   - check: `POST v2/captcha/validate {draftId, code}` (params) → `true` / `false`. On `false` the card
@@ -3138,24 +2985,21 @@ opened on a record card, exported, re-imported as a copy and removed again.
 - **The server enforces it** (`CustomBoCaptchaValidator.validateOnSave`):
   `v2/instance-form/validate-apply-remove-draft` answers `{"errorType":"CaptchaNotVerified",
   "message":"… :: Капча не верифицирована"}` for a draft that CHANGED a value and for a NEW record,
-  until the captcha of that draft was validated. A draft with no changes saves. The same was confirmed on
-  the imported copy. **The four-call cycle of §6a is blocked the same way**: `apply-and-remove-draft`
-  answered `CaptchaNotVerified` and no record was created. **So the record API (§6a), the headless form cycle (§6b) and every client that has
+  until the captcha of that draft was validated. A draft with no changes saves. **The four-call cycle of §6a is blocked the same way**: `apply-and-remove-draft`
+  answers `CaptchaNotVerified` and no record is created. **So the record API (§6a), the headless form cycle (§6b) and every client that has
   no human to read the image cannot save records of a BO with a captcha.** Whether scripts and the xlsx
-  import are blocked too is `[U]`. Removing the widget (`deletedFieldIds`) made saving work again at once.
-- The positive path (a solved captcha, then a save) was NOT run: solving the image is left to a person.
+  import are blocked too is `[U]`. Removing the widget (`deletedFieldIds`) makes saving work again at once.
+- The positive path (a solved captcha, then a save) is `[U]`: solving the image needs a person.
 - Archive: `captcha.<code>` + `fieldAccessStructMap.<code>`, both survive (`MYBPM-IMPORTS.md` §0.5b,
   «CAPTCHA round-trips»).
 
 #### The SIGNATURE widget («ЭЦП / СМС») — settings `[C]`
 
-Probe «Проба виджетов». The widget was added over the API, set up over the API and in the
-constructor, exported, re-imported as a copy, generated by `tools/make-probe-archive.bun.ts` and imported,
-and opened on a record card. One SIGNATURE per BO.
+One SIGNATURE per BO.
 
 - **The DTO** from `generate-business-form-widget {widgetType:"SIGNATURE"}`: `type:null`,
   `widgetType:"SIGNATURE"`, label «ЭЦП/SMS», 6 rows high. The server derives the code from the label
-  (`ECP_SMS`). Unlike the other widgets it shows the field-script icon in the constructor (bundle `[I]`, not run).
+  (`ECP_SMS`). Unlike the other widgets it shows the field-script icon in the constructor `[I]`.
 - **The gear popover** shows: the code (pencil → change-code dialog), «Поля для подписания» (chips +
   «Обычное / Массовое подписание», «Выбрать все»), «Документы для подписания» (print forms of this BO,
   plus for mass signing those of the referenced BOs) and «Указать номер для подписания» (a radio list of the
@@ -3171,7 +3015,7 @@ POST v2/signature/save-signature-settings     BODY (not params):
  addMassPfRecord, delMassPfRecord}            ← [{boId: <referenced BO>, printFormId}]
 ```
 
-  The UI sends exactly this, captured off a real save. The API call with the same body works without the
+  The UI sends exactly this. The API call with the same body works without the
   UI and answers `""`. Only the ids you list change. `signingPhoneId` is a plain value: `null` clears it.
 - **Field ids here are NOT bare field ids**: `load-fields {boId}` (the candidates) answers
   `[{id:"D:<fieldId>", label, fullLabel, refFields:[…]}]`. A BO field offers its target's fields as
@@ -3184,14 +3028,13 @@ POST v2/signature/save-signature-settings     BODY (not params):
 - **Mass signing needs the referenced BO's own SIGNATURE widget.** The candidates carry three flags. The
   UI shows the matching message instead of a checkbox: `signFieldMissing` («в БО … необходимо добавить
   виджет ЭЦП/SMS»), `signFieldUnsupported` («…добавить такой-же тип подписания») and `signFieldEmpty`
-  («…указать подписываемые поля/документы»). With the widget added the flag moved from Missing to
-  Unsupported, and **nothing on the stand clears it** `[C]`: ticked fields and a print form on the linked
-  widget, the same widget code, even the same widget id, no phone on either side, a stand restart — the
-  linked BO kept `signFieldUnsupported` (and the mass FIELD row kept `signFieldEmpty` as well). Across a
-  whole company every linked BO with a SIGNATURE, hand-made ones included, carried it. The criterion is
+  («…указать подписываемые поля/документы»). With the widget added the flag becomes
+  Unsupported, and **nothing on the stand clears it** `[C]` — do not retry ticked fields or a print form on
+  the linked widget, the same widget code or id, no phone on either side, a stand restart: the linked BO
+  keeps `signFieldUnsupported` (and the mass FIELD row keeps `signFieldEmpty` as well). Every linked BO with a SIGNATURE carries it, hand-made ones included. The criterion is
   server-side only `[U]`, the client merely prints the flag. `load-mass-print-forms` answers one row per
   SIGNATURE widget of every BO referenced by ANY BO field (not only the mass fields), and its `pfRecords`
-  stayed empty, so the UI cannot pick a mass print form at all.
+  stay empty, so the UI cannot pick a mass print form at all.
   `save-signature-settings` still ACCEPTS a mass print form the list does not offer, and the export carries it.
 - **Code** — `save-signature-code {boId, signatureId, code}` (params) is **asynchronous**: an immediate
   `load-signature-code` still returns the old code. **Lock** — `load-access-group {boId, signatureId}` /
@@ -3203,7 +3046,7 @@ POST v2/signature/save-signature-settings     BODY (not params):
   `load-active-sms` and `load-filled-signature-group {boId, boiId, signatureId, draftId}` →
   `{fields:[{fieldId, label, value}], printFormList, signingPhone, maskCountry}`. The «Отправить SMS-код»
   button stays disabled while the record's phone field is empty. The rest of the flow (`generate-code`,
-  `sign-otp`, `save-signed-data`, `load-signatures-list`) was NOT run: it sends a real SMS `[U]`. In
+  `sign-otp`, `save-signed-data`, `load-signatures-list`) is `[U]`: it sends a real SMS. In
   scripts the result is `#получи подписи` → `Object/MybpmSignature[]` (`MYBPM-IMPORTS.md` §12a).
 - **The archive form** (`signatures.<code>`) and what survives an import: `MYBPM-IMPORTS.md` §0.5b «SIGNATURE
   round-trips». In short, everything travels by CODE except `massPrintFormCodes`, which no import brings
@@ -3212,9 +3055,8 @@ POST v2/signature/save-signature-settings     BODY (not params):
 
 #### System fields (natives) — settings `[C]`
 
-All six natives added over the API to one probe BO (`generate-business-form-field-by-native` + the §5b
-portion save), set over the API, looked at on a record card and in the constructor, exported and imported
-as a copy. A native's `fieldId` = its `code` = the native type (`CREATED_BY`, …) — use it wherever an
+A native is added over the API with `generate-business-form-field-by-native` + the §5b portion save.
+A native's `fieldId` = its `code` = the native type (`CREATED_BY`, …) — use it wherever an
 API takes a `fieldId`.
 
 **Constructor** (gear on a native): tab 1 shows the native's name and, ONLY for `CREATED_BY` /
@@ -3234,7 +3076,7 @@ block.
 | `isReadonly` | meaningless: every native ALWAYS reads back `isReadonly: true`, `readonly: true`; `false` does not stick | read-only |
 | lock | `load-field-access-group` / `save-field-access-group` with `fieldId: "<NATIVE_TYPE>"`, then `save-bo-field-chosen-access-right` — kept | — |
 
-- `OPEN_COUNT` grows by one on every card open (7 → 8 seen); `IN_MIGRATION_UPDATED_AT` is empty unless an
+- `OPEN_COUNT` grows by one on every card open; `IN_MIGRATION_UPDATED_AT` is empty unless an
   IN migration wrote the record.
 - **The archive does NOT carry a native's lock**: the export writes it (`AccessStructDto.fieldAccessStructMap.
   <NATIVE_TYPE>`), the import ignores it — and still sets `chosenAccessRight: true`, so the copy shows an
@@ -3254,14 +3096,14 @@ call has its args in the PARAMS:
 | 4 | `save-file-Id {draftId, fileId}` | note the capital `I`. → `{fileName, pageCount}` |
 | 5 | `apply-draft {boId, draftId}` | **asynchronous**: `load-print-forms` right after it may still be empty |
 | read | `load-print-forms {boId}` → `[{printFormId, name, fileType, orderIndex}]`; `load-print-form {boId, printFormId}` → `+ fileId, fileInfo`; `get-print-form-code {boId, printFormId}` | the server derives the code from the name («Проба ПФ подпись» → `Proba_PF_podpis`); `save-code` changes it |
-| other | `delete-print-form {boId, printFormId}`, `remove-draft {draftId}`, `save-print-form-order-indexes`, `load/save-access-group {boId, printFormId}`, `load-test-values` / `save-test-value` | not exercised except delete |
+| other | `delete-print-form {boId, printFormId}`, `remove-draft {draftId}`, `save-print-form-order-indexes`, `load/save-access-group {boId, printFormId}`, `load-test-values` / `save-test-value` | `[U]` except delete |
 
 An export carries the template itself: `printForms[]` on the BO and one `ExportStructFileDto` line per file
 (`MYBPM-IMPORTS.md` §0.5b «Print forms»).
 
-- **`save-file-Id` can take minutes** `[C]`: one call answered after more than 2 minutes. A browser call
-  keeps running after the automation's timeout, so a «retry» created a second form; the code is not unique
-  (both got `PF_regiona`). Read `load-print-forms` before retrying. `delete-print-form` is asynchronous as
+- **`save-file-Id` can take minutes** `[C]` (more than 2 minutes). A browser call
+  keeps running after the automation's timeout, so a «retry» creates a second form; the code is not unique
+  (both get the same code). Read `load-print-forms` before retrying. `delete-print-form` is asynchronous as
   well — the form is still listed for a few seconds.
 - **Re-imports and rollbacks multiply forms** (trap 71): a re-import matches forms by `newId`, not by code.
 
@@ -3296,9 +3138,8 @@ onto the SAME child BO keep separate lists per record.
   `save-business-object-grid-layout-position` with a **body** of `{boId, gridLayoutPosition:{id:"0", x, y,
   w, h}}` (read: `load-business-object-grid-layout-position` params `{boId}`; `""` = never set = full
   size). The width is `w` of 16 columns of `0.9·innerWidth`. The height is `h` rows of 30 px, capped at
-  `0.9·innerHeight` — the server takes any `h` (an archive with `h:200` read back 200 and opened the CREATE
-  dialog at 840 px of a 965 px window) `[C]`, so that cap is the only ceiling. The viewer re-centres `x = ceil((16−w)/2)`. For two fields in one row, `w:6, h:8` gives a
-  compact dialog (≈630×240 px at 1876×965): fields plus the СОХРАНИТЬ/ОТМЕНИТЬ bar.
+  `0.9·innerHeight` — the server takes any `h` `[C]`, so that cap is the only ceiling. The viewer re-centres `x = ceil((16−w)/2)`. For two fields in one row, `w:6, h:8` gives a
+  compact dialog: fields plus the СОХРАНИТЬ/ОТМЕНИТЬ bar.
 - **A required `INPUT_NUMBER` starts at 0** on a CREATE dialog, so it counts as filled. The red `*` and
   the warning appear only after the user clears it. `isRequired` really is on, but nothing forces the
   user to type a number.
@@ -3320,23 +3161,19 @@ bun tools/create-bo-constructor.bun.ts --token-file /tmp/token --group "Бизн
 ```
 
 It generates every element, lays them out, saves the BO once, then sets each widget's code and url
-through the controllers above. Verified by exporting the result: the six widget maps came back with
-`ecp_sms_k` / `knopka_k` (+ url) / `iframe_k` (+ url) / `captcha_k` / `cur_date_k` / `cur_user_k`, and
-`nativeFields` with the three system fields.
+through the controllers above.
 
 #### The archive route carries all of it — checklist items included
 
 A «Чек лист» keeps its items in the field's **`defaultValue`** (a JSON string of `{label, checked}`), and
-that key travels: exported, then imported with other items, they showed up on a new record's form, the
-`checked:true` one ticked `[C]`. Do not look for them in
+that key travels: imported items show up on a new record's form, `checked:true` ones ticked `[C]`. Do not look for them in
 `options` / `fieldOptionsStruct` (that reads as «items are lost») — a checklist does not use them (an import ignores that struct on a
 checklist and even resets the field's `optionSource` to `null`). Everything else — all 27 types with their settings, all six system fields, all ten widgets with their
 codes and urls — survives the archive round trip unchanged.
 
 ### 5j. BO header settings — name, description, code, «Помечать новые», «Скрыть кнопку добавить», Карточка/Вкладка `[C]`
 
-The settings of the BO ITSELF that sit in the constructor header and its gear popover. Proven on a probe BO
-built over the API, through the UI, and by archive (export, copy import, re-import). Format side:
+The settings of the BO ITSELF that sit in the constructor header and its gear popover. Format side:
 `MYBPM-IMPORTS.md` §2 «BO header settings in the archive».
 
 | setting | UI place | API (all `v2/business-objects/…`, PARAMS half, answer `""`) | archive key |
@@ -3352,21 +3189,19 @@ built over the API, through the UI, and by archive (export, copy import, re-impo
 All of them read back in `load-business-object-by-id` at once. Defaults of a new BO: `isTouchEnabled: true`,
 `hideAddButtonFromRegistry: false`, `instanceViewType: "FORM"`, `description: ""`.
 
-- **The header name input writes BOTH maps** `[C]`: typing in «Наименование» overwrote a `recordName` set apart
-  over the API with the same text. A `recordName` different from the name exists only through the API or an
+- **The header name input writes BOTH maps** `[C]`: typing in «Наименование» overwrites `recordName`
+  with the same text. A `recordName` different from the name exists only through the API or an
   archive, and nothing on screen shows it: `load-bo-components` returns it beside `name`, and the record title
   does NOT use it (next point).
 - **A record with no `titleToShow` field is named after the BO's `name`, not its `recordName`** `[C]` —
-  `load-bo-components` on such a record answered `name: "Проба шапки"` beside `recordName: "Запись
-  пробы шапки"`, and the record tab carried the BO name. (§5h «Название записи» said `recordName`; the two were
-  equal on that probe.)
+  the record tab carries the BO name.
 - **«Скрыть кнопку добавить»** `[C]`: the registry loses its create button; the `⋮` there then offers only
   «Импорт из .xlsx» / «Экспорт в .xlsx» — records still come in through Excel and the API.
 - **TAB** `[C]`: a record opens as a page tab (`display-instance?…&isTab=true&boiViewType=TAB`), FORM as a dialog.
 - **`isTouchEnabled`** `[C]` as stored; what it does `[I]`: the menu-item editor asks
   `load-bo-is-touch-enabled` and shows the «needCountMenuItem» (unread counter) option only when it is true. The
-  counter itself was not observed — records you create yourself are never «new» to you.
-- **Archive** `[C]`: all seven keys of the table travel — export, copy import, re-import with flipped values. A
+  counter itself is `[U]` — records you create yourself are never «new» to you.
+- **Archive** `[C]`: all seven keys of the table travel. A
   re-import WITHOUT `isTouchEnabled` / `hideAddButtonFromRegistry` / `instanceViewType` / `description` RESETS them
   to `true` / `false` / `FORM` / `null` — always ship every key.
 - **The popover «Сохранить» re-sends the code** through `save-business-object-settings` (the input there is
@@ -3387,8 +3222,8 @@ processes that use the code (so the dialog can list them). Fields have the same 
   (`[I]`) — and on the server: `verify-business-object-code {businessObjectCode}` → `false` for an empty
   or TAKEN code, `true` for anything else, Cyrillic and spaces included `[C]`.
 - **`save-business-object-code` and `save-business-object-settings` change the code at once and check NOTHING**
-  `[C]` — they took a code already used by another BO of the company (two BOs then shared it), `Код кириллица`,
-  `a b` and the empty string. They also skip the usage analysis, so scripts and processes that name the old
+  `[C]` — they accept a code already used by another BO of the company (two BOs then share it), Cyrillic,
+  spaces and the empty string. They also skip the usage analysis, so scripts and processes that name the old
   code are not migrated. Before calling either, run `verify-business-object-code` yourself.
 - **One undecodable script kills the dialog in every company of the stand** `[C]` (trap 59).
 
@@ -3400,7 +3235,7 @@ its trash icon (confirm «Удаление вкладки бизнес-объе�
 WHATSAPP/TELEGRAM carry a gear instead of a trash icon. Nothing is written until the card «СОХРАНИТЬ». Format
 side: `MYBPM-IMPORTS.md` §2 «BO card tabs in the archive».
 
-On the record card (proven by opening each): CHAT = the record's chat («N собеседников», message box), PEOPLE =
+On the record card: CHAT = the record's chat («N собеседников», message box), PEOPLE =
 its participants, FILES = a file list with «Загрузить файл», PRINT_FORM = the print forms, HISTORY = the journal
 (§5h «История»). The rail follows `orderIndex`.
 
@@ -3427,15 +3262,12 @@ its participants, FILES = a file list with «Загрузить файл», PRIN
   constructor form is not sent — the server derives `userSearchType` from the field type.
 - **Archive**: `boTabs` (a map) travels and only ADDS; the links travel as `messengerFieldCode` (Telegram) and
   `whatsAppFieldCode` (WhatsApp), and a re-import never clears them (`MYBPM-IMPORTS.md` §2).
-- What a connected messenger does with the tab (chat mirroring, the user search) is `[U]` — no stand of ours
-  has one connected; the company switch is `messenger/settings/save-messenger-bo-settings` (company-wide, not
-  touched).
+- What a connected messenger does with the tab (chat mirroring, the user search) is `[U]`; the company switch is
+  `messenger/settings/save-messenger-bo-settings` (company-wide).
 
 ### 5l. BO views — «Календарь», «Карта», «Группировка» `[C]`
 
-Three registry views are switched on the BO itself. Proven on probe BOs built by archive, switched over the API,
-through the constructor toggles and by archive (export, copy import, re-import), with records looked at in each
-view. Format side: `MYBPM-IMPORTS.md` §2 «BO views in the archive».
+Three registry views are switched on the BO itself. Format side: `MYBPM-IMPORTS.md` §2 «BO views in the archive».
 
 | view | UI place | API (`v2/business-objects/…`, PARAMS half, answer `""`) | archive key |
 |---|---|---|---|
@@ -3454,12 +3286,12 @@ view. Format side: `MYBPM-IMPORTS.md` §2 «BO views in the archive».
 **Calendar.** The event title is the «Настройка отображения заголовка» chips: `v2/calendar/save-calendar-view-titles
 {boId, titles: [{id: <fieldId>, name: <label>}]}` (PARAMS half; the whole list each time), read by
 `v2/calendar/load-calendar-view-settings {boId}` → `{titles, template}`. With «Дата» and «Статус» chosen the event
-read «Статус : Новый, Дата : 05.10.2026». A new BO starts with one title (the name field, or another field — the
+reads «Статус : Новый, Дата : 05.10.2026». A new BO starts with one title (the name field, or another field — the
 default is not stable). **The titles do NOT travel in the archive** — no key in the export; a re-import leaves the
 stand's titles alone, a copy gets its own default. The hover card is `calendarCardTemplates` (§5i, travels).
 Which dates place an event: `needShowToCalendar` (§5h).
 
-**Map.** The registry «Карта» is a Leaflet map of the BO's `GEO_POINT` values, one marker per record («2 из 2»).
+**Map.** The registry «Карта» is a Leaflet map of the BO's `GEO_POINT` values, one marker per record.
 Points come from `v2/geo/load-bracket-boi-points` (body = the registry bracket filter `{boId, dynamicFilters,
 nativeFilters, brackets, search, paging:{offset, limit, hasNext}, ordering, state}`) → `[{boiId, coordinate:{lat, lon},
 fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the KANBAN card template's fields**. So:
@@ -3467,11 +3299,11 @@ fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the
   record, `load-bracket-boi-points` answers NullPointerException «cardTemplate is null» and the map stays empty;
   the kanban view and the constructor's kanban editor die with the same error. A BO built in the constructor gets
   the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.5c), and
-  every archive BO with a dropdown imported without one was broken this way (trap 61).
+  an archive BO with a dropdown imported without one is broken this way (trap 61).
 - `v2/kanban/save-kanban-card-template` does NOT repair it (it fills another store, §7). **A re-import with
-  `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor came back, records kept.
-- A BO with a GEO_POINT and no dropdown at all needs no template `[C]`: its point carries EVERY form field
-  (`Текст`, `Точка`), and the map opened from a menu item with `isMapEnabled` showed the marker.
+  `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor come back, records kept.
+- A BO with a GEO_POINT and no dropdown at all needs no template `[C]`: its point carries EVERY form field,
+  and the map opened from a menu item with `isMapEnabled` shows the marker.
 
 **Grouping.** The levels and columns are per FIELD, `groupingInfo {colToShow, colOrderIndex, nodeTreeActive,
 nodeTreeLevel}` (`nodeTreeActive` + `nodeTreeLevel` 0.. = a tree level, `colToShow` + `colOrderIndex` = a table
@@ -3499,8 +3331,8 @@ sidebar».
 
 **«Дублировать» = `clone-business-object {boId}`** (PARAMS) → `{id, name, orderIndex, boCategory}` of the new BO; the UI
 asks nothing and jumps to the clone's editor (its header still shows the source's name until a reload). What the clone
-gets, checked on a header/tabs probe, a views probe with 3 records and a scripted probe:
-- name `Копия_<name>_<N>` and code `<code>_<N>`, where N is a company-wide clone counter (17, 18, 19 … one per clone,
+gets:
+- name `Копия_<name>_<N>` and code `<code>_<N>`, where N is a company-wide clone counter (one per clone,
   deleted ones included). **The other languages come out as `Copy_null_<N>` / `Көшірме_null_<N>` / `Köşırme_null_<N>`**
   when the source has no text in them — rename the clone in every language you show.
 - the same group and the same `orderIndex` as the source;
@@ -3508,8 +3340,7 @@ gets, checked on a header/tabs probe, a views probe with 3 records and a scripte
   registry columns, `boTabs`, the messenger link fields, `instanceViewType`, the header flags, the calendar/map/grouping
   flags, `groupingInfo`, the kanban card template, record rights and the menu-rights record;
 - **the scripts, all versions** (work and test) as NEW script modules whose `scriptId`s repeat the source's — the
-  definitions are stored per (module, scriptId), so editing the clone's script leaves the source alone (proved by
-  `apply-update-cmd` on the clone's «Закрытие» and reading both); the hooks fire on the clone's records;
+  definitions are stored per (module, scriptId), so editing the clone's script leaves the source alone; the hooks fire on the clone's records;
 - NOT copied: the records, the calendar event titles (the clone gets a default), the create-record iframe token, menu
   items;
 - **a business process clone loses its work version**: both versions and both diagrams copy byte for byte, but the old
@@ -3517,14 +3348,13 @@ gets, checked on a header/tabs probe, a views probe with 3 records and a scripte
 A record saved into a clone through §6a is an ordinary record of the clone.
 
 **«Переименовать» = `save-bo-record`** BODY `{id, name}` — and on this build it writes **`recordName` only**: `name`,
-`nameMap`, the sidebar row and the header keep the old name, also after a reload (UI and API alike, checked with a
-10-s wait for the cache). The working rename is the header «Наименование» input (§5j), which writes `name` and
+`nameMap`, the sidebar row and the header keep the old name, also after a reload and a 10-s wait (UI and API alike). The working rename is the header «Наименование» input (§5j), which writes `name` and
 `recordName` together. Trap 63.
 
 **Order inside a group = `save-bo-record`** BODY `{id, orderIndex}`. Dragging a row sends it with the midpoint of the
 two neighbours' `orderIndex`. **Every archive-created BO carries the template's `orderIndex` 47480000**, so two archive
 BOs side by side have the same value, the dragged row gets that value too and after a reload it falls back to the end
-of the block of equal values (21 BOs shared 47480000 in one group) — the drag is lost. Give such BOs distinct values
+of the block of equal values — the drag is lost. Give such BOs distinct values
 (this call, or `orderIndex` in the archive). A BO with `orderIndex: null` (a re-import without the key, `MYBPM-IMPORTS.md`
 §2) is listed first in its group. Trap 64.
 
@@ -3576,7 +3406,7 @@ afterChangeFields:[{id, fieldId, fieldLabel, newValue, newDisplayValue}]}`. The 
 enabled) and/or «При изменении значения поля <F> на <V>». Only `DROPDOWN_SINGLE` fields are offered
 (`v2/business-objects/load-bo-field-records P {boId}` filtered by type; options from `load-bo-field-options P {boId,
 fieldId}`); `newValue` is the option id, the condition `id` is any 10-char client id. The UI lists only `GENERAL` BOs
-that are not panels. A rule saved by API shows in the UI unchanged. **The removal is NOT immediate** `[C]`: with a rule «Статус → Удалить» on two of three records and, from 17:03Z, also «Спустя 0 дней» enabled, all three records were still live (`state:"ALL"` `totalHits` 3, none `REMOVED`) about 25 minutes later; the purge runs on a server schedule whose period is unknown `[U]` — do not test a rule on records you need, and expect no visible effect right after saving.
+that are not panels. A rule saved by API shows in the UI unchanged. **The removal is NOT immediate** `[C]`: records matching a rule (even «Спустя 0 дней») stay live for at least ~25 minutes after the save; the purge runs on a server schedule whose period is unknown `[U]` — do not test a rule on records you need, and expect no visible effect right after saving.
 
 **Offline** — the two BO lists are shown only while «Включить использование оффлайн режима» is ticked (the page
 reads the stored lists even when the mode is off, and the API stores them with `offlineModActive:false`). «ОТМЕНИТЬ»
@@ -3592,28 +3422,27 @@ that BO's `name`, `recordName` (all four languages: «Реестр чатов» 
 and `description` («Реестр чатов»); fields, code and tabs stay. And **it cannot be unset**: the UI's «unselect» sends
 `chatRegistryBoRecord:null`, the server answers `""` and keeps the old BO. `isCreateUnique:true` together with a BO is
 refused («You can not register exists ChatRegistryBo and create unique ChatRegistryBo at the same time»); alone it
-asks the server to create its own registry BO (not run). The UI's picker lists only
-`messenger/settings/load-chat-registry-business-objects` — empty on `<stand>` — so an ordinary BO can be made the
+asks the server to create its own registry BO `[U]`. The UI's picker lists only
+`messenger/settings/load-chat-registry-business-objects`, so an ordinary BO can be made the
 registry only through the API. A re-import of the registry BO puts the archive's name back; the registry pointer
 stays. Trap 66.
 
-**Not per BO, despite the inventory names** `[C]` (read from the client): «Мобильное приложение»
+**Not per BO, despite the inventory names** `[C]`: «Мобильное приложение»
 (`v2/company/all-mobile-settings` / `save-mobile-settings`) — all seven lists, `importBoAllow` included, are ORG-UNIT
 lists (who may take screenshots, copy, import, download…), not BO lists.
 
-**Not run** `[U]`: «Телефония» (`v2/telephony/settings/load-telephony-bo-settings P {type}` — `callOpenBoRecord`, the BO
+**Unverified** `[U]`: «Телефония» (`v2/telephony/settings/load-telephony-bo-settings P {type}` — `callOpenBoRecord`, the BO
 a call opens, plus field lists) and «IN/OUT Миграция» (`kafka_migration/settings/load-{in,out}-migration-settings`,
-allowed BOs) need a configured telephony provider / Kafka; on `<stand>` the provider is `null` (`all-telephony-settings`
-→ NPE «Провайдер телефонии отсутствует»).
+allowed BOs) need a configured telephony provider / Kafka; without a provider `all-telephony-settings`
+answers NPE «Провайдер телефонии отсутствует».
 
 **«No archive carries them» holds for the BO's OWN export only.** The export screen has a
 third basket, company settings (`struct/load-settings-export-kinds` → 14 kinds: `LANGUAGES, MOBILE,
 PHYSICAL_REMOVAL, TELEPHONY, OFFLINE, IN_MIGRATION, OUT_MIGRATION, MESSENGER, OTP, NAVIGATOR, AUDIT_TRAIL,
-MIGRATION_MONITORING, SCRIPT_SETTINGS, APPEARANCE`), and a ticked kind exports as a `CompanySettingsStructDto` line.
-Proven end to end only for `SCRIPT_SETTINGS` (§5o); the payload of that line already has the keys
-`boiDeleteSettings`, `messengerTypes`, `messengerCompanySettings`, `offlineViewBoAllowCodes`,
-`offlineEditBoAllowCodes`, which suggests physical removal / messengers / offline travel the same way, by BO CODE — but
-see the next paragraph: **the messenger lists do NOT travel.**
+MIGRATION_MONITORING, SCRIPT_SETTINGS, APPEARANCE`), and a ticked kind exports as a `CompanySettingsStructDto` line
+(`SCRIPT_SETTINGS`: §5o). The line's payload has the keys `boiDeleteSettings`, `messengerTypes`,
+`messengerCompanySettings`, `offlineViewBoAllowCodes`, `offlineEditBoAllowCodes` (BOs by CODE); what each kind
+does on import is the next paragraph — **the messenger lists do NOT travel.**
 
 **Every kind of the settings basket, imported back** `[C]`: per kind, what the line carries
 and whether an import replaces, merges or ignores — the table in `MYBPM-IMPORTS.md` §2 «The other company-settings
@@ -3623,7 +3452,7 @@ MIGRATION_MONITORING sets the monitor by code; NAVIGATOR does not export the Goo
 map and its import did nothing. The import of an archive is the §5 cycle; a settings-only archive with one kind takes
 ~10–20 s, so drive it fire-and-forget from the page (§10, the 45-s `javascript_tool` limit).
 
-The pages behind the other kinds, all read off the client and exercised the same day (saves answer `""`):
+The pages behind the other kinds (saves answer `""`):
 
 | page | load | save |
 |---|---|---|
@@ -3634,13 +3463,13 @@ The pages behind the other kinds, all read off the client and exercised the same
 | «Аудиторский след» | `aud-boi-settings/load-table-records` → rows `{id, historyBoRecord, audBoList, latestHistoryPeriodDays}`; `load-fields` (11 slots); `load-field-values P {recordId}` → `[{code, value:<field id>}]` | `save-aud-settings` B `{id, historyBoId, audBoIdList, latestHistoryPeriodDays}` (the row's own shape → NPE «audBoIdList is null»); `save-field-values P {recordId} B [{code, value}]`; `create-table-record`, `remove-table-record P {recordId}`. The BO list behaves as a set (order not kept) |
 | «Мониторинг миграции» | `pg-migration-settings/load-settings` → `{monitorBoRecord}`; `load-fields` (9 slots); `load-field-values` | `save-settings` B `{monitorBoId}` — **cannot be unset** (`null` ignored, `""` → `IllegalId`, no key → NPE); `save-field-values` B `[{code, value:<field id or "">}]` |
 
-Offline corrections: `nestedLevel` is the enum `NONE` / `FIRST` (a number → 400 «Failed to read request»); the add
+Offline shapes: `nestedLevel` is the enum `NONE` / `FIRST` (a number → 400 «Failed to read request»); the add
 deltas take `{boRecord:{id,name}, displayName}` for BOs and `{orgUnitId:{id,type}, displayName}` for org units, the
 delete deltas `{id, name}` / `{id, type}`. Messenger `userAllow` / `delUserAllow` take org-unit records
 `{id, type, name}`. Org units for any of these: `v2/business-objects/load-org-unit-record-list P {filter:{searchText,
 types:["DEPARTMENT"|"GROUP"|"PERSON"]}, skipFirstCount:0}`.
 
-### 5o. «Выставление сервисов» — a BO as a public HTTP endpoint `[C]` (`<stand>`)
+### 5o. «Выставление сервисов» — a BO as a public HTTP endpoint `[C]`
 
 `/settings?settingsOpenPageUrl=script` («Выставление сервисов», header «Список выставления сервисов»). Each row
 binds an **entry point** to a **service BO**: every HTTP call to
@@ -3673,12 +3502,12 @@ The company code is the tenant's code (the dialog prints both full URLs).
 - **«Входящие заголовки, копируемые в поля»**: any number of `header name → field` pairs; allowed fields
   INPUT_TEXT / INPUT_NUMBER / FULL_DATE. A missing header writes «Заголовок `X` в запросе отсутствует» into
   REQUEST_ERRORS (the call still runs). A FULL_DATE header takes **only the RFC 1123 HTTP date**
-  (`Thu, 01 Oct 2026 10:00:00 GMT` → stored `2026-10-01T10:00:00.000Z`); ISO with/without zone, epoch millis,
-  `2026-10-01`, `01.10.2026`, `01.10.2026 10:00` were all refused. **Non-ASCII header values arrive as mojibake**
+  (`Thu, 01 Oct 2026 10:00:00 GMT` → stored `2026-10-01T10:00:00.000Z`); ISO with/without
+  zone, epoch millis, `2026-10-01`, `01.10.2026`, `01.10.2026 10:00` are all refused. **Non-ASCII header values arrive as mojibake**
   (UTF-8 bytes read as Latin-1) — keep headers ASCII. Two headers may target one field.
 - **Query parameters fill fields BY FIELD CODE** (`?Zagolovok_tekst=abc` → that field); a parameter with no
   such code goes to REQUEST_ERRORS («Пришёл параметр, но у бизнес-объекта нету поля с таким кодом»). A slot
-  beats a parameter (`?Rezhim=x` on the MODE field stayed `PROD`). JSON body keys are NOT spread into fields.
+  beats a parameter. JSON body keys are NOT spread into fields.
 - **The body must be empty or a JSON OBJECT** — the platform's request filter (`RequestWrapper`) parses every body
   as a JSON map before the service sees it: `text/plain`, form-urlencoded, XML, a JSON string or a JSON array all
   answer 500 `JsonParseException` / «Cannot deserialize … LinkedHashMap», and NO record is created. A JSON object
@@ -3687,19 +3516,17 @@ The company code is the tenant's code (the dialog prints both full URLs).
   (`state` ALL, the «Тестовые»/DEV registry stays empty) with MODE = `TEST`.
 - Scripts: only «Создание» runs (no form is opened); it reads the request fields and writes the result fields
   with ordinary `BlockAssign`s (`MYBPM-IMPORTS.md` §0S.7). Without any script the answer is 501.
-- **File answer** `[C]` (a separate entry point on the same probe BO with `RESULT_FILE` mapped to a
-  single-mode FILE_UPLOAD, TEST script): the «Создание» script makes a file and assigns it to the field's
+- **File answer** `[C]` (`RESULT_FILE` mapped to a single-mode FILE_UPLOAD): the «Создание» script makes a file and assigns it to the field's
   `#Значение` — `<text>.#Записать в файл(fileName)` (`F-writeToFile-K-FIX-T-String`, the text as UTF-8) or
-  `<base64>.#Base64 преобразовать в файл(fileName)` (`F-textToFile-K-FIX-T-String`, binary; a PNG came back
-  byte-identical). The answer is then the file: status = RESULT_CODE, **body = the file bytes (RESULT_TXT is
+  `<base64>.#Base64 преобразовать в файл(fileName)` (`F-textToFile-K-FIX-T-String`, binary, byte-exact). The answer is then the file: status = RESULT_CODE, **body = the file bytes (RESULT_TXT is
   ignored)**, `Content-Disposition: attachment; filename="<name>"` (a non-ASCII name is percent-encoded UTF-8
   inside plain `filename=`, no `filename*=`), and **Content-Type comes from the file name's extension, NOT from
   RESULT_CONTENT_TYPE** (`.txt` → `text/plain;charset=UTF-8`, `.png` → `image/png;charset=UTF-8`, `.json` →
-  `application/json;charset=UTF-8` while the slot held `text/plain`). **The name must carry an extension the file
+  `application/json;charset=UTF-8` whatever the slot holds). **The name must carry an extension the file
   storage knows**: `dannye.xyz` and a bare `otchet` both fail inside the script with
   `kz.greetgo.file_storage.errors.NoFileMimeType: No MIME type` (written to SCRIPT_ERRORS; the assignments before
   it, RESULT_CODE included, are kept), the field stays empty and the call answers 500 «has no any file». The file
-  also stays in the record. Six TEST calls in a row caused no outage this time. Trap 69.
+  also stays in the record. Trap 69.
 - Every call that reaches the BO creates a record, failures included — a busy service fills its BO; plan a
   physical-removal rule (§5n) if needed.
 
@@ -3716,8 +3543,7 @@ The company code is the tenant's code (the dialog prints both full URLs).
 | `change-table-record-index` | P `{recordId, index}` | drag order |
 | `remove-table-record` | P `{recordId}` | delete the row |
 
-Saves answer `""`; **loaders lag a few seconds** (a header list read right after the save came back unchanged, the
-same read 2 s later had it).
+Saves answer `""`; **loaders lag a few seconds** — right after the save a read still returns the old value; wait ~2 s before reading it back.
 
 **Archive** — the rows travel in the company-settings basket, NOT with the BO:
 `struct/change-settings-export-kind` **P** `{kind:"SCRIPT_SETTINGS", value:true}` (in B it silently does nothing;
@@ -3729,7 +3555,7 @@ baseFields:{<slot>:<field CODE>}, headerFields:{<header>:<field CODE>}}` (an unm
 ["SETTINGS"]`, `settingsState:"UPDATE"`; **apply REPLACES the whole list** — rows not in the archive are deleted,
 every row is recreated with a new id, codes are resolved to field ids. Rollback (`restoreItems` category
 `SETTINGS`) brings the old rows back (new ids again) **but with field CODES where ids belong** — the slots and
-headers are then dead (the service ran and answered 200 with an EMPTY body). Repair after a rollback: re-send
+headers are then dead (the service runs and answers 200 with an EMPTY body). Repair after a rollback: re-send
 `save-field-values` + `save-header-values` with ids for every row. Trap 67.
 
 **Script versions trap — the first, implicit version of a BO that never had scripts cannot see any BO**
@@ -3737,20 +3563,14 @@ headers are then dead (the service ran and answered 200 with an EMPTY body). Rep
 wire and fill a hook there and `translate-script` reports `exprAct__noDefinitionForActId` for every
 `F-VALUE-K-DYN-R-D-S-boi_fields` hop (the field hop's type is NULL), and the TEST service URL fails with
 «Ошибка компиляции скрипта на создание инстанции для режима ТЕСТ». `v2/script/load-bo-def-list
-{scriptModuleId}` is the tell: `list: []` for that module, 252 BOs for any other. Two more BOs of the same day
-(one constructor, one archive copy) showed the same empty list. `in-work-bo-script-version` refuses it
+{scriptModuleId}` is the tell: `list: []` for that module, every BO of the company for any other. `in-work-bo-script-version` refuses it
 (`script_on_instance_creation_cause`). **Fix: `copy-bo-script-version P {boId, boScriptsId}`** — the copy sees
-every BO, translates `success:true`; then `in-work-bo-script-version` on the copy (no new test version was
-created this time) and, for a working TEST version, copy again + `in-test-bo-script-version`. Trap 68.
+every BO, translates `success:true`; then `in-work-bo-script-version` on the copy and, for a working TEST version, copy again + `in-test-bo-script-version`. Trap 68.
 
-**A whole-stand outage followed one TEST call** `[I]`: the first GET to `service_test` right after a new TEST
-version was published created its record (no result written) and then every URL of the stand, the API included,
-answered nginx 502 for about a minute; the same call afterwards worked. Cause not proven — space TEST-mode
-experiments out and watch `load-auth-info` between calls.
-
-Probe on `<stand>`: BO «Проба сервиса» (group «Тест»), entry point
-`proba-servisa` (and `proba-fajl` with RESULT_FILE mapped — the file answer), work script v2 answers `method=…; mode=…; hdr=<X-Proba-Text>; body=<body>` with 200, test v3 with
-201.
+**A whole-stand outage can follow a TEST call** `[I]`: the first GET to `service_test` right after a new TEST
+version is published may create its record (no result written) and then leave every URL of the stand, the API
+included, answering nginx 502 for about a minute. Space TEST-mode experiments out and watch `load-auth-info`
+between calls.
 
 ## 6. Records: Excel import and export
 
@@ -3760,9 +3580,7 @@ xlsx), never through the structure archive.
 ### Import and export through the API — controller `v2/bo-transfer` `[C]`
 
 The registry kebab's «импорт/экспорт xlsx» is an ordinary controller, and it is **two-phase like the
-structure import**: the upload builds an "act" you can read, and a second call applies it. Read off chunk
-`7084` and driven end to end from a page of the stand (template → upload → act → apply → export);
-The exact bodies are §0U R7.
+structure import**: the upload builds an "act" you can read, and a second call applies it. The exact bodies are §0U R7.
 
 | # | call | params | note |
 |---|---|---|---|
@@ -3775,9 +3593,9 @@ The exact bodies are §0U R7.
 | 5 | `apply-imported` | `{importId}` | **writes** |
 |   | `cancel-imported` / `imported-ok` | `{importId}` | drop / close |
 |   | `watch-import-finished` | `{importId}` | poll the apply |
-| 6 | `download-errors` | GET `?importId=` with the `token` header (POST → 405) | the «Ошибки при загрузке …» xlsx — after an apply it came back with the header only, no rows, although the act had an error row `[C]`; read `load-bo-import-table` instead |
+| 6 | `download-errors` | GET `?importId=` with the `token` header (POST → 405) | the «Ошибки при загрузке …» xlsx — after an apply it comes back with the header only, no rows, even when the act had an error row `[C]`; read `load-bo-import-table` instead |
 
-Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called) and `export-bracket-bo`
+Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; `[U]`) and `export-bracket-bo`
 (`{…filter…, boInstanceIds, boFieldIds, needBoiId}` in the BODY, `[C]`) → an `exportId`; then `is-bo-export-file-ready
 {exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` adds the column
 «Внутренний айди» (each record's id), which a re-import IGNORES — only the unique field makes it idempotent (R7 step 6) `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]` — **but with every nested block's cells blank** (no child codes, no repeated TABLE rows) `[C]`, so list the field ids whenever the file must carry links.
@@ -3791,8 +3609,7 @@ skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
 
 ### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]`
 
-The old blocker «the «Добавить» button reacts to no synthetic click, and the record API is draft-based
-and was never reverse-engineered» is closed. Controller **`v2/business-object-instance`** (the client's
+Controller **`v2/business-object-instance`** (the client's
 own `v1/...` prefix is a 404 on the live stand — the same trap as `ensure-index`), four calls:
 
 | # | call | params | body |
@@ -3825,11 +3642,11 @@ The value DTO (the client's class `M`, built by `M.of(draftId, boId, boiId, isDe
 - Related in the same controller: `copy-bo-instance {boId,boiId}`, `delete-bo-instance
   {businessObjectId, boInstanceIds}`, `archive-bo-instance`, `restore-bo-instance`,
   `is-field-value-unique {boId,boiId,fieldId,value}`, `load-boi-id-by-unique-field
-  {boId,fieldCode,fieldValue}` (body, not params; seen in the bundle, but both
+  {boId,fieldCode,fieldValue}` (body, not params; both
   `v2/business-object-instance/load-boi-id-by-unique-field` and `…/v2/load-boi-id-by-unique-field` answer 404 —
   find a record by its code with `load-bo-instance-bracket-table` instead, whose `records[].values[]` carry
   `fieldCode`, `value` and `displayValue` `[C]`), `v2/load-boi-values`.
-- The *form* controllers are a different, mobile-ish family and were the wrong door:
+- The *form* controllers are a different family:
   `v2/instance-form-create-draft/create-draft` demands a `boiId` (it is the EDIT draft),
   `…/create-draft-with-boi` wants a real minted `draftId` and a `BoiState`
   (`ALL|ARCHIVED|REMOVED|OFFLINE|DEV`), and `v2/instance-form/validate-apply-remove-draft` is its apply.
@@ -3841,10 +3658,8 @@ The value DTO (the client's class `M`, built by `M.of(draftId, boId, boiId, isDe
 
 ### 6b. The FORM cycle — the one that runs the BO's scripts `[C]`
 
-**The §6a cycle runs no Block IDE script at all, and neither does an xlsx import (R7) of a new record** `[C]` — a record created by `create-draft` → `create-boi` →
-`save-boi-value` → `apply-and-remove-draft` came out with every hook's marker empty. The hooks run inside
-the FORM controllers, which is what the UI's own dialog calls (captured with the XHR patch of §10, then
-driven alone). Every hook ran server-side; the answers carry the script's field writes back as
+**The §6a cycle runs no Block IDE script at all, and neither does an xlsx import (R7) of a new record** `[C]`. The hooks run inside
+the FORM controllers, which is what the UI's own dialog calls. Every hook runs server-side; the answers carry the script's field writes back as
 `fieldFormCommands[{commandType:"UPDATE_STORED_VALUE_FIELD", fieldId, storedValue}]`.
 
 | step | call | params / body | hooks that run |
@@ -3857,7 +3672,7 @@ driven alone). Every hook ran server-side; the answers carry the script's field 
 | read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
 | read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`). **`tabId:null` returns only the fields OUTSIDE tabs**; the fields of a `TAB_GROUP` tab come back only with that tab's id in `tabId` `[C]` | — |
 
-Order on a new record, one run: открытие → поле … → создание → сохранение. Field ids and codes:
+Order on a new record: открытие → поле … → создание → сохранение. Field ids and codes:
 `v2/instance-form/load-field-structure` P `{boId, boiId, draftId}`. The full semantics (what is kept, what is
 discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bite:
 
@@ -3877,8 +3692,7 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
   (`MYBPM-IMPORTS.md` §12a «Meta assign and field errors at run time»).
 - `OPEN_COUNT` stayed `0` on a record opened only through these calls (the UI's records counted up) `[I]`.
 
-**The `value` of `save-field-value`, per type** — what the client's field classes send (bundle module
-`28149` + helpers `47749`); `[C]` = stored and read back:
+**The `value` of `save-field-value`, per type** — what the client's field classes send; `[C]` = stored and read back:
 
 | type | `value` | |
 |---|---|---|
@@ -3921,11 +3735,10 @@ evidence). This document keeps the transport: the routes above, the registry keb
 
 ## 7. Kanban — SOLVED: the card template belongs in the archive `[C]`
 
-The old verdict «канбан сломан на платформе» was wrong. A kanban is two independent pieces, and the
-missing one was never the menu item:
+A kanban is two independent pieces:
 
-1. **Columns** — switched on where the board is shown; the one verified place is a MENU ITEM:
-   `boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId` (§4). This part always worked.
+1. **Columns** — switched on where the board is shown; the one confirmed place is a MENU ITEM:
+   `boPages.isKanbanEnabled`, `kanbanIndex`, `listIndex`, `kanbanFieldId` (§4).
    **The BO's own registry needs no switch** `[C]`: opened from «Бизнес-объекты» it offers «Канбан по полю:
    <label>» per `DROPDOWN_SINGLE` and renders the board at
    `/business-objects/viewing-list/bo/<boId>/kanban-view?fieldId=<dropdown fieldId>&boId=<boId>&menuItemId=<dropdown fieldId>&businessObjectId=<boId>`.
@@ -3933,8 +3746,8 @@ missing one was never the menu item:
    `v2/kanban/load-kanban-fields {boId}` lists both and the board shows the local options as columns.
    A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
    (`MYBPM-IMPORTS.md` 0.5c).
-2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO carried `{}`,
-   so the server failed and the view showed «cardTemplate is null». **Ship the template
+2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO without it carries `{}`,
+   so the server fails and the view shows «cardTemplate is null». **Ship the template
    inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
    dropdown's CODE, the card fields by CODE with `locationType` + `archetype`.
 
@@ -3961,20 +3774,15 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   writes exactly this for a NEW BO; add `--menu "…:BO@<code>@<name>!kanban=<dropdown code>"` and the
   same archive also switches the board on in a sidebar item. Ship it with R3.
 - For a BO that is ALREADY on the stand: its line comes out of the struct export of R4a, the key is
-  added and the line re-imported — **this works** `[C]` (it repaired two archive BOs whose kanban and
-  map died with «cardTemplate is null», §5l); keep the `kanbanFields` wrapper — without it the import is APPLIED
+  added and the line re-imported — **this works** `[C]` (it repairs an archive BO whose kanban and
+  map die with «cardTemplate is null», §5l); keep the `kanbanFields` wrapper — without it the import is APPLIED
   and changes nothing. The other writer is the constructor UI (below).
 
-Verified end to end: archive with `kanbanCardTemplates` → `apply-import` → `load-kanban-template` returns
-a `cardTemplate`, `load-kanban-card-template` returns header/content/footer, the board renders its three
-columns, a record saved from the board lands in the right column, and `load-bracket-kanban-cards` returns
-the card with its values.
-
-- Why the old API route was a dead end: `save-kanban-card-template` (body `{header, content, footer,
+- The API route is a dead end: `save-kanban-card-template` (body `{header, content, footer,
   *DelFieldIds}`, `*DelFieldIds = "D-<fieldId>"`; an EMPTY body returns 200 and does nothing) writes a
   store that `load-kanban-template` does NOT read. There is **no API that fills `kanbanCardTemplates`** —
   the constructor UI and the archive are the only writers. `save-business-object-portion` does not carry
-  the key either (a full-DTO re-save changed nothing, twice).
+  the key either (a full-DTO re-save changes nothing).
 - Runtime shape of a template item (what the kanban endpoints return, ids not codes):
   `{type:"KanbanCardFieldDynamic"|"KanbanCardFieldNative", coKanbanFieldId:null,
   kanbanFieldId:"D-<fieldId>"|"N-<NATIVE_TYPE>", label, cardOrderIndex, fieldKind:"DYNAMIC"|"NATIVE",
@@ -4001,52 +3809,37 @@ Please use a keyword field instead. … set fielddata=true on
 - **Pass an explicit `ordering`** (e.g. `{archetype:"NATIVE", fieldId:"CREATED_AT", state:"DESC"}`) and
   the very same call returns the cards in full. So the data and the template are fine; only the server's
   default sort is.
-- Long-standing BOs of the same stand sort by their `INPUT_TEXT` fields without a murmur, so the mapping
-  of the NEW index is the suspect — and the sweep below shows the constructor route is no better than the
-  import.
-- Tried and did NOT help: `v1/business-object-instance/ensure-index {boId}` (404 — the live route is
+- Long-standing BOs sort by their `INPUT_TEXT` fields fine; only the mapping of a NEW index is broken.
+- Do NOT retry these, none of them helps: `v1/business-object-instance/ensure-index {boId}` (404 — the live route is
   `v2/business-object-instance/ensure-index`, which answers 200 and changes nothing), a full-DTO
   `save-business-object-portion` re-save, and `v2/business-objects/save-bo-table-sort {boId, fieldId,
   order}` (it DOES set `sortFieldId`, read back — the failing sort is a different one).
 ### The defect is NOT the import — it is every NEW BO on this stand `[C]`
 
-The test above was run and it answers the question: **a BO built in the CONSTRUCTOR fails identically.**
+**A BO built in the CONSTRUCTOR fails identically.**
 
-**All THREE creation routes are equally broken** — the route a BO was born by makes no difference:
+**All THREE creation routes are equally broken** — the route a BO was born by makes no difference: archive,
+constructor API (§5h) and constructor UI by hand (§5b) all answer `EsException` to `ordering: null` and to
+an explicit `DYNAMIC` text sort, and return the rows to an explicit `CREATED_AT` sort.
 
-| BO | born by | index | `ordering: null` | explicit `DYNAMIC` text sort | explicit `CREATED_AT` |
-|---|---|---|---|---|---|
-| `fsV2MG@eJqXHw90r` «Канбан из архива» | **archive** | `v1_3_boi18_7ec576306f9e26a5c7c3dd2b` | `EsException` | — | OK, 1 |
-| `yxTzPaWhONPNxk5j` «Проба настройки полей» | **constructor API** (§5h) | `v1_3_boi18_cb14f33da5a138d3cdc64e63` | `EsException` | `EsException` | OK, 1 |
-| `OpmGDzaQRUT27jky` «Проба UI» | **constructor UI**, by hand (§5b) | `v1_3_boi18_3a99860f36904544f6ee3932` | `EsException` | `EsException` | OK, 1 |
+An empty BO never errors (ES has nothing to sort), so every 0-record BO looks healthy.
 
-The UI row was the user's own question («а если через UI?») and it needed a record, which the BO did not
-have — it was created through the record API of §6a below, i.e. through exactly the calls the UI form
-itself makes. An empty BO never errors (ES has nothing to sort), which is why every 0-record probe looks
-green: `ATyioDPdsxhmVDBO` (the archive twin of the field-settings probe) is «green» only because it holds
-no records.
-
-**The counter-example, and why it was not one** `[C]`. The user built «Бизнес объект №6977»
-(record `111`) and «Бизнес объект №6978» (record `привет`) by hand in the constructor and both registries
-showed their row, «1 из 1», no errors — which looked like a refutation, and first suggested that the value
-decided the mapping (digits sortable, letters not). **Both readings are wrong.** Reopened later, №6978
-(`4pMYDZFS5gN57xai`, index `v1_3_boi18_e293180d9152e60379ef16a2`) fails exactly like every other new BO —
-verified three ways: the direct `/business-objects/viewing-list/bo/<boId>/list-view` URL, the same screen
-reached by CLICKING through Бизнес → group → BO (identical URL, four error toasts), and the API with the
-body the client itself sends. So the value hypothesis is dead and the route hypothesis stays dead.
+**The stored value does not decide it** `[C]`: a record holding digits fails exactly like one holding
+letters, and the error is the same from the direct `/business-objects/viewing-list/bo/<boId>/list-view`
+URL, from the screen reached by clicking through Бизнес → group → BO, and from the API.
 
 **A screen that renders right after the record was saved is not evidence** `[I]` — the freshly created row
 is on screen while the failing query is not what put it there. Re-open the registry (or F5) before
 concluding that a BO is healthy.
 
-**The exact body the registry sends** `[C]` (XHR patch on the live page — the Angular client uses XHR,
+**The exact body the registry sends** `[C]` (the Angular client uses XHR,
 trap 30): `paging` is **`{limit:20, offset:0}`**, not `{page,size}`, and `ordering` is
 **`{archetype:null, fieldId:null, state:"UNSET"}`**, not `null`. Both shapes fail identically on a new BO
-and both succeed on an old one, so nothing above depends on which was used; the client's own shape is the
+and both succeed on an old one; the client's own shape is the
 one to reproduce. On failure the client keeps paging (`offset` 20, 40, 60…) and each page raises its own
 toast — that is why the errors arrive in threes and fours.
 
-**What it looks like on screen** `[C]` (registry of `OpmGDzaQRUT27jky`): the table draws its
+**What it looks like on screen** `[C]`: the table draws its
 headers and then only «Загрузить ещё» — no rows — while the counter top-right still says «из 1», and two
 red toasts «Ошибка / ErrorResponse: {"error":{"phase":"query","failed_shards"… fields are not optimised
 for operations that require per-document field data…» pile up in the corner with a `trace-id`. Nothing
@@ -4059,12 +3852,9 @@ heading (it holds a record value only when a script writes one, §8), and **not 
 names `INPUT_TEXT` explicitly. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group
 → click the BO → its registry → **«Добавить»** → fill the text field → save.
 
-**The step everyone misses — it is the SECOND visit that fails** `[C]` (the user's own words:
-«Когда создаешь БО а затем её инстанцию, ошибки нет. Но если затем второй раз переходишь в этот же
-регистр, то появляются ошибки»). Right after saving, the registry shows the new row and «1 из 1» and
+**The step everyone misses — it is the SECOND visit that fails** `[C]`. Right after saving, the registry shows the new row and «1 из 1» and
 looks perfectly healthy. **Leave the screen and open the registry again (or F5)** — only then the table
-comes back empty with the toasts. Both of us drew wrong conclusions from that first screen before
-noticing it. `[I]` on the mechanism: most likely the BO's ES index does not exist yet at the first visit
+comes back empty with the toasts. `[I]` on the mechanism: most likely the BO's ES index does not exist yet at the first visit
 (nothing to sort, nothing to fail), and the broken mapping is created when the first record is indexed.
 **Before that first record the same screen is clean** — ES has nothing to sort — so a 0-record BO never
 shows it. **There IS a workaround inside the UI**: take every STRING field out
@@ -4072,127 +3862,103 @@ of the registry columns (`tableColToShow: false`) and the screen works, because 
 lands on a numeric/boolean/native field (see «The workaround that DOES exist» below). An explicit
 `CREATED_AT` ordering also works but is not reachable from the screen, and `save-bo-table-sort` to
 `CREATED_AT` does not change the default sort either.
-- **The whole tenant was swept**: all 145 BOs/dictionaries of `<COMPANY_A>` were called with `ordering: null`.
-  95 of them hold records; **not one long-standing BO fails**. The only two failures are our two probes
-  that have a record — one imported, one built in the constructor. (Three more probes answer
-  `AccessDenied` — rights we narrowed earlier, unrelated.)
+- **No long-standing BO fails** with `ordering: null`; only new BOs that hold a record do.
 - It is not the *default* sort either, it is the text field itself: an **explicit**
   `ordering {archetype:"DYNAMIC", fieldId:<an INPUT_TEXT field>, state:"ASC"}` returns rows on the old
-  BOs («Пользователи» 122, «Журнал» 12) and raises the same ES error on the new one.
-- The record-creation route is not a factor either: the UI probe's record was written by the client's own
-  draft cycle, and it lands in the same broken mapping.
-- So the suspect is the **search-index mapping of every index created by this platform version**:
+  BOs and raises the same ES error on the new one.
+- The record-creation route is not a factor either: a record written by the client's own
+  draft cycle lands in the same broken mapping.
+- The cause is the **search-index mapping of every index created by this platform version**:
   `fields.INPUT_TEXT#<fieldId>.sortValue` comes out `text` (no `keyword` sub-field, no `fielddata`),
   while the indexes of the older BOs sort happily. The archive, the constructor and the kanban have
   nothing to do with it — **this is a backend/infra defect for the platform vendor** `[I]` (the mapping
   itself cannot be read from the client).
 - **There is no client-side fix**: `ensure-index` is the only index endpoint in the whole bundle
-  (`grep` over all 201 lazy chunks) and it changes nothing. A full-DTO re-save and `save-bo-table-sort`
+  and it changes nothing. A full-DTO re-save and `save-bo-table-sort`
   do not help either — `save-bo-table-sort {fieldId:"CREATED_AT"}` sets `sortFieldId`, yet the default
-  sort of `fsV2MG@eJqXHw90r` still goes to «Наименование» (`SO3965wW79K1GwK9`); on a BO with
-  `sortFieldId: null` the server picked the UNIQUE field `mW46OCU@MBjBvwX~`, not the first one.
-  **Confirmed with a DYNAMIC numeric target too**: `sortFieldId` is written and ignored — the
+  sort still goes to a string column; on a BO with
+  `sortFieldId: null` and a UNIQUE field the server picks the UNIQUE field, not the first one `[I]`.
+  A DYNAMIC numeric target behaves the same: `sortFieldId` is written and ignored — the
   registry still trips over the first string column. Only `tableColToShow` changes the outcome.
 - **What to do meanwhile**: always send an explicit `ordering` (`{archetype:"NATIVE",
   fieldId:"CREATED_AT", state:"DESC"}` works everywhere). The stand's own client sends `ordering: null`,
   so the registry and the kanban of a freshly created BO stay broken in the UI until the mapping is fixed.
 ### The defect is the INDEX, not the FIELD — the old-BO experiment `[C]`
 
-The test above was run on **«Офисы» `QXMI@1Xx6K~rV9zw`** (group «Расположение», a plain `BO`, 3 fields,
-7 records, chosen because its own `INPUT_TEXT` «Адрес» sorts fine — a long-standing, healthy index):
+A fresh `INPUT_TEXT` field added (constructor API, §5b R1) to a long-standing BO with a healthy index and
+filled with letters **sorts**: `ASC` and `DESC` both order correctly (empty values last in both
+directions), `ordering: null` and the client's `UNSET` shape return all rows, and a re-read later stays
+clean — while new BOs answer `EsException` to the same call.
 
-1. baseline — `ordering: null`, the client's `UNSET` shape and an explicit `DYNAMIC` sort by «Адрес» all
-   return 7 rows;
-2. one fresh `INPUT_TEXT` field added through the constructor API (§5b R1) — `BjL@8oMMKjhLXDW8`
-   «Проба сортировки»;
-3. two throwaway records carrying LETTERS in it (`яблоко`, `арбуз`);
-4. sorted by that brand-new field.
-
-**It sorts.** `ASC` → `арбуз | яблоко | ∅×7`, `DESC` → `яблоко | арбуз | ∅×7` (empty values last in both
-directions), `ordering: null` and the client's `UNSET` shape return all 9 rows, and a re-read 60 s later
-— the trap-45 discipline, twice — stays clean. The control run in the same session with the same token
-still fails: `4pMYDZFS5gN57xai` and `OpmGDzaQRUT27jky` answer `EsException` on the same call.
-
-**Verdict: the broken mapping is born with the INDEX, not with the field.** An index created by this
+**The broken mapping is born with the INDEX, not with the field.** An index created by this
 platform version is broken whatever you put in it; an index created earlier swallows a field created
 later and sorts by it correctly. Consequences:
 
 - Adding fields to existing BOs is safe — the vendor defect does not spread to them.
 - The vendor ticket is about **index creation** (the template/mapping used when a BO's index is first
   built), not about field mapping. Everything a new BO gets is doomed; nothing an old BO gets is.
-- Cleaned up in the same session: both records deleted, the field deleted, and the BO DTO diffed against
-  the baseline snapshot — **identical**, 7 records, default sort healthy.
 
 ### The workaround that DOES exist — keep strings out of the registry columns `[C]`
 
-Answering «баг проявляется, если в реестре есть колонка строкового типа?» — yes for the SYMPTOM, no for
-the cause, and the difference is a usable workaround. On the fresh probe `bbaYv1ik~KT53OfT` («Проба типов
-сортировки», constructor, 8 field types, one record):
+A string column in the registry decides the SYMPTOM, not the cause, and the difference is a usable
+workaround (a new BO with 8 field types and one record):
 
 | registry columns | `ordering: null` / client `UNSET` | explicit sort by a string field |
 |---|---|---|
 | all 8 fields (strings included) | `EsException` | fails |
 | only `INPUT_NUMBER` + `CHECKBOX` + `DATE` | **OK, rows come back** | still fails (even for a field that is NOT a column) |
 
-- So the server's default sort picks a field **from the registry columns**: no string among them, no error,
+- The server's default sort picks a field **from the registry columns**: no string among them, no error,
   and the registry (and by the same query the kanban) works on a broken index.
 - The mapping itself is still broken for every string field of that index — an explicit
   `DYNAMIC` sort by a non-column `INPUT_TEXT` fails exactly as before. The columns only decide whether the
   screen's own query steps on it.
 - The change is a one-key `editedFields` patch (`tableColToShow`) and is reversible: switching the string
   columns back on makes the registry fail again. **This — removing the columns — is the only mitigation
-  that holds**; merely reordering them leaves the failing sort one header-click away. **This corrects §7's earlier «there is no workaround
-  inside the UI»** — there is one, at the price of a registry without text columns.
+  that holds**; merely reordering them leaves the failing sort one header-click away. The price is a
+  registry without text columns.
 - The `AccessDenied` trap on the way: a BO with **no** registry columns at all answers
   `AccessDenied` «У Вас недостаточно прав на поля, которые выведены в реестр» even though every field has
-  `accessForAll: true`. That is what the three «rights we narrowed earlier» probes really
-  were — not rights, an empty column set. Trap 48.
+  `accessForAll: true` — not rights, an empty column set. Trap 48.
 
 ### What the registry actually sorts by — the FIRST column `[C]`
 
-The user's second screenshot of «Бизнес объект №6983» — the text field now holds `tr`, both columns are in
-the registry, the sort arrow sits on «Дата и время», no error — pinned the last piece down.
-
-- On the stand that BO answers OK to `ordering: null`, to the client's `UNSET` and to an explicit sort by
-  the date, and **`EsException` to an explicit sort by that same text field with `tr` in it**. The mapping
-  is broken; the screen is simply not sorting by it.
+- A new BO whose registry starts with a date column and also shows a filled text column answers OK to
+  `ordering: null`, to the client's `UNSET` and to an explicit sort by the date, and **`EsException` to an
+  explicit sort by that text field**. The mapping is broken; the screen is simply not sorting by it.
 - Why the date and not the text: **the default sort follows the FIRST registry column**
-  (`tableColOrderIndex`), not `sortFieldId`. Verified on the probe `bbaYv1ik~KT53OfT`: with all 8 columns
+  (`tableColOrderIndex`), not `sortFieldId`: with all columns
   kept and `INPUT_NUMBER` moved to position 0 the registry returns rows; move `INPUT_TEXT` back to 0 and
-  it fails again. (The one exception seen earlier: a BO with a UNIQUE field — the server picked the unique
+  it fails again. (Exception: on a BO with a UNIQUE field the server picks the unique
   one, not the first `[I]`.)
-- That also explains why `save-bo-table-sort` «did not help» in both attempts — it writes `sortFieldId`,
+- That is why `save-bo-table-sort` does not help — it writes `sortFieldId`,
   which this query does not use.
 - **Column ORDER only fixes the FIRST render, it is not a workaround** `[C]`: clicking a column header sorts by that column — the client sends exactly the
   `ordering {archetype:"DYNAMIC", fieldId:<that field>, state:"ASC"|"DESC"}` that fails — so a text column
   left in the registry breaks the moment anyone clicks it (and clicking again for the other direction
-  fails too). Reordering only decides whether the screen is broken *on arrival*. №6983 is in that state:
-  healthy until its «Текстовое поле» header is clicked.
-- **The registry REMEMBERS the clicked sort** `[C]` (build S4.24.25.632, in the UI): after one
+  fails too). Reordering only decides whether the screen is broken *on arrival*.
+- **The registry REMEMBERS the clicked sort** `[C]`: after one
   click on a text header, every later opening of that registry (navigation or F5) arrives empty — only
   «Загрузить ещё», the counter still «из N», 2–4 «Ошибка» toasts — until a header of a non-string column
   is clicked. Right after the failing click the screen keeps the OLD rows unchanged plus the toast, so it
   looks half-alive; it is the next opening that is empty. Whether the remembered sort is per user or
-  shared by everyone was not checked `[U]`. This is why №6983 was found broken on arrival although its
-  first column is the date.
+  shared by everyone was not checked `[U]`. So a registry whose first column is not a string can still
+  arrive broken.
 - **The only reliable UI-side mitigation is to keep filled string fields OUT of the registry columns**
   (`tableColToShow: false`) — then the failing sort is unreachable from the screen. Everything else is
   cosmetic, and nothing repairs the mapping itself.
 
 ### The precise trigger — a string field that HAS a value `[C]`
 
-The user's counter-screenshot («Бизнес объект №6983» `OSJitWM1zwdDRVIU`, group «Тест», 2 records, columns
-«Дата и время» + «Текстовое поле», no error on screen) resolves the last ambiguity. Read off the stand:
-both records carry `null` in the text field, and **everything** works there — `ordering: null`, the
+On a new BO whose text field is `null` in every record **everything** works — `ordering: null`, the
 client's `UNSET`, an explicit `FULL_DATE` sort and an explicit sort by that very `INPUT_TEXT`.
 
-So the broken mapping is not created with the field, it is created **when the first string VALUE of that
-field is indexed**. The three conditions, each verified separately:
+The broken mapping is not created with the field, it is created **when the first string VALUE of that
+field is indexed**. The three conditions:
 
-1. the index was created by the current platform version (old indexes never fail — 112 BOs, 198 string
-   fields, 0 failures);
+1. the index was created by the current platform version (old indexes never fail);
 2. at least one record holds a value in that string field — a field left empty everywhere sorts fine
-   (№6983 above; the value-less `DROPDOWN_SINGLE` «Статус» of `yxTzPaWhONPNxk5j` behaves the same);
+   (a value-less `DROPDOWN_SINGLE` behaves the same);
 3. and the screen shows it only when the registry's default sort lands on such a field, i.e. when it is
    a column — while the API trips over it even when it is not (see the column section above).
 
@@ -4202,49 +3968,42 @@ text in it.
 ### «Просто выбрать другое поле сортировки» does NOT work `[C]`
 
 The obvious alternative to hiding the column — leave the string column in place and point the BO's default
-sort at a healthy field — was tried on the same probe and fails:
+sort at a healthy field — fails:
 
 - `v2/business-objects/save-bo-table-sort` **takes its arguments in the PARAMS half** (`{boId, fieldId,
   order}`); sent in the body it answers 200, writes nothing and `sortFieldId` stays `null` — the same
   half-of-the-envelope trap as `delete-bo-instance` (trap 46).
-- With params it really does write: `sortFieldId` became the `INPUT_NUMBER` field, read back from
-  `load-business-object-by-id`. **The registry still fails**, and the error still names the first string
-  column — `fields.INPUT_TEXT#2AUXHu3d7E8GsEdH.sortValue`. Passing `fieldId: null` clears it again.
-- So `sortFieldId` is not what the registry query sorts by; the server picks a string column regardless.
+- With params it really does write `sortFieldId` (read back from
+  `load-business-object-by-id`). **The registry still fails**, and the error still names the first string
+  column — `fields.INPUT_TEXT#<fieldId>.sortValue`. Passing `fieldId: null` clears it again.
+- `sortFieldId` is not what the registry query sorts by; the server picks a string column regardless.
   The only lever that works from the outside is **which fields are columns** (`tableColToShow`).
 
 ### Every string field of every old BO sorts — the full sweep `[C]`
 
-To close «а в старых БО с любым набором полей не проявляется?» the sweep was repeated per FIELD, not per
-BO: every BO of the tenant, every `INPUT_TEXT` / `TEXTAREA` / `INPUT_EMAIL` / `INPUT_PHONE` /
-`DROPDOWN_SINGLE` of it, each with an explicit `DYNAMIC` `ASC` ordering. **112 record-holding BOs,
-198 string fields, 0 failures** (55 empty BOs skipped — nothing to sort, 1 `AccessDenied`). Our own new
-probes were excluded and every one of them fails. The split «old index healthy / new index broken» is
-therefore not a sampling artefact of the default sort.
+On a long-standing BO every `INPUT_TEXT` / `TEXTAREA` / `INPUT_EMAIL` / `INPUT_PHONE` /
+`DROPDOWN_SINGLE`, with any set of fields, sorts with an explicit `DYNAMIC` `ASC` ordering; on a new BO a
+filled string field fails. The split «old index healthy / new index broken» holds per field, not only for
+the default sort.
 
 ### It is the whole index, and not only `INPUT_TEXT` `[C]`
 
-Follow-up to the user's question «баг только на тестовом поле, на другом его нет?» — no, it is every
-field of a broken index whose `sortValue` actually holds a string. Sorting each field of the three
-broken BOs separately:
+It is every field of a broken index whose `sortValue` actually holds a string:
 
-| BO | fails | sorts |
-|---|---|---|
-| `fsV2MG@eJqXHw90r` «Канбан из архива» | all THREE `INPUT_TEXT` (Наименование, Исполнитель, Комментарий) + the `DROPDOWN_SINGLE` «Статус» | `BO` reference «Автор» (`CREATED_BY`), `NATIVE CREATED_AT` |
-| `yxTzPaWhONPNxk5j` «Проба настройки полей» | both `INPUT_TEXT` + the `DROPDOWN_SINGLE` «Должность» (`optionSource: FROM_BO`) | the `DROPDOWN_SINGLE` «Статус» (`FROM_FIELD`, no value in the record), `CREATED_AT` |
-| `4pMYDZFS5gN57xai` «Бизнес объект №6978» | its single `INPUT_TEXT` | `CREATED_AT` |
+| fails | sorts |
+|---|---|
+| every `INPUT_TEXT` with a value; a `DROPDOWN_SINGLE` with a value (`optionSource: FROM_BO` included) | a `BO` reference (e.g. «Автор», `CREATED_BY`); a field with no value in any record (a `DROPDOWN_SINGLE` `FROM_FIELD` included); `NATIVE CREATED_AT` |
 
-- The error always names the field you asked for — `fields.INPUT_TEXT#Fr0AVxK63ZRfWWRH.sortValue`,
-  `fields.DROPDOWN_SINGLE#Hh9hePZW9ipg~Aeb.sortValue` — so **`DROPDOWN_SINGLE` is hit too**; the earlier
-  «`INPUT_TEXT` only» wording was just an artefact of the probes having one text field each.
+- The error always names the field you asked for — `fields.INPUT_TEXT#<fieldId>.sortValue`,
+  `fields.DROPDOWN_SINGLE#<fieldId>.sortValue` — so **`DROPDOWN_SINGLE` is hit too**.
 - What still sorts on a broken index is what carries no indexed string: a field with no value in any
   record, a `BO` reference, and the `NATIVE` dates `[I]`.
-- The same field kinds on a long-standing BO («Встречи» `2h@BQkSol3XFZ7fw`, 23 records) all sort:
+- The same field kinds on a long-standing BO all sort:
   `INPUT_TEXT`, `DROPDOWN_SINGLE`, `TEXTAREA` — the split is the INDEX, never the field kind.
 - Side note: `NATIVE UPDATED_AT` is **not** a valid ordering field — `IllegalArgumentException: No enum
   constant …` on old and new BOs alike. `CREATED_AT` is the safe one.
 
-Two by-products of the experiment `[C]`:
+Two related traps `[C]`:
 
 - **`delete-bo-instance` takes `boInstanceIds` in the PARAMS half.** Sent in the body
   (`params {businessObjectId}`, `body {boInstanceIds}`) it answers 200 and deletes nothing; with both in
@@ -4252,18 +4011,18 @@ Two by-products of the experiment `[C]`:
 - **A field that is not a registry column is invisible in `load-bo-instance-bracket-table`** — the row
   `values[]` carry only the `tableColToShow` fields, so you cannot read back what you wrote into a plain
   field there. Flipping `tableColToShow: true` (a one-key `editedFields` patch) makes both the column and
-  the full-text `search` find it `[I]` — before the flip `search:"яблоко"` returned 0 hits, after it 1.
+  the full-text `search` find it `[I]`.
 
 ## 8. HTML fields and «Текст» sections — what the sanitizer accepts
 
-**Which fields take HTML** `[C]` (the user): «Текст» (`STATIC_TEXT`), «Текстовый блок»
+**Which fields take HTML** `[C]`: «Текст» (`STATIC_TEXT`), «Текстовый блок»
 (`TEXTAREA`) and «Мультиязычный текстовый блок» (`TEXTAREA_LANG`) — an HTML fragment can go into them
 instead of plain text, whether typed in the card, saved through `save-field-value` (§6b), written by a
 script or imported. «Текстовое поле» (`INPUT_TEXT`) and its multilingual twin are plain single-line inputs `[I]`.
 
-**What the server keeps** `[C]` (`<stand>`, `save-field-value` into a `TEXTAREA`, read back with
-`load-field-data`; the same held for `staticValueMap` of a `STATIC_TEXT` saved through
-`save-business-object-portion`). The server re-serialises the HTML (pretty-printed, `\n` + indent around
+**What the server keeps** `[C]` — in a `TEXTAREA` written by `save-field-value` and read back with
+`load-field-data`, and in `staticValueMap` of a `STATIC_TEXT` saved through
+`save-business-object-portion`. The server re-serialises the HTML (pretty-printed, `\n` + indent around
 block tags) and:
 - keeps `<b>`, `<br>`, `<div style=…>`, `<a href target>`, `<img src width>` and **`<iframe src width
   height>`**;
@@ -4279,24 +4038,22 @@ frame, and in a `TEXTAREA` inside the summernote editor (`.note-editable`), with
 fixed url (§5i). The page still needs a host of its own: **`/web/v2/file/download/<fileId>`** (controller
 `v2/file`, `upload` / `download/{id}`) answers `SecurityError «Illegal Session»` without the `token`
 header, so a file uploaded to the platform cannot be the `src` of a frame.
-Proven end to end (`<stand>`): a button script wrote
+A button script that writes
 `<iframe src="https://<external host>/?a=<lat,lon>&b=<lat,lon>" width="100%" height="400">` into a
-`TEXTAREA`; the card showed the external page inside the field, and the value was stored with `&` as
+`TEXTAREA` makes the card show the external page inside the field; the value is stored with `&` as
 `&amp;`. A page that loads a Referer-restricted browser API key (Yandex JS API) sends ITS OWN host as the
 Referer, not the stand's, so that host must be on the key's list.
 
-**A «Текст» (`STATIC_TEXT`) field works the same way, with no editor around it** `[C]` (`<stand>`,
-the user's request). Its `staticValueMap` is only the default: a script writes the RECORD's own HTML with
+**A «Текст» (`STATIC_TEXT`) field works the same way, with no editor around it** `[C]`. Its `staticValueMap` is only the default: a script writes the RECORD's own HTML with
 `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` (`language` = Enum `MybpmLang` `RUS`) on the field reference
-(`MYBPM-IMPORTS.md` §0.5). A real button click showed the `<iframe>` at once. After СОХРАНИТЬ and reopening,
-the record still showed its own frame, while the BO's `staticValueMap` kept its placeholder. Prefer this
+(`MYBPM-IMPORTS.md` §0.5). A real button click shows the `<iframe>` at once; after СОХРАНИТЬ and reopening
+the record still shows its own frame, while the BO's `staticValueMap` keeps its placeholder. Prefer this
 over a `TEXTAREA` for a read-only embed. Which sites can be framed at all: `yandex.ru/maps` answers
 `X-Frame-Options: DENY`; the embeddable widget `https://yandex.ru/map-widget/v1/?rtt=auto&rtext=<lat,lon>~<lat,lon>`
 (no key, draws the road route) has no XFO / `frame-ancestors` and renders `[C]`.
 
-Observed while pasting a dashboard into a MyBPM HTML field; the same rules were reused for HTML inside
-«Текст» (STATIC_TEXT) headings, which rendered on the stand (whether that field sanitizes identically is
-`[U]`).
+Rules for HTML pasted into a MyBPM HTML field; the same rules work for HTML inside «Текст» (STATIC_TEXT)
+headings (whether that field sanitizes identically is `[U]`).
 
 - **Rejected**: `text-transform` (probably matched as "transform"), `letter-spacing`.
 - **Stripped together with their styles**: `main`, `header`, `section`, `article` → use only `div` and `span`.
@@ -4335,8 +4092,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 `http://customschemas.google.com/relationships/workbookmetadata`, a `Content_Types` override
 `application/binary` and `workbook.xml` `<extLst><ext uri="GoogleSheetsCustomDataVersion2">`.
 
-- Attempt 1 (hidden columns H:XFD + `zeroHeight`) — still showed cells outside the table. Attempt 2
-  (injecting that metadata after a library save) — still not cropped.
+- Do not retry: hidden columns H:XFD + `zeroHeight` still show cells outside the table, and injecting
+  that metadata after a library save does not crop either.
 - **Verification methods that prove NOTHING, do not repeat them**: Drive import with conversion + export
   back (1000 rows for ours and for a genuine example alike, even with the example's raw metadata swapped
   in); counting columns in the export (Google omits default-width columns); ODS export (pads to
@@ -4359,9 +4116,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 - Shared-drive sharing: the drive root cannot be link-shared at all, only members; objects inside can be
   link-shared only if the role is Manager/Content manager, the drive allows non-members and the Workspace
   admin permits it. A shared drive can only be created by a Workspace account.
-- rclone's shared client_id retires during 2026 and hits `rateLimitExceeded` — if uploads start failing,
+- rclone's shared client_id is being retired and hits `rateLimitExceeded` — if uploads start failing,
   give the remote its own client_id.
-- **Never paste file contents as base64 into the Drive MCP (claude.ai) tools** — sessions hung twice. That
+- **Never paste file contents as base64 into the Drive MCP (claude.ai) tools** — it hangs the session. That
   MCP account is not a member of the user's shared drives.
 
 ## 10. Claude-in-Chrome traps
@@ -4373,7 +4130,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 - `javascript_tool` output comes back as `[BLOCKED: Cookie/query string data]` if the text contains
   `=`/`&`/`?` → `.replace(/[=&?]/g,'_')` before returning. Ids **really can contain `~`** `[C]`:
   hex-dump the id inside the page (`[...new TextEncoder().encode(id)].map(b=>b.toString(16)…)`) and decode
-  it outside — that survives the filter, and it proved `~hb30v0XyMtGsBLj` starts with a literal `~`.
+  it outside — that survives the filter.
 - **Page state injected by `javascript_tool` SURVIVES between calls** `[C]` — `window.__x`
   set in one call is readable in the next; only a navigation/reload wipes it. So a `window.fetch` patch
   that records `/web/` request bodies is the way to capture what the UI actually sends (`read_network_requests`
@@ -4399,9 +4156,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   await __c('import-structure/load-import-state')      // path WITHOUT /web/, with v2/ where it belongs
   ```
   **Keep the envelope even where a plain call seems to work** `[C]`: with the params in the
-  query string and a bare JSON body, `bo-process-editor2/create-draft` and `load-draft-data` answered
-  normally, but `update-draft` (whose body is an ARRAY) answered 400 «Failed to read request» on every
-  try; the same array inside `body_o1nhHUG480` went through at once.
+  query string and a bare JSON body, `bo-process-editor2/create-draft` and `load-draft-data` answer
+  normally, but `update-draft` (whose body is an ARRAY) answers 400 «Failed to read request»; the same
+  array inside `body_o1nhHUG480` goes through.
   Never return `r.headers.get(…)` (the export's file name sits in `content-disposition` — derive a name
   yourself). A reload wipes `window.__c`: the next call fails with `ReferenceError` BEFORE it sends
   anything, so re-inject after every navigation.
@@ -4433,8 +4190,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   calls» fact above, that is the way to drive a multi-minute job through this tool.
 - **Drive the API from `https://<stand>/favicon.ico`, not from the app** `[C]`: the stand root
   redirects to the LAST opened route, and a record panel there re-creates its draft and reloads by itself —
-  an in-page job started from it vanished mid-run (the import applied, the watch never reported), and after
-  one more load the tab froze (`Page.captureScreenshot` timed out). The favicon URL is the same origin, so
+  an in-page job started from it can vanish mid-run, and the tab can freeze
+  (`Page.captureScreenshot` times out). The favicon URL is the same origin, so
   `localStorage` (the token) and `fetch('/web/…')` work, and nothing on it reloads. Use the app only for what
   needs the UI. The client bundle is readable from there too — `fetch('/')` → the `runtime.*.js` chunk map →
   grep the chunks for a controller path to learn a call's shape without clicking.
@@ -4447,8 +4204,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   first (`key BackSpace` after the triple click) and re-read `input.value` before saving — a field code
   is generated from the label at the first save and never regenerated.
 - **`computer type` SILENTLY DROPS spaces and punctuation** in these Angular inputs `[C]`:
-  «Проба: составной объект через архив (UI)» arrived as `Пробасоставнойобъектчерезархив` — 30 chars, no
-  spaces, no `:`, no `()`, and the trailing `UI` gone. Together with the append-instead-of-replace trap
+  spaces, `:` and `()` vanish, and trailing text can be lost. Together with the append-instead-of-replace trap
   above, **do not type into these fields at all**: set the value from JS through the native setter and
   fire the events Angular listens to —
   ```js
@@ -4458,9 +4214,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   ```
   (`HTMLInputElement.prototype` for an `<input>`), then READ `.value` back before saving.
 - **Drive this app's clicks from `javascript_tool`, not from `computer left_click`** `[C]`.
-  A click computed from an element's `getBoundingClientRect` landed a full row off, and the
-  mousedown-listener calibration of trap 28 caught NOTHING (`window.__hit` stayed `null`) although the
-  click visibly happened — so the factor cannot even be measured reliably here. `el.click()` on the
+  A click computed from an element's `getBoundingClientRect` lands a full row off, and the
+  mousedown-listener calibration of trap 28 catches nothing although the
+  click visibly happens — so the factor cannot be measured reliably here. `el.click()` on the
   element found by its text works every time and needs no coordinates. Two gotchas:
   - filter by **`innerText`**, not `textContent` — the buttons' `textContent` did not match `'ПРИМЕНИТЬ'`
     while `innerText` did;
@@ -4479,12 +4235,12 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   group is invisible; ask for the URL.
 - «extension is not connected» / `list_connected_browsers` → `[]` after switching accounts: Claude Code and
   the extension must be on the SAME claude.ai account and the bridge binds at session start → restart
-  Claude Code and reload the extension (that fixed it).
+  Claude Code and reload the extension.
 - **Claude Desktop installed next to Claude Code steals the extension** `[C]`: reloading the
-  extension did not help — it kept spawning Claude Desktop's `chrome-native-host` (manifest
+  extension does not help — it keeps spawning Claude Desktop's `chrome-native-host` (manifest
   `~/.config/google-chrome/NativeMessagingHosts/com.anthropic.claude_browser_extension.json`) and Claude
-  Code's `claude --chrome-native-host` never started. Renaming that manifest to `*.json.disabled` and
-  killing the Desktop hosts brought Claude Code's host up within ~10 s. Renaming it back returns Chrome to
+  Code's `claude --chrome-native-host` never starts. Rename that manifest to `*.json.disabled` and
+  kill the Desktop hosts — Claude Code's host comes up within ~10 s. Renaming it back returns Chrome to
   Claude Desktop.
 - **When the browser window is not in front, `screenshot` times out** («Page.captureScreenshot timed out
   … renderer may be frozen», `document.visibilityState === "hidden"`), a new tab too, while
@@ -4502,9 +4258,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   — the registry with that record open in its dialog (the page mints its own draft). The shorter
   `/viewing-list/bo/<boId>/list-view` (no `/business-objects`) is NOT a route — it lands on «Главная».
 - **Never reuse the `/business-objects/viewing-single/panel?…` URL for an ordinary BO** `[C]`:
-  with `isPanel=false` and a real `boiId` the page rewrote itself to the home PANEL's `boiId` and
-  `isPanel=true` — and the BO got a new empty record under that same id. It was left in place (deleting a
-  record whose id is also the panel's own was not worth the risk).
+  with `isPanel=false` and a real `boiId` the page rewrites itself to the home PANEL's `boiId` and
+  `isPanel=true` — and the BO gets a new empty record under that same id.
 - **Reading a date picker without screenshots** `[C]`: the card's pickers are
   `nz-date-picker` / `nz-range-picker` / `nz-year-picker` elements; `mousedown` + `click` + `focus` on
   their `input` opens a `.ant-picker-dropdown`, whose `td.ant-picker-cell-in-view` cells carry `title`
@@ -4549,28 +4304,28 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     create + update pair, the create is undone first and deletes the BO; the update then shows
     `canRollback:true` with a RESTORE of that BO — leave it APPLIED; whether undoing it brings the BO back is `[U]`.
 18. A BO is created only from a GROUP's hover-kebab in `/business-objects/editing`; the caption-level ⊕
-    sends `boGroupId: null`, finds no `kind: DEFAULT` group on `<company-a>` and silently creates nothing.
+    sends `boGroupId: null`, finds no `kind: DEFAULT` group (a company may have none) and silently creates nothing.
 19. `save-business-object-portion` wants `{businessObject: …}` inside `jsonPart`; a bare DTO throws
     `UndeclaredThrowableException`. `save-business-form-field` never creates fields — use the portion save.
 20. BO and field codes are generated by the SERVER from the names; the BO code is cut to 30 characters.
 21. `load-bo-records-by-group-id` takes `groupId`, not `boGroupId`.
 22. A FIELD's code is generated from its label at the FIRST save and never regenerated — fix the label
-    before СОХРАНИТЬ. **A BO's code behaves the same way** `[C]` (re-checked): it appears at
-    the first save that gives the BO a name and later renames do NOT change it (§5b said otherwise).
+    before СОХРАНИТЬ. **A BO's code behaves the same way** `[C]`: it appears at
+    the first save that gives the BO a name and later renames do NOT change it.
 23. The import dialog's tree labels a node `<вид объекта>/<имя БО>` — the first half is the CATEGORY, not
     the BO group. A `BO_PANEL` node carries no prefix at all, just the name.
 24. **Constructor API race**: a field save that lands within ~1 s of the rename makes the server append a
-    16-char uniquifier to the just-generated BO code («Test_koda_4_2026_09_18HXpmEa21vtnNLVsl»), and a BO
-    code is never regenerated afterwards. `tools/create-bo-constructor.bun.ts` now sleeps 3 s between the
+    16-char uniquifier to the just-generated BO code (`<generated code><16 chars>`), and a BO
+    code is never regenerated afterwards. `tools/create-bo-constructor.bun.ts` sleeps 3 s between the
     two and warns if the code changed. The Angular client never hits it — a human types the name and drags
     fields seconds apart.
 25. `delete-business-object` takes `{businessObjectId}` as a **param**, not a body
     (`postJson(path, body, params)` — body FIRST in the client's signature, params second).
 26. A MyBPM error response carries a ~100-line Java `stackTrace` — never `cat` one into the session,
     pipe it through `head -c 300` or read only `message`/`errorType`.
-27. **Claude-in-Chrome `screenshot` resizes the real browser window** on this stand's extension build:
-    `scale: 0.6` shrank the viewport 1876 → 941 → 565 px, one step per screenshot, until the app's layout
-    collapsed and every drag missed. Never pass `scale` here. A screenshot with no `scale` still pins the
+27. **Claude-in-Chrome `screenshot` resizes the real browser window**:
+    a `scale` shrinks the viewport one step per screenshot until the app's layout
+    collapses and every drag misses. Never pass `scale` here. A screenshot with no `scale` still pins the
     viewport to the capture frame (1568×743), and `resize_window` does NOT undo it — only a NEW TAB does.
 28. **Click coordinates are not CSS pixels and do not follow that emulated viewport.** Measure the factor
     instead of guessing: `document.addEventListener('mousedown', e => __pts.push([e.clientX,e.clientY]),
@@ -4587,7 +4342,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `javascript_tool` (match on `innerText`, scope dialogs to `.cdk-overlay-container`, click the
     `<button>`) and set text through the native value setter + an `input` event. §10.
 32. **A BO code is cut to 30 characters**, so a hand-transliterated code silently misses the stand's
-    («Проба API-конструктор 2026-09-18» → `Proba_API_konstruktor_2026_09_`, trailing `_`). Anything that
+    (a 32-character transliteration loses its last two characters and can end in a trailing `_`). Anything that
     references a BO by code — a composite's `bos`, a panel's `boRefStruct` — must take the code from
     `load-business-object-by-id`, never from a guess.
 33. **`add-co-field-to-simple` makes one attribute per link in its body.** A «составной атрибут» = create
@@ -4637,18 +4392,17 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 43. **A newly created BO cannot be sorted by a text field** `[C]` — the
     search-index mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so the registry's own query
     answers `EsException` «Text fields are not optimised …». It hits the registry AND the kanban, and it
-    hits **all four probes across all three creation routes — archive, constructor API, constructor UI**
-    (two of them built by the user himself), while none of the 95 record-holding long-standing BOs has
-    it. Send an explicit `ordering`. Do NOT look for the cause in the archive format, in the constructor,
+    hits **new BOs of all three creation routes — archive, constructor API, constructor UI**,
+    while no long-standing BO has it. Send an explicit `ordering`. Do NOT look for the cause in the archive format, in the constructor,
     in the kanban, or in the VALUE stored (digits and letters fail alike) — §7. **It is the INDEX, not
-    the field** `[C]`: a field created later inside a long-standing BO («Офисы») sorts
+    the field** `[C]`: a field created later inside a long-standing BO sorts
     perfectly, so adding fields to existing BOs is safe and the vendor ticket is about index creation.
     And inside a broken index it is **not only `INPUT_TEXT`** — every field holding an indexed string
     fails, `DROPDOWN_SINGLE` included; only value-less fields, `BO` references and `CREATED_AT` survive.
 45. **A registry screen seen right after saving the first record proves nothing** `[C]` —
     it shows the just-saved row and «1 из 1»; the SECOND visit to the same registry is the one that fails
-    with the error toasts (confirmed independently by the user). Re-open or F5 before calling a BO
-    healthy. This cost a full round of wrong conclusions on both sides. §7.
+    with the error toasts. Re-open or F5 before calling a BO
+    healthy. §7.
 46. **`delete-bo-instance` wants `boInstanceIds` in the PARAMS half** `[C]` — with the ids
     in the body the call answers 200 and deletes nothing (the rows are still there on the next read);
     `params {businessObjectId, boInstanceIds}` answers `true` and removes them. The same shape trap as
@@ -4668,21 +4422,21 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
     `ensure-index`. Whenever a bundle-read controller 404s, retry the same path under `v2`. §6a.
 49. **One unknown enum value in a script def makes ALL scripts of that BO unreadable — for good** `[C]`
-   . `apply-update-cmd` stored `"opType":"GreaterEq"`; afterwards every script call on that
+   . Once `apply-update-cmd` stores e.g. `"opType":"GreaterEq"`, every script call on that
     BO (read, translate, versions, apply, undo, delete) answers `IllegalArgumentException: No enum
     constant …`, the fix included. Only listed enum values (`MYBPM-IMPORTS.md` §10–§12a) may be written;
     a wrong `actId` or argument name is harmless. §5g «Writing a script headlessly».
 50. **A wrong `PROGRESS_BAR` value makes the whole draft unreadable** `[C]` —
-    `save-field-value` stored `["<stepId>"]` without complaint, then `load-field-data` answered
+    `save-field-value` stores `["<stepId>"]` without complaint, then `load-field-data` answers
     `IllegalStoredValue … Value_PROGRESS_BAR` for the entire form (so would the UI). `"[]"` is refused the
     same way; **`""` repairs it**. Leave a progress bar alone unless you know its value shape (§6b).
 51. **The §6a record API runs NO script** `[C]` — not «Добавление», not «Сохранение», not
     a field change. **Neither does an xlsx record import (R7)** `[C]` for a created record (update `[I]`). Use the form cycle of §6b when the BO's hooks must run, §6a when they must not.
 52. **The whole stand answered 502 for ~30 s during a burst of `save-field-value` calls** `[C] symptom,
-    [U] cause`. The burst had just stored `FILE_UPLOAD = "[]"` and the next call was `CHECKLIST = "[]"`; afterwards everything worked again. Whether one of
-    those crashed the backend or a restart coincided is unknown — send one value at a time with a
-    `load-auth-info` health check after each. The real shapes (§6b: `["<fileId>"]`, the item list) were later
-    sent one by one with no outage.
+    [U] cause`. It followed `FILE_UPLOAD = "[]"` and `CHECKLIST = "[]"`; whether one of
+    those crashes the backend is unknown — send one value at a time with a
+    `load-auth-info` health check after each. The real shapes (§6b: `["<fileId>"]`, the item list) sent
+    one by one cause no outage.
 53. **A BO-reference field created over the API renders EMPTY on the record card** `[C]` —
     `generate-business-form-field` leaves `viewType: null` and every `boFieldRefs[].toShow: false`; the
     card then draws a bare selector with no «Выберите» and no chips. Set it in the constructor (gear →
@@ -4698,11 +4452,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 55. **An archive group line without `code` renames an existing BO group** `[C]` — even when
     its `name` is another existing group's; all such lines collapse into that one group; rollback does not
     undo the rename. Always ship `code` (§5 «Verifying an import»). Which group it hits is NOT the one
-    with the largest `orderIndex` `[C]`: with another code-less group moved below it, the line still renamed
-    the same «Бизнес-объект» on `<stand>`; why that one stays unknown, and it can no longer be probed —
+    with the largest `orderIndex` `[C]`; which one it is stays unknown, and it can no longer be probed —
     every group created now gets a code, and a code cannot be set back to `null` (§5 «group lifecycle»).
 56. **The timeline view («Диаграмма Ганта») shows «Your license key is not valid to work with this
-    version»** at its bottom on `<stand>` `[C]` — a banner of the Gantt library; the view works.
+    version»** at its bottom `[C]` — a banner of the Gantt library; the view works.
 57. **An import can be `APPLIED` while the BO it should create does not exist** `[C]` — the
     apply process ended `hasError: true, errorState: "ONLY_INTERMEDIATE_ERRORS"` («no field with code: …»
     from `kanbanCardTemplates` naming a removed field), `load-import-errors` was empty, the import record
@@ -4717,7 +4470,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     analysis of `bo/refresh-code` and `field/refresh-code` reads the scripts of EVERY company on the stand,
     not only the caller's: a script broken in one company makes the analysis fail in another company of the
     same stand that never had it (its BO groups do not include the broken BO's). One stored script
-    the server cannot decode (here a test version holding `"opType":"GreaterEq"`, trap 49) makes
+    the server cannot decode (e.g. a version holding `"opType":"GreaterEq"`, trap 49) makes
     `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for ANY BO
     or field. The «Изменение кода» dialog then keeps «Изменить код» disabled for good, with no visible error.
     Way round: `save-business-object-code` (BO) after your own `verify-business-object-code` (§5j).
@@ -4733,7 +4486,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `apply-import` answers the same 500 while the BO exists and the import stays `ANALYZED` — cancel it; a
     structure-only archive of that BO applies. After the BO is deleted the scripts archive applies and brings
     the BO back under its old id with a new script version, yet `load-bo-script-versions` still fails. Only the
-    vendor (database) can repair it. **Where the bad value sits** `[C]` (stack trace of the 500): the defs are NOT separate documents — they are embedded in the ONE stored document of the script MODULE, nesting module → map of defs by script id → the def → map `expressions` → the expression → `opType`; `load-script-def {scriptModuleId, scriptId}` fails only for the broken module, the other modules of the same BO read. The database fix `[I]` is therefore one field in that module document: `opType` `"GreaterEq"` → `"MoreEq"` (or the module document deleted); the collection name is not visible through the API. Through the API, on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~23 s here — poll until `done: true`, an early
+    vendor (database) can repair it. **Where the bad value sits** `[C]`: the defs are NOT separate documents — they are embedded in the ONE stored document of the script MODULE, nesting module → map of defs by script id → the def → map `expressions` → the expression → `opType`; `load-script-def {scriptModuleId, scriptId}` fails only for the broken module, the other modules of the same BO read. The database fix `[I]` is therefore one field in that module document: `opType` `"GreaterEq"` → `"MoreEq"` (or the module document deleted); the collection name is not visible through the API. Through the API, on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~23 s — poll until `done: true`, an early
     `is-analyze-done` answers `{done:false}` (an object, not `false`).
 60. **The direct code setters validate nothing** `[C]` — `save-business-object-code` /
     `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
@@ -4784,22 +4537,22 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
 - §5n settings kinds: how to unset a migration monitor BO; what the `languageTag` an import writes
   into every language changes; whether an org unit (`D-<id>` + its record line) resolves on ANOTHER stand; TELEPHONY,
-  IN/OUT_MIGRATION, APPEARANCE imports (no provider / Kafka / ownership on the reference stand).
+  IN/OUT_MIGRATION, APPEARANCE imports (need a provider / Kafka / ownership).
 - §5n: how to clear a messenger chat registry once set (the API ignores `null`); why Telegram's `isConnected` turned
-  `true` on `<stand>` during a probe run (no field values, WhatsApp stayed `false`); the per-BO telephony and
+  `true` with no field values set (WhatsApp stayed `false`); the per-BO telephony and
   Kafka migration lists (need a provider / Kafka).
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
 - Whether an xlsx UPDATE of an existing record runs any hook (a created one runs none, §6b / `MYBPM-IMPORTS.md`
   §15) — needs a probe BO with scripts AND a unique field.
-- What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet (old question 20;
-  «Глобальные методы» is answered in §5g).
+- What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet
+  («Глобальные методы» is answered in §5g).
 
-- **The ES mapping defect of §7** — the index/field question is ANSWERED («Офисы»: it is the
-  INDEX; a field added later to an old BO sorts fine). What is still open: whether the platform vendor
+- **The ES mapping defect of §7** — the defect is in the
+  INDEX; a field added later to an old BO sorts fine. What is still open: whether the platform vendor
   confirms it as a backend regression, and what exactly changed in the index template. Nothing on the
-  client side repairs it, and the creation ROUTE was ruled out earlier.
+  client side repairs it, and the creation ROUTE is not the cause — do not re-check it.
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — see trap 42.
 - SIGNATURE: what clears `signFieldUnsupported` for MASS signing — nothing on the stand does (§5i), a
