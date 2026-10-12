@@ -3371,7 +3371,7 @@ processes that use the code (so the dialog can list them). Fields have the same 
   `[C]` — they took a code already used by another BO of the company (two BOs then shared it), `Код кириллица`,
   `a b` and the empty string. They also skip the usage analysis, so scripts and processes that name the old
   code are not migrated. Before calling either, run `verify-business-object-code` yourself.
-- **One undecodable script kills the dialog for the whole company** `[C]` (trap 59).
+- **One undecodable script kills the dialog in every company of the stand** `[C]` (trap 59).
 
 ### 5k. Card tabs — `boTabs`, `delBoTabs`, the messenger link field `[C]`
 
@@ -4694,8 +4694,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` is exported as the source stand's option id while the options get
     fresh `newOptionId`s, which become their ids on import; the copy's default then points at nothing. Rewrite
     it to the matching `newOptionId` (`MYBPM-IMPORTS.md` §3 «Единичный выбор»).
-59. **One undecodable script disables every code change in the company** `[C]` — the code-usage
-    analysis of `bo/refresh-code` and `field/refresh-code` reads ALL the company's scripts; one stored script
+59. **One undecodable script disables every code change on the whole stand** `[C]` — the code-usage
+    analysis of `bo/refresh-code` and `field/refresh-code` reads the scripts of EVERY company on the stand,
+    not only the caller's: a script broken in one company makes the analysis fail in another company of the
+    same stand that never had it (its BO groups do not include the broken BO's). One stored script
     the server cannot decode (here a test version holding `"opType":"GreaterEq"`, trap 49) makes
     `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for ANY BO
     or field. The «Изменение кода» dialog then keeps «Изменить код» disabled for good, with no visible error.
@@ -4703,7 +4705,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     **Deleting the BO does NOT fix it** `[C]`: after `delete-business-object` on the bricked BO the
     BO is gone (`load-business-object-by-id` → «не существует»), yet its script module survives —
     `load-bo-scripts` / `load-bo-script-versions` on the deleted `boId` still answer the same
-    `IllegalArgumentException`, and both analyses still fail. Re-wiring the module with `save-bo-scripts`
+    `IllegalArgumentException`, and both analyses still fail. (Reads by id are not scoped to the company
+    either: a login of another company of the stand reads the same module, and another company's BO, by id.) Re-wiring the module with `save-bo-scripts`
     (all hooks `null`, empty `fieldScripts`) answers 200 and changes nothing either — the bad script def is a
     separate document, and `v2/script` has no call that overwrites a def without decoding it first (`copy-bo-script-version`,
     `unset-in-work-version`, an `apply-update-cmd` that `Set`s `blocks`/`expressions` to `{}` — all the same 500).
