@@ -673,7 +673,8 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
     with every `boFieldRefs[].toShow: false` renders an empty selector on the card (trap 53). The API
     creates both states by default, so set a column (`editedFields: [{fieldId, tableColToShow:true,
     tableColOrderIndex:0}]`) and a displayed field of every reference before handing the BO over.
-    Prefer a non-string first column on a new BO (§7, the Elasticsearch sort defect).
+    The default column is the name field, first. Only on a stand the user says has the Elasticsearch
+    sort defect (§7) keep filled string fields out of the columns and put a number / date / reference first.
 12. **Codes you set follow the naming convention** (the same table as `MYBPM-IMPORTS.md` §0.6a): English,
     snake_case, latin/digits/`_`, ≤ 30 characters shortened by meaning (never cut from the right).
     Field and widget — lower case (`client_name`); `CHECKBOX` — `is_*` (`is_paid`); `TAB_GROUP` — `tabs`,
