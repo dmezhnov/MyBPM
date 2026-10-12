@@ -595,9 +595,10 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    ordering:{fieldId:"",state:"UNSET",archetype:null}, state:"ALL", boInstanceIds:[…], boFieldIds:[…],
    needBoiId:true}` → a bare `"<exportId>"`; `is-bo-export-file-ready` — `P {"exportId":…}` → `true`;
    `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`needBoiId:true` adds a last
-   column «Внутренний айди»** holding each record's id, and a re-import matches rows by it `[C]`. In the UI
-   it is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default — so a
-   user's export usually has no id column and matches by the unique field only.
+   column «Внутренний айди»** holding each record's id — **a re-import does NOT match rows by it** `[C]`:
+   the header is accepted and the value ignored; re-importing its own export into a BO with no unique field
+   created a duplicate record. Rows match by the unique field only (`MYBPM-IMPORTS.md` §19.5). In the UI it
+   is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default.
    **`boFieldIds` decides the columns** `[C]`: a non-empty list = exactly those fields in that order; an
    EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
    with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab) is a chooser over the same
@@ -3777,8 +3778,8 @@ The exact bodies are §0U R7.
 
 Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; not called) and `export-bracket-bo`
 (`{…filter…, boInstanceIds, boFieldIds, needBoiId}` in the BODY, `[C]`) → an `exportId`; then `is-bo-export-file-ready
-{exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` is how an export gets the
-`ID` column — headed «Внутренний айди» — that makes a re-import idempotent (§«Merge / idempotency») `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]` — **but with every nested block's cells blank** (no child codes, no repeated TABLE rows) `[C]`, so list the field ids whenever the file must carry links.
+{exportId}` and `load-bo-export-file {exportId}` → the bytes. `needBoiId: true` adds the column
+«Внутренний айди» (each record's id), which a re-import IGNORES — only the unique field makes it idempotent (R7 step 6) `[C]`. `boFieldIds` picks the columns in its order; an empty list exports every field but `TAB_GROUP`, `STATIC_TEXT` and `tableColToShow:false` fields included `[C]` — **but with every nested block's cells blank** (no child codes, no repeated TABLE rows) `[C]`, so list the field ids whenever the file must carry links.
 
 **What an update file does to the fields it carries** `[C]`: **A blank cell CLEARS the field** on an existing record (text, number, checkbox, dropdown, textarea —
 `DATE` excepted — no cell value clears a date: blank or spaces keep it, `-`/`null`/`0` fail the row, so empty a date with §6a `value: null`), whether the cell is empty or absent from the row, and the act still says «обновлено»
@@ -3839,7 +3840,7 @@ The value DTO (the client's class `M`, built by `M.of(draftId, boId, boiId, isDe
 
 ### 6b. The FORM cycle — the one that runs the BO's scripts `[C]`
 
-**The §6a cycle runs no Block IDE script at all** — a record created by `create-draft` → `create-boi` →
+**The §6a cycle runs no Block IDE script at all, and neither does an xlsx import (R7) of a new record** `[C]` — a record created by `create-draft` → `create-boi` →
 `save-boi-value` → `apply-and-remove-draft` came out with every hook's marker empty. The hooks run inside
 the FORM controllers, which is what the UI's own dialog calls (captured with the XHR patch of §10, then
 driven alone). Every hook ran server-side; the answers carry the script's field writes back as
@@ -3851,7 +3852,7 @@ driven alone). Every hook ran server-side; the answers carry the script's field 
 | open EXISTING | `v2/instance-form-create-draft/create-draft` | P `{boId, boiId, draftId:null}` B `{}` → bare `"<draftId>"` | «Открытие» |
 | change a field | `v2/instance-field-form/save-field-value` | B `{draftId, boId, boInstanceId, values:[{fieldId, value}]}` | «Изменение поля» of that field |
 | save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]`; **no `CLOSE_DIALOG_SAVE` = NOT saved** — e.g. an empty required field answered only `[CAN_ENABLE_CANCEL_BUTTON]`, no error command, record unchanged `[C]` | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
-| close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created. A «Закрытие» hook wired by an archive but with no body adds `SHOW_NOTIFICATION` ERROR «Скрипт на закрытие не отработал.» even on a NEW record `[C]` — harmless, the draft is gone |
+| close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created. **A NEW record is cancelled with `v2/business-object-instance/v2/delete-boi` P `{draftId, boiId}` FIRST, then `remove-draft`** — what the UI sends `[C]`; a bare `remove-draft` of a new draft on a BO with a «Закрытие» script answers `RuntimeException … No boi with id` and the draft stays readable (the pair afterwards removes it). A «Закрытие» hook wired by an archive but with no body adds `SHOW_NOTIFICATION` ERROR «Скрипт на закрытие не отработал.» even on a NEW record `[C]` — harmless, the draft is gone |
 | read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
 | read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`). **`tabId:null` returns only the fields OUTSIDE tabs**; the fields of a `TAB_GROUP` tab come back only with that tab's id in `tabId` `[C]` | — |
 
@@ -3887,13 +3888,13 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}` | `[C]` |
 | `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare | `[C]` |
 | `BO` | a JSON array of record ids `["<boiId>"]` | `[C]` |
-| `CO` | a JSON array of `"<source BO id>-<boiId>"` (bare ids → `IllegalStoredValue … Value_CO`); the UI adds one row with `saveType:"ADD"` | `[C]` |
+| `CO` | a JSON array of `"<source BO id>-<boiId>"` (bare ids → `IllegalStoredValue … Value_CO`); the UI adds one row with `saveType:"ADD"` | `[C]` fires the script |
 | `QUESTIONNAIRE` | `[{"rowId":"…","columnId":"…"}]` | `[C]` |
 | `GEO_POINT` | `{"lat":43.238,"lon":76.945}` | `[C]` |
 | `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages; for `TEXTAREA_LANG` / `STATIC_TEXT` each language may be HTML, §8) | `[C]` |
 | `TAB_GROUP` | `""` | `[C]` fires the script |
-| `FILE_UPLOAD` | a JSON array of file ids | `[U]` |
-| `CHECKLIST` | the whole item list as JSON text: `[{"label":"Пункт 1","checked":true},…]` | `[C]` |
+| `FILE_UPLOAD` | a JSON array of file ids `["<fileId>"]`; the UI first uploads with `POST /web/v2/file/upload?draftId=…&boId=…&boiId=…&fieldId=…` (multipart `file`, `token` header → the 24-hex fileId as a JSON string), then `file-meta-info-list` `B {fileIds}`; an upload without the query parameters works the same | `[C]` fires the script |
+| `CHECKLIST` | the whole item list as JSON text: `[{"label":"Пункт 1","checked":true},…]` (also on a field whose constructor list is empty) | `[C]` fires the script |
 | `PROGRESS_BAR` | a MAP `{"<step code>":"GREEN"}` (`RED GREEN YELLOW BLUE ORANGE PURPLE`); it reads back as `[{stepCode, color}]`, and THAT array, `["<stepId>"]` or `"[]"` sent as a value break the draft (trap 50) — §5h «Per-type settings» | `[C]` |
 
 **The server does not validate the value** — a wrong shape (`"10:30"` for `TIME`, an array for `PERIOD`)
@@ -4675,12 +4676,12 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `IllegalStoredValue … Value_PROGRESS_BAR` for the entire form (so would the UI). `"[]"` is refused the
     same way; **`""` repairs it**. Leave a progress bar alone unless you know its value shape (§6b).
 51. **The §6a record API runs NO script** `[C]` — not «Добавление», not «Сохранение», not
-    a field change. Use the form cycle of §6b when the BO's hooks must run, §6a when they must not.
+    a field change. **Neither does an xlsx record import (R7)** `[C]` for a created record (update `[I]`). Use the form cycle of §6b when the BO's hooks must run, §6a when they must not.
 52. **The whole stand answered 502 for ~30 s during a burst of `save-field-value` calls** `[C] symptom,
-    [U] cause`. The burst had just stored `FILE_UPLOAD = "[]"` (its field script did NOT
-    fire) and the next call was `CHECKLIST = "[]"`; afterwards everything worked again. Whether one of
+    [U] cause`. The burst had just stored `FILE_UPLOAD = "[]"` and the next call was `CHECKLIST = "[]"`; afterwards everything worked again. Whether one of
     those crashed the backend or a restart coincided is unknown — send one value at a time with a
-    `load-auth-info` health check after each, and do not send guessed values to those two types.
+    `load-auth-info` health check after each. The real shapes (§6b: `["<fileId>"]`, the item list) were later
+    sent one by one with no outage.
 53. **A BO-reference field created over the API renders EMPTY on the record card** `[C]` —
     `generate-business-form-field` leaves `viewType: null` and every `boFieldRefs[].toShow: false`; the
     card then draws a bare selector with no «Выберите» and no chips. Set it in the constructor (gear →
@@ -4789,11 +4790,8 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
-- **Field scripts on `FILE_UPLOAD`, `CHECKLIST` and `CO`** — the only three field types whose
-  «Изменение поля» was not seen firing (§6b): the value shapes are `[U]`, and a burst that
-  touched the first two coincided with a 30-second outage of the stand (trap 52). Next attempt: through
-  the UI (upload a real file, tick a checklist item on a BO whose items were typed in the constructor,
-  add a composite row), capturing the request with the XHR patch.
+- Whether an xlsx UPDATE of an existing record runs any hook (a created one runs none, §6b / `MYBPM-IMPORTS.md`
+  §15) — needs a probe BO with scripts AND a unique field.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet (old question 20;
   «Глобальные методы» is answered in §5g).
 
