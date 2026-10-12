@@ -2940,7 +2940,7 @@ the radio on «Одиночный». Two rules follow:
 - **For a photo to show in the field without downloading it, choose «Плиточный»** — the platform team's
   rule (not «Множественный»). What we saw: in «Множественный», a PNG written by a script (`convertToFile("karta.png")`) still
   rendered as a file row with a preview on click. **«Плиточный» writes `params: {viewType: "TILE",
-  contentType: "ALL"}`** `[C]` (core2, captured off `save-business-object-portion`; the
+  contentType: "ALL"}`** `[C]` (`<stand>`, captured off `save-business-object-portion`; the
   top-level `viewType` stayed `MULTIPLE` and is ignored). After the switch the same PNG showed as a
   thumbnail tile on the card. Captured values: `MULTIPLE`, `TILE`; the «Одиночный» one is `[U]`.
 - **In MULTIPLE and TILE mode the field's `#Значение` is `File[]`** (TILE `[C]`: the script compiled
@@ -3013,11 +3013,11 @@ the `fieldScripts` map of `save-bo-scripts` (§5g «Wiring scripts onto a BO hea
 - **The script is the only thing a button reliably does; leave its `url` EMPTY.** What each url does on the
   record card is in the next section. In short: `call/plugin/…` needs a plugin installed on the server.
   `client/save-current-boi` and `create-boi/…` do nothing on the card. Any other url does nothing either.
-- Worked example: BO «Тест Яндекс API» on core2 / NIT. Four buttons, each with its own field script:
+- Worked example: BO «Тест Яндекс API» on `<stand>` / `<company-a>`. Four buttons, each with its own field script:
   `RestRequest` GET → `resultCode` / `resultAsText` into the record's fields
   (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a).
 
-#### What a BUTTON's `url` does on the record card `[C]` (core2 / NIT)
+#### What a BUTTON's `url` does on the record card `[C]` (`<stand>` / `<company-a>`)
 
 Probe BO «Проба виджетов», four buttons clicked on a record card while the XHR log was
 recorded, then checked against the bundle. The card draws a button with
@@ -4242,7 +4242,7 @@ Two by-products of the experiment `[C]`:
 instead of plain text, whether typed in the card, saved through `save-field-value` (§6b), written by a
 script or imported. «Текстовое поле» (`INPUT_TEXT`) and its multilingual twin are plain single-line inputs `[I]`.
 
-**What the server keeps** `[C]` (core2, `save-field-value` into a `TEXTAREA`, read back with
+**What the server keeps** `[C]` (`<stand>`, `save-field-value` into a `TEXTAREA`, read back with
 `load-field-data`; the same held for `staticValueMap` of a `STATIC_TEXT` saved through
 `save-business-object-portion`). The server re-serialises the HTML (pretty-printed, `\n` + indent around
 block tags) and:
@@ -4260,13 +4260,13 @@ frame, and in a `TEXTAREA` inside the summernote editor (`.note-editable`), with
 fixed url (§5i). The page still needs a host of its own: **`/web/v2/file/download/<fileId>`** (controller
 `v2/file`, `upload` / `download/{id}`) answers `SecurityError «Illegal Session»` without the `token`
 header, so a file uploaded to the platform cannot be the `src` of a frame.
-Proven end to end (core2): a button script wrote
+Proven end to end (`<stand>`): a button script wrote
 `<iframe src="https://<external host>/?a=<lat,lon>&b=<lat,lon>" width="100%" height="400">` into a
 `TEXTAREA`; the card showed the external page inside the field, and the value was stored with `&` as
 `&amp;`. A page that loads a Referer-restricted browser API key (Yandex JS API) sends ITS OWN host as the
 Referer, not the stand's, so that host must be on the key's list.
 
-**A «Текст» (`STATIC_TEXT`) field works the same way, with no editor around it** `[C]` (core2,
+**A «Текст» (`STATIC_TEXT`) field works the same way, with no editor around it** `[C]` (`<stand>`,
 the user's request). Its `staticValueMap` is only the default: a script writes the RECORD's own HTML with
 `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` (`language` = Enum `MybpmLang` `RUS`) on the field reference
 (`MYBPM-IMPORTS.md` §0.5). A real button click showed the `<iframe>` at once. After СОХРАНИТЬ and reopening,
