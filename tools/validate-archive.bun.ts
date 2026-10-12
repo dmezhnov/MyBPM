@@ -670,15 +670,20 @@ for (const bo of bos) {
         }
   laid.sort((a, b) => a.gp.y - b.gp.y);
   let prevY: number | null = null, prevRows = 0;
-  let idx = 0;
-  for (const { ft, f, gp, box } of laid) {
+  for (const { ft, gp } of laid) {
     if (prevY !== null && gp.y !== prevY + prevRows)
       add("ERROR", "0.8", `${ft}: y=${gp.y}, expected ${prevY + prevRows} (previous y ${prevY} + previous rows ${prevRows})`);
     if (prevY === null && gp.y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${gp.y}`);
     prevY = gp.y; prevRows = gp.rows;
-    if (box || f.trackedFieldCode) continue;
-    if (!(bo.category === "BO_PROCESS" && f.type === "BO") && f.tableColOrderIndex !== idx) add("WARN", "0.5", `${ft}: tableColOrderIndex=${f.tableColOrderIndex}, expected ${idx} (form order)`);
-    idx++;
+  }
+  // 0.5: tableColOrderIndex is a counter — the values form 0, 1, 2 … n-1, no duplicates, no gaps. Not checked
+  // against y: a progress bar or a tab group on top of the form (y 0) may stand after the name field, and a
+  // stand export lists the map in any order
+  if (bo.category !== "BO_COMPOSITE") {
+    const counted = entries.filter(([, f]) => !f?.trackedFieldCode && !(bo.category === "BO_PROCESS" && f?.type === "BO"));
+    const got = counted.map(([, f]) => f?.tableColOrderIndex).filter((v) => typeof v === "number").sort((x, y) => x - y);
+    if (got.some((v, i) => v !== i))
+      add("WARN", "0.5", `${tag}: tableColOrderIndex values [${got.join(",")}] are not the counter 0..${counted.length - 1} (one per dynamicFields entry)`);
   }
 
   // STATIC_TEXT heading must not repeat ANOTHER field's label (§0.5, §0.9 rule 12).

@@ -398,7 +398,9 @@ sets it automatically) — copy that if the archive should reproduce a stand-bui
 **Which fields are registry columns — the default.** `tableColToShow: true` on the fields a user scans the
 list by: the name / title / ФИО field (a string — that is fine), plus the few key values (status, date,
 amount, the main reference). Put the name field FIRST in `dynamicFields`, so it gets `tableColOrderIndex`
-0 and `y: 0`. Long texts (`TEXTAREA`), headings, files, tabs and checklists are `false`. Do NOT hide
+0 and `y: 0`. The counter follows the ORDER OF ENTRIES, the form follows `y` — they are independent: a
+`PROGRESS_BAR`, heading or `TAB_GROUP` on top of the form takes `y: 0` and the name field moves down, yet it
+still stands AFTER the name field in `dynamicFields` and takes the next counter value. Long texts (`TEXTAREA`), headings, files, tabs and checklists are `false`. Do NOT hide
 string fields from the registry and do NOT move a number or a date to the front «to be safe»: that
 workaround exists for ONE stand defect and is applied **only when the user says the target stand has
 it** (0.14 «The search-index sort defect»). Without such a statement, ignore that paragraph.
@@ -911,7 +913,7 @@ keyed by the native type, which is also the field's code and its `nativeFieldId`
 |---|---|---|---|
 | `CREATED_AT` | Дата создания | `FULL_DATE` | |
 | `LAST_MODIFIED_AT` | Дата последнего изменения | `FULL_DATE` | |
-| `CREATED_BY` | Автор | `BO` | + `viewType: "SINGLE"` and `boRefStruct.boInfo` = `Person` / «Пользователи» / `BO`, 6 rows |
+| `CREATED_BY` | Автор | `BO` | + `viewType: "SINGLE"` and `boRefStruct.boInfo` = `Person` / «Пользователи» / `BO`, 6 rows; **no `oldRefBoId`** — the target is resolved by that code, so no stand id is needed `[C]` |
 | `LAST_MODIFIED_BY` | Автор последнего изменения | `BO` | same |
 | `OPEN_COUNT` | Счетчик открытий | `INPUT_NUMBER` | |
 | `IN_MIGRATION_UPDATED_AT` | Дата обновления IN миграции | `FULL_DATE` | |
