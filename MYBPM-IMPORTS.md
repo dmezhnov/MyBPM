@@ -3835,8 +3835,16 @@ Enum literal that compiled: `{"type":"ExprValue","exprValueType":"CONST","constT
 | `ElectronicCellType` | `TEXT` Текст, `NUMBER` Число, `DATE` Дата, `BOOL` Да/Нет, `FORMULA` Формула |
 | `Color` | `RED` красный, `GREEN` зеленый, `YELLOW` желтый, `BLUE` синий, `ORANGE` оранжевый, `PURPLE` фиолетовый |
 | `MybpmLang` | `RUS` RUS, `ENG` ENG, `KAZ` KAZ, `QAZ` QAZ |
-`DatePattern` has two labels swapped **on the platform side**: `YY_MM_DD_DASH` is labelled «ГГГГ-ММ-ДД» and
-`YYYY_MM_DD_DASH` «ГГ-ММ-ДД». Which output each really gives was not run `[U]` — test before relying on it.
+`DatePattern`: two CODES are swapped **on the platform side**, the labels tell the truth `[C]` — `YY_MM_DD_DASH`
+(label «ГГГГ-ММ-ДД») prints `2026-10-01`, `YYYY_MM_DD_DASH` (label «ГГ-ММ-ДД») prints `26-10-01`. The others print
+what their names say (`DD_MM_YYYY_DOT` 01.10.2026, `DD_MM_YY_SLASH` 01/10/26, `YY_MM_DD_DOT` 26.10.01). For an ISO date
+write `YY_MM_DD_DASH`.
+
+**Enum arguments run** `[C]`: an `Enum` CONST in `argExprIds` works for every act tried — `dateToString(pattern)`,
+`convertToDate(datePattern)`, `incDate(amount, unit)` (`MONTHS` +1 → next month, `HOURS` 36 → next day+12h),
+`diff`, `equals`; and an enum may be held in a variable (`Пусть #u# = HOURS`, then `unit: VAR_REF`). Semantics
+measured: `a.diff(b, DAYS)` = **b − a** (`(d+3 дня).diff(d)` = −3); `a.equals(b, unit)` compares truncated to
+the unit (d+5 h equals d by `DAYS` = Да, by `HOURS` = Нет).
 
 ### Built-in objects («Встроенные объекты») — the 22 factories `[C]`
 
@@ -4074,6 +4082,19 @@ F-saveBoiChanges / F-closeOpenedBoi / F-updateOpenedBoi(target)  -K-FIX-T-BoiRef
 (`-K-DYN-R-M-` = a field **meta** attribute; the `-R-D-` acts are the field's **data**.) The same three
 meta acts exist for widgets as `…-K-DYN-R-M-S-boi_widgets`.
 
+**Meta assign and field errors at run time** `[C]` (field hook in the form cycle):
+- `поле.#Только для чтения = Да`, `#Обязателен = Да`, `#Видимость = Нет` take effect at once and read back in the
+  same script (`Да`/`Нет`). They reach the client as `fieldFormCommandsSometimes` `READONLY` / `REQUIRED` /
+  `HIDE_FIELD` (`commandB`), the reverse `= Нет`/`= Да` as the same commands with `false` (+ `LOAD_FIELD` for a
+  field made visible again). They are **form state, not rules**: a `save-field-value` into a field the script
+  made read-only is STORED all the same, and the record saved with it — read-only is the client's job.
+- `#Добавить ошибку(<ScriptMultiLangText>)` — build the text with `Создать мультиязычный текст` +
+  `.Добавить(text, RUS)` (both statements = `BlockAssign` without right) — answers `SHOW_FIELD_ERROR` with the RUS
+  text under the field, `ALERT_SAVE_BUTTON_NOTIFICATION` with the same text, `notValid:true`, and **blocks the
+  save**: `validate-apply-remove-draft` answers no `CLOSE_DIALOG_SAVE` (the error is repeated) until a script
+  runs `#Удалить ошибку` on that field — then `CAN_ENABLE_SAVE_BUTTON`, `notValid:false`, and the save goes through.
+  This is the way to veto a save from a script.
+
 | field type | `#Значение` returns | extra acts on the field reference |
 |---|---|---|
 | INPUT_TEXT, TEXTAREA, INPUT_PHONE, INPUT_EMAIL, LINK | Text | — |
@@ -4145,6 +4166,16 @@ Which filter constructors a field offers depends on its type:
 | BO link (multiple) | `ExactEquality`, `ExactInequality`, `ContainsAny (value:Iterable[])`, `ExactEmpty ()` |
 | CO | `ContainsAny`, `ExactEmpty` |
 | TextLang kinds, PERIOD*, GEO_POINT, FILE_UPLOAD, CHECKLIST, QUESTIONNAIRE, PROGRESS_BAR | none — only `find*` |
+
+**Runtime, measured on records a1/1/Да, b2/2/Нет, c3/3/Нет** `[C]` (hook «Открытие» of a NEW record — the open
+draft itself is not found): `ExactEquality`/`ExactInequality` on text and number, `StartsWithText «c»` → 1,
+`EndsWithText «1»` → 1, `ContainsPhraseText «b2»` → 1, but **`ContainsText «2»` → 0** — it is a word/token match,
+not a substring one (use `EndsWith`/`StartsWith`, or `#Содержит` on the value in a loop, for a true substring);
+`GreaterThan 1` → 2, `GreaterThanOrEqual 2` → 2, `LessThan 2` → 1, `LessThanOrEqual 2` → 2, `GreaterThanButLessThan
+(1,3)` → 1 and `GreaterThanOrEqualButLessThanOrEqual (1,3)` → 3 (bounds exclusive/inclusive as named);
+`CHECKBOX ExactEquality Да` → 1; `And` → 1, `Or` → 2, `Not` → 2; **`findByFilter` with no filter = every
+record** (3); `find` / `findSmall` by a value → 1. A `BlockForeach` over the result types its element as a
+record and reads its fields (`#r#.Kod.#Значение`).
 
 ### Built-in functions (`ExprFunc` / `BlockFunc` — old panel only) `[C]`
 
@@ -4383,6 +4414,12 @@ script on a button, 57 blocks, and it compiled and ran on the first paste:
   `BlockForeach` over a `JsonDeck[]` types its element as `JsonDeck`**, so the loop body goes on with
   `getAsJsonDeck` / `getAsText` on the element. Use that for «the first item». `F-first-K-FIX-T-Iterable`
   returns a bare `Object`, which is not verified to take the `JsonDeck` acts.
+- **JSON without a request** `[C]` (run on a record): `Создать Json {} объект` + `.установить(name, value)` for a
+  text, a number and a Bool, then `#превратить json в текст` → `{"a":"x","n":5,"b":true}` (typed, in insertion
+  order); `#Преобразовать в Json {} объект` on a text, then `getAsText` / `getAsNumber` (`2.5`), `isNumber` /
+  `isText` / `isJsonDeck` / `isJsonArr` (right answers, `isNumber` on a text key = Нет), a nested `getAsJsonDeck`,
+  and a foreach over `getAsJsonArr`; `#Преобразовать в Json [] массив` of `[1,2,3]` → `размер` 3. **A missing key
+  is not an error**: `getAsText("nope")` returns the empty text and the script goes on.
 - **A Rest response into a file field**: `resultAsMybpmByteArray` → `convertToFile(fileName)`, then
   **`BlockAssign` to the FILE_UPLOAD field's `#Значение`, which REPLACES the file**.
   `F-addFile_v2-K-FIX-T-BoiFieldRefCode` on the field reference APPENDS one more file on each run.

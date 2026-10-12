@@ -3843,6 +3843,13 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
   server then refuses to store, both fired it.
 - `boiState:"DEV"` opens a TEST record: those run the BO's TEST script version, ordinary ones the WORK
   version (§5g «Wiring scripts onto a BO headlessly»).
+- **A script vetoes a save with a field error** `[C]`: `поле.#Добавить ошибку(<мультиязычный текст>)` in a hook
+  makes the answer carry `fieldFormCommands` `SHOW_FIELD_ERROR` (`fieldId`, `errorMessage`), `formCommands`
+  `ALERT_SAVE_BUTTON_NOTIFICATION` and `notValid:true`; `validate-apply-remove-draft` then answers no
+  `CLOSE_DIALOG_SAVE` until a script runs `#Удалить ошибку`. Meta assigns from a script (`#Только для чтения`,
+  `#Обязателен`, `#Видимость`) arrive as `fieldFormCommandsSometimes` `READONLY` / `REQUIRED` / `HIDE_FIELD` with
+  `commandB` — client-side only: `save-field-value` into a script-read-only field is still stored
+  (`MYBPM-IMPORTS.md` §12a «Meta assign and field errors at run time»).
 - `OPEN_COUNT` stayed `0` on a record opened only through these calls (the UI's records counted up) `[I]`.
 
 **The `value` of `save-field-value`, per type** — what the client's field classes send (bundle module
