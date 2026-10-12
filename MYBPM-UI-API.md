@@ -2140,6 +2140,12 @@ Use it after every script write — an import NEVER reports a broken body (`MYBP
 
 - **Every import makes a NEW script version** and leaves the previous ones behind (§5d), so re-read
   `load-bo-script-versions` after an import — a stale `boScriptModId` translates the OLD body.
+  Even an archive whose `compositeId` prefix is the current work `boScriptModId` adds a new version `[C]`;
+  the test version keeps its old body.
+- **`remove-bo-script-version {boId, boScriptsId}` removes ANY version, the work one included** `[C]` —
+  200, no warning, and the BO is left with no work version (ordinary records run nothing). It only drops
+  the version from the list: `load-script-def` on the removed module still returns its body. Remove only
+  rows with `isWork:false, isTest:false`.
 
 - **Where the screen is**: there is no route of its own. The script IDE is a dialog inside the BO
   constructor (`…/object-editing`) and inside the process editor (`…/process-editing`); the company-wide
