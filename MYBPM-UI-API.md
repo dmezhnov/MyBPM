@@ -4707,15 +4707,14 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `load-bo-scripts` / `load-bo-script-versions` on the deleted `boId` still answer the same
     `IllegalArgumentException`, and both analyses still fail. (Reads by id are not scoped to the company
     either: a login of another company of the stand reads the same module, and another company's BO, by id.) Re-wiring the module with `save-bo-scripts`
-    (all hooks `null`, empty `fieldScripts`) answers 200 and changes nothing either — the bad script def is a
-    separate document, and `v2/script` has no call that overwrites a def without decoding it first (`copy-bo-script-version`,
+    (all hooks `null`, empty `fieldScripts`) answers 200 and changes nothing either — it rewrites the hook wiring, not the defs embedded in the module document, and `v2/script` has no call that overwrites a def without decoding it first (`copy-bo-script-version`,
     `unset-in-work-version`, an `apply-update-cmd` that `Set`s `blocks`/`expressions` to `{}` — all the same 500).
     **A structure import does not repair it either** `[C]`: an archive carrying the BO's scripts (same BO
     `oldId`, same script ids, even the broken module id as the `compositeId` prefix) analyses clean, but
     `apply-import` answers the same 500 while the BO exists and the import stays `ANALYZED` — cancel it; a
     structure-only archive of that BO applies. After the BO is deleted the scripts archive applies and brings
     the BO back under its old id with a new script version, yet `load-bo-script-versions` still fails. Only the
-    vendor (database) can repair it: on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~23 s here — poll until `done: true`, an early
+    vendor (database) can repair it. **Where the bad value sits** `[C]` (stack trace of the 500): the defs are NOT separate documents — they are embedded in the ONE MongoDB document of the script MODULE (server cache `scriptModuleCached`), nesting module → map of defs by script id → the def → map `expressions` → the expression → `opType`; `load-script-def {scriptModuleId, scriptId}` fails only for the broken module, the other modules of the same BO read. The database fix `[I]` is therefore one field in that module document: `opType` `"GreaterEq"` → `"MoreEq"` (or the module document deleted); the collection name is not visible through the API. Through the API, on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~23 s here — poll until `done: true`, an early
     `is-analyze-done` answers `{done:false}` (an object, not `false`).
 60. **The direct code setters validate nothing** `[C]` — `save-business-object-code` /
     `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
