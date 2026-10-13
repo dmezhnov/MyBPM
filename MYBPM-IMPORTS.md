@@ -3334,7 +3334,8 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   the target BO's registry sorts** (registry sorted by X descending → the array is too) and **without draft
   records** (not yet saved). `.#Значение` guarantees no order and may include drafts. To walk rows in a
   stable order, sort the registry by the wanted column and use `#Значения как в реестре` instead of the
-  selection pass above; to skip a just-created unsaved child, use it as well.
+  selection pass above; to skip a just-created unsaved child, use it as well. (`findByFilter` returns no
+  drafts either — §12a «Searching records».)
 - **The view of a `BO` field decides its script type** `[C]`: `TABLE` and `MULTIPLE` read the same —
   `.#Значение` is `Bo/BoiRefCode[]`, so foreach, `F-COUNT`, `F-ADD` work identically on both. **`SINGLE` is
   NOT an array**: `.#Значение` is ONE record (`Bo/BoiRefCode`), its field reference offers the child's
@@ -4228,8 +4229,10 @@ Which filter constructors a field offers depends on its type:
 | CO | `ContainsAny`, `ExactEmpty` |
 | TextLang kinds, PERIOD*, GEO_POINT, FILE_UPLOAD, CHECKLIST, QUESTIONNAIRE, PROGRESS_BAR | none — only `find*` |
 
-**Runtime semantics** `[C]` (counts below are for records a1/1/Да, b2/2/Нет, c3/3/Нет; hook «Открытие» of a NEW record — the open
-draft itself is not found): `ExactEquality`/`ExactInequality` on text and number, `StartsWithText «c»` → 1,
+**`findByFilter` never returns draft records** `[C]` — only saved ones, whatever the filter (an unsaved
+new record, a child made by `F-CI` before the save, are not found).
+
+**Runtime semantics** `[C]` (counts below are for records a1/1/Да, b2/2/Нет, c3/3/Нет; hook «Открытие» of a NEW record): `ExactEquality`/`ExactInequality` on text and number, `StartsWithText «c»` → 1,
 `EndsWithText «1»` → 1, `ContainsPhraseText «b2»` → 1, but **`ContainsText «2»` → 0** — it is a word/token match,
 not a substring one (use `EndsWith`/`StartsWith`, or `#Содержит` on the value in a loop, for a true substring);
 `GreaterThan 1` → 2, `GreaterThanOrEqual 2` → 2, `LessThan 2` → 1, `LessThanOrEqual 2` → 2, `GreaterThanButLessThan
