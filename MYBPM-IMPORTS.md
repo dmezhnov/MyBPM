@@ -3308,6 +3308,11 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   `#На русском#`). The system `label` of every dictionary row is multilingual — `label` → `VALUE` → `RUS`.
   Plain text fields (`code`, `name`, `description`) do NOT take that hop.
 - **Writing a field** = `BlockAssign` whose `leftExprId` is the **hop-2 act** of that field.
+- **Writing ONE language of a multilingual field** (`INPUT_TEXT_LANG`, `TEXTAREA_LANG`, `STATIC_TEXT`) `[C]`:
+  `~Поле~.#Значение на языке(Язык.RUS) = #текст#` — `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` on the FIELD
+  reference (hop 1), arg `language` = Enum const `MybpmLang` `RUS`. **Assigning to the hop-3 getter
+  (`~Поле~.#Значение.Значение на языке Русский = …`) compiles and does nothing** — it changes a copy of the
+  value, the field stays as it was. The hop-3 chain is for reading only.
 - **Clearing a field has no confirmed form** `[U]`: no empty constant of a date, a number or an option is
   known to empty a field. Do not invent one (`constType:"Date"` without `value` is a guess, not the IDE's
   `<пусто>`). Write the rest of the script, leave the clearing out, and tell the user it must be done by
@@ -3758,7 +3763,10 @@ Full palette: operators `≥ ≤ ≠ • > = < / - +`;
 - **Multilingual (`INPUT_TEXT_LANG`) = three hops**: `.Значение на языке Русский` = `F-RUS-K-DYN-S-TextLang`
   (IDE: `#На русском#`). The system `label` of every dictionary is TextLang → `label.VALUE.RUS`. Plain
   `INPUT_TEXT`/`TEXTAREA` fields (`code`, `name`, `description`) are read WITHOUT the RUS hop. Making a
-  field multilingual later means adding that hop in every script. `[C]`
+  field multilingual later means adding that hop in every script. `[C]` **Writing** one language goes the
+  other way: `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` (`language` = `MybpmLang` `RUS`) on the field
+  reference, `~Поле~.#Значение на языке(Язык.RUS) = …`; assigning to `.#Значение.Значение на языке Русский`
+  is a silent no-op. `[C]`
 - **Collections (link-many)**: `~Параметры~ = ~Модель заявки~.params`, iterated by `BlockForeach` over
   `<list field>.#Значение` (the list needs the VALUE hop too); the loop source may be a nested act without
   an intermediate variable. Create instance `F-CI-K-DYN-R-C-S-bo_fields` (left = `BoRefCode`),
@@ -4149,7 +4157,7 @@ meta acts exist for widgets as `…-K-DYN-R-M-S-boi_widgets`.
 | CHECKBOX | Bool | — |
 | DATE, FULL_DATE, TIME, YEAR, YEAR_AND_MONTH | Date | — |
 | PERIOD, PERIOD_TIME | Period | — |
-| INPUT_TEXT_LANG, TEXTAREA_LANG, STATIC_TEXT | TextLang | `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields (language:EnumRef/MybpmLang)` → Text |
+| INPUT_TEXT_LANG, TEXTAREA_LANG, STATIC_TEXT | TextLang | `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields (language:EnumRef/MybpmLang)` → Text — readable AND assignable (`поле.#Значение на языке(Язык.RUS) = …`), the only way to write one language; `.#Значение.<язык> = …` is a no-op `[C]` |
 | DROPDOWN_SINGLE, RADIO_BUTTON_GROUP | SingleSelect | — |
 | GEO_POINT | GeoPoint | — |
 | FILE_UPLOAD | File/MybpmFile | `F-addFile_v2-K-FIX-T-BoiFieldRefCode (file)` |
