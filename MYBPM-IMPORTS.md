@@ -3329,6 +3329,12 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   column, do a selection pass: `ЦИКЛ COUNT раз { лучший = 10⁹; foreach строка: ЕСЛИ номер > пред И номер
   < лучший → лучший = номер …; ЕСЛИ лучший < 10⁹ → пред = лучший; обработать }` (only `More`/`Less`/`And`,
   rule 1). A whole number read from `INPUT_NUMBER` concatenated as `1`, not `1.000`.
+- **`.#Значения как в реестре`** (`F-VALUE_FROM_LIST-K-DYN-R-D-S-boi_fields`, on the field reference instead
+  of `.#Значение`) `[C]`: the same `Bo/BoiRefCode[]` of the records held in the field, but **sorted the way
+  the target BO's registry sorts** (registry sorted by X descending → the array is too) and **without draft
+  records** (not yet saved). `.#Значение` guarantees no order and may include drafts. To walk rows in a
+  stable order, sort the registry by the wanted column and use `#Значения как в реестре` instead of the
+  selection pass above; to skip a just-created unsaved child, use it as well.
 - **The view of a `BO` field decides its script type** `[C]`: `TABLE` and `MULTIPLE` read the same —
   `.#Значение` is `Bo/BoiRefCode[]`, so foreach, `F-COUNT`, `F-ADD` work identically on both. **`SINGLE` is
   NOT an array**: `.#Значение` is ONE record (`Bo/BoiRefCode`), its field reference offers the child's
@@ -4161,7 +4167,7 @@ meta acts exist for widgets as `…-K-DYN-R-M-S-boi_widgets`.
 | DROPDOWN_SINGLE, RADIO_BUTTON_GROUP | SingleSelect | — |
 | GEO_POINT | GeoPoint | — |
 | FILE_UPLOAD | File/MybpmFile | `F-addFile_v2-K-FIX-T-BoiFieldRefCode (file)` |
-| BO (view TABLE or MULTIPLE) / CO | `Bo/BoiRefCode[]` (CO: records of the composite, `boCode` = its code) | `F-ADD (adding)`, `F-DELETE (deleting)`, `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST` («Значения как в реестре»), all `-K-DYN-R-D-S-boi_fields`; CO also `F-SHOWN_BO_IN_CO_FIELD-K-DYN-R-M-S-boi_fields (boRefCode, orgUnit)`; a CO element reads its attributes by `CO_CODE-<composite code>-F-<attr>-K-DYN-S-boi_fields` (0S.7) `[C]` |
+| BO (view TABLE or MULTIPLE) / CO | `Bo/BoiRefCode[]` (CO: records of the composite, `boCode` = its code) | `F-ADD (adding)`, `F-DELETE (deleting)`, `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST` («Значения как в реестре» — the same records in the registry's sort order, drafts excluded; `#Значение` has no order and keeps drafts), all `-K-DYN-R-D-S-boi_fields`; CO also `F-SHOWN_BO_IN_CO_FIELD-K-DYN-R-M-S-boi_fields (boRefCode, orgUnit)`; a CO element reads its attributes by `CO_CODE-<composite code>-F-<attr>-K-DYN-S-boi_fields` (0S.7) `[C]` |
 | BO (view SINGLE, and the natives CREATED_BY, LAST_MODIFIED_BY) | `Bo/BoiRefCode` | `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST`, `F-HAS_REF` — **no `F-ADD` / `F-DELETE`** `[C]` — **and every field of the target BO directly**: `rec.CREATED_BY.surname` is `F-surname-K-DYN-S-boi_fields` applied to the field reference, no `#Значение` hop |
 | PROGRESS_BAR | — (no `#Значение`) | one act per step: `F-<field>-K-DYN-PS-<stepCode>-S-boi_fields` → `ProgressBar/ProgressStepRefCode` |
 | CHECKLIST, QUESTIONNAIRE | — (**`#Значение` has no type** — not readable from a script) | — |
