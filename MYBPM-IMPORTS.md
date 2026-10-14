@@ -64,6 +64,8 @@ belong in the file.
 Always read the **core, 0.1–0.11**: every archive needs all of it. Then read ONLY the optional blocks
 your task names:
 
+- a whole SYSTEM from a spec («реализуй CRM по концепции», several objects, a work path, automations,
+  roles) → 0.2b first, with 0.2c and 0.2d; then every block its coverage table needs
 - system fields (author, creation/change date, «системные поля») → 0.12
 - widgets (button, iframe, signature, captcha, current date / current user) → 0.13
 - a kanban view → 0.14
@@ -122,7 +124,8 @@ Rules, all `[C]`:
    **on top of** the same two lines.
 7a. If the user also wants the object **in the sidebar menu** (navigation: an item that opens the BO,
    optionally inside a menu group, optionally with extra views such as a kanban), append the menu lines
-   of 0.15 AFTER the BO lines — optional, and never added unasked.
+   of 0.15 AFTER the BO lines — optional, and never added unasked for single objects; for a whole system
+   built from a spec the menu counts as asked (0.2b step 3).
 8. **Check against 0.9 and 0.10**, then zip as in 0.1 and deliver as in 0.11.
 
 A `CompanyMetadataStructDto` line is **not** needed and must be omitted unless the archive references
@@ -239,6 +242,100 @@ and ids; `load-bo-id-by-code` `P {boCode}` → an id for a known code; `load-bus
 An id may start with `~` or contain `@` — copy it as is. By hand: the constructor's BO list, and the id sits in
 the URL `…/business-objects/editing/<boId>/object-editing`. A fresh export of a BO (the last row of the table):
 §2 «Taking a fresh export — the minimum». (More read-back calls: `MYBPM-UI-API.md` R4.)
+
+### 0.2b A whole system from a spec — build everything the archive can carry
+
+**When this applies:** the request is a SYSTEM, not one object — «реализуй CRM по этой концепции», «создай
+архив для всей системы», a spec with sections on objects, a work path, automations, reports, roles. The
+job is then the whole spec, not «the BOs the spec names». A model that ships the BOs and drops the rest
+«for scope» has delivered a fraction and called it done.
+
+1. **Decompose the spec into a coverage table BEFORE building** — one row per requirement (an object, a
+   list of values, a status path, an automation, a calculation, a report, a role, a notification), each
+   row given exactly ONE route:
+
+   | Route | What goes there | Where |
+   |---|---|---|
+   | an archive line | BOs, dictionaries, fields, links between BOs, tabs and layout, kanban card templates, the menu | 0.3–0.17, 0.2c |
+   | a hook script in the archive | computed fields and totals, auto-fill, «when X is saved, set Y» | 0.2c «Computed values», §5d, Part II |
+   | a business process in the archive | a path someone RUNS step by step, with forms and branches (approval) | 0.18, §5c |
+   | an xlsx after the import | dictionary values, initial records | Part III, 0.2d |
+   | stand-only | rights by role, users and groups, a field on a built-in BO | 0.2d |
+   | not expressible | reports and dashboards, SMS / telephony, anything 0.2d lists | 0.2d |
+
+2. **Build every row whose route is an archive line, a hook script or a process — in this reply, in one
+   archive**: group line, dictionaries, BOs in reference order (a referenced BO on an earlier line, 0.2a),
+   script lines, process lines, menu lines last. Never «the structure now, the scripts later».
+3. **The menu counts as ASKED.** A system the user has to dig out of «Бизнес-объекты» is not delivered.
+   Ship one menu `GROUP` named after the system and, inside it, one item per working BO (0.2c «Which BO gets
+   a menu item»); on the item of every BO with a status path switch the kanban on by its status dropdown
+   (0.14, 0.15). The «never added unasked» of 0.2 step 7a is about a request for single objects.
+4. **A row you do not build needs a reason from this closed list — nothing else is a reason:**
+   - a stand id or code is missing (0.2a) — name it, and ask;
+   - the archive cannot carry it — name its row of 0.2d;
+   - its only route is `[U]` — name the section that marks it.
+
+   «Cannot be verified offline», «out of scope», «too large», «better done by hand», «an archive has no
+   computed field type» are NOT reasons. Nothing in this document is verified offline — the user runs the
+   import analysis (0.11) and it reports what is wrong; scope is what the spec says; a computed field is a
+   plain field plus a hook (0.2c).
+5. **The coverage table goes into the report** (0.10 «The report»): every spec item, its route, and built /
+   not built + the reason / to do after the import (xlsx rows, rights).
+
+### 0.2c Modelling patterns — how a spec becomes BOs and links
+
+- **Header and lines** (заказ-наряд → работы и запчасти, заказ поставщику → позиции, счёт → строки): the line
+  BO carries a `SINGLE` `BO` field to the header, the header a `TABLE` `BO` field to the line BO, and **each
+  names the other in `boRefStruct.linkedFieldCode`** (§3 «Field flags», §6) — both ends in this archive, any
+  line order `[C]`. A `TABLE` without the back link leaves every line an orphan in one global registry: no
+  line knows its header, and the lines of one header cannot be listed or summed from the line side.
+- **Child documents** (оплаты по заказу, записи → клиент, автомобили → владелец): the same `SINGLE`↔`TABLE`
+  pair, so the children show on the parent's card. A child's `SINGLE` to the parent without the parent's
+  `TABLE` back makes the children invisible on the parent.
+- **One stage that grows out of another** (запись → заказ-наряд, лид → сделка): link the later record to the
+  one it came from — a `SINGLE` on the later one, the `TABLE` (or a linked `SINGLE`) back — so the chain is
+  navigable both ways.
+- **Many-to-many** (мастера ↔ заказы): two `TABLE` fields naming each other (§6 «M:N»).
+- **Dictionary or local list**: values users will add to over time, or that more than one BO picks from
+  (марки, виды работ, категории запчастей) → a dictionary (`BO_DICTIONARY`, 0.17) + `DROPDOWN_SINGLE`
+  `FROM_BO`. A short fixed list owned by one field (способ оплаты: наличные / карта / перевод) → a local list
+  (`FROM_FIELD`, 0.5). A local list's options TRAVEL in the archive; a dictionary's rows do not (0.2d) — it
+  ships empty and is filled by the xlsx after the import.
+- **Status**: a record's lifecycle (Новый → В работе → Готов → Выдан) is a `DROPDOWN_SINGLE` `status` with its
+  kanban card template (0.9 rule 16), and in a system build its menu item shows the kanban by it (0.2b step 3).
+  A `BO_PROCESS` is for a path someone RUNS figure by figure — forms, a script, a branch (approval, 0.18). Do
+  not turn every status into a process, and never fake `PROCESS_STATUS` with a dropdown.
+- **Computed values** (сумма заказа = сумма строк, остаток = сумма − оплачено, дата готовности = приём +
+  срок): an archive has no computed field type — ship a plain field (`INPUT_NUMBER`, `DATE` …) plus the
+  owner BO's `afterSaveScriptId` hook that fills it (§5d «Generated bodies on every trigger», the body by
+  0S). A total over lines: `BlockForeach` over the header's `TABLE` `.#Значение`, read each line's number
+  with the two hops, add it to a variable, assign the variable to the header's field (0S.7 «A nested table»,
+  «Writing a field»). Every step is `[C]`; the whole sum hook as one recipe is `[I]`. It recomputes when the
+  HEADER is saved; a line edited in its own card does not run the header's hook `[I]`.
+- **Responsible person** (мастер, менеджер, автор записи): a reference to the built-in `Person` (§6 «Person
+  reference») — its `oldRefBoId` is the company's `personBoId`, STAND DATA (0.2a, third row). Or the
+  current-user widget / the system «Автор» (0.12, 0.13), which need no id.
+- **Which BO gets a menu item**: every BO a user opens as a working list (клиенты, автомобили, заказы,
+  записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
+  table — and NOT dictionaries; those go into one «Справочники» subgroup at the end of the menu group, or
+  nowhere (they stay reachable under «Бизнес-объекты»).
+
+### 0.2d What never travels in an archive
+
+Name the row of this table for every spec item you do not build (0.2b step 4) — do not invent a reason of
+your own.
+
+| Spec item | Why the archive cannot carry it | What to do instead |
+|---|---|---|
+| Rights by role («мастер видит только свои заказы») | an `AccessStructDto` names `G-<group id>` of the TARGET stand's groups, and it REPLACES the rights set there (0.9 rule 10) | ask for the group ids (0.2a); without them list the rights matrix in the report as a stand-side step (`MYBPM-UI-API.md` R5) |
+| Dictionary values, initial records | records are an xlsx (0.9 rule 11); arbitrary dictionary rows as `ExportStructInstanceDto` lines are `[U]` (§5, §18) | ship the dictionaries empty; put the values into the report as a table and load them by Part III after the import |
+| Reports, dashboards, analytics | operative reports have their own export basket (`menuItemType` `REPORT`, §5e); none was shipped in an archive `[U]` | not built — say so; a registry with its columns, grouping (§2 «BO views») or a kanban covers a simple list report |
+| SMS, telephony, calls, a messenger bot | external services configured on the stand, not structure | not built — say so. Only the link FIELD of a record to Telegram / WhatsApp travels (`messengerFieldCode`, `whatsAppFieldCode`, §2 «BO card tabs») |
+| E-mail / push notifications from a script | the script palette has the actions (§12a «Built-in objects», `alert`); their delivery was never checked `[U]` | build them only if asked and say they are `[U]` |
+| A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5c) | not built — say so; a hook on save or a manually started process is the working route |
+| Users, departments, groups | org structure is stand data; `Person` / `Department` / `PersonGroup` are reserved codes (0.2a) | created on the stand |
+| A field on a built-in BO (`Person`) | untested `[U]` (§6 «Built-in BOs») | the constructor, by hand |
+| Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1) |
 
 ### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code`, `orderIndex` and the two ids)
 
@@ -865,6 +962,25 @@ the BO's category. Count it in `objectCount`.
       `kanbanFieldCode` is a `DROPDOWN_SINGLE` of that BO AND a key of its `kanbanCardTemplates`; no
       `GROUP` line carries `boPages` or `bracketFilter`; every `iconName` is one of the three defaults
       or a name copied from 0.16 WITH its prefix (the importer accepts a wrong name silently).
+- [ ] A whole system from a spec (0.2b): every spec item has a row of the coverage table; every row routed
+      to an archive line, a hook script or a process IS in the file; every row left out carries a reason from
+      the closed list of 0.2b step 4; the menu group and items are there (0.2b step 3); every header–lines and
+      parent–child pair is a `SINGLE`↔`TABLE` joined by `linkedFieldCode` (0.2c).
+
+#### The report — what you tell the user along with the archive
+
+- **List the contents FROM THE BUILT FILE, never from your plan.** Print the payload and report exactly what
+  it holds — e.g. `unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
+  Bun.stdin.text()).trimEnd().split("\n")) { const o = JSON.parse(l); console.log(o["@class"].split(".").pop(),
+  o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? "", o.category ?? o.menuItemType ?? "") }'`
+  — groups, BOs by category, scripts by owner and hook, the process, the menu items. An object the file does
+  not contain is never named: «составной объект для поставщиков» with no `BO_COMPOSITE` line is a false report.
+- **Name each 0.10 check you ran and how** (the validator, by hand). Asserts inside your own builder are not
+  0.10; «проверено» without the list of checks is not a report.
+- **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
+  reason from the closed list / to do after the import.
+- **The steps after the import**: run the analysis and apply (0.11), load the dictionary values and records
+  by xlsx (Part III), set the rights on the stand if no group ids were given (0.2d).
 
 ### 0.11 Building and delivering
 
