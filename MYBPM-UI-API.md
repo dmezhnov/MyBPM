@@ -3225,7 +3225,7 @@ processes that use the code (so the dialog can list them). Fields have the same 
   `[C]` — they accept a code already used by another BO of the company (two BOs then share it), Cyrillic,
   spaces and the empty string. They also skip the usage analysis, so scripts and processes that name the old
   code are not migrated. Before calling either, run `verify-business-object-code` yourself.
-- **One undecodable script kills the dialog in every company of the stand** `[C]` (trap 59).
+- **One undecodable script makes the dialog fail now and then in every company of the stand** `[C]` — a failed analysis leaves «Изменить код» disabled; reopen the dialog and it usually passes (trap 59).
 
 ### 5k. Card tabs — `boTabs`, `delBoTabs`, the messenger link field `[C]`
 
@@ -4466,14 +4466,18 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` is exported as the source stand's option id while the options get
     fresh `newOptionId`s, which become their ids on import; the copy's default then points at nothing. Rewrite
     it to the matching `newOptionId` (`MYBPM-IMPORTS.md` §3 «Единичный выбор»).
-59. **One undecodable script disables every code change on the whole stand** `[C]` — the code-usage
+59. **One undecodable script breaks code changes across the whole stand — intermittently** `[C]` — the code-usage
     analysis of `bo/refresh-code` and `field/refresh-code` reads the scripts of EVERY company on the stand,
     not only the caller's: a script broken in one company makes the analysis fail in another company of the
     same stand that never had it (its BO groups do not include the broken BO's). One stored script
-    the server cannot decode (e.g. a version holding `"opType":"GreaterEq"`, trap 49) makes
-    `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for ANY BO
-    or field. The «Изменение кода» dialog then keeps «Изменить код» disabled for good, with no visible error.
-    Way round: `save-business-object-code` (BO) after your own `verify-business-object-code` (§5j).
+    the server cannot decode (e.g. a version holding `"opType":"GreaterEq"`, trap 49) can make
+    `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for any BO
+    or field — but **not on every run** `[C]`: the same analysis of the same field fails on one run and passes on
+    the next, and most runs pass, so the broken module does not block every code change. A failed run leaves
+    the «Изменение кода» dialog with «Изменить код» disabled and no visible error; close the dialog and open it
+    again — a fresh analysis usually passes. Way round when it keeps failing: `save-business-object-code` (BO)
+    after your own `verify-business-object-code` (§5j), `save-business-field-code` (field) — both skip the
+    analysis and the list of scripts that use the code.
     **Deleting the BO does NOT fix it** `[C]`: after `delete-business-object` on the bricked BO the
     BO is gone (`load-business-object-by-id` → «не существует»), yet its script module survives —
     `load-bo-scripts` / `load-bo-script-versions` on the deleted `boId` still answer the same
