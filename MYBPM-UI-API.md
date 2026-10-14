@@ -238,7 +238,7 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    ```json
    "label": "Наименование",
    "labelMap": {"KAZ":null,"ENG":null,"RUS":"Наименование","QAZ":null},
-   "gridPosition": {"x":0,"y":<4·index>,"cols":15,"rows":4}
+   "gridPosition": {"x":0,"y":<3·index>,"cols":15,"rows":3}
    ```
 
    **Omit a parameter you have no value for — do not send it as `null`**: the client drops null-valued
@@ -247,7 +247,8 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    (**not** `DATE_TIME` — that name never existed), `INPUT_TEXT_LANG`, `STATIC_TEXT`, `BO`, … (the full
    enum with the palette labels is §5i «Field types — label → `fieldType`», which also covers widgets
    and system fields). `cols: 15` is
-   the full form width, `rows: 4` one line, so field *i* sits at `y = 4·i`.
+   the full form width, `rows: 3` one line (what the constructor itself assigns `[C]`; 4 leaves an empty band),
+   so one-line field *i* sits at `y = 3·i`; other types take other heights — see «Layout» below.
    **Get the label right the first time**: a FIELD's code is generated from its label at the first save
    and never regenerated (trap 22).
 7. **Save the BO with the fields.** `save-business-object-portion` — `P {}`, `B` as in step 3, but the
@@ -255,7 +256,7 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
 
    ```json
    {"businessObject": <the DTO of step 5 with the new field DTOs appended to formFields>,
-    "editedFields": [{"fieldId":"<new id>","gridPosition":{"x":0,"y":0,"cols":15,"rows":4},"needFreezeWhenScroll":false}],
+    "editedFields": [{"fieldId":"<new id>","gridPosition":{"x":0,"y":0,"cols":15,"rows":3},"needFreezeWhenScroll":false}],
     "addedFieldIds": ["<new id>", …],
     "deletedFieldIds": []}
    ```
@@ -286,8 +287,43 @@ step 6 — there is no separate endpoint (§5h):
 `FILE_UPLOAD` / `STATIC_TEXT`, and the separate controllers that hold a widget's code and url).
 
 **Do not use** `save-business-form-field` to create fields: it answers 200 with an empty body and writes
-nothing (trap 19). Accelerator: `tools/create-bo-constructor.bun.ts` (`--field "Метка:TYPE[@boId]
+nothing (trap 19) — it is the registry-column writer (§5b). Accelerator: `tools/create-bo-constructor.bun.ts` (`--field "Метка:TYPE[@boId]
 [#a|b|c][!req,uniq,readonly]"`, `--widget "TYPE:Метка[:код][:url]"`, `--native <NATIVE_TYPE>`).
+
+**Layout — apply to every BO with a form, unasked** (same rules as `MYBPM-IMPORTS.md` 0.8 / 0.8a; there they
+are archive keys, here they are keys of the field DTO and the calls named). Goal: no field stretched over
+empty space, no wasted band, **no scroll inside a scroll**. «Visible field» = one a user of the form sees,
+not counting headings, the `TAB_GROUP` and the system fields.
+
+- **Heights** `[C]` (one grid row = 30 px): `rows` = **3** for a one-line input (`INPUT_*`, the date and time
+  types, `DROPDOWN_SINGLE`, `CHECKBOX`) and a one-line heading (4 rows leaves a band); **4** for `TEXTAREA` /
+  `TEXTAREA_LANG`; **6** for `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` /
+  `PROGRESS_BAR`; **8** for `QUESTIONNAIRE` / `GEO_POINT`. `x: 0, cols: 15`; each next `y` = previous `y` +
+  previous `rows` (a field on a tab counts `y` from 0 on its tab).
+- **Groups**: when the visible fields fall into two or more themes, open each with a heading — a `STATIC_TEXT`
+  with `staticValueMap: {RUS: "<h3><b>Тема</b></h3>"}`, `hideLabel: true`, `tableColToShow: false`, `rows: 3`
+  `[C]` (2 scrolls inside itself; heading + subheading line = 4). The heading names the SECTION, never a field
+  label of the BO (`SameBoFieldsLabel`, trap 14).
+- **Tabs** (§5i «Tabs (`TAB_GROUP`) over the API») when the form has **more than 12 visible fields** or more than
+  ~23 rows: split by meaning, each tab ≤ 12 visible fields, **balance the tabs** — the group is as tall as its
+  TALLEST tab `[C]`. Keep the name field above the group or on the first (default) tab. Codes `tabs`, `tab_*`
+  (0U.5 rule 12). Nested tabs (a second `TAB_GROUP` on a tab) only when one tab still holds > 12 visible fields
+  AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3**, nested = tallest tab + **2** («rows of a
+  tab» = `max(y + rows)` of its fields); one row less scrolls inside the group.
+- **System fields → the hidden tab «Системные»**: every field only a script, process or integration reads or
+  writes goes on a tab with code `tab_system`, label «Системные», the LAST tab of the top-level `TAB_GROUP`
+  (`isDefault: false`); a form with no other tabs gets a `TAB_GROUP` holding only that tab, placed UNDER the
+  ordinary fields. Close the tab with VIEW «никому» (R5 step 6: `save-field-tab-access-group`, `view.accessForAll:
+  false`, no units; then `save-bo-field-tab-chosen-access-right` `chosenAccessRight:true`). A non-admin does not
+  get a lone group whose every tab is hidden `[C]`; the window keeps the `h` that counts it, so they see an empty
+  band `[I]` — keep the system tab short. Never put a field a user must fill there; hidden is not secret (R5 step 6).
+- **The record window** `[C]`: `save-business-object-grid-layout-position` BODY `{boId, gridLayoutPosition:{id:"0",
+  x, y, w, h}}` (§5i «Size of the child's record dialog»). **`h` = form rows + 5** (form rows = `max(y + rows)` of
+  the top-level cells, a `TAB_GROUP` counted with its own `rows`); the dialog is capped at 90 % of the screen
+  (~28 units on 1080p), so > ~23 rows needs tabs. `w: 10` for a form of one-line fields, 12–15 only for tables or
+  several fields per row; `x = ceil((16 − w) / 2)`. A BO opened from another BO's reference/table gets `w` at least
+  2 less than its parent. With a lot of content (several tables, still > ~23 rows after tabs) open the record as a
+  page tab instead (§5j «Карточка/Вкладка», `instanceViewType: "TAB"`).
 
 #### R2 — The other four object kinds
 
@@ -549,13 +585,14 @@ route below is for items on BOs that are already on the stand, and for access ri
    are IGNORED if it has sub-brackets**; siblings combine by the EARLIER sibling's `connectionType`.
 6. **Verify a filter without saving it**: `POST /web/v2/business-object-instance/load-bo-instance-bracket-table`
    — `B {"boId":…,"dynamicFilters":[],"nativeFilters":[],"search":"","paging":…,"ordering":null,"state":"ALL","brackets":[…]}`
-   → read `totalHits`.
+   → read `totalHits`. `state` takes the `BoiState` values `ALL|ARCHIVED|REMOVED|OFFLINE|DEV` (the registry tabs) `[I]`.
 7. `delete-menu-item` — `P {"menuItemId":…}`; `load-nav-items` — `P {"parentId":…}` → the children.
 
 #### R7 — Records (instances) from Excel
 
 **Records never travel in a structure archive** — they are xlsx imported into a BO registry. The file
-format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it before writing a file. The API is
+format is exacting: step 2 below carries what a template fill needs (the full format, same rules, is
+`MYBPM-IMPORTS.md` Part III, §0X cookbook). The API is
 `v2/bo-transfer` — template, upload, act, apply and export `[C]` (driven from a page of the stand, §10):
 
 1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<id>&selectedFieldIds=<id>…` — an
@@ -574,6 +611,27 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    hides (`toShow:false`): a block showing only a non-unique field links once you add the unique field's
    sub-column by hand — its template and export never carry it `[C]`. **`isReadonly` fields are written**
    on create and update and cleared by a blank cell `[C]` — drop their columns unless you mean to overwrite.
+   The rest of the format a template fill needs (same rules as `MYBPM-IMPORTS.md` 0X.2–0X.4) `[C]`:
+   - **Ask the user first** for the template (or a registry export) of the target BO, its **unique field** (or an
+     own field labelled `ID`) — without one every row CREATES and a re-run duplicates, so say the file is
+     create-only and get a yes — and the existing dictionary values of every dropdown column.
+   - **Layout**: one sheet `Sheet0`, `sharedStrings.xml` empty; header row 1, or rows 1–2 when the BO has a nested
+     object (row 1 a merged block caption, row 2 the target's sub-headers; other columns merged A1:A2; freeze at
+     A3); a sheet with neither freeze nor double border dies with `kD4QsxZrAY` «Система не может отделить строки
+     заголовка от строк данных». Keep the table part `xl/tables/table1.xml` consistent with `dimension` (§9).
+   - **Map columns by LABEL, never by position**: a column is the (row-1 block, row-2 field) pair; split a row-1
+     label on the FIRST dot — the prefix is the tab («Системные.Код»), the rest is the field label after strip.
+   - **Values**: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently, §6);
+     date-time `25.10.2025 10:33`; period `dd.mm.yyyy - dd.mm.yyyy`; numbers and codes as text; a dropdown by its
+     LABEL (`NotFoundDictByLabel` when the value is not on the stand); dictionary codes are case-sensitive
+     (`MRP` ≠ `mrp`).
+   - **A TABLE nested object = the parent row REPEATED**, one row per child (the parent's scalars on every row is
+     safe). A target with no unique field links only by an `ID` sub-column; a missing target fails the row with
+     `NoUniqueFieldValue` (the rest imports) — **a nested block never creates targets**, and never resolves
+     against rows of the same file: split self-references into a later file.
+   - **No label may repeat another field's label** — a «Текст» heading named like a field rejects the file with
+     `SameBoFieldsLabel` (labels are matched across ALL fields, any tab).
+   - **Read the finished file back** and rebuild the data model from its cells before uploading.
 3. `POST /web/v2/bo-transfer/import-from-file` — **multipart**, file under `file`, plus the form field
    `businessObjectId` → a bare `"<actId>"` string (no envelope on this call: plain multipart, `token`
    header).
@@ -600,7 +658,8 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default.
    **`boFieldIds` decides the columns** `[C]`: a non-empty list = exactly those fields in that order; an
    EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
-   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab) is a chooser over the same
+   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab; under Claude-in-Chrome its
+   browser download does not reach `~/Downloads`, as with the structure export — use these calls `[I]`) is a chooser over the same
    fields, pre-ticked with the registry columns; it sends what is ticked, in ticking order. No field flag
    hides a field from an API export — list the fields you want. **An EMPTY list exports the nested blocks
    EMPTY** `[C]`: their caption and sub-headers are there, every sub-cell is blank and a TABLE reference is
@@ -638,6 +697,27 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
 4. Unconfirmed dependencies do not block the export; the archive then holds only the selected BOs.
    The file name's company slug is not necessarily the tenant you are in.
 
+#### R9 — One record by hand (UI), and the same without the UI
+
+1. **UI** `[C]`: Системные → **«Бизнес»** (`/business-objects/viewing-list`) → the group → the BO → its
+   registry → **«Добавить»** → fill the fields → **СОХРАНИТЬ**. A draft is created as soon as the form opens;
+   closing it unsaved asks «Несохраненные данные — … Закрыть без сохранения?» → ДА drops it. An existing
+   record: click its row, edit, СОХРАНИТЬ. The registry tabs В работе / Архивные / Удаленные / Тестовые
+   are the record states. A registry column header's sort icon sets the BO's default sort
+   (`save-bo-table-sort`, §5b «The rest of the constructor's controls»).
+2. **API, scripts run** — the form cycle of §6b (what the UI's own dialog sends). **API, no script runs** —
+   the draft cycle of §6a. Read back with `load-boi-values` (§6b table) or `load-bo-instance-bracket-table` (R6
+   step 6; its `state` is the `BoiState` `ALL|ARCHIVED|REMOVED|OFFLINE|DEV` — the registry tab `[I]`).
+3. **A dictionary row is an ordinary record of the dictionary BO** `[C]`: created, edited and deleted by the same
+   cycles; the system fields are `code` («Код») and `label` («Значение», `INPUT_TEXT_LANG`, a value
+   `{"RUS": "…"}` `[I]`); its xlsx template has the columns «Код» / «Значение» (§6).
+4. **Moving a kanban card = changing the record's column dropdown** `[C]`: §6b `save-field-value` with the
+   new option id, then save — it runs the dropdown's «Изменение поля» hook like any form change. The board's
+   own drag call (`v2/kanban/move-kanban-card`) is not mapped yet `[U]` (§12).
+5. **Delete / archive / restore / duplicate a record**: the API calls are named in §6a «Related in the same
+   controller» (`delete-bo-instance` with `{businessObjectId, boInstanceIds}` in the PARAMS `[C]`, trap 46); the UI controls and the params
+   of `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` are not known yet `[U]` (§12).
+
 ### 0U.5 Hard rules
 
 1. **Detect errors by `errorType`/`className` in the body, never by the HTTP status.** 200 is the answer
@@ -661,8 +741,8 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    A structure-only archive leaves the stand's rights untouched. The one exception: the «никому» rule of the
    hidden system tab `tab_system` — on a NEW BO with all actions open, on an existing BO added to its freshly
    exported `AccessStructDto` (`MYBPM-IMPORTS.md` §0.8a step 6).
-8. **Re-read after every write.** The platform answers 200 for `save-business-form-field` (writes
-   nothing), for an empty kanban template save (writes nothing) and for a rights popup that decided
+8. **Re-read after every write.** The platform answers 200 for `save-business-form-field` used to create
+   a field (creates nothing), for an empty kanban template save (writes nothing) and for a rights popup that decided
    nothing changed.
 9. **Never print a stack trace into the session** — a MyBPM error carries ~100 lines of Java. Read
    `message` and `errorType`.
@@ -709,7 +789,9 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
 - [ ] The layout heights hold `[C]` (one grid row = 30 px): one-line input 3 rows, a `<h3>` heading 3, a
       top-level `TAB_GROUP` = its tallest tab + 3 (nested group + 2), and the record window
       `gridLayoutPosition.h` = form rows + 5 (the dialog is `h·30` px tall, 99 px of it title and buttons).
-      Fix a scrolling tab group or window there, in the archive (`MYBPM-IMPORTS.md` §0.8a), not by hand.
+      Fix a scrolling tab group or window at its source: an archive-built BO in the archive
+      (`MYBPM-IMPORTS.md` §0.8a), a constructor-built one by the R1 «Layout» calls (field `gridPosition` in the
+      portion save, `save-business-object-grid-layout-position` for the window).
 - [ ] The notifications your work raised were cleared, whichever way they came: every structure import
       leaves an «Анализ импорта завершен»; every non-2xx REST call from a script you clicked leaves
       «Ошибка — Возникла ошибка при запросе в сервис …» (`MYBPM-IMPORTS.md`, RestRequest section); a
@@ -814,6 +896,9 @@ popup **sends nothing when unchanged**.
 
 Simplification the user accepts: when a field's view/edit equals the BO's, just say «Всем».
 
+Creating / editing users, groups and departments and their membership, and the head / employees / department
+flags of «Из поля»: not known yet `[U]` — §12.
+
 ### API — `POST /web/v2/business-objects/<method>`
 
 - `load-access-group` params `{businessObjectId}` → an object with the actions
@@ -892,6 +977,9 @@ Everything in this section is `[C]`.
 - `create-menu-item` body = the item itself:
   `{id, type: GROUP|BO, displayName, displayNameMap{RUS}, boId, iconName, orderIndex, isPanel:false,
   boPages{…}, chosenAccessRight:false, parentId}`; `id` comes from `v2/id-loader/load-portion`.
+- **The UI creates only `BO` and `GROUP` items** `[C]`. The client enum also has `ANALYTIC`,
+  `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` (the built-in items, one of each per company), `REPORT`
+  (operative reports, their own export basket, R4a) and `PROCEDURES` — none is created by hand.
 - Default `iconName`: GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable`.
 - `delete-menu-item {menuItemId}`; `load-nav-items {parentId}` → the children with their ids
   (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
@@ -906,8 +994,12 @@ Everything in this section is `[C]`.
 - The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it (100000, 200000, …).
 - `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages` = the item's views: list, kanban,
   calendar, timeline, map, grouping, each an `is*Enabled` flag + an `*Index` (tab order, 1-based over the
-  enabled views). List, kanban, calendar, timeline and map work `[C]`, grouping is dead server-side; what
-  each needs on the BO is the table of `MYBPM-IMPORTS.md` 0.15. Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
+  enabled views; always send all twelve keys, disabled ones with index 0). What each view needs `[C]`:
+  list — nothing; kanban — `kanbanFieldId` = a `DROPDOWN_SINGLE` of the BO AND that field's card template on
+  the BO (§7); calendar — the BO's `isCalendarEnabled` (§5l) and a `FULL_DATE` with `needShowToCalendar` (§5h),
+  nothing on the item; timeline — `timelineFieldId` = a `PERIOD` / `PERIOD_TIME` field (`v2/timeline/load-fields`,
+  «Menu-item rights» below), nothing else; map — the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card
+  template for every dropdown (§5l); grouping — dead server-side, never enable it. Kanban keys: `isKanbanEnabled`, `kanbanIndex`, `kanbanFieldId` — they switch
   the board and its COLUMNS on for THIS item; the CARD lives on the BO and must come from the archive (§7).
 - Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"<namespace>:<name>"}` (empty 200).
   **Valid names = the catalogue below** (1153 names, `phosphor:*` AND `menu-item:*`); the server accepts
@@ -915,7 +1007,9 @@ Everything in this section is `[C]`.
   use system icons (portfolio, no-color-settings, no-color-archive, man-with-company) — leave them alone.
 - UI: the sidebar row kebab (⋮) offers Отображать в моб. приложении / Изменить код / Права доступа /
   Переименовать / Изменить иконку / Разгруппировать / Удалить. Sidebar names are `<input>` values inside
-  `app-bo-record`; clicking `.container` puts the id into the URL.
+  `app-bo-record`; clicking `.container` puts the id into the URL. The calls behind «Переименовать», a
+  reorder / move into another group, «Изменить код» and «Отображать в моб. приложении» (`needHideInMobApp`,
+  `needCountMenuItem`), and where a menu item's views are switched in the UI: not known yet `[U]` — §12.
 
 ### Menu icon catalogue `[C]`
 
@@ -1107,7 +1201,8 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   `/import-structure/cancel-import {importId}` drops it, `/remove-import` deletes the log row.
 - **Rollback exists** `[C]`: after apply the record carries `rollbackAvailable:true,canRollback:true`, and
   `/import-structure/load-import-rollback-preview {importId}` + `/rollback-import {importId,processId}`
-  undo the import. **Only the import the stand considers the latest can be rolled back** `[C]`: the others
+  undo the import (a rollback control in the UI import log: not known yet `[U]` — §12). **Only the import the
+  stand considers the latest can be rolled back** `[C]`: the others
   carry `canRollback:false` + `newerAppliedImportsCount:N`, and `rollback-import` on them answers the body
   `{"message":"RwFGhT3idZ :: Rollback is allowed only for the latest applied import", …}` — and the
   `processId` you passed is then never finished, so a poll loop on it spins until your timeout.
@@ -1354,16 +1449,51 @@ settings).
 - `generate-business-form-field` returns a ready ~60-key field DTO with a fresh `fieldId` and `code: null`.
   Set `label`, `labelMap` and `gridPosition`, leave the code alone.
 - **`save-business-form-field` `{businessObjectId, fieldList}` does NOT create fields** — it answers 200
-  with an empty body and nothing is written `[C]`. Its real purpose is unknown `[U]`; do not reach for it.
+  with an empty body and nothing is written `[C]`. It is the **registry-column writer** `[I]`: the registry
+  editor («Список» → the `app-columns` header row: `+`, drag, resize, trash) sends `B {businessObjectId,
+  fieldList:[{fieldId, archetype, tableColToShow, tableColOrderIndex, tableWidth}]}` — the call §5h saw make
+  fields registry columns. On the FIRST card save of a BO with no columns the client adds the first 3 fields by
+  grid position (not `TAB_GROUP` / `PROGRESS_BAR`) itself `[I]`. Widgets and `PROGRESS_BAR` are never offered as
+  columns; the last column cannot be deleted `[I]`. Setting `tableColToShow` / `tableColOrderIndex` on the field
+  DTO of the portion save does the same `[C]`.
 - The constructor DTO from `load-business-object-by-id`: `id, idLong, name, recordName, nameMap,
   recordNameMap, staticValueMap, instanceViewType, orderIndex, description, code, formFields[], kind,
   boTabs, delBoTabs, isDictionary, hasScript, isCodeReadonly, boCategory, sortFieldId, …`. **`formFields`
   is an ARRAY** here — the archive's `dynamicFields` object keyed by code is a different shape.
-- Field `gridPosition` in this DTO is `{x, y, cols, rows}` — `cols: 15` = full width, `rows: 4` = one line,
-  so field *i* sits at `y: i*4`. `tableColToShow` / `tableColOrderIndex` behave as in the archive.
+- Field `gridPosition` in this DTO is `{x, y, cols, rows}` — `cols: 15` = full width, `rows: 3` = one line,
+  so one-line field *i* sits at `y: i*3` (other heights: R1 «Layout»). `tableColToShow` / `tableColOrderIndex` behave as in the archive.
 - `load-bo-records-by-group-id` takes **`groupId`**, not `boGroupId` (a wrong name answers HTTP 400
   «Required parameter 'groupId' is not present») → `[{id, name, nameReadonly, viewState, orderIndex,
   boCategory}]`, the cheapest way to list a group's BOs and check what an action created.
+
+#### The rest of the constructor's controls — where each is and what it sends `[I]` unless marked
+
+Read off the client bundle; the API column is the call the control sends, usable alone. Not run on a stand
+unless marked — re-read the BO (`load-business-object-by-id`) after each write. Open questions: §12.
+
+| operation | UI control | API |
+|---|---|---|
+| Rename a field (label) | the field row header: inline input; globe → per-language popover; `_` and `#` are blocked; a label must be unique within its tab | portion save with `editedFields [{fieldId, label, labelMap}]` (`label` applied this way `[C]`, §5i «Tabs») |
+| Change a field code | gear → tab 2 «Инфо» → pencil → dialog «Изменение кода» (not for natives, not when `isCodeReadonly`) | `field/refresh-code` — the same analyse / apply cycle as the BO code (§5j «Changing the code») |
+| Move / resize a field | drag / resize on the grid; a move resets `needFreezeWhenScroll` to false | portion save, `editedFields [{fieldId, gridPosition, needFreezeWhenScroll:false}]` `[C]` (R1) |
+| Default value | the field body editor of its type (CHECKBOX: the checkbox in the header; `*_LANG`: one input per language tab) | `defaultValue` / `defaultValueMap` on the field DTO + `editedFields`; a dropdown / radio stores the chosen option id |
+| List options (`DROPDOWN_SINGLE` with a local list, `RADIO_BUTTON_GROUP`) | the field body: chip selector / item list — add, rename per language, delete, code | `options[]` `{id, label, labelMap, orderIndex, code, color}` on the field DTO; a deleted one also goes into `deletedFieldOptionIds`; an option code is checked by `verify-business-field-code` |
+| Progress steps (`PROGRESS_BAR`) | gear → tab 1 «Отображение» → «Добавить шаги», label (+ globe), «Изменить код», delete, «Сохранить» | `progressSteps[]` `{id, orderIndex, label, code, labelMap}` (`[C]`, §5i), deleted ones in `deletedFieldProgressStepIds`; a step code: `verify-progress-step-code` then `save-progress-step-code` |
+| Questionnaire rows / columns | the field body `app-questionnaire`: add column / add row, label per language, code, delete; single / multiple in gear → «Отображение» | `questionnaires[]` `{id, label, labelMap, orderIndex, isColumn, code}`, deleted ones in `deletedFieldQuestionnaireIds`; `questionnaireIsMultiple` |
+| `STATIC_TEXT` body | the field body: a summernote editor with language tabs; the type has NO gear | `staticValueMap` via `editedFields` `[C]` (§5b «The same thing through the API») |
+| Tabs of a `TAB_GROUP` | the tab strip: label input (+ globe); settings icon → code popover; lock icon (tab rights, R5 step 6); delete icon; «+» adds a tab on the left; the drop zone «Добавить вкладку здесь» adds one on the right; drag reorders | `tabs[]` on the group (§5i «Tabs»); a deleted tab goes into `deletedFieldTabIds` — the client first asks `v2/delete-script-usage/analyze-tab`, and **deleting a tab deletes its fields too**; a tab code edited in the popover: `v2/business-objects/update-tab-code` |
+| A widget's code | every widget popover starts with the code row and a change-code dialog (type WIDGET); hidden for CURRENT_DATE / CURRENT_USER | the separate controllers of §5i «A widget's code and url»; the dialog's own endpoint is unresolved (§12) |
+| Registry columns | «Список» view → the `app-columns` header row: `+`, drag, resize, trash | `save-business-form-field` (§5b) |
+| Registry default sort | «Список» → the column's sort icon: asc / desc / unset | `save-bo-table-sort` PARAMS `{boId, fieldId, order}` (`ASC`/`DESC`; `fieldId` omitted for unset) `[C]` (§7) |
+| Calendar header titles / hover card | «Календарь» → «Настройка отображения заголовка:» / «Настройка отображения информации при наведении» | `v2/calendar/save-calendar-view-titles` PARAMS `{boId, titles}`; `v2/calendar/save-calendar-card-template` B the template, P `{boId}` (body shape and effect `[U]`, §12) |
+| Timeline columns | «Диаграмма Ганта» → one columns table per `PERIOD` / `PERIOD_TIME` field | `v2/timeline/save-columns` B cols, P `{boId, timelineFieldId}`; `remove-column` P `{boId, timelineFieldId, fieldId}`; `save-table-locations-for-timelines` B `[{fieldId, archetype, gantTableLocations}]`, P `{boId}`; the first card save adds the first field as a column of every empty timeline |
+| Record window size | a viewer resizes the record dialog (per user or per BO: §12) | `save-business-object-grid-layout-position` `[C]` (R1 «Layout», §5i) |
+| Print forms | rail → «Печатные формы» → panel: list + a draft dialog (add / edit) | §5i «Print forms» `[C]` |
+| Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
+| BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
+| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` (+ `load-bo-usage`) for the dialog, then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
+| BO groups | group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» | the group lifecycle calls of §5 «Verifying an import» `[C]`; a non-empty group's delete: §12 |
+| Composite attributes | «Связи» view of the composite | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
 
 ### 5c. The matrix «4 routes × 5 object kinds» — column «Справочник» `[C]`
 
@@ -1514,8 +1644,9 @@ A `BO_COMPOSITE` export is ONE `BoStructDto`
 plus a `BoGroupStructDto` and the metadata — 3 objects, no `AccessStructDto`:
 
 - `category: "BO_COMPOSITE"`, `kind: "GENERAL"`, ordinary `name`/`recordName`/`orderIndex`;
-- **`bos: [{code, name, boCategory}]`** — the source BOs, referenced **by CODE only**, no id. They are NOT
-  in the archive, so they must already exist on the stand `[I]`;
+- **`bos: [{code, name, boCategory}]`** — the source BOs, referenced **by CODE only**, no id. An export does not carry
+  them; each must either already exist on the stand or travel as a `BoStructDto` in the SAME archive — line order
+  irrelevant `[C]` (§5 «A composite's sources may travel in the same archive»);
 - each field in `dynamicFields` carries **`boFieldCodes: [{boCode, fieldCode}]`** instead of the
   `links` of the live API — the same relation expressed in codes;
 - `boRefStruct.fieldRefs: {}`, `linkedCoSettings: {}` present but empty.
@@ -1600,9 +1731,16 @@ editor route, TWO controllers and a versioned diagram.
   every target field there, `toShow:false`). **The client refuses every edit on a WORK version**
   («you_cant_change_published_bo_process_version»), **the server does not**: the draft cycle above
   applies on an `isWork+isTest` version and the run ways work at once on ordinary records.
-  What they do (a target record's creation / field change creates a NEW process record pointing at it),
-  the controls, and the archive form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) —
-  `MYBPM-IMPORTS.md` §5c `runWayMap`.
+  What they do `[C]`: a target record's creation (`ON_INSTANCE_CREATE`) or a saved change of one of the
+  `fieldIdsSet` fields (`ON_FIELD_CHANGE`; saving with no change or the same value starts nothing) creates a NEW
+  record of the process BO pointing at that target record and runs the process on it; adding run ways does
+  not switch off the default (a process record created directly still runs). `changeVariantSet`
+  `ON_MANUAL_SAVE` (the dialog's default) covers a form save AND a record made by the §6a cycle; the other
+  members are `[U]`. **UI** `[I]`: the process editor's run-ways button opens the dialog
+  (`openPopoverBoProcessRunWaysSettings`); its process-field list = the process BO's `BO`/`CO` fields with
+  `viewType` `SINGLE`/`FIELDS`, its target-field list = that reference's `boFieldRefs`; it refuses every edit on a WORK version — switch to the test version first (or use the API
+  above). The archive form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) — `MYBPM-IMPORTS.md` §5c
+  `runWayMap`.
 
 #### `apply-update-cmd` — a JSON-patch language over the def
 
@@ -1753,7 +1891,8 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   listing the process's date fields; one click writes `Set figures.<id>.fieldId = "<fieldId>"` and closes
   it. Nothing else to set — the due time IS that field's value when the process enters the Timer.
   A Timer without a field validates clean. Run-time behaviour (empty / past / future date, a field
-  changed while it stands, `#Обновить таймер для процесса`): `MYBPM-IMPORTS.md` §16 «A Timer». In short:
+  changed while it stands, `#Обновить таймер для процесса` — actId in «Running a process on a record» step 5):
+  same as `MYBPM-IMPORTS.md` §16 «A Timer». In short:
   the Timer reads its field once, on entry; a later change of the field (form save OR script) does not move
   it, and only `#Обновить таймер для процесса` on that field right after the change does `[C]`.
 - **SingleToParallel / ParallelToSingle** `[C]` — the palette writes `{x, y, type:"SingleToParallel", outSlotsCount:2}` /
@@ -1844,7 +1983,8 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   to render. `save-editing-script-figure-id {boProcessId, scriptFigureId: null}` (or the IDE's × at the
   top right) brings the diagram back `[C]`; it does not reopen every time, when exactly is `[I]`.
 - The IDE of a process record offers three process-only actions — `goForProcess`, `continueProcess`,
-  `terminateProcess` (`MYBPM-IMPORTS.md` §12a «Actions that exist only on a PROCESS record»).
+  `terminateProcess` — and a process field offers `#Обновить таймер для процесса`; actIds and use: «Running a
+  process on a record» step 5 below.
 
 #### Running a process on a record `[C]`
 
@@ -1879,9 +2019,39 @@ cycle from inside the page and read the result back with `load-process-steps`.
    step (Enter → Form) it does nothing.
 5. **A conditional Switch branches on the data** `[C]`: the Switch's script rewritten with
    `apply-update-cmd` to `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрить.#Значение → по стрелке «Да», ИНАЧЕ → по
-   стрелке «Нет»` (the JSON: `MYBPM-IMPORTS.md` §16 «A Switch with a condition»; `translate-script`
+   стрелке «Нет»` (the JSON below; same as `MYBPM-IMPORTS.md` §16 «A Switch with a condition»; `translate-script`
    `success:true`, `validate-def` `[]`): «Одобрить» `"true"` ends in `…, Switch PASSED, Exit «Да» PASSED`,
    `"false"` in `…, Switch PASSED, Exit «Нет» PASSED`. The whole run is one in-page script; no UI.
+   The Switch body (`v2/script/apply-update-cmd`, `scriptModuleId` = the version, `scriptId` = the figure;
+   process field «Заявка» code `Zayavka`, its CHECKBOX «Одобрить» code `Odobrit`) `[C]`:
+
+   ```json
+   "blocks": {
+    "<hat>":  {"x":40,"y":40,"downBlockId":"<if>","type":"BlockFixEntryPoint"},
+    "<if>":   {"ifExprId":"<e4>","thenBlockId":"<exitYes>",
+               "branches":{"<br>":{"blockId":"<exitNo>","order":10}},"type":"BlockIf"},
+    "<exitYes>":{"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<arrow «Да»>","type":"BlockExit"},
+    "<exitNo>": {"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<arrow «Нет»>","type":"BlockExit"}},
+   "expressions": {
+    "<e1>":{"exprValueType":"THIS_PROCESS","constType":"BoiRefCode","type":"ExprValue"},
+    "<e2>":{"leftExprId":"<e1>","actId":"F-Zayavka-K-DYN-S-boi_fields","type":"ExprAct"},
+    "<e3>":{"leftExprId":"<e2>","actId":"F-Odobrit-K-DYN-S-boi_fields","type":"ExprAct"},
+    "<e4>":{"leftExprId":"<e3>","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","type":"ExprAct"}}
+   ```
+
+   The process record's own fields are reached through `THIS_PROCESS` (IDE `ЭТОТ_ПРОЦЕСС`); a field of the
+   REFERENCED record is its `F-<code>-K-DYN-S-boi_fields` applied straight to the reference field (no
+   `#Значение` hop); the boolean is tested bare; the `ЕСЛИ` has no `downBlockId` because both branches are
+   exits. The value read is the one saved when the Switch runs. What a Script / Switch writes is saved when
+   the figure is left — no `#Сохранить` `[C]`.
+
+   **Process-only actions** `[C]` — offered only on a record (`BoiRefCode`) of a `BO_PROCESS` BO; no arguments,
+   no result, so each is a `BlockAssign` with only `leftExprId`:
+   `F-goForProcess-K-FIX-T-BoiRefCode` «#Запустить процесс»; `F-continueProcess-K-FIX-T-BoiRefCode`
+   «#Продолжить процесс» (a Form or a Timer it waits on passes at once); `F-terminateProcess-K-FIX-T-BoiRefCode`
+   «#Терминируй процесс» (stops the whole process). On a process FIELD (`ЭТОТ_ПРОЦЕСС.<field>`, no `#Значение`
+   hop): `F-updateTrapDate-K-FIX-T-BoiFieldRefCode` «#Обновить таймер для процесса» — call it right after changing
+   a Timer's date field, or the Timer keeps the date it read on entry.
 
 6. **The whole thing headlessly — `tools/process-builder.ts`** `[C]`: a spec (process
    fields, figures with slots, named arrows, Script/Switch bodies incl. a condition over a path of field
@@ -1955,8 +2125,9 @@ are working in `[U]`.
 
 ### 5g. Block IDE scripts on a running stand — the API (reading and writing `[C]`, the rest read off the bundle)
 
-The script format, the block/expression templates and the clipboard paste protocol are
-`MYBPM-IMPORTS.md` Part II (§0S is the cookbook). This section is the other half: **where that
+What a write needs of the script language is in this section — «The script language», «House style», «What
+the built-in operations do at run time» — and the UI paste route is «Pasting a script in the UI» (the same
+rules at full length, the IDE palette included: `MYBPM-IMPORTS.md` Part II, §0S cookbook). This section is also: **where that
 screen is and whether a script can be touched without it.** It can — the client drives scripts through
 two ordinary controllers, so everything §0S says about «the clipboard is the whole delivery channel» is
 true of the IDE, not of the platform.
@@ -2112,18 +2283,38 @@ body   {"name":"<any label>",
   `translate-script` does (`exprAct__readWayIsAbsent` / `exprAct__writeWayIsAbsent`, one per run) `[C]`
  . `RestRequest`: write-only `sendingText/XmlTag/MultipartForm/JsonDeck/JsonArr`, `address`,
   `method`; read-only `showHeaders`; both `*Timeout`, `checkSslCertificate`. `ElectronicTableBoTab.cellType`
-  is write-only. (`MYBPM-IMPORTS.md` §14 «Validator phases» has the four phases.)
+  is write-only.
+- **`translate-script` checks in four phases and reports ONLY the first that fails** `[C]` — an error list is
+  never the whole story; fix and re-run until `{"success":true}`:
+  1. **Structure**: `noEntryPoint` «Нет точки входа» (a hook body needs its `BlockFixEntryPoint` hat),
+     `blockIf__allBranchMustReturn__orContinueDownWithReturn` (a hook must END with
+     `{"type":"BlockExit","exitType":"FROM_METHOD"}` as `downBlockId` of the last top-level block),
+     `exprOp_operandIdIsNull` «Не задан операнд номер 2 в операции Plus» (a binary `ExprOp` without
+     `rightExprId`; the variable it initialises also gets «Не указан расширенный тип (valueExtType == null)»),
+     a variable whose type has no ext type (`getPrintForms` of a record).
+  2. **Types**, all at once: a scalar added to / searched in a typed array (`illegalElementTypeForList`),
+     `Readonly/Required/Shown -K-DYN-R-M-` need a user/department/group ref as argument, `SHOWN_BO_IN_CO_FIELD`
+     needs a BO chosen as a CO attribute, `addFile_v2` wants a `File`, `inapplicableFilter`, `sendToUsers`
+     wants Person/PersonGroup/Department, the four `associateSingle*Ref*` of a spreadsheet tab need a reference
+     main field.
+  3. **Read / write access**, ONE error per run — the `RestRequest` / `ElectronicTableBoTab` list above.
+  4. **Java compilation** (`compile:compiler.err.*`, `sourceMessage` = the Java line, `exprId` at the TOP level
+     of the diagnostic). **Defect** `[C]`: the catalogue offers `saveBoiChanges` / `updateOpenedBoi` /
+     `closeOpenedBoi` (`-K-FIX-T-BoiRefCode`) also on a BO type, a field and a progress step; phases 1–3 pass
+     them, the compiler rejects them («BoRefCode cannot be converted to BoiRefCode») — use them on a record
+     only. Two `INFO compile:compiler.note.unchecked.*` beside a success mean nothing.
+  Every other catalogue act (454 of 476) translates clean; compiling is not running.
 - **Then `translate-script`** — the only check. It reports wrong `actId`s, argument names, dangling ids
   and types; `success:true` with a `WARN used_deprecated_blocks` means an old-panel element is present.
 - **A wrong SHAPE bricks a module the same way** `[I]` (do not reproduce it): `ExprCall.args` sent as `{"<paramId>":"<exprId>"}` instead of `{"<paramId>":{"exprId":…}}`
   in a company-global method made the global module undecodable («Failed to decode 'ScriptModuleDto'») — the
   «Глобальные методы» list, every process `validate-def` and the figure script IDE all failed with it.
   Copy object-valued keys (`args`, `argExprIds`, `branches`, `more`, `params`, `valueType`) exactly
-  from `MYBPM-IMPORTS.md` §10–§11.
+  from «The script language» below (same as `MYBPM-IMPORTS.md` §10–§11).
 - **A `WARN` is not a clean result**: `Eq` between an act's `boolean` and a «Да/Нет» constant answers
   `success:true` with `WARN exprOp__equalsDifferentTypes` («…одинаковыми быть не могут никогда») — the
   condition is always false `[C]`. Use the boolean itself, or `Not`.
-- **Never write an enum value you have not seen in `MYBPM-IMPORTS.md` §10–§12a** (`opType`, `exitType`,
+- **Never write an enum value that is not in the table of «The script language» below** (`opType`, `exitType`,
   `exprValueType`, `constType`, `type`). The server stores it, then cannot decode the BO's script module
   any more: every read and write of every version of that BO's scripts — including `apply-update-cmd`,
   `undo`, `delete-local-method`, `remove-bo-script-version` — answers `IllegalArgumentException: No enum
@@ -2134,6 +2325,276 @@ body   {"name":"<any label>",
   it does not protect against the trap above (all versions are decoded together) but keeps a working
   hook out of an experiment's way.
 
+#### The script language — what a `Set blocks.<id>` / `Set expressions.<id>` may hold `[C]` unless marked
+
+The defs `load-script-def` returns and `apply-update-cmd` writes are two FLAT maps, `blocks` and
+`expressions`, keyed by id; every entry carries its own `"type"`. Nothing nests inline: a block names its
+expressions by id, an expression names its operands by id. (The clipboard / `paste` form wraps the same two
+maps in `{"copiedType":"SCRIPT_BLOCKS","mouseX":202,"mouseY":62,"startBlockIds":["<root>"],"blocks":{…},
+"expressions":{…}}` — `startBlockIds` holds ONE id: the method hat, the first body block of a body, or the
+`BlockFixEntryPoint` of a hook / process script.) Same as `MYBPM-IMPORTS.md` §0S.3–§0S.11.
+
+**Plan first.** Write the algorithm as pseudocode in the six forms of the language only — `Пусть <имя> =
+<выражение>`, `<переменная> = <выражение>`, `ЕСЛИ … ИНАЧЕ ЕСЛИ … ИНАЧЕ`, `ЦИКЛ <элемент> : <число или
+коллекция>`, `ВЫЙТИ ИЗ ЦИКЛА`, `ВЕРНУТЬ <выражение>` — named by the house style below. If a step does not fit,
+the plan is wrong. **Never invent** a field code, a `boiId`, an arrow id or a parameter id: read them off the
+stand (`load-bo-def-list`, `load-script-def` of the method's hat, `load-exit-variants`) or ask.
+
+**Ids.** Exactly 16 characters of `A-Za-z0-9@~`, unique across the def — block ids, expression ids and the
+keys of `branches` and `more` share one namespace. Three kinds are external and reproduced byte for byte:
+method **parameter ids** (keys of the hat's `params` and every `varBlockId` that reads a parameter), process
+**arrow ids** (`targetArrowId`), dictionary **row ids** (`boiId`).
+
+**Blocks.** A statement points at the next one with `downBlockId`; the last of a chain has none. A nested
+chain (`thenBlockId`, a branch's `blockId`, `bodyBlockId`) is a chain of its own; execution continues at the
+parent's `downBlockId`.
+
+```json
+{"varName":"#текст#","valueExprId":"<expr>","downBlockId":"<next>","type":"BlockNewVar"}
+{"leftExprId":"<expr>","rightExprId":"<expr>","downBlockId":"<next>","type":"BlockAssign"}
+{"ifExprId":"<expr>","thenBlockId":"<first block of То>",
+ "branches":{"<id>":{"blockId":"<first block>","order":10,"exprId":"<expr>","hasExpr":true},
+             "<id>":{"blockId":"<first block>","order":20}},
+ "downBlockId":"<next>","type":"BlockIf"}
+{"elementVarName":"#шаг#","srcExprId":"<expr>","bodyBlockId":"<first block>","downBlockId":"<next>","type":"BlockForeach"}
+{"exitType":"FROM_METHOD","returnExprId":"<expr>","type":"BlockExit"}
+{"exitType":"FROM_CIRCLE","circleBlockId":"<BlockForeach id>","type":"BlockExit"}
+{"exitType":"FROM_CIRCLE_ITER","circleBlockId":"<BlockForeach id>","type":"BlockExit"}
+{"exitType":"FROM_METHOD_BY_ARROW","targetArrowId":"<arrow id>","type":"BlockExit"}
+{"x":55,"y":44,"methodName":"describe",
+ "params":{"<param id>":{"name":"step","order":1,"type":{"baseType":"BoiRefCode","boCode":"Model_step","isArray":false,"type":"Bo"}}},
+ "returnType":{"baseType":"String","isArray":false,"type":"Text"},"downBlockId":"<first body block>","type":"BlockFixMethod"}
+{"x":56,"y":65,"downBlockId":"<first block>","type":"BlockFixEntryPoint"}
+```
+
+- `BlockNewVar` = «Пусть»; `varName` is a free string, its decoration is the house style (next subsection), but
+  it must be **unique within its scope**, loop element names included.
+- `BlockAssign`: `leftExprId` is a `VAR_REF` for a variable, or the hop-2 `#Значение` act for a field (below).
+  **A void action as a statement** (`#Добавить ошибку`, `#Сохранить`, `JsonDeck.put`, `.Добавить` of a
+  multilingual text, a method call used as a statement) = `BlockAssign` with that `ExprAct` / `ExprCall` as
+  `leftExprId` and **no `rightExprId`**.
+- `BlockIf`: `branches` run in `order` (10, 20, …); a branch with `exprId` + `hasExpr:true` is «ИНАЧЕ ЕСЛИ»,
+  one without them is plain «ИНАЧЕ». `branches` may be `{}`/absent, `thenBlockId` may be absent. **Exactly one
+  branch of the chain runs** — for «try every candidate» write independent `ЕСЛИ`s one after another.
+- `BlockForeach`: `srcExprId` a **number** → a counted loop (counter 1…n, n evaluated ONCE on entry); a
+  **collection** (a link-many field through `#Значение`) → a foreach. The element of a foreach over a `Текст[]`
+  PARAMETER is untyped `Object` — wrap it once, `Пусть #t# = '' ⊕ #el#`; a `Bo[]` element reads fields as is.
+- `BlockExit`: `FROM_METHOD` = «Выйти из метода» and **carries the return value**; `FROM_CIRCLE` = break,
+  `FROM_CIRCLE_ITER` = continue; `FROM_METHOD_BY_ARROW` leaves a process Switch by one of ITS arrows. An exit
+  never has `downBlockId`. **A hook (Открытие / Сохранение / Создание / Закрытие / Изменение поля) and a
+  process Script figure = `BlockFixEntryPoint` → body → `{"exitType":"FROM_METHOD","type":"BlockExit"}`**; a
+  process Switch ends EVERY path in `FROM_METHOD_BY_ARROW` and has no plain exit (§5f). Keep ONE `FROM_METHOD`
+  per method, at the end.
+- `BlockFixMethod` (the method hat): never compose it — take it from `load-script-def` (after
+  `create-local-method` / `create-company-global-method` it is a bare hat, which you complete). Type literals:
+  Текст `{"baseType":"String","isArray":false,"type":"Text"}`, Число `{"baseType":"BigDecimal","isArray":false,
+  "type":"Number"}`, Логическое `{"baseType":"Boolean","isArray":false,"type":"Bool"}`, экземпляр БО
+  `{"baseType":"BoiRefCode","boCode":"<BO code>","isArray":false,"type":"Bo"}`; an array parameter adds
+  `"isArray":true`.
+
+**Expressions.** **Each expression id is referenced EXACTLY ONCE** — the graph is a strict tree; a value needed
+twice is two copies of the subtree. **`value` is always a string** (`"0"`, `"yes"`).
+
+```json
+{"exprValueType":"CONST","valueType":{"baseType":"String","type":"Text"},"constType":"String","value":"текст","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"baseType":"BigDecimal","type":"Number"},"constType":"BigDecimal","value":"42","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"type":"Bool"},"constType":"Boolean","value":"yes","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"type":"Bool"},"constType":"Boolean","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"baseType":"BoRefCode","type":"Bo","isArray":false},"constType":"BoiRefCode","boCode":"<BO code>","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"baseType":"BoRefCode","type":"Bo","boCode":"Operator"},"constType":"BoRefCode","boCode":"Operator","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"baseType":"BoiRefCode","type":"Bo","boCode":"MODEL_ERROR_CODE"},"constType":"BoiRefCode","boCode":"MODEL_ERROR_CODE","boiId":"<row id>","type":"ExprValue"}
+{"exprValueType":"CONST","valueType":{"baseType":"SingleSelectRefCode","type":"SingleSelect","boCode":"Operator","fieldCode":"operator_type"},"constType":"SingleSelectRefCode","boCode":"Operator","fieldCode":"operator_type","optionId":"<option CODE>","type":"ExprValue"}
+{"exprValueType":"CONST","constType":"Enum","valueType":{"type":"EnumRef","baseType":"DateDeltaUnit","enumNativeName":"DateDeltaUnit"},"enumBaseType":"DateDeltaUnit","enumValue":"DAYS","type":"ExprValue"}
+{"exprValueType":"CONST","constType":"JavaObjectFactories","objectDescriptor":"BEAN_METHOD-DateExtensions-now","valueType":{"type":"Object","baseType":"Date"},"type":"ExprValue"}
+{"exprValueType":"VAR_REF","varBlockId":"<BlockNewVar | BlockForeach | parameter id>","type":"ExprValue"}
+{"exprValueType":"THIS_PROCESS","constType":"BoiRefCode","type":"ExprValue"}
+{"opType":"Concat","leftExprId":"<expr>","rightExprId":"<expr>","more":{"<id>":{"opType":"Concat","order":10,"exprId":"<expr>"}},"type":"ExprOp"}
+{"leftExprId":"<expr>","actId":"F-substring-K-FIX-T-String","argExprIds":{"startIndex":"<expr>","endIndex":"<expr>"},"type":"ExprAct"}
+{"funcName":"is_formula","args":{"<callee parameter id>":{"name":"#текст#","order":1,"exprId":"<expr>"}},"type":"ExprCall"}
+```
+
+In order: text, number, boolean (`"yes"`/`"no"`); the two EMPTY header constants — a boolean without `value`
+(IDE `<пусто>`) and a record of a BO without `boiId` (IDE `БО/<name>.<пусто>`; `valueType.baseType`
+`BoRefCode` with `constType` `BoiRefCode`, as the IDE writes it; runtime of `<пусто>` in `ЕСЛИ` `[U]`); a BO
+**type** (left operand of create-instance and `findByFilter`); a concrete **record / dictionary row**; a
+**SingleSelect option** (`optionId` = the option CODE; an option cannot be stored in a variable); an **enum**
+constant; a **built-in object** («Встроенные объекты», `objectDescriptor` from `load-const-field-list`
+`JAVA_OBJECT_FACTORY_LIST`); a variable / parameter reference; **`THIS_PROCESS`** = the record the script runs
+on (IDE «ЭТА ИНСТАНЦИЯ» in a BO script, «ЭТОТ ПРОЦЕСС» in a process); an operator (third and further operands
+in `more`, by `order`); an action (`argExprIds` keyed by the ARGUMENT NAME of `load-act-details`; none → no
+`argExprIds` key); a method call (**`args` keyed by the CALLEE's parameter id**, each value an OBJECT
+`{name, order, exprId}` — `name`/`order` cosmetic; the callee must exist first). An empty text constant read
+back has no `value` key. A string compare of unknown operand types: `('' ⊕ #код#) Eq #токен#`.
+
+**The enum-typed keys — write ONLY these values** (anything else bricks the BO's scripts for good, trap 49):
+
+| key | values |
+|---|---|
+| `type` (block) | `BlockNewVar` `BlockAssign` `BlockIf` `BlockForeach` `BlockExit` `BlockFixMethod` `BlockFixEntryPoint` (old-panel `BlockSetVar` `BlockSetField` `BlockObject` `BlockReturn` `BlockSwitchExit` `BlockFunc` exist — do not generate them, they cost `WARN used_deprecated_blocks` and an unoptimised run) |
+| `type` (expression) | `ExprValue` `ExprOp` `ExprAct` `ExprCall` (old-panel `ExprConst` `ExprVar` `ExprField` `ExprObject` `ExprNewBoi` `ExprBoiFind` `ExprCreateObject` `ExprFunc` — do not generate) |
+| `exitType` | `FROM_METHOD` `FROM_CIRCLE` `FROM_CIRCLE_ITER` `FROM_METHOD_BY_ARROW` |
+| `exprValueType` | `CONST` `VAR_REF` `THIS_PROCESS` |
+| `constType` | `String` `BigDecimal` `Boolean` `Date` (value format `[U]`) `GeoPoint` (`latitude`, `longitude`, `geoPointShowType` `DEGREES_PARTS`/`DEGREES_MIN_SEC`) `BoRefCode` `BoiRefCode` `SingleSelectRefCode` `Enum` `JavaObjectFactories` `ScriptMethodRef` (`value`) `PrintFormRef` (`boCode`, `printFormCode`) `ReportRefCode` (`reportCode`) |
+| `opType` (17) | `Concat` (◊, more: Concat); `Plus` `Minus` `Mul` `Div` (more: the same four); `And` `Or` `Xor` (more: the same three); `Not` (unary — `leftExprId` only); `Less` `LessEq` `More` `MoreEq` (more: the same four); `Eq` (more: `OrEq` «или =»); `NotEq` (more: `AndNotEq` «и ≠»). Not `Multiply`/`Divide`/`GreaterEq` |
+
+`enumBaseType`/`enumValue`, `actId`, argument names and `varName` are plain strings — a wrong one is reported
+by `translate-script`, not stored as poison. The 16 enums and their values: `load-const-field-list`
+`ENUM_LIST` / `ENUM_VALUE_LIST`.
+
+**Reading and writing data — two hops, each one `ExprAct`:**
+
+    hop 1  field      {"leftExprId":<the object>, "actId":"F-<field code>-K-DYN-S-boi_fields"}
+    hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_fields"}
+
+- `<the object>` is a `VAR_REF` to a BO-typed variable / parameter / foreach element, or `THIS_PROCESS`. The
+  field actId is built from the field CODE alone, case-sensitive. **Without hop 2 you get a reference, not a
+  value** — it compares as if dereferenced but concatenates as garbage; every read ends with hop 2.
+- **Writing a field** = `BlockAssign` whose `leftExprId` is the hop-2 act.
+- `INPUT_TEXT_LANG` (and the system `label` of every dictionary row) reads with a third hop
+  `F-RUS-K-DYN-S-TextLang`; write ONE language with `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` on hop 1, arg
+  `language` = Enum `MybpmLang` `RUS`. Assigning to the hop-3 getter compiles and does nothing.
+- **Clearing a field has no confirmed form** `[U]` — do not invent an empty date/number/option constant; leave
+  it out and say so.
+- **A link-many field** (`BO` TABLE / MULTIPLE, `CO`): hop 2 is `Bo/BoiRefCode[]` — foreach over it; on hop 1:
+  add `F-ADD-K-DYN-R-D-S-boi_fields` (arg `adding`), count `F-COUNT-K-DYN-R-D-S-boi_fields` (also a counted
+  loop's bound), `F-DELETE` / `F-FIRST` / `F-LAST`; `F-VALUE_FROM_LIST-K-DYN-R-D-S-boi_fields` («Значения как в
+  реестре») = the same records in the target registry's sort order, without drafts (`#Значение` has no order
+  and may hold drafts). **Row order is not a contract.** Create a record with `F-CI-K-DYN-R-C-S-bo_fields` on a
+  `BoRefCode` constant. A **`SINGLE`** `BO` field is ONE record, not an array: no `F-ADD`/`F-DELETE`
+  (`exprAct__noDefinitionForActId`), set it by assignment `….<single>.#Значение = #запись#`.
+- **A `CO` element's fields are the composite's attributes**: `CO_CODE-<composite code>-F-<attribute
+  code>-K-DYN-S-boi_fields`, then hop 2; the plain `F-<code>-…` does not exist on a CO element.
+- **A child's field written by a script** reaches the child only when the PARENT form is saved (lost on
+  cancel) — unless `#Сохранить` (`F-saveBoiChanges-K-FIX-T-BoiRefCode`, void, on a RECORD only) stores it at
+  once. A process Script / Switch figure's writes are saved when the figure is left; no `#Сохранить` needed.
+- **A DEV record's script sees only DEV records in its `BO`/`CO` fields** (collections read empty otherwise).
+- A dictionary at run time: `F-findByFilter-K-FIX-T-BoRefCode` on a `BoRefCode` constant → rows (no drafts);
+  `code` matching is case-sensitive.
+
+**Core actIds** (the rest of the 476: walk `load-act-record-list` / `load-act-details` by `valueExtType`, the
+catalogue calls below — an actId found in neither does not exist): `#Длина` `F-length-K-FIX-T-String`;
+`#Пусто?` `F-isEmpty-K-FIX-T-String`; `#Подстрока` `F-substring-K-FIX-T-String` (`startIndex`, `endIndex`;
+0-based, end exclusive); `#Заменить` `F-replaceByTemplate-K-FIX-T-String` (`target`, `replacement`,
+`needReplaceAll`; LITERAL); `#Регулярка?` `F-doesItMatchARegularExpression-K-FIX-T-String` (`regExp`);
+`#Содержит` `F-contains-K-FIX-T-String` (`fragment`); `#В число` `F-convertToBigDecimal-K-FIX-T-String`;
+`#Взять целую часть` `F-intPart-K-FIX-T-BigDecimal`; `#Взять дробную часть` `F-fractionPart-K-FIX-T-BigDecimal`;
+`#Модуль` `F-abs-K-FIX-T-BigDecimal`; `#Округлить до целого` `F-round-K-FIX-T-BigDecimal`; `#Округлять дробную
+часть` `F-roundFractionPart-K-FIX-T-BigDecimal` (`value`); `#не чётное ли?` `F-isOdd-K-FIX-T-BigDecimal`. No
+`indexOf` (only `F-returnLastIndex-K-FIX-T-String`), no `ceil`, no «strip trailing zeros».
+
+**Language limits.** No `while` (a bounded loop = `ЦИКЛ i : 200` + `FROM_CIRCLE` on the exit condition), no
+array literals (an array is only a parameter type or what an act returns), no dynamic dispatch (no call by a
+name from data, no field chosen at run time — one `ЕСЛИ` per field).
+
+**The rules — each has silently broken a real script:**
+1. Never compare numbers with `Eq`/`NotEq` — `BigDecimal.equals`, scale-sensitive (`4/2 = 2` is false);
+   equality = «not less and not more», a zero guard likewise. `Less`/`More` are safe.
+2. Test a boolean as the bare `ifExprId`, its complement as plain «ИНАЧЕ» or `Not`; `Eq` between an act's
+   `boolean` and a «Да/Нет» constant is the always-false `WARN exprOp__equalsDifferentTypes` (above).
+3. Exactly one `FROM_METHOD` per method, at the end.
+4. (Clipboard / `paste` route only) a body pasted without its hat types every parameter as a NUMBER: a text
+   parameter needs `Пусть #x# = '' ⊕ <параметр>` as the first block, or string assignments vanish. A body that
+   reads parameters goes by `apply-update-cmd` with the hat, never by `paste` (above).
+5. No chained comparison — `a > b > c` is `(a > b) > c`; use `And` or nested `ЕСЛИ`.
+6. Every expression referenced exactly once.
+7. Variable names unique within a scope, loop elements included.
+8. `#Подстрока` with `start >= end` returns the WHOLE string — guard `ЕСЛИ конец > начало … ИНАЧЕ x = ''`.
+9. `#Заменить` is literal; a broken regex in `#Регулярка?` returns `Нет` silently; anchor `^…$`; inside `[…]`
+   escape punctuation (a bare `-` is a range) but never backslash a letter (`\o` breaks, `\d` is a digit
+   class) — words go into `^(?:or|and)$`.
+10. Number → text is `BigDecimal.toString()`: the scale survives (`3.000000000000`) and `0/100` prints `0E-30`.
+11. No `while` (above); bind a loop bound to a value that cannot change inside it.
+12. Write callees before callers.
+13. Enum-typed keys take only the values of the table above.
+
+**Self-check before every `apply-update-cmd`** (the server stores any shape; `translate-script` catches only
+part of it): (1) walking from the hat / entry point by `downBlockId` / `thenBlockId` / `bodyBlockId` /
+`branches[*].blockId` reaches every block exactly once; (2) no dangling id (`*ExprId`, `exprId`, `argExprIds`
+values, `blockId`, `circleBlockId`) — `actId`, `targetArrowId`, `boiId`, parameter ids are external; (3) every
+expression referenced exactly once, none zero times; (4) every `VAR_REF.varBlockId` is a parameter id of the
+hat or a `BlockNewVar` / `BlockForeach` earlier on the path; (5) no name re-declared while in scope; (6) every
+id and every `branches`/`more` key is 16 characters; (7) the house style below; (8) every object-valued key
+(`args`, `argExprIds`, `branches`, `more`, `params`, `valueType`) has exactly the shape of the templates above.
+
+#### House style — naming and layout of a script (same rule as `MYBPM-IMPORTS.md` §0S.2a)
+
+The platform enforces none of this (`varName` is a free string); it is the convention every script for this
+user follows — apply it when writing, and do NOT flag it as a defect when reading a script back.
+
+**Language.** Variable and module names are **Russian**. Exceptions: method **parameters** are English
+`snake_case` with no decoration (`step`, `formula`, `model_step`); loop **counters** are bare `i`, `j`, `k`.
+
+**Decoration — what the variable holds decides the wrapper:**
+
+| holds | wrapper | case | example |
+|---|---|---|---|
+| a field reference — anything that has `.#Значение` (hop 1, no VALUE) | `~…~` | first letter capital | `~Статус~`, `~Шаги~` |
+| a BO type (the `BoRefCode` constant) | `%…%` | the BO's **display name**, not its code | `%Шаг модели%` |
+| a collection of ONE element by design | `[…]` around the element's own name | element style | `[#ответственный#]`, `[~Ссылка~]` |
+| a collection that may hold MORE than one | `<…>` around the element's own name | element style | `<#шаг#>`, `<~Ссылка~>` |
+| everything else — text, number, date, a **record (instance)** | `#…#` | **all** lower case | `#сумма ндс#`, `#заявка#` |
+| a module | `\|…\|` | free | `\|Проверка ИНН\|` |
+| a loop counter | none | — | `i`, `j` |
+
+- A **record is `#…#`**, the **field holding records is `~…~`**: `~Шаги~` is the field, its `.#Значение` is
+  `<#шаг#>`, one element is `#шаг#`. A field with a plain value is `~…~` too (`~Статус~` = `#заявка#.Статус`).
+- `[…]` vs `<…>` is decided by design, not by the run-time count; the element inside is singular, in its own
+  style.
+- **A boolean ends in `?` inside the wrapper**: `#найдено?#`, `~Активен?~` (modules excepted).
+- **A trailing `*` marks the inner twin of an outer variable**: a nested scope that needs its own variable for
+  the same thing keeps the outer plain and names the inner with `*` before the closing wrapper — `~Человек~`
+  in the parent loop, `~Человек*~` in the child; `~Объем~` of a row, `~Объем*~` of the record made from it.
+  **It is the convention, not a defect — never flag it.**
+- **Templates**: a name may embed another's — `#пароход ${#имя парохода#}#` («the пароход whose name is in
+  `#имя парохода#`»); the `${…}` stays in `varName` literally, nothing substitutes it.
+
+**Layout — declarations first.** A script (and every module) opens with a header of `Пусть` blocks; below it
+only assignment and logic (loop elements are declared by their loop). A header line declares empty or
+initialises at once:
+
+| kind | empty declaration | IDE shows |
+|---|---|---|
+| text | `Пусть #текст# = ''` | `''` |
+| number | `Пусть #сумма# = 0` | `0` |
+| boolean | `Пусть #найдено?# = <пусто>` — a `Bool` CONST without `value` | `<пусто>` |
+| record | `Пусть #шаг# = %Шаг модели%.<пусто>` — a `BoiRefCode` CONST with `boCode`, without `boiId` | `БО/<name>.<пусто>` |
+| field reference | none — initialise: `Пусть ~Статус~ = #заявка#.Статус` | |
+
+**Modules.** A module is a **boolean variable** `|Имя|`, unique within the Company, used **only** as the sole
+condition of an `ЕСЛИ` with **no `ИНАЧЕ ЕСЛИ` and no `ИНАЧЕ`**: header `Пусть |Проверка ИНН| = Да` (Да / Нет /
+`<пусто>`), any assignment on the way switches it, `ЕСЛИ |Проверка ИНН|` holds the module's own header and logic.
+- The body of a module is **byte-identical everywhere** in the Company — change one, change all.
+- **No `ЭТА ИНСТАНЦИЯ` / `ЭТОТ ПРОЦЕСС` inside a module**; the record comes in as an outer variable.
+- A module uses its own variables and outer ones; every place it is used must have, in scope, outer variables
+  of exactly those names and types.
+- Modules nest, and one module may be used more than once — two copies in two `ЕСЛИ` bodies do not clash
+  (names are unique per scope). **Compose anything but a trivial script out of modules.**
+
+Self-check: every name decorated, `#…#` all lower case, inner twin ends in `*`, booleans end in `?`, counters
+bare, header before logic, a module's `ЕСЛИ` holds only `|…|` with no other branch, no `ЭТА ИНСТАНЦИЯ` inside a
+module, every copy of a module byte-identical.
+
+#### What the built-in operations do at run time (same as `MYBPM-IMPORTS.md` §15)
+
+- **Numbers are Java `BigDecimal`** `[C]`: `Eq` = `equals` (scale-sensitive: `2.0 = 2`, `4/2 = 2`, `1+1.0 = 2`
+  all false; `Eq 0` misses `0.0`), `Less`/`More` = `compareTo`. Division has **scale 30** and never throws on a
+  non-terminating quotient (`1/3` → `0.333…` 30 digits); a number FIELD shows its own display format.
+  `#Округлять дробную часть: N` = `setScale(N)`; `#Взять целую часть` truncates toward zero (negative input
+  `[U]`). Division by zero `[U]` — guard divisors with `Less`/`More`.
+- **Number → text** (`'' ⊕ число`) = `BigDecimal.toString()` `[C]`: the scale stays, and `0/100` gives `0E-30` —
+  parse with `^[-+]?[0-9]+(?:\.[0-9]+)?(?:[Ee][-+]?[0-9]+)?$`. `#В число` needs a DOT separator `[U]`. `Less`/`More`
+  on TEXT compare lexically (`"10" < "9"`) `[I]` — wrap both sides in `#В число`.
+- **Strings**: `Eq` is case-sensitive and nothing folds case `[C]`; `#Заменить` is literal `[C]`; `#Подстрока`
+  0-based, `start >= end` → the whole string `[C]`.
+- **Regex = `java.util.regex`**: a `PatternSyntaxException` is swallowed (returns `Нет`) `[C]`; `regExp` may be a
+  variable `[C]`; anchor `^…$` (find vs matches `[U]`).
+- **Booleans**: a checkbox's value act is a valid bare `ЕСЛИ` condition `[C]`; concatenated into text it gives
+  `true` / `false` (not `Да`/`yes`/`1`) `[C]`. `Or` `Xor` `Not` `LessEq` `MoreEq` `OrEq` `AndNotEq` run correctly `[C]`.
+- **Control flow**: an `ИНАЧЕ ЕСЛИ` chain runs ONE branch; an early `FROM_METHOD` inside a branch works (the
+  blocks after the `ЕСЛИ` do not run) `[C]`; `FROM_CIRCLE` works from inside a branch of its loop `[C]`; no
+  iteration over a record's fields or over BO codes.
+- `F-CI` creates the record immediately; one never `F-ADD`ed to a list may stay an orphan `[I]`.
+
 #### Wiring scripts onto a BO headlessly — `save-bo-scripts` `[C]`
 
 The IDE's own sequence; it works alone, also on a BO that has NO scripts:
@@ -2141,11 +2602,17 @@ The IDE's own sequence; it works alone, also on a BO that has NO scripts:
 1. `v2/bo-scripts-editor/load-bo-script-versions` P `{boId}` → a BO that never had scripts still has one
    version, `isTest:true`, `isWork:false` — take its `boScriptModId`. (A BO without scripts is absent from
    `script-browser/load-tree`; find its id with `load-bo-id-by-code` P `{boCode}`, §R4.)
+   **That implicit first version is blind** `[C]` (trap 68): its `load-bo-def-list {scriptModuleId}` is
+   `list: []`, so every field act fails `translate-script` with `exprAct__noDefinitionForActId` and
+   `in-work-bo-script-version` refuses it. First `copy-bo-script-version` P `{boId, boScriptsId}`, re-read
+   `load-bo-script-versions` and wire / write into the COPY (for a test version after promoting: copy again +
+   `in-test-bo-script-version`). A BO whose scripts came in by archive is not affected.
 2. `v2/script/load-new-ids` P `{count: N}` → N fresh script ids (one per hook / field script).
 3. `v2/bo-scripts-editor/save-bo-scripts`, **everything in the BODY half**:
    `{id: <boScriptModId>, boId, onOpenFormScriptId, afterSaveScriptId, onCloseScriptId,
    onInstanceCreationId, fieldScripts: {<fieldID>: {afterChangeScriptId}}, methodScriptIds: []}` → empty
-   200. Keyed by field ID here (the archive keys by CODE). Send the whole record — it replaces the wiring.
+   200. Keyed by field ID here (the archive keys by CODE). Send the whole record — it replaces the wiring. **To unwire a hook**, send the record with that
+   hook's id `null` (or a field left out of `fieldScripts`) `[I]` — re-read `load-bo-scripts` to confirm.
 4. Each script is now empty (`load-script-def` → `{blocks:{}, expressions:{}}`): write its body with
    `paste` + `apply-update-cmd` (above), hat and exit included, then `translate-script`.
 5. **A TEST version runs only on test records** (`boiState: DEV`, the registry tab «Тестовые»); ordinary
@@ -2153,7 +2620,7 @@ The IDE's own sequence; it works alone, also on a BO that has NO scripts:
    DEV records in its `BO`/`CO` fields** `[C]` — links to ordinary records read as an empty collection, so test
    link logic with DEV children, or promote the version and test on an ordinary record (`MYBPM-IMPORTS.md` 0S.7). `in-work-bo-script-version`
    P `{boId, boScriptsId}` makes it the work version and the stand immediately creates a new test
-   version (a copy, next number).
+   version (a copy, next number). The UI control that publishes a version: not known yet `[U]` — §12.
 
 - The UI lists every field in «Изменение поля» **except `TAB_GROUP` and `PROGRESS_BAR`**; the wiring
   itself accepts them, and scripts on both fire `[C]`.
@@ -2195,6 +2662,36 @@ toolbox holds exactly: ТОЧКА ВХОДА, «Пусть переменная 
 opens «выберите значение» (15 kinds; in a BO script `THIS_PROCESS` is labelled «ЭТА ИНСТАНЦИЯ»); a
 second-level list such as «Встроенные объекты» may open EMPTY («Данных нет») until «Загрузить ещё» is
 pressed. The red dot with a number at the top right is the count of `translate-script` diagnostics.
+
+#### Pasting a script in the UI — the canvas context menu «Вставить»
+
+The UI route for a script body (same protocol as `MYBPM-IMPORTS.md` §0S.12 / §14); the JSON is the clipboard
+form of §5g «The script language» (`copiedType: "SCRIPT_BLOCKS"`, `startBlockIds` = ONE id).
+
+1. **The path that works is the canvas CONTEXT MENU** `[C]`: open the hook / method in «Настройка скрипта»,
+   clear the old body, right-click the empty canvas, pick **«Вставить»**. Ctrl+V pressed by a human user
+   is `[U]`. Under browser automation the menu reads `navigator.clipboard.readText()` and fails — override it
+   first and click with a REAL mouse click (§10 «Pasting into the Block IDE from automation»).
+2. **Put the JSON on the clipboard as text** `[C]`: on Linux/Wayland `wl-copy --type text/plain < file.json`;
+   a bare `wl-copy` advertises `application/json` and the paste is silently ignored. Check with
+   `wl-paste -n | md5sum` against the file. `wl-copy` daemonises — never end a piped script with it.
+3. **Hats** `[C]`: a fragment whose `startBlockIds` point at a `BlockFixMethod` is silently NOT pasted, even
+   onto an empty canvas — strip the hat (drop it, point `startBlockIds` at its `downBlockId`, copy its
+   `x`/`y` onto that block). A hook / process script WITH its `BlockFixEntryPoint` pastes. A pasted body
+   types every method parameter as a Number (rule 4 of «The script language») — a body that reads its
+   parameters goes by `apply-update-cmd` instead (§5g «Writing a script headlessly»).
+4. **A new method is created first, empty** `[C]`: «Локальные методы» → add (name, parameters, return type)
+   — or `create-local-method` / `create-company-global-method` (above) — then copy it out to learn the real
+   parameter ids before building the body.
+5. **Order** `[C]`: callees before callers (a method pasted before its callee keeps a synthetic param id and
+   must be re-pasted); every method before the process script — **an entry point in the clipboard blocks
+   method pastes**; copy nothing after it.
+6. **Read back**: copy the result out in the IDE (or `load-script-def`) and compare by SHAPE — every id is
+   regenerated on paste. Patch the live copy, never re-paste a whole script «just in case»: it reverts every
+   IDE edit made since. The menu's paste is `v2/script/paste` + one `apply-update-cmd`, so the API route of
+   «Writing a script headlessly» does the same with no UI.
+7. **After a structure import of global methods**, touch one in the IDE (any edit saved) or by the API
+   `apply-update-cmd` (above): the running copy of the global module is refreshed only then `[C]`.
 
 ### 5h. Field settings — «Обязательное», «Уникальное», «Выпадающий список» `[C]`
 
@@ -2898,7 +3395,16 @@ the `fieldScripts` map of `save-bo-scripts` (§5g «Wiring scripts onto a BO hea
   `client/save-current-boi` and `create-boi/…` do nothing on the card. Any other url does nothing either.
 - Worked example: buttons, each with its own field script:
   `RestRequest` GET → `resultCode` / `resultAsText` into the record's fields
-  (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a).
+  (`MYBPM-IMPORTS.md` §0S, `RestRequest` in §12a). The GET `[C]`: `Пусть #запрос# = Создать Rest-запрос`
+  (`JavaObjectFactories` `BEAN_METHOD-RestExtensions-createJsonDeck` → `Object/RestRequest`) →
+  `#запрос#.адрес = …` (`F-address-K-FIX-T-RestRequest`, write-only) → `#запрос#.Метод вызова = GET`
+  (`F-method-K-FIX-T-RestRequest`, Enum `RestRequestMethod` `GET`/`POST`/`PUT`) → optional
+  `#запрос#.#Заголовок(name, value)` (`F-setHeader-K-FIX-T-RestRequest`, `BlockAssign` without right) →
+  `Пусть #ответ# = #запрос#.#вызвать` (`F-call-K-FIX-T-RestRequest` → `Object/RestResponse`) →
+  `F-resultCode-K-FIX-T-RestResponse` (Number; into text via `'' ⊕ …`) and `F-resultAsText-K-FIX-T-RestResponse`.
+  **A 4xx does not throw** — the script goes on with `resultCode` 401/403 and the error body; every non-2xx
+  also raises a user notification that shows the WHOLE url, query string included — put secrets in a header.
+  A Cyrillic value may go into `адрес` raw; the platform encodes it.
 
 #### What a BUTTON's `url` does on the record card `[C]`
 
@@ -3145,7 +3651,11 @@ onto the SAME child BO keep separate lists per record.
   right. The UI also turns on a registry column when `tableColToShow` is `null` (`assignTableColToShow`).
 - **Row order**: before the card is saved the table shows rows in the order they were added; after
   «СОХРАНИТЬ» and reopening it shows them sorted by the child's first column. A script must not rely on
-  either — sort it itself (`MYBPM-IMPORTS.md` §0S.7).
+  either — sort it itself: set the child's sort (`save-bo-table-sort`, below) and read the rows with
+  `F-VALUE_FROM_LIST-K-DYN-R-D-S-boi_fields` («Значения как в реестре» — the registry's order, no drafts)
+  instead of `#Значение`, or do a selection pass (`ЦИКЛ COUNT раз { лучший = 10⁹; foreach строка: ЕСЛИ номер >
+  пред И номер < лучший → лучший = номер; ЕСЛИ лучший < 10⁹ → пред = лучший; обработать }`, only `More`/`Less`/
+  `And`) `[C]` (§5g «The script language»).
 - **Sorting the table** `[C]` (travels in an archive as the child's `sortFieldCode` /
   `sortFieldOrder`, `MYBPM-IMPORTS.md` §2, `[C]`): the table reads its order from the CHILD BO —
   `load-bo-table-sort {boId:<child>}` (params) → `defaultOrdering`. The arrow on the header and the
@@ -3709,7 +4219,14 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
   `CLOSE_DIALOG_SAVE` until a script runs `#Удалить ошибку`. Meta assigns from a script (`#Только для чтения`,
   `#Обязателен`, `#Видимость`) arrive as `fieldFormCommandsSometimes` `READONLY` / `REQUIRED` / `HIDE_FIELD` with
   `commandB` — client-side only: `save-field-value` into a script-read-only field is still stored
-  (`MYBPM-IMPORTS.md` §12a «Meta assign and field errors at run time»).
+  (`MYBPM-IMPORTS.md` §12a «Meta assign and field errors at run time»). The acts, all on the FIELD reference
+  (hop 1): `F-Readonly-K-DYN-R-M-S-boi_fields` / `F-Required-K-DYN-R-M-S-boi_fields` /
+  `F-Shown-K-DYN-R-M-S-boi_fields` (assignable Bool), `F-addError-K-FIX-T-BoiFieldRefCode` (arg
+  `scriptMultiLangText`) and `F-removeError-K-FIX-T-BoiFieldRefCode`. The error text is a built-in object:
+  `Пусть #текст ошибки# = Создать мультиязычный текст` (`JavaObjectFactories`
+  `BEAN_METHOD-ScriptMultiLangTextFactory-newMultiLangText`), then `#текст ошибки#.Добавить(text, RUS)`
+  (`F-addText-K-FIX-T-ScriptMultiLangText`, args `text`, `lang` = Enum `MybpmLang` `RUS`); both statements and
+  `#Добавить ошибку` itself are `BlockAssign`s with no `rightExprId` (§5g «The script language»).
 - `OPEN_COUNT` stayed `0` on a record opened only through these calls (the UI's records counted up) `[I]`.
 
 **The `value` of `save-field-value`, per type** — what the client's field classes send; `[C]` = stored and read back:
@@ -4445,7 +4962,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 49. **One unknown enum value in a script def makes ALL scripts of that BO unreadable — for good** `[C]`
    . Once `apply-update-cmd` stores e.g. `"opType":"GreaterEq"`, every script call on that
     BO (read, translate, versions, apply, undo, delete) answers `IllegalArgumentException: No enum
-    constant …`, the fix included. Only listed enum values (`MYBPM-IMPORTS.md` §10–§12a) may be written;
+    constant …`, the fix included. Only the enum values listed in §5g «The script language» may be written;
     a wrong `actId` or argument name is harmless. §5g «Writing a script headlessly».
 50. **A wrong `PROGRESS_BAR` value makes the whole draft unreadable** `[C]` —
     `save-field-value` stores `["<stepId>"]` without complaint, then `load-field-data` answers
@@ -4558,7 +5075,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
 
 The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` §20.
 
-- What `save-business-form-field` is actually for, since it does not create fields.
+- `save-business-form-field` as the registry-column writer (§5b, `[I]`): send one `fieldList` entry with
+  `tableColToShow:false`, re-read `load-business-object-by-id`; also the unit of `tableWidth` and whether it travels
+  in an archive.
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
 - §5n settings kinds: how to unset a migration monitor BO; what the `languageTag` an import writes
   into every language changes; whether an org unit (`D-<id>` + its record line) resolves on ANOTHER stand; TELEPHONY,
@@ -4571,6 +5090,51 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet
   («Глобальные методы» is answered in §5g).
+- **Constructor controls read off the bundle** (§5b «The rest of the constructor's controls», all `[U]` until run):
+  confirm each row once with the network log on, then re-read `load-business-object-by-id`. Open within them:
+  the WIDGET change-code dialog's endpoint (rename a button's code in the UI); tab-code change and nested tab
+  groups over the API (`update-tab-code`, a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
+  `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
+  scalar `defaultValue` (set it, open «Добавить», see the draft value); the field lock icon in the constructor;
+  `calendarCardTemplates` body and its effect on the calendar; `timelineTemplates` columns (save, export).
+- Changing a field's TYPE: look for a control in the gear / «Инфо» tab; try `editedFields {fieldId, type}`, re-read.
+- Deleting a BO: what happens to its records, menu items, references from other BOs and composites that use it
+  (scratch BO with one of each, delete, re-read each); the UI dialog's buttons.
+- BO groups: `delete-business-object-group` on a group holding a BO (answer, `load-bo-groups`); reordering groups
+  by drag (watch for `save-business-object-group`).
+- A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
+  field, then delete it.
+- The record window size: whether `save-business-object-grid-layout-position` written by a viewer's resize is
+  per user or per BO (resize as a second user, re-read as the first).
+- Structure import UI: whether the import log has a rollback control (open an applied import's row); what status
+  «ПРЕКРАТИТЬ» leaves on a dry run (`load-import-data`).
+- Script and process versions: the UI control that publishes a version (open the version selector, capture
+  `in-work-*`); `change-bo-process-version-comment`, `unset-in-work-version`, `remove-bo-process-version` on a
+  scratch BO, read the versions back.
+- Processes: does a `SCHEDULED` run way ever fire (`startTime` a few minutes ahead, poll for a new process
+  record); process local methods (`bo-process-editor/create-local-method {boProcessId, methodName}`, call it
+  from a Script figure); `stop-step` / `push-step-terminate-all` / `go` / `start-dev-process` on a DEV process
+  standing in a Form; a Form timer (`createTimer` 1 min, watch `load-process-steps`).
+- Renaming a company-global method: `Set blocks.<hat>.methodName`, then `translate-script` its callers.
+- Rights: the head / employees / department flags of «Из поля» (second non-admin login, one flag at a time,
+  `totalHits`); users / groups / departments create, edit and membership (sniff the «Пользователи» / «Рабочая
+  группа» screens); switching tenant as a multi-company user (look for a company-selector call).
+- Menu items: the calls behind rename, reorder, «Изменить код», move into another group and
+  «Отображать в моб. приложении» / `needCountMenuItem` (click each kebab action with the network log on);
+  where a menu item's views (timeline, list) are switched in the UI.
+- Kanban: the card-template editor's save in the constructor and a card drag between columns (capture both;
+  check whether the drag fires the dropdown's «Изменение поля» hook) — `move-kanban-card` params.
+- Records: the registry / card controls for Удалить / Архивировать / Восстановить / Дублировать and the params of
+  `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` (tick a row, open both kebabs with the
+  network log on, replay, re-read with `state:"ARCHIVED"`/`"REMOVED"`); the empty value for non-date types in
+  `save-boi-value` / `save-field-value` (`""`, `null`, `[]` on a probe record, `load-boi-values`); whether
+  `save-boi-value` stores a bare option id (one call + read-back); downloading an attached file (click the
+  chip, capture the GET); a rollback of an applied records import (look for `bo-transfer/*rollback*`); the
+  records import dialog, act screen and apply button in the UI; the registry search box and filter panel
+  (capture `load-bo-instance-bracket-table` bodies); the CHAT tab's message send / read and PEOPLE add / remove;
+  deleting a dictionary row still used by records' dropdowns (re-read a record).
+- A `STATIC_TEXT`'s HTML sanitizer = the `TEXTAREA` one? Save `text-transform` HTML into `staticValueMap`, read back.
+- The UI login form and the logout control (walk them once with screenshots).
 
 - **The ES mapping defect of §7** — the defect is in the
   INDEX; a field added later to an old BO sorts fine. What is still open: whether the platform vendor
