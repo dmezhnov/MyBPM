@@ -20,24 +20,20 @@ gets the names wrong: the importer then rejects the file or silently drops what 
 3. **Copy, never compose.** Every `@class`, every key and every `type` value in your file is printed in
    this document — find it there and copy it. A name that merely looks right is invented.
 
-Names a model invents when it skips the reading — each one breaks the import or is silently dropped:
+What a model invents when it skips the reading, by class of mistake. Each class holds for ANY spec — the
+examples are only examples; each broken row breaks the import or is silently dropped. A script has its own
+table at the top of §0S, records at the top of §0X.
 
-| Invented | Real | Where |
-|---|---|---|
-| `TEXT_AREA`, `TEXT`, `NUMBER`, `DATETIME` | `TEXTAREA`, `INPUT_TEXT`, `INPUT_NUMBER`, `FULL_DATE` | 0.5 |
-| `SidebarMenuItemStructDto`, `menuItemType: "BO_REGISTRY"`, a parent menu by id | `MenuItemStructDto`, `menuItemType: "BO"`, `parentMenuItemCode` | 0.5d |
-| `params: {options: [ … ]}` on a dropdown; a dropdown with NO options | `fieldOptionsStruct: {options: {<code>: {fieldOption: …}}}`, at least one option | 0.5 |
-| a number or a sum typed as `DROPDOWN_SINGLE` | `INPUT_NUMBER` | 0.5 |
-| random ids, even from a seeded generator | ids hashed from a seed string per object | 0.7 |
-| `kanbanCardTemplates: {}` on a BO that has a `DROPDOWN_SINGLE` | one template per dropdown | 0.5c |
-| a link to another object as a text field («Поставщик» = `INPUT_TEXT`) | a `BO` field; header–lines = a `SINGLE`↔`TABLE` pair | 0.5a |
-| a dictionary as `category: "BO"` with no `code` / `label` fields | `BO_DICTIONARY` + the two system fields | 0.5b |
-| field ids hashed from the field code alone (`"field." + code`) — every BO with a `work_order` field gets the SAME id | seed = BO code + field code: `"field.Order_work.work_order"` | 0.7 |
-| a `BO` field with `boRefStruct: {"fieldRefs": {}}` — no `boInfo`, nothing `toShow` | `boInfo` of the target + at least one `fieldRefs` entry `toShow: true` | 0.5a |
-| a `BO` field with no `oldRefBoId` («мастер» with no `Person` id) | leave the field out, ask for the id, list it in the report | 0.2c step 8 |
-| a `linkedFieldCode` naming a field the other BO does not have | the code of the OTHER end of the pair, which names this field back | 0.5a |
-| a kanban template keyed by a text or `BO` field; a template on a BO with no dropdown | keys are `DROPDOWN_SINGLE` codes only; no dropdown → `{}` | 0.5c |
-| a status path or a short fixed list as a dictionary (ships empty → a board with no columns) | a local list `FROM_FIELD` with the spec's values | 0.2c steps 5–6 |
+| Class | Invented | Real | Where |
+|---|---|---|---|
+| Names | any `@class`, key, `type` or enum not printed here: `TEXT_AREA`, `NUMBER`, `DATETIME`, `SidebarMenuItemStructDto`, `menuItemType: "BO_REGISTRY"`, a parent menu by id | copied from a template: `TEXTAREA`, `INPUT_NUMBER`, `FULL_DATE`, `MenuItemStructDto` + `menuItemType: "BO"` + `parentMenuItemCode` | 0.5, 0.5d |
+| Field type | a number, sum or date typed as a dropdown; a link to another object typed as text | the type of the VALUE (`INPUT_NUMBER`, `DATE` …); another object = a `BO` field | 0.5, 0.5a |
+| Ids | random ids (even from a seeded generator); any length but 16; one seed for two objects (a field seed from the field code alone gives every BO's `status` the same id) | 16 chars over `A-Za-z0-9@~`, hashed from a seed per object kind (field = BO code + field code), distinct across the whole file | 0.7 |
+| References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
+| Stand data | every reference left out because ONE of them needs stand data | only a reference to `Person` / `Department` / `PersonGroup` needs a stand id; a reference between the BOs of your own file never does — build it | 0.2c step 8, 0.5a |
+| Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
+| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a status path or a short fixed list as a dictionary (it ships empty → a board with no columns) | `BO_DICTIONARY` + the two system fields; statuses and short lists = a local list `FROM_FIELD` with the spec's values | 0.5b, 0.2c steps 5–6 |
+| Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
 
@@ -275,7 +271,8 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    «Person reference») — its `oldRefBoId` is the company's `personBoId`, STAND DATA (0.2a). Or the
    current-user widget / the system «Автор» (0.12, 0.13), which need no id. **No `personBoId` from the
    user → the field is NOT in the file**: ask for the id and list the field in the report (0.2b step 5,
-   first reason). A `BO` field without `oldRefBoId` is a reference to nothing.
+   first reason). A `BO` field without `oldRefBoId` is a reference to nothing. Only THAT field drops out — every reference between
+   the BOs of your own file is still built (0.5a).
 9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
    записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
    table — and NOT dictionaries; those go into one «Справочники» subgroup at the end of the menu group, or
@@ -3402,6 +3399,18 @@ self-contained: every literal below is in the form the IDE itself produces and t
 literally, change only what step 2 of the algorithm says you may change, and **never invent a key, an
 `actId` or an `opType`** — anything you cannot find in this section does not exist in the language.
 
+What a model invents when it skips the reading, by class — each one breaks a script, often silently:
+
+| Class | Invented | Real | Where |
+|---|---|---|---|
+| Names | an `actId`, `opType`, block `type` or key not printed here (an `indexOf`, a `While` block) | only 0S.5–0S.8 and §12a; an unknown enum value bricks every script of the BO | 0S.8, 0S.9 rule 13 |
+| Ids | method parameter ids, process arrow ids or dictionary row ids made up; an id repeated; any length but 16 | those three are copied from the user's copy byte for byte; your own ids are 16 chars, unique in the file | 0S.4 |
+| Delivery | a whole method with its hat for the clipboard; a file without the copy of the empty method | the body only; no copy → pseudocode and a request, no file | 0S.1, 0S.2 step 2 |
+| Structure | expressions nested inline; one expression used in two places | two flat maps linked by id; every expression referenced once | 0S.3, 0S.9 rule 6 |
+| Language | `while`, an array literal, a field chosen at run time | a counted loop + «ВЫЙТИ ИЗ ЦИКЛА»; one `ЕСЛИ` per field | 0S.1 item 3, 0S.9 rule 11 |
+| Comparisons | `Eq` on numbers or on a boolean; `a > b > c` | «не меньше и не больше»; the boolean itself or `Not`; `And` | 0S.9 rules 1, 2, 5 |
+| Checking | «no red in the IDE» taken as «works» | the 0S.11 self-check and a copy back from the IDE | 0S.2 step 8, 0S.11 |
+
 ### 0S.1 The artefact
 
 You deliver **one JSON file that is put on the clipboard**. The user opens the method (or the process
@@ -5729,6 +5738,18 @@ routes — is in `MYBPM-UI-API.md` §6 and §0U R7; **this part is the file itse
 **Read this part if your job is «fill me a file that loads these records into BO X».** Like §0 and §0S it
 is self-contained for the FORMAT; unlike them it cannot start from a blank page — the file is always a
 FILLED-IN TEMPLATE taken off the stand, never a sheet you compose. That is the first thing to ask for.
+
+What a model invents when it skips the reading, by class — each one fails rows or the whole file:
+
+| Class | Invented | Real | Where |
+|---|---|---|---|
+| Source | a sheet composed from scratch | the stand's own template or export, filled in | 0X.1, 0X.3 |
+| Cells | numeric or shared-string cells | every cell `inlineStr`, numbers and dates as text | 0X.4 rule 1 |
+| Columns | columns by position; a bare sub-header («Почта») | the (block, field) label pair; the target's label with its tab prefix | 0X.4 rules 3, 11 |
+| Values | a dropdown by code or by a value the dictionary lacks; a reference to a row of the same file | the label of an existing value; targets already on the stand | 0X.2 steps 3–4, 0X.3 |
+| Links | a column for the SINGLE side of a linked pair; a child edited through a nested block | the TABLE side; the child's own file | 0X.4 rules 4, 10 |
+| Updates | a blank cell meaning «leave as is» | a blank cell erases; drop the column to keep the field | 0X.4 rule 7 |
+| Stand data | the unique field or the dictionary values guessed | asked for (0X.3) | 0X.3 |
 
 ### 0X.1 The artefact
 
