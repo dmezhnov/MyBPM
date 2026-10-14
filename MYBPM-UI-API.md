@@ -509,7 +509,10 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
    (`+ tabId`). An unknown `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто»
    answer can be real. **A tab has only the VIEW right** `[C]`: VIEW «никто» on a tab hides the tab from
    every non-admin AND drops its fields from their registry columns; a non-admin's save keeps the hidden
-   values; **an admin still sees the tab and its columns** `[C]`. That is the hidden system tab «Системные»
+   values; **an admin still sees the tab and its columns** `[C]`. The form learns it per user: the
+   `TAB_GROUP` entry of `v2/instance-field-form/load-field-data` lists in `tabs[]` only the tabs that user may see
+   (`load-field-structure` still lists every id in `tabIds`), and a group with no visible tab is missing from
+   `v2/instance-form/load-field-structure` altogether `[C]`. **Hidden is not secret** `[C]`: the rule only filters what the form and the registry draw — a non-admin still reads the tab's values through the API by its tab id (`v2/business-object-instance/v2/load-boi-values` with `tabId`, `v2/instance-form/load-field-structure-tab` + `v2/instance-field-form/load-field-data-tab`). Never put a password, a key or a personal secret on «Системные». That is the hidden system tab «Системные»
    (`tab_system`) every form gets for its technical fields (`MYBPM-IMPORTS.md` §0.8a step 6).
 7. **Verify** by calling `load-access-group` again and comparing — this is the one area where the UI
    silently sends nothing when it thinks nothing changed. What each subject really opens (field content,

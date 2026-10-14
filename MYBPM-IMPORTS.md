@@ -673,7 +673,10 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    every one on a tab with code `tab_system`, label «Системные», the LAST tab of the form's top-level
    `TAB_GROUP` (`isDefault: false`, `chosenAccessRight: true`), and ship the tab rule «никому» (step 6).
    A form with no other tabs gets a `TAB_GROUP` holding only that tab, placed UNDER the ordinary fields.
-   What a non-admin sees in place of such a lone group is `[U]`. Never put a field a user must fill there.
+   A non-admin does not get such a lone group at all — the form drops a `TAB_GROUP` none of whose tabs
+   they may see `[C]`; the window keeps the `h` that counts it (admins see the group), so they see an empty
+   band of the group's height under the fields `[I]` — keep the system tab short. Never put a field a user
+   must fill there.
 2. **Groups.** When the visible fields fall into two or more themes, open each theme with a heading: a
    `STATIC_TEXT` with `"staticValue": {"rus": "<h3><b>Тема</b></h3>"}`, `hideLabel: true`,
    `tableColToShow: false` (else every heading is an empty registry column) and `rows: 3` `[C]` (2 rows
@@ -696,12 +699,13 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    - «rows of a tab» = the bottom of its lowest cell (`max(y + rows)` of the fields on it).
 6. **The system tab rule.** A tab carries ONE right only — VIEW (`[C]`; edit follows from it) — and «никому»
    (`view.denyAll: true`, empty `orgUnitIds`) hides the tab AND its fields' registry columns from every
-   non-admin user; a non-admin who edits and saves the record keeps the hidden values `[C]`. **An admin
+   non-admin user; a non-admin who edits and saves the record keeps the hidden values `[C]`. **Hidden is not secret** `[C]`: the rule only filters what the form and the registry draw —
+   a non-admin still reads the tab's values through the API by its tab id (`v2/business-object-instance/v2/load-boi-values` with `tabId`, `v2/instance-form/load-field-structure-tab` + `v2/instance-field-form/load-field-data-tab`). Never put a password, a key or a personal secret on «Системные». **An admin
    always sees the tab** `[C]` — admins bypass rights; say so to the user, «hidden from everyone» cannot
    cover admins. The rule travels in an `AccessStructDto` (§7), and an `AccessStructDto` REPLACES the
    BO's whole rights (0.9 rule 10), so:
    - **a NEW BO** — ship one `AccessStructDto`: every action of `boAccessStruct` open and the tab rule,
-     the line printed below `[I]`;
+     the line printed below `[C]`;
    - **an EXISTING BO** — take its `AccessStructDto` line from a FRESH export of the stand and add only
      `fieldAccessStructMap.<tabs code>.tabAccessStructMap.tab_system` to it; never rebuild it from the
      template (that opens what the stand had locked).
@@ -3022,6 +3026,7 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   applied separately). «никому» on VIEW hides the tab from every non-admin user — the tab disappears from
   the card AND its fields disappear from the registry columns, and a non-admin who edits and saves the
   record keeps the hidden fields' values `[C]`. **An admin always sees the tab and its columns** `[C]`.
+  A `TAB_GROUP` all of whose tabs a user may not see is dropped from that user's form `[C]`. **Hidden is not secret** `[C]`: the rule only filters what the form and the registry draw — a non-admin still reads the tab's values through the API by its tab id (`v2/business-object-instance/v2/load-boi-values` with `tabId`, `v2/instance-form/load-field-structure-tab` + `v2/instance-field-form/load-field-data-tab`). Never put a password, a key or a personal secret on «Системные».
   This is the hidden system tab of 0.8a step 6.
 - Semantics `[I]`: `denyAll:false` = «всем»;
   `denyAll:true` + empty `orgUnitIds` + all-false `authorsField` = «никому»; `denyAll:true` + ids and/or
