@@ -48,7 +48,7 @@ With a checkout of the MyBPM repository, its `tools/` sits at `../../tools/` (ru
 - `bun tools/validate-archive.bun.ts <file.mybpm.zip>` — checks an archive against §0; FATAL means the
   import will fail. Run it on every archive you build.
 - `bun tools/make-probe-archive.bun.ts …` — a stand-verified archive generator; prefer it over writing a
-  builder (`### 0.11 Building and delivering` shows the commands).
+  builder (`### 0.11 Building the zip` shows the commands).
 
 Without the repository, build the zip yourself exactly as `### 0.1 The artefact` says and walk
 the self-check by hand.
