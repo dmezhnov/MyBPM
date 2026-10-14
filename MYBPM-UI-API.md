@@ -567,7 +567,7 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
 
 Controller **`v2/menu-item`** (the `business-objects` menu-access endpoints fail with `NoBoWithId`).
 **Or ship the items IN the structure archive** `[C]`: a `MenuItemStructDto` line per item,
-everything by code, the item's views (list, kanban) included (`MYBPM-IMPORTS.md` 0.15 / §5e) — then R3
+everything by code, the item's views (list, kanban) included (`MYBPM-IMPORTS.md` 0.5d, 0.15 / §5e) — then R3
 alone builds BO + menu (+ kanban), and a rollback of that import removes the menu items too. The API
 route below is for items on BOs that are already on the stand, and for access rights.
 
@@ -1067,7 +1067,7 @@ Everything in this section is `[C]`.
   (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
   archive addresses it (`MYBPM-IMPORTS.md` §5e); the kebab's «Изменить код» edits it.
 - **Menu items also travel in a structure archive** `[C]` — `MenuItemStructDto`, parent /
-  BO / kanban column field all by code (`MYBPM-IMPORTS.md` 0.15, §5e); export them with the menu basket
+  BO / kanban column field all by code (`MYBPM-IMPORTS.md` 0.5d, 0.15, §5e); export them with the menu basket
   of §0U R4a.
 - **A menu item's kanban URL mislabels its ids** `[C]`: opening a BO item with the kanban on
   goes to `/business-objects/viewing-single/bo/<menuItemId>/kanban-view?businessObjectId=…&fieldId=…&menuItemId=…&boId=…`,
@@ -1150,7 +1150,7 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 - **WRONG** (fails with `NoBoWithId` for menu items): `v2/business-objects/load|save-business-menu-access-group`.
 - **They travel in an archive** `[C]`: the item's `MenuItemStructDto` gets `chosenAccessRight:true`
   + `accessGroup` (the `AccessStructDto` action shape, `orgUnitIds:["G-<id>"]`)
-  (`MYBPM-IMPORTS.md` §0.15, §5e). The calendar and timeline views of
+  (`MYBPM-IMPORTS.md` §0.5d, §0.15, §5e). The calendar and timeline views of
   `boPages` travel too — the timeline as `timelineFieldCode` (a `PERIOD` field's code) — `[C]`;
   set them over the API with `save-menu-item-bo-pages` params `{menuItemId}`, body = the whole `boPages`
   (`timelineFieldId` = a field of `v2/timeline/load-fields {boId}` — the BO's `PERIOD`/`PERIOD_TIME` fields).
@@ -2271,8 +2271,7 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   headless delivery path for a script** `[C]`: `paste` alone writes nothing; the
   `apply-update-cmd` that follows (a `Group` of `Set`s, the `backward` a `Group` of `Unset`s) does, then
   `translate-script` checks and `undo` removes the whole step in one call. Into an empty hook the fragment
-  goes with its `BlockFixEntryPoint` hat and a closing `BlockExit FROM_METHOD` (`MYBPM-IMPORTS.md` §0S.12
-  item 7, §14 «Validator phases»).
+  goes with its `BlockFixEntryPoint` hat and a closing `BlockExit FROM_METHOD` (`MYBPM-IMPORTS.md` §14 «Validator phases»).
 - **`/paste` breaks parameter references** `[C]`: it gets no target (the client posts only `{copied}`), and
   every VAR_REF to a METHOD PARAMETER comes back rewired to a detached carrier `BlockFixEmpty →
   BlockNewVar «Переменная №N» = 0` (a Number CONST), the body under its own `BlockFixEmpty`, not hung under
@@ -2280,8 +2279,7 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   **A method body that reads its parameters is written WITHOUT `paste`** `[C]`: one `apply-update-cmd`
   P `{scriptModuleId, scriptId}` with `Set blocks.<id>` / `Set expressions.<id>` under YOUR ids (any
   16 characters of the id alphabet are taken as they are; `load-new-ids` is optional) plus a `Set` of the
-  whole hat with `downBlockId` = the first body block → `translate-script` `success:true`
-  (`MYBPM-IMPORTS.md` §0S.12 item 7b).
+  whole hat with `downBlockId` = the first body block → `translate-script` `success:true`.
 - **`undo` can wipe an imported def** `[C]`: on a method whose def came from an import and was never edited,
   one `undo` after the first `apply-update-cmd` left the def EMPTY, hat included. Keep the hat from
   `load-script-def` before writing, so a `Set` can put it back.
@@ -3910,7 +3908,7 @@ fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the
 - **A BO with a `DROPDOWN_SINGLE` that has no kanban card template cannot show its map** `[C]`: as soon as it holds a
   record, `load-bracket-boi-points` answers NullPointerException «cardTemplate is null» and the map stays empty;
   the kanban view and the constructor's kanban editor die with the same error. A BO built in the constructor gets
-  the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.14), and
+  the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.5c), and
   an archive BO with a dropdown imported without one is broken this way (trap 61).
 - `v2/kanban/save-kanban-card-template` does NOT repair it (it fills another store, §7). **A re-import with
   `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor come back, records kept.
@@ -4364,14 +4362,14 @@ A kanban is two independent pieces:
    A local-list dropdown (`FROM_FIELD`) qualifies exactly like a dictionary one (`FROM_BO`) `[C]`:
    `v2/kanban/load-kanban-fields {boId}` lists both and the board shows the local options as columns.
    A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
-   (`MYBPM-IMPORTS.md` 0.14).
+   (`MYBPM-IMPORTS.md` 0.5c).
 2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO without it carries `{}`,
    so the server fails and the view shows «cardTemplate is null». **Ship the template
-   inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.14, keyed by the
+   inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
    dropdown's CODE, the card fields by CODE with `locationType` + `archetype`.
 
 **The template, as it goes into the BO's line of the archive** (`BoStructDto`, next to `dynamicFields`;
-same block: `MYBPM-IMPORTS.md` §0.14) `[C]`:
+same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
 
 ```text
 "kanbanCardTemplates": {
