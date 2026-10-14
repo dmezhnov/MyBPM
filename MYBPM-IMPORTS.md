@@ -5050,8 +5050,8 @@ is not running: these translations say nothing about execution on a record.
   `v2/instance-form/validate-apply-remove-draft`, `v2/instance-form/remove-draft`; bodies and value
   formats: `MYBPM-UI-API.md` §6b. A record created through the plain record API (`create-draft`
   + `save-boi-value` + `apply-and-remove-draft`, `MYBPM-UI-API.md` §6a) runs none `[C]`, and **neither does
-  an xlsx record import** `[C]` for a created record (no «Добавление», no «Сохранение», no field script —
-  every marker empty); an xlsx UPDATE of an existing record is the same importer, `[I]`.
+  an xlsx record import** `[C]` — neither for a created record nor for an existing one it updates (matched
+  by its unique field): no «Добавление», no «Сохранение», no field script, every marker empty.
 - A **test** script version runs only on test records (`boiState DEV`, the «Тестовые» tab); ordinary
   records run the **work** version. A BO whose only version is a test one runs nothing on ordinary records.
 - **A field script fires on all 27 field types** `[C]` — `FILE_UPLOAD` (a real uploaded file),
@@ -5420,8 +5420,6 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: what clears `signFieldUnsupported` («такой-же тип подписания») on a referenced BO — nothing on
   the stand does (`MYBPM-UI-API.md` §5i), so only the vendor can answer; until then `massPrintFormCodes`
   never survives an import (§0.13 «SIGNATURE round-trips»).
-- Whether an xlsx UPDATE of an existing record runs any hook (a created record runs none, §15) — needs a BO
-  with scripts AND a unique field to match on.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
 - Whether a CO element's `#Сохранить` stores the SOURCE record, and whether `F-ADD` on a CO field accepts
   a record of a BO that is not one of the composite's sources.
@@ -5457,7 +5455,7 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
 0. **Ask for the stand data of 0X.3.** Without the template file itself there is nothing to fill.
 1. **Take a FRESH template** — an export of the registry (registry kebab → «импорт/экспорт xlsx»), or
    `GET <stand>/web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<…>`
-   (a plain GET with the `token` header, no envelope, `selectedFieldIds` comma-separated → the header rows
+   (a plain GET with the `token` header, no envelope, one `selectedFieldIds=<fieldId>` parameter PER field — a comma-separated list fails `NullPointerException … colHeader is null` → the header rows
    only, no data rows, no table part `[C]`; more in `MYBPM-UI-API.md` §6).
    Columns follow the BO at export time and their positions move between exports.
 2. **Build the column map by LABELS, never by position**: the (row-1 block, row-2 field) pair identifies a
@@ -5654,6 +5652,8 @@ read the failing rows before applying: `load-bo-import-table` `B {importId, pagi
   changes nothing.
 - **Match by the unique field → UPDATE** `[C]`: adding a unique text field «Код» to the built-in «Рабочая
   группа» made its import idempotent. **A BO with neither an ID column nor a unique field always CREATES.**
+- **An xlsx import runs none of the BO's scripts** `[C]` — no hook and no field script, on a created record or
+  an updated one (§15). Values a script would compute must be in the file or filled later through the form.
 - Re-importing a full export with rows APPENDED kept the existing rows and added the new ones. `[C]`
 - Built-in «Рабочая группа» registry format: «Имя» + nested «Руководитель» (Email/Фамилия/Имя) + table
   «Пользователи» (Email/Фамилия/Имя); merges A1:A2 / B1:D1 / E1:G1, freeze A3. **Group membership imports
