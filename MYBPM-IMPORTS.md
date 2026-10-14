@@ -32,7 +32,8 @@ table at the top of §0S, records at the top of §0X.
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
 | Stand data | every reference left out because ONE of them needs stand data | only a reference to `Person` / `Department` / `PersonGroup` needs a stand id; a reference between the BOs of your own file never does — build it | 0.2c step 8, 0.5a |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
-| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a status path or a short fixed list as a dictionary (it ships empty → a board with no columns) | `BO_DICTIONARY` + the two system fields; statuses and short lists = a local list `FROM_FIELD` with the spec's values | 0.5b, 0.2c steps 5–6 |
+| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a status path or a short fixed list as a dictionary (it ships empty → a board with no columns); a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields; statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
+| Layout | `y = index × 3` while a `BO` table is 6 rows and a `TEXTAREA` 4 (fields overlap); `w: 10` and no tabs on every window | `y` = previous `y` + previous `rows`; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
@@ -169,8 +170,10 @@ company even on an empty one, so a `Person` field still needs it asked (or degra
 **A BO defined on ANOTHER LINE OF THE SAME ARCHIVE is not stand data — reference it, do not degrade it**
 `[C]` (the stand keeps the target's `oldId` as its id). When your own archive creates the target, you
 already know its id: you minted it. Write `"oldRefBoId": "<that BO's own oldId>"` plus
-`boRefStruct.boInfo = {code, name, boCategory}` copied from that same line (0.5a), and put the referenced BO
-on an EARLIER line than the one pointing at it. The degrade of the table's third row applies only when the
+`boRefStruct.boInfo = {code, name, boCategory}` copied from that same line (0.5a). **Mint every BO's `oldId`
+from its seed (0.7) BEFORE writing any field**: a header's `TABLE` names its line BO, which sits LATER in the
+file — compute that id from `"bo." + code`, never look it up in a map filled while the lines are built (that
+leaves every forward `TABLE` with `oldRefBoId: ""` and an empty `boInfo`). The degrade of the table's third row applies only when the
 target is NOT in this archive.
 
 **Every id literal printed in this document is `<company-a>`'s, not yours** `[C]` — copying one out of an
@@ -211,8 +214,8 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 2. **Model the objects by 0.2c** — every link between two objects of the spec becomes a `BO` field (0.5a),
    never a text field; every list of values becomes a dictionary (0.5b) or a local list (0.5).
 3. **Build every row routed to an archive line, a hook script or a process — in this reply, in one
-   archive**, in this line order: group line, dictionaries, BOs (a referenced BO on an earlier line,
-   0.2a), script lines, process lines, menu lines last. Never «the structure now, the scripts later».
+   archive**, in this line order: group line, dictionaries, BOs (every BO `oldId` minted from its seed
+   up front, so a `TABLE` can name a BO written after it, 0.2a), script lines, process lines, menu lines last. Never «the structure now, the scripts later».
 4. **The menu counts as ASKED** (0.5d). Ship one menu `GROUP` named after the system and, inside it, one
    item per working BO (0.2c step 9); on the item of every BO with a status path switch the kanban on by
    its status dropdown. The «never added unasked» of 0.2 step 7a is about a request for single objects.
@@ -620,8 +623,9 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
   `linkedFieldCode` is `"history"`. One back field serves only one field.
 - `fieldRefs` keys are field CODES of the TARGET BO; at least one `toShow: true` (0.9 rule 15) — without it
   the reference renders empty.
-- **Line order**: put the BO that is referenced first on an earlier line; for a pair that points both
-  ways the order does not matter `[C]`.
+- **Line order**: for a pair that points both ways the order does not matter `[C]` — so mint ALL BO `oldId`s
+  from their seeds (0.7) before building any field, and fill both ends from those ids. A builder that
+  records ids only as it emits lines writes the header's `TABLE` before its line BO exists → `oldRefBoId: ""`.
 - A one-way reference (a lookup with no back list: a record → its dictionary-like catalogue entry) is the
   `SINGLE` field alone, without `linkedFieldCode`.
 - A target that is NOT in this archive (it already exists on the stand) needs its stand id and code — 0.2a.
@@ -1004,8 +1008,8 @@ the BO's category. Count it in `objectCount`.
       rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab; ≤ 30 chars.
 - [ ] Every group line has a `code`: an existing group's code confirmed by the user, or a new code for a
       group the archive creates (0.2a, 0.3).
-- [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or from
-      an EARLIER line of this same archive (0.2a).
+- [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or is the
+      `oldId` of a BO line of this same archive — earlier OR later in the file; none is `""` (0.2a).
 - [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
       gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
       a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
