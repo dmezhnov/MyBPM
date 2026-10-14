@@ -768,7 +768,9 @@ and dropping the rest «for scope» is a fraction reported as done.
   "<label>"» (`linkedFieldId`) in the constructor; that control appears only once the back field exists, so
   create both fields first (§5h «Reference fields») `[C]`. A `TABLE` without the back link leaves every line
   an orphan in one global registry: no line knows its header, and the lines of one header cannot be listed or
-  summed from the line side.
+  summed from the line side. **The line BO is never the catalogue**: «запчасти в заказе» is a line BO (header,
+  a reference to the catalogue, quantity, price), «запчасти на складе» a catalogue BO (article, name, stock)
+  linked to no order.
 - **Child documents** (оплаты по заказу, автомобили → владелец, записи → клиент): the same `SINGLE`↔`TABLE`
   pair, so the children show on the parent's card. A child's `SINGLE` without the parent's `TABLE` back makes
   them invisible there.
@@ -777,7 +779,9 @@ and dropping the rest «for scope» is a fraction reported as done.
 - **Dictionary or local list**: values users add to over time, or that several BOs pick from → a dictionary +
   a «Выпадающий список» «из справочника»; a short fixed list owned by one field (способ оплаты) → a local list
   («Задать вручную»).
-- **Status**: a record's lifecycle is a dropdown `status` with its kanban card template (§7); a business
+- **Status**: a record's lifecycle is a dropdown `status` with a LOCAL list of the spec's stages («Задать
+  вручную») and its kanban card template (§7) — never a dictionary, which starts empty and gives a board with no
+  columns; a business
   process is for a path someone runs step by step. Do not turn every status into a process.
 - **Computed values** (сумма заказа = сумма строк, остаток = сумма − оплачено): a plain field plus the owner BO's
   «Сохранение» hook that fills it (§5g); a total = a foreach over the header's `TABLE` value, add each line's
