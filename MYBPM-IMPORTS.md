@@ -5,12 +5,16 @@ several pages. A file built after reading the first few hundred lines is filled 
 gets the names wrong: the importer then rejects the file or silently drops what it does not know.
 
 1. **Read the user's spec in full** — every page, every table. An object or field you did not read is a
-   missing row of the build.
-2. **Read the whole core of your cookbook BEFORE building anything**: an archive → §0 from «0. COOKBOOK»
-   down to and including «0.11 Building and delivering» (about 1150 lines; ids are 0.7, layout 0.8a, hard
-   rules 0.9, self-check 0.10 — all AFTER the templates); a script → §0S down to «0S.12a»; records → §0X
-   down to «0X.6». If your reader returns a limited number of lines, call it again with the next offset
-   until you have seen that closing heading.
+   missing row of the build. A PDF read by page ranges: keep calling until the last page — «pages 1–5» of
+   a 7-page file is not the spec.
+2. **Read the whole core of your cookbook BEFORE building anything — and before asking anything**: an
+   archive → §0 from «0. COOKBOOK» down to and including «0.11 Building and delivering» (about 1150
+   lines; ids are 0.7, layout 0.8a, hard rules 0.9, self-check 0.10 — all AFTER the templates); a script
+   → §0S down to «0S.12a»; records → §0X down to «0X.6». **If you read in chunks (a `limit` of a few
+   hundred lines), ONE chunk is never enough: call the reader again with `offset` = the line after the
+   last one you got, and again, until the closing heading has scrolled past.** For an archive that is
+   lines 1 → ~1230, i.e. three calls of 500 lines. The 0.2a questions come out of that reading too —
+   asking them after the first chunk is building from memory.
 3. **Copy, never compose.** Every `@class`, every key and every `type` value in your file is printed in
    this document — find it there and copy it. A name that merely looks right is invented.
 
@@ -129,7 +133,9 @@ Rules, all `[C]`:
 ### 0.2 Algorithm
 
 0. **Ask for the stand data of 0.2a** — group name, taken BO codes, ids/codes of referenced objects.
-   Do not start building before the user has answered, or has told you to build without them.
+   Do not start building before the user has answered, or has told you to build without them. Ask ONLY
+   what the request has not already answered: «пустой стенд», «новая компания», «a fresh stand» answers
+   the group (a NEW one — you name it) and the taken codes (none) — never ask those again.
 1. **Collect the input**: the display name of the BO, its fields (label + UI type), and the name of the
    BO group **that already exists on the target stand** (ask the user for it — §0.2a).
 2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
@@ -165,7 +171,10 @@ take the fallback of the last column, state in one line which default you took a
 build — a guess is allowed only when it has been named out loud and confirmed.
 
 **Decide FIRST, object by object: does the request say it already EXISTS on the stand?** This one
-question settles every case below.
+question settles every case below. **An empty stand** («пустой стенд», «новая компания») settles the first
+two rows of the table without asking: the group is NEW and the codes are free. What it does NOT settle is
+an id the platform creates in every company — `Person`'s `personBoId` (§6 «Person reference») differs per
+company even on an empty one, so a `Person` field still needs it asked (or degraded and listed).
 
 - **Not said to exist → it is NEW, and you build it in THIS archive** — together with every supporting
   object it needs. «Каталог товаров, категория выбирается из справочника категорий» = build the
@@ -444,6 +453,10 @@ everything after it on that line — the shipped line must be pure minified JSON
 
 **`dynamicFields` is an OBJECT keyed by field code, never an array.** The key repeats the field's own
 `code`.
+
+> **Reading in chunks? You are NOT done.** The cookbook core runs on to «0.11 Building and delivering»
+> (≈ 800 more lines): the field template right below, ids 0.7, layout 0.8a, hard rules 0.9, self-check
+> 0.10. Call the reader again with the next offset before you ask, plan or write anything.
 
 ### 0.5 The field template — one copy per field
 
@@ -925,6 +938,9 @@ the BO's category. Count it in `objectCount`.
 19. **A BO that already exists on the stand is changed only through its fresh export line**, never through a
     line rebuilt from the template of 0.4 — that resets its header settings and moves it (0.2a, last row; how to
     take the export: §2 «Taking a fresh export — the minimum»). An import never deletes a field, tab or option (§8).
+
+> **Reading in chunks? Keep going** to «0.11 Building and delivering» — the self-check and the delivery
+> steps below are part of the core.
 
 ### 0.10 Self-check before shipping
 
