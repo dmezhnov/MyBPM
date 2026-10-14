@@ -1,5 +1,30 @@
 # MyBPM — what you feed a stand: archives, scripts, records
 
+**STOP — read before you write a single line.** This file is about 6000 lines and the user's spec may be
+several pages. A file built after reading the first few hundred lines is filled in from memory, and memory
+gets the names wrong: the importer then rejects the file or silently drops what it does not know.
+
+1. **Read the user's spec in full** — every page, every table. An object or field you did not read is a
+   missing row of the build.
+2. **Read the whole core of your cookbook BEFORE building anything**: an archive → §0 from «0. COOKBOOK»
+   down to and including «0.11 Building and delivering» (about 1150 lines; ids are 0.7, layout 0.8a, hard
+   rules 0.9, self-check 0.10 — all AFTER the templates); a script → §0S down to «0S.12a»; records → §0X
+   down to «0X.6». If your reader returns a limited number of lines, call it again with the next offset
+   until you have seen that closing heading.
+3. **Copy, never compose.** Every `@class`, every key and every `type` value in your file is printed in
+   this document — find it there and copy it. A name that merely looks right is invented.
+
+Names a model invents when it skips the reading — each one breaks the import or is silently dropped:
+
+| Invented | Real | Where |
+|---|---|---|
+| `TEXT_AREA`, `TEXT`, `NUMBER`, `DATETIME` | `TEXTAREA`, `INPUT_TEXT`, `INPUT_NUMBER`, `FULL_DATE` | §3 «Field types» |
+| `SidebarMenuItemStructDto`, `menuItemType: "BO_REGISTRY"`, a parent menu by id | `MenuItemStructDto`, `menuItemType: "BO"`, `parentMenuItemCode` | 0.15 |
+| `params: {options: [ … ]}` on a dropdown | `fieldOptionsStruct: {options: {<code>: {fieldOption: …}}}` | 0.5 |
+| random ids, even from a seeded generator | ids hashed from a seed string per object | 0.7 |
+| `kanbanCardTemplates: {}` on a BO that has a `DROPDOWN_SINGLE` | one template per dropdown | 0.14 |
+| a link to another object as a text field («Поставщик» = `INPUT_TEXT`) | a `BO` field with `boRefStruct`; header–lines = `SINGLE`↔`TABLE` | 0.2c, §6 |
+
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
 
 - **Part I — the structure archive `.mybpm.zip`** (§0 cookbook, §1–§8): business objects, fields, form
