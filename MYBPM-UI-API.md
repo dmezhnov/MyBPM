@@ -373,8 +373,9 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
 **`import-structure`**, not `v2/…`: `POST <stand>/web/import-structure/<method>`.
 **Only one import may be open on a company at a time.**
 
-1. `POST /web/import-structure/import-file` — **multipart**, the zip under the field name `file` (the
-   filename you give is the one the log shows; it is otherwise ignored) → `"<importId>"` (bare string).
+1. `POST /web/import-structure/import-file` — **multipart**, the zip under the field name `file` → `"<importId>"` (bare string).
+   **The filename must end in `.mybpm.zip` or `.mybpm`** — any other name is rejected with «Расширение файла
+   должно быть…» `[C]`; beyond that it is only what the import log shows.
 2. `insert-file-data` — `P {"importId":…}` → `"<processId>"`. Poll it (step 2p).
 3. `analyze-file-data` — `P {"importId":…}` → `"<processId>"`. Poll it.
    **2p. Polling**: `POST /web/v2/process-indicator/load-state-short` — `P {"processId":…}` →
@@ -507,7 +508,10 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
    `load-field-access-group` / `save-field-access-group` — `{businessObjectId, fieldId, accessGroup}` (only
    `view` and `edit` matter) — and `load-field-tab-access-group` / `save-field-tab-access-group`
    (`+ tabId`). An unknown `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто»
-   answer can be real.
+   answer can be real. **A tab has only the VIEW right** `[C]`: VIEW «никто» on a tab hides the tab from
+   every non-admin AND drops its fields from their registry columns; a non-admin's save keeps the hidden
+   values; **an admin still sees the tab and its columns** `[C]`. That is the hidden system tab «Системные»
+   (`tab_system`) every form gets for its technical fields (`MYBPM-IMPORTS.md` §0.8a step 6).
 7. **Verify** by calling `load-access-group` again and comparing — this is the one area where the UI
    silently sends nothing when it thinks nothing changed. What each subject really opens (field content,
    author, participants) is the table in §3 «What each subject opens» `[C]`; checking it needs a second,
@@ -649,7 +653,9 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    is a dry run you should read.
 7. **Do not ship an `AccessStructDto` in an archive unless asked**: the import applies it and REPLACES the
    rights that were set by hand (groups included — `orgUnitIds` of THIS stand arrive, `[C]`).
-   A structure-only archive leaves the stand's rights untouched.
+   A structure-only archive leaves the stand's rights untouched. The one exception: the «никому» rule of the
+   hidden system tab `tab_system` — on a NEW BO with all actions open, on an existing BO added to its freshly
+   exported `AccessStructDto` (`MYBPM-IMPORTS.md` §0.8a step 6).
 8. **Re-read after every write.** The platform answers 200 for `save-business-form-field` (writes
    nothing), for an empty kanban template save (writes nothing) and for a rights popup that decided
    nothing changed.
@@ -693,8 +699,12 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
       `overflow-y:auto`) must have `scrollHeight <= clientHeight`. If not, raise the field's `rows`
       (≈29 px per row: a 34-row field is a 990 px grid item `[C]`) and shift the fields below,
       or shrink the content (the `height` of an `<iframe>` a script writes). The record window scrolling
-      as a whole is normal; a scrollbar INSIDE a field is not. Check every tab, and a table with its
-      real number of rows.
+      as a whole is a sign the window is too low; a scrollbar INSIDE a field is a defect. Check every tab, and
+      a table with its real number of rows.
+- [ ] The layout heights hold `[C]` (one grid row = 30 px): one-line input 3 rows, a `<h3>` heading 3, a
+      top-level `TAB_GROUP` = its tallest tab + 3 (nested group + 2), and the record window
+      `gridLayoutPosition.h` = form rows + 5 (the dialog is `h·30` px tall, 99 px of it title and buttons).
+      Fix a scrolling tab group or window there, in the archive (`MYBPM-IMPORTS.md` §0.8a), not by hand.
 - [ ] The notifications your work raised were cleared, whichever way they came: every structure import
       leaves an «Анализ импорта завершен»; every non-2xx REST call from a script you clicked leaves
       «Ошибка — Возникла ошибка при запросе в сервис …» (`MYBPM-IMPORTS.md`, RestRequest section); a
@@ -855,7 +865,8 @@ Simplification the user accepts: when a field's view/edit equals the BO's, just 
   `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто» answer is real.
   The UI follows it with `save-bo-field-tab-chosen-access-right` — **PARAMS** `{boId, fieldId, tabId,
   chosenAccessRight}` (in the body: 400 «Required parameter 'boId'») — which only turns the lock on the
-  tab chip orange `[C]`. To reset a tab: `accessForAll:true`, `orgUnitToDelete` = the
+  tab chip orange `[C]`. Both live on `v2/business-objects`, not on `v2/access`. A tab carries only VIEW;
+  «никто» hides the tab and its registry columns from non-admins, never from an admin `[C]` (R5 step 6). To reset a tab: `accessForAll:true`, `orgUnitToDelete` = the
   current `orgUnitRecordList`, then the flag `false`.
   **Tab rules travel in an archive** `[C]` as
   `AccessStructDto.fieldAccessStructMap.<TAB_GROUP code>.tabAccessStructMap.<tab code>`; details in
@@ -3138,7 +3149,9 @@ onto the SAME child BO keep separate lists per record.
   `save-business-object-grid-layout-position` with a **body** of `{boId, gridLayoutPosition:{id:"0", x, y,
   w, h}}` (read: `load-business-object-grid-layout-position` params `{boId}`; `""` = never set = full
   size). The width is `w` of 16 columns of `0.9·innerWidth`. The height is `h` rows of 30 px, capped at
-  `0.9·innerHeight` — the server takes any `h` `[C]`, so that cap is the only ceiling. The viewer re-centres `x = ceil((16−w)/2)`. For two fields in one row, `w:6, h:8` gives a
+  `0.9·innerHeight` — the server takes any `h` `[C]`, so that cap is the only ceiling. The viewer re-centres `x = ceil((16−w)/2)`. A form of `R` rows
+  needs `h = R + 5` `[C]` (title + button bar 99 px, body padding 28); without a position the dialog is
+  90 % × 90 % of the screen. A child's window is narrower than its parent's (`MYBPM-IMPORTS.md` §0.8a step 7). For two fields in one row, `w:6, h:8` gives a
   compact dialog: fields plus the СОХРАНИТЬ/ОТМЕНИТЬ bar.
 - **A required `INPUT_NUMBER` starts at 0** on a CREATE dialog, so it counts as filled. The red `*` and
   the warning appear only after the user clears it. `isRequired` really is on, but nothing forces the
