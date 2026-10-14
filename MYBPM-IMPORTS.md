@@ -6,7 +6,9 @@ gets the names wrong: the importer then rejects the file or silently drops what 
 
 1. **Read the user's spec in full** — every page, every table. An object or field you did not read is a
    missing row of the build. A PDF read by page ranges: keep calling until the last page — «pages 1–5» of
-   a 7-page file is not the spec.
+   a 7-page file is not the spec. **Already opened the spec together with this file, before you saw this
+   line?** Then you stopped at the range you guessed: call the reader again for the NEXT pages (e.g. «6–20»)
+   until it returns nothing new — the last sections (work path, automations, reports, roles) are the ones lost.
 2. **Read the whole core of your cookbook BEFORE building anything — and before asking anything**: an
    archive → the first ~1100 lines, from the top down to and including «0.11 Building the zip» — every
    template a typical system needs (BO, fields, links between BOs, dictionaries, kanban, menu), then ids,
@@ -30,6 +32,12 @@ Names a model invents when it skips the reading — each one breaks the import o
 | `kanbanCardTemplates: {}` on a BO that has a `DROPDOWN_SINGLE` | one template per dropdown | 0.5c |
 | a link to another object as a text field («Поставщик» = `INPUT_TEXT`) | a `BO` field; header–lines = a `SINGLE`↔`TABLE` pair | 0.5a |
 | a dictionary as `category: "BO"` with no `code` / `label` fields | `BO_DICTIONARY` + the two system fields | 0.5b |
+| field ids hashed from the field code alone (`"field." + code`) — every BO with a `work_order` field gets the SAME id | seed = BO code + field code: `"field.Order_work.work_order"` | 0.7 |
+| a `BO` field with `boRefStruct: {"fieldRefs": {}}` — no `boInfo`, nothing `toShow` | `boInfo` of the target + at least one `fieldRefs` entry `toShow: true` | 0.5a |
+| a `BO` field with no `oldRefBoId` («мастер» with no `Person` id) | leave the field out, ask for the id, list it in the report | 0.2c step 8 |
+| a `linkedFieldCode` naming a field the other BO does not have | the code of the OTHER end of the pair, which names this field back | 0.5a |
+| a kanban template keyed by a text or `BO` field; a template on a BO with no dropdown | keys are `DROPDOWN_SINGLE` codes only; no dropdown → `{}` | 0.5c |
+| a status path or a short fixed list as a dictionary (ships empty → a board with no columns) | a local list `FROM_FIELD` with the spec's values | 0.2c steps 5–6 |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
 
@@ -233,7 +241,10 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    field to the line BO, each naming the other in `boRefStruct.linkedFieldCode` — the pair of 0.5a, both
    ends in this archive. A `TABLE` without the back link leaves every line an orphan in one global
    registry: no line knows its header, and the lines of one header cannot be listed or summed. Never a
-   `TEXTAREA` «работы» instead of line records.
+   `TEXTAREA` «работы» instead of line records. **The line BO is never the catalogue**: «запчасти в
+   заказе» is `Order_part` (`work_order` → the header, `spare_part` → the catalogue, quantity, price), and
+   «запчасти на складе» is `Spare_part` (article, name, stock) with no link to any order — one BO for both
+   makes every stock item belong to one order.
 2. **A child document?** (оплаты по заказу, записи → клиент, автомобили → владелец) → the same
    `SINGLE`↔`TABLE` pair, so the children show on the parent's card. A child's `SINGLE` without the
    parent's `TABLE` back makes the children invisible on the parent.
@@ -248,8 +259,9 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    TRAVEL in the archive; a dictionary's rows do not (0.2d) — it ships empty and is filled by the xlsx
    after the import. A dropdown never ships with an empty local list.
 6. **A status path?** A record's lifecycle (Новый → В работе → Готов → Выдан) → a `DROPDOWN_SINGLE`
-   `status` with its kanban card template (0.5c), and in a system build its menu item shows the kanban by
-   it (0.2b step 4). A `BO_PROCESS` is for a path someone RUNS figure by figure — forms, a script, a branch
+   `status` with a LOCAL list (`FROM_FIELD`) holding the spec's stages as options, its kanban card template
+   (0.5c), and in a system build its menu item shows the kanban by it (0.2b step 4). Never a dictionary for
+   statuses: a dictionary ships empty (0.2d), so the board has no columns until someone fills it. A `BO_PROCESS` is for a path someone RUNS figure by figure — forms, a script, a branch
    (approval, 0.18). Do not turn every status into a process, and never fake `PROCESS_STATUS` with a
    dropdown.
 7. **A computed value?** (сумма заказа = сумма строк, остаток = сумма − оплачено, дата готовности = приём
@@ -261,7 +273,9 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    edited in its own card does not run the header's hook `[I]`.
 8. **A responsible person?** (мастер, менеджер, автор записи) → a reference to the built-in `Person` (§6
    «Person reference») — its `oldRefBoId` is the company's `personBoId`, STAND DATA (0.2a). Or the
-   current-user widget / the system «Автор» (0.12, 0.13), which need no id.
+   current-user widget / the system «Автор» (0.12, 0.13), which need no id. **No `personBoId` from the
+   user → the field is NOT in the file**: ask for the id and list the field in the report (0.2b step 5,
+   first reason). A `BO` field without `oldRefBoId` is a reference to nothing.
 9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
    записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
    table — and NOT dictionaries; those go into one «Справочники» subgroup at the end of the menu group, or
@@ -600,8 +614,13 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
   "gridPosition": {"x": 0, "y": <y>, "cols": 15, "rows": 6} }
 ```
 
+- **Every `BO` field carries all three**: `oldRefBoId` (the target), `boRefStruct.boInfo` (the target's
+  code, name, category) and at least one `fieldRefs` entry with `toShow: true`. A helper that writes
+  `"boRefStruct": {"fieldRefs": {}}` for every reference ships references that point at nothing or render empty.
 - **`linkedFieldCode` sits INSIDE `boRefStruct`**, never at the top level, and each end names the OTHER
-  end's field code. One back field serves only one field.
+  end's field code — a field that EXISTS on the other BO and names this one back. `Automobile.history`
+  `TABLE` with `linkedFieldCode: "automobile"` needs a field `automobile` on `Work_order` whose own
+  `linkedFieldCode` is `"history"`. One back field serves only one field.
 - `fieldRefs` keys are field CODES of the TARGET BO; at least one `toShow: true` (0.9 rule 15) — without it
   the reference renders empty.
 - **Line order**: put the BO that is referenced first on an earlier line; for a pair that points both
@@ -660,7 +679,8 @@ columns), the inner keys are the fields shown on the card:
 ```
 
 - The outer key is the code of a `DROPDOWN_*` field of THIS BO; one entry per field you want to offer as
-  a kanban (a BO may carry several).
+  a kanban (a BO may carry several). Never a text, number or `BO` field — and a BO with no dropdown keeps
+  `"kanbanCardTemplates": {}`.
 - The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
   `archetype: "DYNAMIC"`, or a key of `nativeFields` (the native type itself) with `archetype: "NATIVE"`.
   Ids never appear here, exactly like everywhere else in a `BoStructDto`.
@@ -784,6 +804,16 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
   16 bytes onto the alphabet. Reason: the stand keeps the archive's `oldId` as the BO's REAL id, so a
   re-import of a regenerated archive UPDATES the same BO instead of creating a duplicate. Random ids
   fork the object on every re-import.
+- **One seed per id, unique across the WHOLE file** — the seed names everything that makes the id
+  unique, never the code alone (field and option codes repeat between BOs: `work_order`, `status`):
+
+  | Id | Seed |
+  |---|---|
+  | group `oldId` / `newId` | `"group." + code` / `"group-new." + code` |
+  | BO `oldId` | `"bo." + BO code` |
+  | field `newId` | `"field." + BO code + "." + field code` |
+  | option `newOptionId` | `"opt." + BO code + "." + field code + "." + option code` |
+  | tab `newId` | `"tab." + BO code + "." + tab code` |
 - Which ids must be equal:
   - `BoStructDto.boGroupOldId` **=** `BoGroupStructDto.oldId`;
   - `BoProcessVersionsStructDto.oldId` **=** `BoStructDto.oldId` (processes only);
@@ -964,7 +994,9 @@ the BO's category. Count it in `objectCount`.
 - [ ] 0.9 rule 18: every `BO_PROCESS` has `PROCESS_STATUS` (required, system, with its `CREATED` default and
       the `DEFAULT_VALUE` line); every `BO_DICTIONARY` has `code` + `label`, both required. The validator
       reports a missing one as `ERROR §0.9/18`; the generator refuses to build without them.
-- [ ] Every `dynamicFields` key equals its entry's `code`, and every `newId` is distinct.
+- [ ] Every `dynamicFields` key equals its entry's `code`, and every `oldId` / `newId` / `newOptionId` is
+      distinct across the WHOLE file, not only inside one BO (0.7 seeds) — `unzip -p <zip> 'data-*/0000001.mybpm'
+      | grep -oE '"(oldId|newId|newOptionId)":"[^"]{16}"' | sort | uniq -d` prints nothing.
 - [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
       `code`; no widget or native type hides in `dynamicFields`.
 - [ ] The `y` of each field == previous `y` + previous `rows`.
@@ -1021,6 +1053,11 @@ the BO's category. Count it in `objectCount`.
       is `BO_DICTIONARY` with `code` + `label`; no `DROPDOWN_SINGLE` with an empty local list and no number,
       sum or date typed as a dropdown; every `DROPDOWN_SINGLE` has its kanban template; every computed
       value of the spec has its hook line or a closed-list reason.
+- [ ] **References — walk every `type: "BO"` field of the file**: it has `oldRefBoId` (a BO line of this
+      file or a stand id from the user), `boRefStruct.boInfo` and a `fieldRefs` entry `toShow: true`; its
+      `linkedFieldCode`, if any, is a field of the target BO whose own `linkedFieldCode` names this field
+      back; every child document (payments, records of a stage) that points at a header with a `SINGLE`
+      has the header's `TABLE` back (0.2c step 2).
 
 #### The report — what you tell the user along with the archive
 
