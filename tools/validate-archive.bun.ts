@@ -42,7 +42,10 @@ const WIDGET_MAPS: Record<string, string[]> = {
 
 // §0.5 "Cell heights the constructor itself assigns"
 const ROWS_6 = new Set(["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR"]);
-const ROWS_8 = new Set(["STATIC_TEXT", "QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"]);
+const ROWS_8 = new Set(["QUESTIONNAIRE", "GEO_POINT"]);
+// §0.8a: a label + one-line box is 58 px = 3 rows of 30; 4 leaves an empty band
+const ROWS_3 = new Set(["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_PHONE", "INPUT_EMAIL", "INPUT_NUMBER", "TIME", "FULL_DATE",
+  "YEAR_AND_MONTH", "YEAR", "DATE", "PERIOD", "PERIOD_TIME", "CHECKBOX", "DROPDOWN_SINGLE"]);
 // the text editor's toolbar buttons a TEXTAREA's params.buttonTypes may list (client enum, 2026-10-01)
 const TEXTAREA_BUTTONS = new Set(["style", "bold", "underline", "italic", "fontsize", "color", "ul", "ol", "paragraph",
   "table", "link", "picture", "video", "hr", "codeview", "height"]);
@@ -56,7 +59,7 @@ const BO_KEYS = ["@class", "oldId", "code", "category", "kind", "boGroupOldId", 
 // keys newer builds write; older exports lack them. A re-import WITHOUT them resets the stand to the default
 // (verified on core2 2026-10-01: isTouchEnabled → true, hideAddButtonFromRegistry → false)
 const BO_KEYS_NEW = ["isTouchEnabled", "hideAddButtonFromRegistry"];
-const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder", "messengerFieldCode", "whatsAppFieldCode"];
+const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder", "messengerFieldCode", "whatsAppFieldCode", "gridLayoutPosition"];
 // the record card's rail tabs (MYBPM-IMPORTS.md §2 «BO card tabs»)
 const BO_TAB_TYPES = new Set(["CHAT", "PEOPLE", "FILES", "HISTORY", "PRINT_FORM", "TELEGRAM", "WHATSAPP"]);
 
@@ -230,8 +233,14 @@ for (const o of objs) if (cls(o) === "AccessStructDto") {
       add("ERROR", "7", `AccessStructDto: tab rule "${k}.${t}" names no tab of that TAB_GROUP (tab codes: ${Object.keys(g.fieldTabs ?? {}).join(", ")})`);
   }
 }
-if (objs.some(o => cls(o) === "AccessStructDto"))
-  add("ERROR", "0.9/10", "archive ships an AccessStructDto — import replaces the stand's rights with the archive's; never ship one unasked");
+// 0.9 rule 10 has ONE exception — the «никому» rule of the hidden system tab tab_system (§0.8a step 6)
+for (const o of objs) if (cls(o) === "AccessStructDto") {
+  const systemTab = Object.values<any>(o.fieldAccessStructMap ?? {}).some(v => v?.tabAccessStructMap?.tab_system);
+  if (!systemTab)
+    add("ERROR", "0.9/10", `AccessStructDto of ${o.boCode}: import replaces the stand's rights with the archive's; never ship one unasked`);
+  else
+    add("WARN", "0.8a", `AccessStructDto of ${o.boCode} carries the tab_system rule: fine for a NEW BO with all actions open; for an EXISTING BO it must be its fresh export line plus that rule — anything else replaces the stand's rights`);
+}
 
 // ---------------------------------------------------------------- ids unique (§0.7)
 const idSeen = new Map<string, string>();
@@ -636,8 +645,10 @@ for (const bo of bos) {
       else {
         if (gp.x !== 0) add("WARN", "0.8", `${ft}: x=${gp.x}; the safe layout is x=0, cols=15`);
         if (gp.cols !== 15) add("WARN", "0.8", `${ft}: cols=${gp.cols}; the safe layout is cols=15`);
-        const wantRows = trackedWrapper ? 4 : ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6 : 4;
-        if (gp.rows !== wantRows) add("WARN", "0.8", `${ft}: rows=${gp.rows}, the constructor gives ${wantRows} to ${type}`);
+        // §0.8 / §0.8a: the heights that fit the content; a TAB_GROUP and a heading are checked below
+        const wantRows = trackedWrapper ? 4 : ROWS_3.has(type) ? 3 : ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6
+          : type === "TEXTAREA" || type === "TEXTAREA_LANG" ? 4 : null;
+        if (wantRows !== null && gp.rows !== wantRows) add("WARN", "0.8", `${ft}: rows=${gp.rows}, a ${type} takes ${wantRows}`);
         laid.push({ ft, f, gp });
       }
     }
@@ -668,6 +679,33 @@ for (const bo of bos) {
           } else if (w?.gridPosition && typeof w.gridPosition.y === "number")
             laid.push({ ft: wt, f: w, gp: w.gridPosition, box: true });
         }
+  // §0.8a: a heading needs 3 rows (2 scrolls inside itself) and no registry column; a TAB_GROUP = its tallest tab
+  // + 3 on the form, + 2 when it sits on a tab of another group — one row less scrolls inside the group
+  if (bo.category !== "BO_COMPOSITE") for (const [, f] of entries) {
+    const ft = `${tag}.${f.code}`;
+    if (f.type === "STATIC_TEXT") {
+      if (typeof f.gridPosition?.rows === "number" && f.gridPosition.rows < 3)
+        add("WARN", "0.8a", `${ft}: a heading of ${f.gridPosition.rows} rows scrolls inside itself — 3 rows`);
+      if (f.tableColToShow === true) add("WARN", "0.8a", `${ft}: a heading with tableColToShow: true is an empty registry column`);
+    }
+    if (f.type === "TAB_GROUP" && !f.trackedFieldCode && typeof f.gridPosition?.rows === "number") {
+      const tallest = Math.max(0, ...entries.filter(([, g]) => g.tabCodePath?.tabGroupCode === f.code && g.gridPosition)
+        .map(([, g]) => g.gridPosition.y + g.gridPosition.rows));
+      const need = tallest + (f.tabCodePath?.tabGroupCode ? 2 : 3);
+      if (tallest && f.gridPosition.rows < need)
+        add("WARN", "0.8a", `${ft}: rows=${f.gridPosition.rows}, its tallest tab is ${tallest} rows — the group scrolls inside itself; give it ${need}`);
+      else if (tallest && f.gridPosition.rows > need + 2)
+        add("WARN", "0.8a", `${ft}: rows=${f.gridPosition.rows}, its tallest tab needs only ${need} — an empty band under every tab`);
+    }
+  }
+  // §0.8a step 7: the record window — h = form rows + 5, or the dialog scrolls (FORM only; a dictionary has none)
+  if (bo.category !== "BO_COMPOSITE" && bo.category !== "BO_DICTIONARY" && bo.instanceViewType !== "TAB") {
+    const formRows = Math.max(0, ...laid.map(l => l.gp.y + l.gp.rows));
+    const win = bo.gridLayoutPosition;
+    if (!win) add("WARN", "0.8a", `${tag}: no gridLayoutPosition — the record dialog opens at 90 % × 90 % of the screen; give it h = ${formRows + 5}`);
+    else if (typeof win.h === "number" && win.h < formRows + 5)
+      add("WARN", "0.8a", `${tag}: gridLayoutPosition.h=${win.h} for ${formRows} form rows — the window scrolls; h = ${formRows + 5}${formRows + 5 > 28 ? " (over ~28 does not fit a 1080p screen: split into tabs or instanceViewType TAB)" : ""}`);
+  }
   laid.sort((a, b) => a.gp.y - b.gp.y);
   let prevY: number | null = null, prevRows = 0;
   for (const { ft, gp } of laid) {

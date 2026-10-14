@@ -108,6 +108,8 @@ Rules, all `[C]`:
    `currentUser`). Those three families never share a map.
 6. **Lay the fields out** by the one rule in 0.8 — the `y` counter runs through the widget and system
    fields too, they live on the same grid.
+6a. **Make it look right** by 0.8a — tabs over 12 visible fields, group headings, the hidden «Системные»
+   tab for technical fields (plus its `AccessStructDto` line), the tab group and window heights, the window size.
 7. If the object is not a plain BO (dictionary / panel / composite / process), apply the diff in 0.17
    **on top of** the same two lines.
 7a. If the user also wants the object **in the sidebar menu** (navigation: an item that opens the BO,
@@ -271,7 +273,8 @@ everything after it on that line — the shipped line must be pure minified JSON
   "category": "BO",                         ← BO | BO_DICTIONARY | BO_PANEL | BO_COMPOSITE | BO_PROCESS (0.17)
   "kind": "GENERAL",
   "boGroupOldId": "3H84o9iM@G4jaOL3",       ← = oldId of line 1, character for character
-  "instanceViewType": "FORM",               ← FORM = a record opens as a dialog, TAB = as a page tab
+  "instanceViewType": "FORM",               ← FORM = a record opens as a dialog, TAB = as a page tab (0.8a decides)
+  "gridLayoutPosition": {"x": 3, "y": 0, "w": 10, "h": 26, "id": "0"},   ← the record WINDOW, sized by 0.8a; `null` for a dictionary
   "bos": [],
   "boTabs": {},                             ← card tabs, e.g. {"CHAT": 1, "FILES": 2} — ADDS only, never removes (§2 «BO card tabs»)
   "printForms": [],
@@ -360,7 +363,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "groupingInfo": {},
   "fieldTabs": {},
   "tableColOrderIndex": 0,                 ← the field's POSITION: 0 for the 1st field, 1 for the 2nd, 2 for the 3rd … — NOT 0 on every field
-  "gridPosition": {"x": 0, "y": 0, "cols": 15, "rows": 4},   ← layout, rule 0.8
+  "gridPosition": {"x": 0, "y": 0, "cols": 15, "rows": 3},   ← layout, rules 0.8 and 0.8a (3 = a one-line input)
   "removeType": "STRIKETHROUGH",
   "gantTableLocations": {},
   "boFieldCodes": [],
@@ -444,9 +447,10 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 
 The types that need extra keys — every shape `[C]`:
 
-- `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<h2>…</h2>"}`, and the cell
-  should be `{"x":0,"y":<y>,"cols":15,"rows":8}`. A heading text **must not repeat any field label of
-  the same BO** — that breaks Excel import.
+- `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<h3><b>…</b></h3>"}`, with
+  `"hideLabel": true`, `"tableColToShow": false` and the cell `{"x":0,"y":<y>,"cols":15,"rows":3}` — a
+  one-line group heading (0.8a). A heading text **must not repeat any field label of the same BO** — that
+  breaks Excel import.
 - **A `STATIC_TEXT` also has a per-record value** `[C]`: `staticValue` is only what the
   card shows until a record gets its own. A script writes that value with
   `F-VALUE_IN_LANG-K-DYN-R-D-S-boi_fields` (`language` = Enum const `MybpmLang` `RUS`) on the field
@@ -534,9 +538,10 @@ The types that need extra keys — every shape `[C]`:
   `fieldOptionsStruct` on a checklist is IGNORED by the import (and even resets the stand field's
   `optionSource` to `null`).
 
-Cell heights the constructor itself assigns: 4 rows for a plain field, **6** for `BO` / `CO` / `LINK` /
-`FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for `STATIC_TEXT` /
-`QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`.
+Cell heights the constructor itself assigns: 3 rows for a one-line input, 4 for other plain fields, **6** for
+`BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for
+`STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets: a heading
+needs 3 and a `TAB_GROUP` needs its tallest tab + 3 — write the heights of 0.8a.
 
 ### 0.6 Codes the stand generates: label → code
 
@@ -637,15 +642,91 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
 The form is a grid **15 columns** wide, and it **compacts vertically** — a hole is eaten and the cells
 below float up. The safe layout, which is what the generator emits and what imports predictably:
 
-> Every field: `"x": 0, "cols": 15`. `rows` = **4** for every type not named here (`TEXTAREA` included),
-> **6** for `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`,
-> **8** for `STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT` — the heights the constructor
-> itself gives (0.5). The first field starts at `y: 0`, and each next field's `y` = the previous `y` +
-> the previous `rows`. Fields on a tab count `y` from 0 again, separately per tab (0.5 `TAB_GROUP`).
+> Every field: `"x": 0, "cols": 15`. `rows` = **3** for a one-line input (`INPUT_*`, the date and time
+> types, `DROPDOWN_SINGLE`, `CHECKBOX`) and for a one-line `STATIC_TEXT` heading, **4** for `TEXTAREA` /
+> `TEXTAREA_LANG`, **6** for `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` /
+> `PROGRESS_BAR`, **8** for `QUESTIONNAIRE` / `GEO_POINT`, and for a `TAB_GROUP` = its tallest tab + 3
+> (0.8a). The first field starts at `y: 0`, and each next field's `y` = the previous `y` + the previous
+> `rows`. Fields on a tab count `y` from 0 again, separately per tab (0.5 `TAB_GROUP`).
 
 That gives one full-width field per row, in order. Only reach for multi-column layouts (`cols: 5`,
 three fields per row) after reading §4 — the compaction rules there are subtle and a wrong `y` silently
 reshuffles the form.
+
+### 0.8a Layout that looks right — tabs, groups, the window, the system tab
+
+Apply this to EVERY BO with a form, unasked. The goal: no field stretched over empty space, no wasted
+band, and **no scroll inside a scroll** — the window does not scroll, a tab group does not scroll inside
+the window, a field does not scroll inside itself. «Visible field» below = a field a user of the form
+sees, not counting headings, the `TAB_GROUP` itself and the system fields of step 1.
+
+1. **System fields go to the hidden tab «Системные».** A field that only a script, a process or an
+   integration reads or writes (an external id, a technical flag, a service sum) is a system field. Put
+   every one on a tab with code `tab_system`, label «Системные», the LAST tab of the form's top-level
+   `TAB_GROUP` (`isDefault: false`, `chosenAccessRight: true`), and ship the tab rule «никому» (step 6).
+   A form with no other tabs gets a `TAB_GROUP` holding only that tab, placed UNDER the ordinary fields.
+   What a non-admin sees in place of such a lone group is `[U]`. Never put a field a user must fill there.
+2. **Groups.** When the visible fields fall into two or more themes, open each theme with a heading: a
+   `STATIC_TEXT` with `"staticValue": {"rus": "<h3><b>Тема</b></h3>"}`, `hideLabel: true`,
+   `tableColToShow: false` (else every heading is an empty registry column) and `rows: 3` `[C]` (2 rows
+   scrolls inside itself; a heading WITH a subheading line needs 4). A group = its heading and the
+   fields under it, up to the next heading or the end of the form / tab. The heading text names the
+   SECTION, never a field label of the BO (0.9 rule 12).
+3. **Tabs** when the form has **more than 12 visible fields**, or is taller than one window (step 5:
+   more than ~23 rows). Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
+   and **balance the tabs**: the group is as tall as its TALLEST tab `[C]`, so a short tab shows an empty
+   band under its fields. Keep the name field (and what a user scans first) outside the tabs, above the
+   group, or on the first, default tab. Tab codes `tab_*`, group code `tabs` (0.6a).
+4. **Nested tabs — rarely.** Only when ONE tab still holds more than 12 visible fields AND at least
+   3 groups: turn its groups into the tabs of a second `TAB_GROUP` placed on that tab (its own
+   `tabCodePath`; its tabs are drawn as a vertical list on the left). Otherwise use groups (step 2).
+5. **Heights** `[C]` (one grid row = 30 px):
+   - one-line input: 3 rows (label + box = 58 px; 4 rows leaves a band); heading: 3 rows (step 2);
+   - top-level `TAB_GROUP`: `rows` = (rows of its tallest tab) + **3** — the group's box is `rows·30 − 61` px
+     and a tab of `n` rows needs `n·30 + 28`; one row less scrolls inside the group;
+   - nested `TAB_GROUP` (on a tab of another group): `rows` = (its tallest tab) + **2**;
+   - «rows of a tab» = the bottom of its lowest cell (`max(y + rows)` of the fields on it).
+6. **The system tab rule.** A tab carries ONE right only — VIEW (`[C]`; edit follows from it) — and «никому»
+   (`view.denyAll: true`, empty `orgUnitIds`) hides the tab AND its fields' registry columns from every
+   non-admin user; a non-admin who edits and saves the record keeps the hidden values `[C]`. **An admin
+   always sees the tab** `[C]` — admins bypass rights; say so to the user, «hidden from everyone» cannot
+   cover admins. The rule travels in an `AccessStructDto` (§7), and an `AccessStructDto` REPLACES the
+   BO's whole rights (0.9 rule 10), so:
+   - **a NEW BO** — ship one `AccessStructDto`: every action of `boAccessStruct` open and the tab rule,
+     the line printed below `[I]`;
+   - **an EXISTING BO** — take its `AccessStructDto` line from a FRESH export of the stand and add only
+     `fieldAccessStructMap.<tabs code>.tabAccessStructMap.tab_system` to it; never rebuild it from the
+     template (that opens what the stand had locked).
+7. **The record window** (`gridLayoutPosition`, 0.4) `[C]`: the dialog is exactly `h·30` px tall and
+   `w/16` of 90 % of the browser width; its title and buttons take 99 px, so **`h` = form rows + 5**
+   (form rows = `max(y + rows)` of the top-level cells, a `TAB_GROUP` counted with its own `rows`). The
+   dialog is capped at 90 % of the screen height — about 28 units on a 1080p screen — so a form of more than
+   ~23 rows cannot fit: cut it with tabs (step 3). Without `gridLayoutPosition` the dialog opens at
+   90 % × 90 % of the screen with a band of empty space.
+   **Width**: a text input FILLS its cell (§4), so a 15-column field in a full-screen window is a
+   1600 px box for a 20-character value. A form of one-line fields: `w: 10` (≈ 1050 px on a 1080p screen).
+   `w: 12`–`15` only for a form that carries tables or several fields per row. Centre it:
+   `x = ceil((16 − w) / 2)`.
+   **A child window is smaller than its parent**: a BO opened from another BO's reference or table gets
+   `w` at least 2 less than the parent's and its own `h` by the same formula.
+8. **Page tab instead of a dialog**: `instanceViewType: "TAB"` when the record has a lot of content — several
+   tables, or still more than ~23 rows after tabs — then the record opens as a page tab of the browser
+   window; otherwise `FORM` with the window of step 7.
+
+The `AccessStructDto` of step 6 for a NEW BO — one line; `<O>` is the OPEN action and `<N>` the «никому»
+action, write them out in full (the `@class` package is `model.access`, not `model.dto`):
+
+```text
+<O> = {"denyAll":false,"participants":false,"authorsField":{"content":false,"head":false,"author":false,"employees":false,"department":false,"parentDepartment":false,"childDepartment":false,"fieldCodes":[]},"fromFields":{},"orgUnitIds":[]}
+<N> = the same with "denyAll":true
+
+{"@class":"kz.greetgo.mybpm.reg.structure.model.access.AccessStructDto","boCode":"<BO code>","boName":"<BO name>","boCategory":"BO",
+ "boAccessStruct":{"denyAll":false,"all":<O>,"create":<O>,"view":<O>,"edit":<O>,"delete":<O>,"archive":<O>,"export":<O>,"duplicate":<O>,"add":<O>},
+ "fieldAccessStructMap":{"tabs":{"tabAccessStructMap":{"tab_system":{"denyAll":true,"all":<O>,"create":<O>,"view":<N>,"edit":<O>,"delete":<O>,"archive":<O>,"export":<O>,"duplicate":<O>,"add":<O>}}}}}
+```
+
+Minify it to one line like every other line (0.9 rule 3); `"tabs"` is the `TAB_GROUP` code, `boCategory`
+the BO's category. Count it in `objectCount`.
 
 ### 0.9 Hard rules — violating any one of these breaks the import
 
@@ -656,7 +737,8 @@ reshuffles the form.
 2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
 3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
 4. Every line carries its `"@class"` with the full package
-   `kz.greetgo.mybpm.reg.structure.model.dto.<DtoName>`.
+   `kz.greetgo.mybpm.reg.structure.model.dto.<DtoName>` — except `AccessStructDto`, which lives in
+   `kz.greetgo.mybpm.reg.structure.model.access` `[C]`.
 5. `dynamicFields` is an object keyed by field code, and the key equals the field's `code`.
 6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
    only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
@@ -667,7 +749,9 @@ reshuffles the form.
 9. `isRequired` + `isReadonly` both true = an unsaveable record.
 10. Do not ship an `AccessStructDto` unless asked: import APPLIES it and **replaces** the rights set by
     hand on the stand with the archive's (§7, §8). Its `orgUnitIds` are `G-<group id>` of the TARGET
-    stand — ids from another stand grant nothing.
+    stand — ids from another stand grant nothing. **The one exception is the hidden system tab of 0.8a
+    step 6**: a new BO ships the all-open line printed there, an existing BO its freshly exported line plus
+    the `tab_system` rule.
 11. Records (instance data) do NOT go into this archive — they are an xlsx, **Part III** of this document.
 12. A `STATIC_TEXT` heading must not repeat any field label of the same BO (0.5). «Контакты» as a
     heading над полем «Контакты» breaks the Excel import of records (Part III, §19): the header row is
@@ -734,6 +818,10 @@ reshuffles the form.
       a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
 - [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.9 rule 12).
+- [ ] 0.8a: more than 12 visible fields → tabs, balanced; themes → `STATIC_TEXT` headings (3 rows,
+      `hideLabel`, `tableColToShow: false`); each `TAB_GROUP` = tallest tab + 3 (nested + 2); system fields
+      on `tab_system` «Системные» with its «никому» rule; `gridLayoutPosition.h` = form rows + 5, a child's
+      `w` below its parent's.
 - [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
       table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
       15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
@@ -2145,6 +2233,12 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 
 - Cell sizes the constructor itself assigns `[C]`: FULL_DATE / PERIOD 15×4; LINK / FILE_UPLOAD / Person
   ref 15×6; one-line inputs 3 rows; nested tables 9 rows; STATIC_TEXT 15×8; dictionary `code`/`label` 15×4.
+- **Heights that fit their content** `[C]` (one grid row = 30 px): a one-line input needs 3 rows (label +
+  box = 58 px; 4 leaves an empty band); a `<h3><b>…</b></h3>` heading with `hideLabel` needs 46 px = 3 rows
+  (2 rows scrolls inside the cell); a top-level `TAB_GROUP` draws a box of `rows·30 − 61` px and a tab of
+  `n` content rows needs `n·30 + 28`, so `rows` = tallest tab + 3; a `TAB_GROUP` placed on a tab of another
+  group draws its tabs vertically on the left with only 12 px of overhead, so `rows` = tallest tab + 2.
+  The group is as tall as its tallest tab — shorter tabs show an empty band. The whole recipe → 0.8a.
 - **Widget widths** `[C]`: a text input FILLS its cell (a wide cell = a wide empty box); reference/select
   boxes shrink to fit; the «Период» box is FIXED at ~3 columns, so a 10-column cell is 2/3 empty.
   A good rhythm is 5 columns per compact field (three per row); a ~46-char checkbox label still fits
@@ -2177,9 +2271,12 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   Fields outside tabs coexist with a tab group in the same BO. Tab order = `fieldTabs` order; the first
   tab is the default. A tab group whose only tab is a service tab can sit UNDER the ordinary fields instead of opening the form.
 - **Record window**: `BoStructDto.gridLayoutPosition` `{x,y,w,h,id:"0"}` is the record WINDOW on a
-  ~16-column SCREEN grid, not the form; `null` for dictionaries. Known values:
+  16-column SCREEN grid, not the form; `null` for dictionaries. The dialog is exactly `h·30` px tall and
+  `w/16` of 90 % of the browser width (`w: 10` = 1055 px on a 1876 px window); its title and button bar
+  take 99 px and the body pads 28, so a form of `R` rows fits without a scroll at **`h = R + 5`** `[C]`.
+  Without `gridLayoutPosition` the dialog opens at 90 % × 90 % of the screen `[C]`. Known values:
   `{x:1,w:15,h:21}`, `{x:1,w:15,h:18}` (top-level BOs), `{x:3,w:11,h:18}` / `{x:3,w:10,h:28}` (BOs opened
-  only from a parent's table). `h` is not the form's row count (a 37-row form scrolls inside an 18-unit
+  only from a parent's table). `h` is the form's row count + 5, not the row count itself (a 37-row form scrolls inside an 18-unit
   window). Import applies it `[C]` (read back with `load-business-object-grid-layout-position`), and the
   server stores any `h` `[C]`. The ceiling is the CLIENT's: one unit
   is 30 px and the dialog is capped at `0.9·innerHeight` (`MYBPM-UI-API.md`, «Size of the child's record
@@ -2871,7 +2968,11 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   code — arrives with exactly that lock on that tab, the other tabs untouched, and the field still on its
   tab. «никому» (`view.denyAll:true`, empty `orgUnitIds`) also imports.
   Both keys are CODES; `validate-archive` checks that they name a real `TAB_GROUP` and its tab.
-  Whether the tab is really hidden for a non-admin user is `[U]` (an admin sees the tab either way).
+  **A tab has only the VIEW right** `[C]` (the constructor offers no other; `edit` in the struct is not
+  applied separately). «никому» on VIEW hides the tab from every non-admin user — the tab disappears from
+  the card AND its fields disappear from the registry columns, and a non-admin who edits and saves the
+  record keeps the hidden fields' values `[C]`. **An admin always sees the tab and its columns** `[C]`.
+  This is the hidden system tab of 0.8a step 6.
 - Semantics `[I]`: `denyAll:false` = «всем»;
   `denyAll:true` + empty `orgUnitIds` + all-false `authorsField` = «никому»; `denyAll:true` + ids and/or
   `author:true` = «только этим». The struct's **top-level** `denyAll` is a "custom rights are set" flag,
