@@ -2,8 +2,9 @@
 
 **STOP — read before you act.** This file is about 5000 lines and the user's spec may be several pages. Read
 the spec in full — every page, every table — and the whole of §0U down to and including «0U.6 Self-check
-before you say it worked» BEFORE the first call; if your reader returns a limited number of lines, call it
-again with the next offset until you have seen that heading. Every endpoint, payload key and enum value you
+before you say it worked» BEFORE the first call — and before asking anything. **If you read in chunks (a
+`limit` of a few hundred lines), ONE chunk is never enough:** call the reader again with `offset` = the line
+after the last one you got, until that heading has scrolled past. A PDF read by page ranges: up to its last page. Every endpoint, payload key and enum value you
 send is printed in this document (or found by 0U.3) — copy it; a name that merely looks right is invented,
 and the stand answers it with an error or silently ignores it.
 
