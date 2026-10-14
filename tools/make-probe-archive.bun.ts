@@ -41,6 +41,11 @@
  *     settings»): records open as a page tab (instanceViewType TAB), no create button in the registry
  *     (hideAddButtonFromRegistry), «Помечать новые» off (isTouchEnabled false); both booleans are always written,
  *     since a re-import without them resets the stand to the defaults
+ *   --window W[,H]                                            — the record window (gridLayoutPosition): W of 16 screen
+ *     columns, H rows of 30 px (default form rows + 5); without the flag a BO / process dialog gets W 10
+ *   --hide-tab tabs/tab_system                                — the hidden system tab «Системные» (0.8a step 6): an
+ *     AccessStructDto, all BO actions open + VIEW «никому» on that tab; REPLACES the BO's rights — a NEW BO only
+ *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8a — one-line 3, text block 4, reference/file 6, TAB_GROUP = tallest tab + 3)
  *   --bo-order <n>                                            — the BO's place in its sidebar group (orderIndex, default
  *     47480000 = the §0.4 template); a re-import MOVES an existing BO to the archive's group and this place, and BOs
  *     sharing one value cannot be reordered between each other by drag (MYBPM-IMPORTS.md §2 «BO place in the sidebar»)
@@ -548,11 +553,12 @@ function field(o: {
       }
       : {}),
     // «Вкладки»: one entry per tab, keyed by the tab's transliterated code (export shape).
-    // «>Справа» = a tab on the RIGHT end of the strip (isRight).
+    // «>Справа» = a tab on the RIGHT end of the strip (isRight); «Системные=tab_system» sets the code (0.6a).
     fieldTabs: Object.fromEntries((o.tabs ?? []).map((spec, i) => {
       const isRight = spec.startsWith(">");
-      const label = isRight ? spec.slice(1) : spec;
-      const tabCode = codeOf(label);
+      const body = isRight ? spec.slice(1) : spec, eq = body.lastIndexOf("=");
+      const label = eq > 0 ? body.slice(0, eq) : body;
+      const tabCode = eq > 0 ? body.slice(eq + 1) : codeOf(label);
       return [tabCode, {
         label: { rus: label }, orderIndex: i * 10000, chosenAccessRight: false,
         isRight, isDefault: i === 0, code: tabCode,
@@ -654,7 +660,7 @@ const DEFAULT_FIELDS = {
     x: 0,
     y: 0,
     cols: 15,
-    rows: 4,
+    rows: 3,
     tableColOrderIndex: 0,
   }),
   Chislo: field({
@@ -662,7 +668,7 @@ const DEFAULT_FIELDS = {
     label: "Число",
     type: "INPUT_NUMBER",
     x: 0,
-    y: 4,
+    y: 3,
     cols: 5,
     rows: 3,
     tableColOrderIndex: 1,
@@ -694,6 +700,13 @@ for (const f of coFields) {
   }
 }
 
+/** The form's height: the bottom of the lowest cell outside the tabs (MYBPM-IMPORTS.md 0.8a step 7). */
+function formRows(): number {
+  return Math.max(0, ...(Object.values(dynamicFields) as any[])
+    .filter(f => !f.tabCodePath && f.gridPosition).map(f => f.gridPosition.y + f.gridPosition.rows));
+}
+/** TAB_GROUPs without `!rows=N`, resized to their tallest tab once every field is placed (0.8a). */
+const autoTabGroups = new Set<string>();
 /** System fields first (a dictionary owns rows 0-7), then whatever `--field` asked for. */
 const dynamicFields: Record<string, object> = isDictionary ? { ...DICTIONARY_FIELDS } : {};
 if (isComposite) {
@@ -713,10 +726,16 @@ if (isComposite) {
   let col = Object.keys(dynamicFields).length;
   custom.forEach((f, i) => {
     const code = codeOf(f.label);
-    // What the constructor itself assigns: a reference or a file 6 rows, a grid-shaped field 8, else 4.
-    const rows = ["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR"].includes(f.type)
+    // The heights that fit the content (MYBPM-IMPORTS.md 0.8a): a reference or a file 6 rows, a questionnaire or
+    // a map 8, a text block 4, a one-line input or a heading 3; a TAB_GROUP is resized to its tallest tab + 3
+    // after all fields are placed (below). `!rows=N` overrides any of them.
+    const rowsSet = f.sets.find(s => s.path[0] === "rows");
+    const rows = rowsSet ? Number(rowsSet.value)
+      : ["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR"].includes(f.type)
       ? 6
-      : ["STATIC_TEXT", "QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"].includes(f.type) ? 8 : 4;
+      : ["QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"].includes(f.type) ? 8
+      : ["TEXTAREA", "TEXTAREA_LANG"].includes(f.type) ? 4 : 3;
+    if (f.type === "TAB_GROUP" && !rowsSet) autoTabGroups.add(code);
     const isRef = f.type === "BO" || f.type === "CO";
     // `#…` means a different thing per type: options for a list, steps for a bar, tabs for a tab group,
     // «колонки^строки» for a questionnaire, and the HTML itself for «Текст».
@@ -737,7 +756,9 @@ if (isComposite) {
         ? { code: f.refBoId, name: f.refBoCode ?? f.refBoId }
         : undefined,
       options: ["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? hash : [],
-      staticValue: f.type === "STATIC_TEXT" ? (hash[0] ?? `<h2>${f.label}</h2>`) : undefined,
+      staticValue: f.type === "STATIC_TEXT" ? (hash[0] ?? `<h3><b>${f.label}</b></h3>`) : undefined,
+      // a group heading (0.8a): no label row over the HTML, and no empty registry column
+      tableColToShow: f.type === "STATIC_TEXT" || f.type === "TAB_GROUP" ? false : undefined,
       steps: f.type === "PROGRESS_BAR" ? hash : undefined,
       tabs: f.type === "TAB_GROUP" ? hash : undefined,
       questionnaire: f.type === "QUESTIONNAIRE"
@@ -755,6 +776,7 @@ if (isComposite) {
       isUnique: f.flags.includes("uniq"),
       isReadonly: f.flags.includes("readonly"),
     });
+    if (f.type === "STATIC_TEXT") (dynamicFields[code] as any).hideLabel = true;
     // «Чек лист»: the items are the field's defaultValue, a JSON STRING (MYBPM-IMPORTS.md 0.5) — never
     // fieldOptionsStruct, which the importer ignores; «+Пункт» starts ticked. isAppendable as the constructor sets it.
     if (f.type === "CHECKLIST" && hash.length) Object.assign(dynamicFields[code] as any, {
@@ -771,6 +793,7 @@ if (isComposite) {
     if (f.flags.includes("track")) addTrackStatus(code, y);
     let inTab = false;
     for (const { path, value } of f.sets) {
+      if (path[0] === "rows") continue;
       // `!tab=<код вкладок>/<код вкладки>` — the field sits ON that tab: tabCodePath, and its y counts from the
       // top of the tab (MYBPM-IMPORTS.md «tabCodePath»), so the form below does not move down.
       if (path[0] === "tab") {
@@ -799,6 +822,24 @@ if (isComposite) {
     // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
     if (!inTab) { y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++; }
   });
+  // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 2 when it sits on a tab of another group) — one row
+  // less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it
+  // on its own tab and makes that tab taller. Then every cell below the group in its stack shifts by the change.
+  const all = Object.values(dynamicFields) as any[];
+  const nestedFirst = [...autoTabGroups].sort((a, b) =>
+    Number(!(dynamicFields[a] as any).tabCodePath) - Number(!(dynamicFields[b] as any).tabCodePath));
+  for (const code of nestedFirst) {
+    const g: any = dynamicFields[code];
+    const onTabs = all.filter(f => f.tabCodePath?.tabGroupCode === code);
+    if (!onTabs.length) continue;
+    const tallest = Math.max(...onTabs.map(f => f.gridPosition.y + f.gridPosition.rows));
+    const delta = tallest + (g.tabCodePath ? 2 : 3) - g.gridPosition.rows;
+    const sameStack = (f: any) => g.tabCodePath
+      ? f.tabCodePath?.tabGroupCode === g.tabCodePath.tabGroupCode && f.tabCodePath?.tabCode === g.tabCodePath.tabCode
+      : !f.tabCodePath;
+    for (const f of all) if (f !== g && f.gridPosition && sameStack(f) && f.gridPosition.y > g.gridPosition.y) f.gridPosition.y += delta;
+    g.gridPosition.rows += delta;
+  }
 }
 
 /**
@@ -1107,6 +1148,13 @@ lines.push({
   kind: "GENERAL",
   boGroupOldId: groupOldId,
   instanceViewType: args.has("--tab-view") ? "TAB" : "FORM",
+  // `--window W[,H]` = the record WINDOW (W of 16 screen columns, H rows of 30 px — MYBPM-IMPORTS.md 0.8a step 7);
+  // H defaults to form rows + 5, the height at which the dialog does not scroll. Without the flag a BO or a
+  // process opening as a dialog gets W 10; a dictionary, a composite or a page-tab record gets none.
+  ...(flag("window", "") || (["BO", "BO_PROCESS"].includes(CATEGORY) && !args.has("--tab-view"))
+    ? (([w, h]) => ({ gridLayoutPosition: { x: Math.ceil((16 - w) / 2), y: 0, w, h: h || formRows() + 5, id: "0" } }))(
+      (flag("window", "") || "10").split(",").map(Number))
+    : {}),
   bos: sources,
   // `--tabs` = the card's rail tabs; `--history` adds «История» — without it no isHistoryTracking field is ever logged
   boTabs: Object.fromEntries(
@@ -1152,6 +1200,31 @@ lines.push({
   captcha: widgetMaps.captcha,
   currentUser: widgetMaps.currentUser,
 });
+
+// `--hide-tab <tabs code>/<tab code>` — the hidden system tab (MYBPM-IMPORTS.md 0.8a step 6): an AccessStructDto with
+// every BO action open and VIEW «никому» on that tab. It REPLACES the BO's rights, so use it on a NEW BO only — for an
+// existing one take its AccessStructDto from a fresh export and add the tab rule by hand.
+if (flag("hide-tab", "")) {
+  const [tabGroupCode, tabCode] = flag("hide-tab", "").split("/");
+  const grp: any = dynamicFields[tabGroupCode];
+  if (grp?.type !== "TAB_GROUP" || !grp.fieldTabs?.[tabCode])
+    throw new Error(`--hide-tab ${tabGroupCode}/${tabCode}: no such TAB_GROUP / tab on this BO`);
+  grp.fieldTabs[tabCode].chosenAccessRight = true;
+  const act = (denyAll: boolean) => ({
+    denyAll, participants: false,
+    authorsField: { content: false, head: false, author: false, employees: false, department: false,
+      parentDepartment: false, childDepartment: false, fieldCodes: [] },
+    fromFields: {}, orgUnitIds: [],
+  });
+  const acts = (view: boolean) => Object.fromEntries(
+    ["all", "create", "view", "edit", "delete", "archive", "export", "duplicate", "add"].map(k => [k, act(k === "view" && !view)]));
+  lines.push({
+    "@class": "kz.greetgo.mybpm.reg.structure.model.access.AccessStructDto",
+    boCode: BO_CODE, boName: BO_NAME, boCategory: CATEGORY,
+    boAccessStruct: { denyAll: false, ...acts(true) },
+    fieldAccessStructMap: { [tabGroupCode]: { tabAccessStructMap: { [tabCode]: { denyAll: true, ...acts(false) } } } },
+  });
+}
 
 /**
  * A BUSINESS PROCESS carries a SECOND line: `BoProcessVersionsStructDto`, whose `oldId` is the BO's own
