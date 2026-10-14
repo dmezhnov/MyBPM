@@ -3361,6 +3361,10 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   parent form is then cancelled.** A CO attribute written on an element writes the source record's field
   that feeds it. A record made by `F-CI` and filled in the same script was stored with its fields when the
   parent was saved (no `#Сохранить`).
+- **In a business process the writes are stored when the step ends** `[C]`: a Script / Switch figure's
+  changes (to `ЭТОТ_ПРОЦЕСС`, to records it reaches, to records made by `F-CI`) are saved when the script
+  leaves the figure — the exit block / the figure's outgoing arrow. No card session, no `#Сохранить` needed.
+  (In a FORM hook, by contrast, they wait for the card's save — above and §15.)
 - **On a test (`DEV`) record the script sees only test records in its link fields** `[C]`: a DEV parent
   whose links point at ordinary records reads every `BO`/`CO` collection as empty (`F-COUNT` = 0, foreach
   makes no pass); a DEV child in the same field is seen. Test a script on DEV only with DEV children, or
@@ -5061,6 +5065,8 @@ Number/string facts below without a marker are `[I]`.
 - **How a process runs** `[C]`: it **starts when a record is first SAVED** (not when the form opens); Enter passes at once;
   a **Form** step stands (status «В ожидании») **until the record held in the Form's BO field is saved**,
   then the process runs on through Script / Switch to the Exit, and the status becomes «Завершён».
+  **What a Script / Switch figure writes is saved when the figure is left** (its exit block) `[C]` — no
+  `#Сохранить`, no card save.
   **The Form binds to the record that is in the field WHEN THE STEP BEGINS.** A field filled later is never
   watched, and the step stays stuck. So the design rule is: fill a Form's field before the process gets
   there, either in the record's first save or in a Script placed before the Form. **The save that
