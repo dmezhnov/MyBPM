@@ -1,5 +1,12 @@
 # MyBPM stand — browser UI and REST API reference
 
+**STOP — read before you act.** This file is about 5000 lines and the user's spec may be several pages. Read
+the spec in full — every page, every table — and the whole of §0U down to and including «0U.6 Self-check
+before you say it worked» BEFORE the first call; if your reader returns a limited number of lines, call it
+again with the next offset until you have seen that heading. Every endpoint, payload key and enum value you
+send is printed in this document (or found by 0U.3) — copy it; a name that merely looks right is invented,
+and the stand answers it with an error or silently ignores it.
+
 How to drive a running MyBPM stand: the `/web/v2` REST envelope and the endpoints found so far (access
 rights, menus, kanban), the constructor/registry UI screens behind them, **record (instance) import and
 export through Excel**, the HTML sanitizer, and the tooling around all of it (xlsx patching, Google Drive,
