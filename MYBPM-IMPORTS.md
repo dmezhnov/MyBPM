@@ -3229,6 +3229,11 @@ English `snake_case` with no decoration (`step`, `formula`, `model_step`), and l
   brackets).
 - **A boolean ends in `?` inside the wrapper**: `#найдено?#`, `~Активен?~`. Modules are the exception —
   they are booleans but take no `?`.
+- **A trailing `*` marks the inner twin of an outer variable**: when a nested scope (an inner loop, a
+  branch) needs its own variable for the same thing an outer one already names, the outer keeps the plain
+  name and the inner gets `*` before the closing wrapper — `~Человек~` in the parent loop, `~Человек*~`
+  in the child; `~Объем~` of a row, `~Объем*~` of the record created from it. The `*` is part of the convention, not a
+  defect: never flag it in a review.
 
 **Layout — declarations first.** A script (and every module, 0S.2a «Modules») opens with a header of
 `Пусть` blocks; the logic comes after it, and below the header there is only assignment and logic (loop
@@ -3706,8 +3711,8 @@ Run all of it — the IDE will not tell you about any of these:
 7. Rules 1–6 are mechanical — encode them once in a checker of your own and run it on every file
    before you deliver it (§14 «Tooling that already exists» lists the checkers already written for one project; ask the user
    whether that project's folder is at hand before writing a new one).
-8. **House style** (0S.2a): every name carries its decoration, `#…#` is all lower case, a boolean ends
-   in `?`, counters are bare, the header precedes the logic, a module's `ЕСЛИ` holds nothing but `|…|`
+8. **House style** (0S.2a): every name carries its decoration, `#…#` is all lower case, an inner twin of an
+   outer variable ends in `*`, a boolean ends in `?`, counters are bare, the header precedes the logic, a module's `ЕСЛИ` holds nothing but `|…|`
    and has no other branch, no `ЭТА ИНСТАНЦИЯ` inside a module, every copy of a module is byte-identical.
 
 ### 0S.12 Delivering the file
