@@ -19,6 +19,7 @@ there, and an answer from general knowledge is wrong for this platform.
 | The user wants | Read the section whose heading starts with | Up to |
 |---|---|---|
 | an archive that creates or changes a BO, its fields, a dictionary, a panel, a composite, a process, a menu item, a kanban | `## 0. COOKBOOK` | `## 1. Zip layout` |
+| a whole SYSTEM from a spec (CRM by a concept, several objects, a work path, automations, roles) | `### 0.2b A whole system from a spec`, then the rest of `## 0. COOKBOOK` | `## 1. Zip layout` |
 | a Block IDE script (method body or process script) | `## 0S. COOKBOOK` | `## 9. Script JSON envelope` |
 | an xlsx that loads records into a BO | `## 0X. COOKBOOK` | `## 19. The Excel format` |
 

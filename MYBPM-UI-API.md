@@ -718,6 +718,77 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    controller» (`delete-bo-instance` with `{businessObjectId, boInstanceIds}` in the PARAMS `[C]`, trap 46); the UI controls and the params
    of `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` are not known yet `[U]` (§12).
 
+#### R10 — A whole system from a spec — build everything the stand can take
+
+**When:** the request is a SYSTEM, not one object — «реализуй CRM по этой концепции», a spec with objects, a
+work path, automations, reports, roles. The job is the whole spec, not «the BOs it names»; shipping the BOs
+and dropping the rest «for scope» is a fraction reported as done.
+
+1. **Decompose the spec into a coverage table BEFORE the first write** — one row per requirement (an object,
+   a list of values, a status path, an automation, a calculation, a report, a role, a notification), each
+   row given exactly ONE route:
+
+   | Route | What goes there | Recipe |
+   |---|---|---|
+   | structure | BOs, dictionaries, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0) or the constructor | R3, or R1 / R2 |
+   | a hook script | computed fields and totals, auto-fill, «when X is saved, set Y» | §5g |
+   | a business process | a path someone RUNS figure by figure, with forms and branches (approval) | R2 / §5f |
+   | the menu | one group for the system, one item per working BO, kanban by status | R6 |
+   | rights by role | read the stand's groups, then write the rules | R5 |
+   | records | dictionary values, initial records | R7 or R9 |
+   | not doable | the last table of this recipe | — |
+
+2. **Do every row that has a recipe — in this task.** On a live stand even rights and dictionary values are
+   doable (the group ids are readable here, R5; a dictionary row is an ordinary record, R9 step 3). Never
+   «the structure now, the rest later».
+3. **The menu counts as ASKED** — a system the user has to dig out of «Бизнес-объекты» is not delivered. One
+   menu group named after the system; one item per working BO; the kanban on the item of every BO with a
+   status dropdown (R6, §7).
+4. **A row you do not do needs a reason from this closed list — nothing else is a reason:** a stand input
+   is missing (0U.1, the user has it — ask); the platform cannot do it (name its row of the last table); its
+   only route is `[U]` (name the section that marks it). «Out of scope», «too large», «better by hand», «there
+   is no computed field type» are NOT reasons.
+5. **The report** (0U.6): the contents READ BACK from the stand (R4), never from your plan — groups, BOs by
+   category, scripts by owner and hook, processes, menu items, rights; plus the coverage table — every spec
+   item, its route, done / not done + the reason.
+
+**Modelling patterns** — how a spec becomes BOs and links:
+
+- **Header and lines** (заказ-наряд → работы и запчасти, заказ поставщику → позиции): the line BO has a `SINGLE`
+  `BO` field to the header, the header a `TABLE` field to the line BO, and **each names the other as its linked
+  field** — `boRefStruct.linkedFieldCode` in an archive, «Поведение» → «Связь объектов» → «Заполнить поле
+  "<label>"» (`linkedFieldId`) in the constructor; that control appears only once the back field exists, so
+  create both fields first (§5h «Reference fields») `[C]`. A `TABLE` without the back link leaves every line
+  an orphan in one global registry: no line knows its header, and the lines of one header cannot be listed or
+  summed from the line side.
+- **Child documents** (оплаты по заказу, автомобили → владелец, записи → клиент): the same `SINGLE`↔`TABLE`
+  pair, so the children show on the parent's card. A child's `SINGLE` without the parent's `TABLE` back makes
+  them invisible there.
+- **One stage growing out of another** (запись → заказ-наряд, лид → сделка): link the later record to the one
+  it came from, so the chain is navigable both ways. **Many-to-many**: two `TABLE` fields naming each other.
+- **Dictionary or local list**: values users add to over time, or that several BOs pick from → a dictionary +
+  a «Выпадающий список» «из справочника»; a short fixed list owned by one field (способ оплаты) → a local list
+  («Задать вручную»).
+- **Status**: a record's lifecycle is a dropdown `status` with its kanban card template (§7); a business
+  process is for a path someone runs step by step. Do not turn every status into a process.
+- **Computed values** (сумма заказа = сумма строк, остаток = сумма − оплачено): a plain field plus the owner BO's
+  «Сохранение» hook that fills it (§5g); a total = a foreach over the header's `TABLE` value, add each line's
+  number, assign the sum to the header's field. Each step `[C]`, the whole recipe `[I]`; it recomputes when
+  the HEADER is saved, not when a line is edited in its own card `[I]`.
+- **Which BO gets a menu item**: every working list (клиенты, автомобили, заказы, записи, оплаты, поставщики);
+  NOT the line BOs (edited inside the header's table) and NOT dictionaries (a «Справочники» subgroup at the
+  end, or none).
+
+**What the platform cannot do** — name the row for every spec item you skip:
+
+| Spec item | Why | Instead |
+|---|---|---|
+| Reports, dashboards, analytics | operative reports are their own module (menu type `REPORT`, R4a); not mapped here `[U]` | not done — say so; a registry with its columns, grouping (§5l) or a kanban covers a simple list report |
+| SMS, telephony, calls, a messenger bot | external services configured by the stand's admin | not done — say so; only a record's Telegram / WhatsApp link field exists (§5k) |
+| E-mail / push notifications from a script | the script palette has the actions; their delivery was never checked `[U]` | only if asked, marked `[U]` |
+| A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5f) | a hook on save, or a process started by hand |
+| Deleting a field, a tab or an option by an archive | an import never deletes | the constructor or `deletedFieldIds` (R1) |
+
 ### 0U.5 Hard rules
 
 1. **Detect errors by `errorType`/`className` in the body, never by the HTTP status.** 200 is the answer
@@ -770,6 +841,9 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
 ### 0U.6 Self-check before you say it worked
 
 - [ ] Every call's answer was parsed and checked for `errorType`, not just for HTTP 200.
+- [ ] The report lists what was READ BACK (R4), never the plan, and names no object the stand does not
+      have; for a whole system (R10) it carries the coverage table — every spec item, its route, done / not
+      done + a reason from R10's closed list.
 - [ ] The object was read back with R4 and its `name`, `code` and field list match what was asked for.
 - [ ] For a BO built with R1: the code did NOT acquire a 16-character tail (the rename race).
 - [ ] For an import: `load-import-data` says `APPLIED`, and the BO answers to `load-bo-id-by-code`.

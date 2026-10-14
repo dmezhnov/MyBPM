@@ -31,6 +31,7 @@ what a success and an error look like (`### 0U.2 One complete call`). Then read 
 | a sidebar menu item and a record filter | `#### R6 ` |
 | records from Excel | `#### R7 ` |
 | export the structure of a company | `#### R8 ` |
+| a whole system from a spec (CRM by a concept, objects + menu + rights + scripts) | `#### R10 ` |
 
 Then `### 0U.5 Hard rules` and `### 0U.6 Self-check before you say it worked` — both are short, read them
 every time. `### 0U.7 Where the rest is` maps the numbered sections behind the cookbook.
