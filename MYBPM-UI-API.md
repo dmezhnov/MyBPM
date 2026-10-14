@@ -42,15 +42,14 @@ for exotic cases; this one is *what to send*.
 
 Two rules that apply to every recipe:
 
-- **Everything here is plain HTTP.** The `tools/*.bun.ts` scripts mentioned at the end of each recipe are
-  accelerators that live in one person's folder — a model reading this document may not have them. Every
-  step below is executable with `curl`, `fetch` or `requests` and nothing else.
+- **Everything here is plain HTTP; tools are optional.** Every step below is executable with `curl` or
+  `fetch` and nothing else. The `tools/*.bun.ts` scripts named next to a recipe come from the repository this
+  document belongs to and are NOT shipped with it. **If they are available, prefer them** — they make exactly
+  these calls and check the answers; if not, follow the text — the result is the same.
 - **Never infer the result of a call — read it back.** Every recipe ends with a verification step that
   says which call to make and which field to compare. The stand answers HTTP 200 to a great many things
   it did not do (§0U.2).
 
-*(`tools/follow-cookbook-stand.bun.ts` in this folder is a client written from this section and nothing else —
-a worked example of R1/R4.)*
 
 ### 0U.1 What you must have before the first call
 
@@ -1074,8 +1073,8 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
 
 ### Import through the API — the whole cycle without a browser `[C]`
 
-Driver: `~/programming/MyBPM/tools/api-import-structure.bun.ts` (Bun, `fetch` + `FormData`;
-`--apply` / `--cancel` / `--import-id` / `--description`, token from `$MYBPM_TOKEN` or `--token-file`).
+Optional accelerator, if `tools/` is available: `tools/api-import-structure.bun.ts` (`--apply` / `--cancel` /
+`--import-id` / `--description`, token from `$MYBPM_TOKEN` or `--token-file`) makes the calls below.
 
 Controller prefix is **`import-structure`**, NOT `v2/…` → `POST https://<stand>/web/import-structure/<m>`,
 standard JSON envelope (§1), except the upload which is multipart. Order, exactly as the Angular client:
@@ -1672,7 +1671,8 @@ A configured process (Enter → Form «Заявка» → Script → Switch on �
    `isScriptsExport` / `hasScript` to `false` for a process BO. Shapes: `MYBPM-IMPORTS.md` §5c — Form =
    `FigureFormStruct {fieldCode}` (a CODE, portable), a test-only process sits under
    `processVersions.<version id>` with no `workProcess`.
-2. **Generate**: `bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --process-spec tools/process-probe.spec.json --code
+2. **Generate** the archive by `MYBPM-IMPORTS.md` §0.18 / §5c (by hand), or, if `tools/` is available:
+   `bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --process-spec tools/process-probe.spec.json --code
    <Code> --name "<Имя>"` → group, 2 script
    defs, BO, versions line; `tools/validate-archive.bun.ts` now checks the process part (Form `fieldCode`
    is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is
@@ -1680,7 +1680,8 @@ A configured process (Enter → Form «Заявка» → Script → Switch on �
 3. **Import** through the §5 API cycle from the page (bridge `GET` → `FormData` → `import-file` → insert →
    analyze → apply); expect a clean analysis, `validate-def []` and `translate-script success` for every script. Figure
    and arrow ids are the archive's; the VERSION id is the stand's own, scripts re-keyed to it.
-4. **Run** with `window.mybpmProcess.run(…)` (`create-process-constructor.bun.ts --page-script`): it
+4. **Run** it by «Running a process on a record» (optional accelerator: `window.mybpmProcess.run(…)` from
+   `create-process-constructor.bun.ts --page-script`): it
    runs on DEV records AND on ordinary records (`"state":"ALL"` in the run spec) — the
    imported version is `isWork: true, isTest: true`.
 
@@ -1918,7 +1919,7 @@ opens that BO's new-record form instead of `start-dev-process`) `[I]`.
 ### Export through the API — no browser download `[C]`
 
 The browser's own «Выгрузить» fires but **the file never reaches `~/Downloads` under Claude-in-Chrome**.
-Drive it from the shell instead (`scratchpad/export.bun.ts`), it is two calls:
+Drive it from the shell or `fetch` instead, it is two calls:
 
 1. `POST /web/v2/process-indicator/pre-create-process {}` → `processId`;
 2. `POST /web/struct/export-company-structure?processId=<id>` with body `{}` → the zip bytes
@@ -4181,7 +4182,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   `[C]`: start it **detached** (`setsid nohup bun bridge.bun.ts > log 2>&1 < /dev/null &`)
   or the session harness reaps it; and stop it **by PID** — `pkill -f 'bun bridge.bun.ts'` inside a
   Bash call matches the wrapper shell's own command line and kills it, so the rest of that command
-  silently never runs. The bridge is committed — `tools/bridge.bun.ts`, started
+  silently never runs. Writing one is ~20 lines of `Bun.serve`; if `tools/` is available, use the committed
+  `tools/bridge.bun.ts`, started
   detached by `mise run bridge` and stopped by pid with `mise run bridge-stop`; files live in
   `tools/out/bridge/`.
 - **Pasting into the Block IDE from automation** `[C]`: the IDE pastes from the canvas

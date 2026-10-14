@@ -16,6 +16,13 @@ The stand itself — API, UI screens, access rights, menus, and the routes that 
 
 Audience: an agent generating or patching these files. Dense reference, not a tutorial.
 
+**Tools are optional.** Everything in this document can be done by hand from its text alone: every shape is
+printed, every rule is stated, and nothing here needs a program you do not have. The repository this document
+comes from also ships `tools/*.bun.ts` (a generator, a validator, an import client …), which are NOT shipped
+with the document. **If they are available, prefer them** — they apply exactly these rules, mint deterministic
+ids and catch slips a hand-built file misses; if not, follow the text — the result is the same file. A tool is
+always named next to the manual recipe it speeds up, never instead of it.
+
 **One cookbook per job, and they are independent — read the one you need:** §0 «build me an archive that
 creates a BO with fields», §0S «write me a Block IDE script», §0X «fill me a file that loads these records».
 Each carries complete literal templates, the naming/id rules, a hard-rules list and a self-check, and each
@@ -88,8 +95,9 @@ Rules, all `[C]`:
   Each line must be minified onto a single line.
 - Compression may be **STORED (method 0)** — the importer accepts an uncompressed zip, so a builder does
   not need a deflate implementation.
-- The outer file name is ignored on import. Real exports are named
-  `MyBPM-export-<tenant>-v<build>-<YYYY-MM-DDTHH-MM-SS>.mybpm.zip`; copy that shape for tidiness only.
+- The outer file name **must end in `.mybpm.zip` or `.mybpm`** — the upload rejects any other name
+  («Расширение файла должно быть…») `[C]`; the rest of the name is free. Real exports are named
+  `MyBPM-export-<tenant>-v<build>-<YYYY-MM-DDTHH-MM-SS>.mybpm.zip`.
 
 ### 0.2 Algorithm
 
@@ -849,7 +857,14 @@ the BO's category. Count it in `objectCount`.
 
 ### 0.11 Building and delivering
 
-Ready-made generator — prefer it over writing a new builder.
+**By hand — always possible.** Write the lines by 0.3–0.8a (plus 0.12–0.18 where your task needs them), one
+minified JSON object per line, and zip them as 0.1 says — «Zipping by hand» at the end of this block. Run the
+self-check 0.10 yourself.
+
+**With the repository's `tools/`, if they are available — preferred.** The generator below writes the same
+lines from a short command line, with deterministic ids, and `tools/validate-archive.bun.ts <zip>` checks a
+finished archive (hand-built or generated) against 0.9 / 0.10 / 0.8a: `FATAL` and `ERROR` must be zero,
+`WARN` is style. Neither is required.
 `--group-code`, `--group-name` and `--group-order` are required (0.3): for an existing group copy its
 `code`, `name` and `orderIndex` from `load-bo-groups` (the import overwrites the last two), for a new
 group choose a new code, a name and a place:
@@ -915,20 +930,47 @@ bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-n
 one composite there. They are the shape of a `--field ...@<boId>@<boCode>` spec, never values for an
 archive aimed at another stand (0.2a).
 
-If you must build the zip yourself, STORED entries are enough. Bun has no zip API; `tools/zip.ts` writes a
-STORED archive with UTF-8 names (run this as a `*.bun.ts` from the repository root):
+**Zipping by hand.** Any zip tool will do; the importer takes STORED and DEFLATED entries alike. With the
+`zip` command, run it in the folder that CONTAINS `data-…/`, so the folder is part of the member names:
+
+```
+zip -r -X <name>.mybpm.zip data-2026-09-18T10-43-21-715
+```
+
+`metadata.mybpm` has no trailing newline — write it with `printf 'objectCount-%d' N`, not `echo`. Where
+there is no zip tool, this self-contained TypeScript (Bun or any JS runtime with `TextEncoder`; no imports)
+writes a STORED archive with UTF-8 names — replace `lines` with your objects:
 
 ```ts
-import { zip } from "./tools/zip.ts";
-const lines = [line1, line2];               // objects, in order
-const d = "data-2026-09-18T10-43-21-715";
-const enc = new TextEncoder();
-const payload = lines.map((o) => JSON.stringify(o)).join("\n") + "\n";
-await Bun.write("out.mybpm.zip", zip([
-  { name: `${d}/0000001.mybpm`, data: enc.encode(payload) },
+const lines: object[] = [/* line 1, line 2, … in order */];
+const d = "data-2026-09-18T10-43-21-715", enc = new TextEncoder();
+const files = [
+  { name: `${d}/0000001.mybpm`, data: enc.encode(lines.map(o => JSON.stringify(o)).join("\n") + "\n") },
   { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${lines.length}`) },
-]));
+];
+const T = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc = (b: Uint8Array) => { let c = 0xffffffff; for (const x of b) c = T[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const parts: Uint8Array[] = [], central: Uint8Array[] = [];
+let off = 0;
+for (const f of files) {
+  const n = enc.encode(f.name), c = crc(f.data), L = f.data.length;
+  const lh = new DataView(new ArrayBuffer(30));
+  [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [14, c, 4], [18, L, 4], [22, L, 4], [26, n.length, 2]]
+    .forEach(([o, v, w]) => w === 4 ? lh.setUint32(o, v, true) : lh.setUint16(o, v, true));
+  parts.push(new Uint8Array(lh.buffer), n, f.data);
+  const ch = new DataView(new ArrayBuffer(46));
+  [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [16, c, 4], [20, L, 4], [24, L, 4], [28, n.length, 2], [42, off, 4]]
+    .forEach(([o, v, w]) => w === 4 ? ch.setUint32(o, v, true) : ch.setUint16(o, v, true));
+  central.push(new Uint8Array(ch.buffer), n);
+  off += 30 + n.length + L;
+}
+const size = central.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22));
+e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+e.setUint32(12, size, true); e.setUint32(16, off, true);
+await Bun.write("out.mybpm.zip", new Blob([...parts, ...central, new Uint8Array(e.buffer)]));  // or fs.writeFileSync
 ```
+
+Check the result with `unzip -l out.mybpm.zip`: exactly two members, both under `data-…/` (0.10).
 
 **Delivering it — the minimum** `[C]` (the full transport is `MYBPM-UI-API.md` §5 / R3,
 this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, one deliberate step writes.
@@ -938,13 +980,17 @@ this is enough without it). An import is TWO-PHASE: the upload only ANALYSES, on
   A log row «Импорт проанализирован» appears — nothing is written yet. Click the row: «Ошибки» (must be
   empty), one node per object with its pre-apply diff («Добавленные поля» …), and «Описание импорта» —
   **required**, applying without it ends in `DESCRIPTION_ERROR`. Then ПРИМЕНИТЬ → «Импорт выполнен».
-- **API**: `bun tools/api-import-structure.bun.ts <archive.mybpm.zip> --stand https://<stand>
-  [--token-file PATH] [--apply --description "что и зачем"]` — without `--apply` it stops at the dry run
-  (status `ANALYZED`) and prints the errors and the per-object list; `--cancel` drops it. Token = the
-  browser's `localStorage.LOCAL_PRIVATE_SwebToken` without its JSON quotes, or `$MYBPM_TOKEN`. The calls
-  underneath, all `POST <stand>/web/import-structure/<method>`: `import-file` (multipart, field `file`) →
+- **API, by hand**: token = the browser's `localStorage.LOCAL_PRIVATE_SwebToken` without its JSON quotes. The
+  calls, all `POST <stand>/web/import-structure/<method>`: `import-file` (multipart, field `file`) →
   `insert-file-data` → `analyze-file-data` → read `load-import-errors` / `load-import-bo-infos` →
-  `save-import-description` → `apply-import`. Only ONE import may be open per company at a time.
+  `save-import-description` → `apply-import`. Only ONE import may be open per company at a time. Each
+  `insert-file-data` / `analyze-file-data` / `apply-import` answers a `processId`: poll
+  `v2/process-indicator/load-state-short` `P {processId}` until `isFinished: true`. `apply-import` takes
+  `P {importId, processId}` with a fresh `processId` from `v2/process-indicator/pre-create-process` `P {}`, and
+  `save-import-description` `P {importId, value}` must come first (no description = `DESCRIPTION_ERROR`).
+  **If `tools/` is available**, `bun tools/api-import-structure.bun.ts <archive.mybpm.zip> --stand https://<stand>
+  [--token-file PATH] [--apply --description "что и зачем"]` runs the whole cycle — without `--apply` it
+  stops at the dry run and prints the errors and the per-object list; `--cancel` drops it.
 - **Calling a `/web` endpoint by hand** (the rollback below, the script check of §5d): `POST`, header
   `token: <the token, no quotes>`, `Content-Type: application/json`, and ALWAYS the envelope
   `{"useParamsFromBody": true, "params_Lr1oSgwPR8": {…}, "body_o1nhHUG480": {…}}`. In this document
@@ -1450,8 +1496,8 @@ How to write a name: `<namespace>:<name>`, e.g. `phosphor:rocket`, `menu-item:02
 «» contain a SPACE, and the space is part of the name (`"menu-item:002-price tag"` — stored and drawn
 as is `[C]`, the frontend URL-encodes it). «tab N (head icon X)» is the picker's N-th tab from the left and the picture on its header — it
 only helps to find an icon in the UI and means nothing in the archive. The list lives in the stand's
-frontend and may grow with a new build: `tools/menu-icons.bun.ts --stand https://<stand> --check --md`
-re-reads it from a stand and prints this block again.
+frontend and may grow with a new build; if `tools/` is available, `tools/menu-icons.bun.ts --stand
+https://<stand> --check --md` re-reads it from a stand and prints this block again.
 
 `phosphor:` —
 - tab 1 (head icon `recycle`, 111): arrow-arc-left arrow-arc-right arrow-bend-double-up-left arrow-bend-double-up-right arrow-bend-down-left arrow-bend-down-right arrow-bend-left-down arrow-bend-left-up arrow-bend-right-down arrow-bend-right-up arrow-bend-up-left arrow-bend-up-right arrow-circle-down arrow-circle-down-left arrow-circle-down-right arrow-circle-left arrow-circle-right arrow-circle-up arrow-circle-up-left arrow-circle-up-right arrow-clockwise arrow-counter-clockwise arrow-down arrow-down-left arrow-down-right arrow-elbow-down-left arrow-elbow-down-right arrow-elbow-left arrow-elbow-left-down arrow-elbow-left-up arrow-elbow-right arrow-elbow-right-down arrow-elbow-right-up arrow-elbow-up-left arrow-elbow-up-right arrow-fat-down arrow-fat-left arrow-fat-line-down arrow-fat-line-left arrow-fat-line-right arrow-fat-line-up arrow-fat-lines-down arrow-fat-lines-left arrow-fat-lines-right arrow-fat-lines-up arrow-fat-right arrow-fat-up arrow-left arrow-line-down arrow-line-down-left arrow-line-down-right arrow-line-left arrow-line-right arrow-line-up arrow-line-up-left arrow-line-up-right arrow-right arrow-square-down arrow-square-down-left arrow-square-down-right arrow-square-in arrow-square-left arrow-square-out arrow-square-right arrow-square-up arrow-square-up-left arrow-square-up-right arrow-u-down-left arrow-u-down-right arrow-u-left-down arrow-u-left-up arrow-u-right-down arrow-u-right-up arrow-u-up-left arrow-u-up-right arrow-up arrow-up-left arrow-up-right arrows-clockwise arrows-counter-clockwise arrows-down-up arrows-horizontal arrows-in arrows-in-cardinal arrows-in-line-horizontal arrows-in-line-vertical arrows-in-simple arrows-left-right arrows-out arrows-out-cardinal arrows-out-line-horizontal arrows-out-line-vertical arrows-out-simple arrows-vertical caret-circle-double-down caret-circle-double-left caret-circle-double-right caret-circle-double-up caret-circle-down caret-circle-left caret-circle-right caret-circle-up caret-double-down caret-double-left caret-double-right caret-double-up caret-down caret-left caret-right caret-up recycle
@@ -1665,10 +1711,9 @@ the field. Other conditions, loops and writes: Part II (§16 «Business-process 
   registry URL and comes back from `v2/business-objects/load-bo-id-by-code`. Deterministic ids therefore address the same BO on every
   re-import — one more reason to seed them, never randomise.
 - **A generated archive may be STORED (zip method 0)** `[C]` — the importer accepts it; no compression
-  needed. Generator: `tools/make-probe-archive.bun.ts` (Bun, own minimal zip writer, deterministic
-  sha256-seeded 16-char ids; `--code`/`--name` mint a new BO, `--with-metadata` adds
-  `CompanyMetadataStructDto`). Ship it to a stand with `tools/api-import-structure.bun.ts` — the API
-  import route, `MYBPM-UI-API.md` §5.
+  needed (a self-contained writer: 0.11 «Zipping by hand»). Optional accelerators if `tools/` is available:
+  `tools/make-probe-archive.bun.ts` builds it (deterministic sha256-seeded ids, `--with-metadata` adds
+  `CompanyMetadataStructDto`), `tools/api-import-structure.bun.ts` ships it (the calls: 0.11).
 - Use **deterministic ids** in a generator (e.g. sha256 of a seed) so a re-import updates instead of
   duplicating.
 
@@ -2505,11 +2550,10 @@ that field is the only link between them. An export of one process carries 7 obj
 - **A whole configured process travels in one archive and runs** `[C]`:
   Enter → Form(«Заявка») → Script → Switch(ЕСЛИ «Заявка».«Одобрить») → Exit «Да» / Exit «Нет» imports
   through the API route (`MYBPM-UI-API.md` §5) with a clean analysis and runs both branches on DEV and
-  ordinary records. Generator:
-  `make-probe-archive.bun.ts --process-spec <spec.json>` — the SAME spec `tools/process-builder.ts` builds
-  through the API (`tools/process-probe.spec.json`; a field entry needs `refBoCode` AND `show: [<target
-  field codes>]` for the archive — the generator refuses a reference without `show` and any BO without a
-  registry column, 0.9 rule 15).
+  ordinary records. By hand: the whole archive of 0.18. Optional accelerator:
+  `tools/make-probe-archive.bun.ts --process-spec <spec.json>` (a field entry needs `refBoCode` AND `show:
+  [<target field codes>]` — the generator refuses a reference without `show` and any BO without a registry
+  column, 0.9 rule 15).
 - **`PROCESS_STATUS` is not created by the importer** `[C]`. The constructor gives every process the
   system field `PROCESS_STATUS` («Статус процесса», `type: "BO"`, `isSystem`, `isCodeReadonly`,
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
@@ -2532,7 +2576,7 @@ that field is the only link between them. An export of one process carries 7 obj
   `"defaultValue": "[\"<CREATED row id>\"]", "defaultValueMap": {"RUS": "[\"<CREATED row id>\"]"}`,
   AND (2) the export's separate `ExportStructInstanceDto` line for the `CREATED` row with
   `sources:[{sourceType:"DEFAULT_VALUE", defaultValueInstanceSource:{boCode:<this BO>, fieldCode:"PROCESS_STATUS"}}]`
-  (its full shape: `tools/make-probe-archive.bun.ts`, `pushStatusDefault`). Either one alone leaves
+  (its full shape: 0.18 «Line 6, the `CREATED` row»). Either one alone leaves
   `defaultValue "[]"`.
   **Both ids are resolved BY CODE on import** `[C]`: the dictionary is built in with the fixed code
   `PROCESS_STATUS`, its id and its `CREATED` row id differ between stands, and an archive carrying another
@@ -2642,6 +2686,8 @@ differences `[C]`:
 2. there is **no envelope**: no `copiedType`, no `mouseX`/`mouseY`, no `startBlockIds`. The root is found
    by class — a hook/field script starts at its `BlockFixEntryPointStruct` (the only block with `x`/`y`).
 
+   Inside an `ExprValue`, the clipboard key `valueType` is written `valueTypeStruct` (same object).
+
 Every other key matches byte for byte: `downBlockId`, `varName`+`valueExprId`, `leftExprId`+`rightExprId`,
 `ifExprId`+`thenBlockId`+`branches{blockId,order,hasExpr}`, `exitType`, `actId`+`argExprIds`+
 `canWriteValue`, `funcName`+`args{name,order,exprId}`+`useArgNames`, `opType`+`more`, and the
@@ -2658,9 +2704,10 @@ the envelope of §0S.3 with `startBlockIds` = the entry point — and it is a no
 ### The reverse works too: an archive CREATES scripts on import `[C]`
 
 Such an archive — `CompanyMetadataStructDto` + `BoGroupStructDto` + `BoStructDto` +
-`BoScriptVersionsStructDto` + N × `ScriptDefStructDto` — is built by `tools/make-probe-archive.bun.ts`,
-post-processed by `tools/add-bo-scripts.bun.ts` and applied through `tools/api-import-structure.bun.ts`;
-bodies may be lifted verbatim out of an export. **The clipboard is not the only write channel** (§14 is
+`BoScriptVersionsStructDto` + N × `ScriptDefStructDto` — is built by hand from the two shapes above (a body is
+a Part II script converted by the rules of «`ScriptDefStructDto` = a Part II script minus the clipboard
+envelope») and imported like any archive; bodies may be lifted verbatim out of an export. Optional accelerators:
+`tools/make-probe-archive.bun.ts` + `tools/add-bo-scripts.bun.ts` (below). **The clipboard is not the only write channel** (§14 is
 about the IDE, not about the platform).
 
 - **The analyser announces them before you apply**: `load-import-bo-infos[].structTypes` is
@@ -2742,10 +2789,13 @@ The bodies need not be lifted from an export: **GENERATED scripts** on the four 
 of each of the 27 field types import cleanly (`structTypes: ["SCRIPTS","STRUCTURE"]`, no errors) and
 translate `{"success":true}`. The runtime result is §15 «When each hook runs».
 
-- **Tool**: `tools/add-bo-scripts.bun.ts … --bodies <file.json>` takes
+- **By hand**: write each body in the CLIPBOARD form of Part II, convert it by the rules of
+  «`ScriptDefStructDto` = a Part II script minus the clipboard envelope», give it a `ScriptDefStructDto` line
+  and wire its id into `BoScriptVersionsStructDto` (hook id / `fieldScripts.<code>` / `methodScriptIds` +
+  `scriptDefIds`). **Optional accelerator**: `tools/add-bo-scripts.bun.ts … --bodies <file.json>` takes
   `{"onOpen"|"afterSave"|"onCreate"|"onClose"|"field:<code>"|"method:<name>": {entry, blocks, expressions}}` in the
   CLIPBOARD form of Part II and rewrites each body into the archive form (`type` → `@class` …`Struct`,
-  `valueType` → `valueTypeStruct`). A body is a whole hook script: its `BlockFixEntryPoint` (`x`/`y`), the
+  `valueType` → `valueTypeStruct`) — the same conversion, automated. A body is a whole hook script: its `BlockFixEntryPoint` (`x`/`y`), the
   statements, a closing `BlockExit FROM_METHOD`. `canWriteValue`, `isTextMultiline`, `latitude/longitude`
   may be omitted. A `method:<name>` body is a local method: its hat is the `BlockFixMethod` (with `params`,
   `returnType`), its id joins `methodScriptIds`, and the param ids you minted stay as written, so the hooks of
@@ -3627,7 +3677,6 @@ The ids below are readable on purpose (`id0001…`); any 16-character strings fr
 no reused expression id, a `'' ⊕ параметр` first block, and the `ИНАЧЕ` branch carries neither `exprId`
 nor `hasExpr`. And what it does by the 0S.2a house style: every variable is declared in the header before
 the first statement that uses one, the counter `i` is bare, the parameters are English snake_case.
-`tools/follow-cookbook-script.bun.ts` (`DET=1`) rebuilds exactly this JSON.
 
 This body, written into an empty method `describe` by §0S.12 item 7b, translates clean and runs `[C]`. The
 parameter ids can be shipped in the method hat of the archive (the importer keeps them, §5d).
@@ -4788,7 +4837,7 @@ the field and then call this». The same list on a process field also offers `#�
   Число, BO types (`step: Model_step`); return types Логическое / Текст / Число.
 - **Method id and parameter ids are random 16-char ids generated by the IDE.** A generator cannot invent
   them: **the user creates the EMPTY method in the IDE and copies it back**, and the real ids go into the
-  generator. `[C]`
+  script you build. `[C]`
 - **`ExprCall.args` is keyed by the callee's parameter id** — not by position, not by name. A stale or
   invented key renders «Не передан аргумент `#var_name#` в вызов метода `is_var`» and the IDE adds the real
   slot beside it. Consequences: renaming or reordering a signature cannot change which argument lands
@@ -4834,7 +4883,7 @@ the field and then call this». The same list on a process field also offers `#�
 ### Protocol
 
 - **New method**: the user creates it by hand (name, params, return type) and copies the empty method out;
-  the agent reads the clipboard, feeds the real param ids into the generator, regenerates.
+  the agent reads the clipboard, puts the real param ids into the script, rebuilds it.
 - **Body of an existing method**: strip the hat (drop `BlockFixMethod`, re-point `startBlockIds` at its
   `downBlockId`; stripped body = generated blocks − 1); the user opens the method, clears the body, pastes.
   The param VAR_REF ids in the fragment must be the method's live param ids.
@@ -4860,8 +4909,8 @@ the field and then call this». The same list on a process field also offers `#�
 
 ### Tooling that already exists
 
-These live in a PROJECT repository, not beside this document — ask the user whether that folder is at
-hand before you write a checker from scratch: a hat-stripper (drop the method hat, re-point
+None of them is needed — every rule they apply is written in this section. They live in a PROJECT repository,
+not beside this document; if the user has that folder at hand, prefer them over a checker written from scratch: a hat-stripper (drop the method hat, re-point
 `startBlockIds`), a scope / dangling-reference / duplicate-variable / reachability checker, a canonical
 id-free comparison of a generated fragment against a live copy (`canon-compare.bun.ts`), a formula
 simulator and a script generator built on this section.
@@ -5199,15 +5248,14 @@ Number/string facts below without a marker are `[I]`.
   that field to move the schedule — `[C]` (e.g. from a parallel branch). A script's
   assignment alone does not move a standing Timer, exactly like a save from the form. Calling it right
   before the Timer is harmless (it fires on time).
-- **Parallel branches** `[C]` (example spec: `tools/process-parallel.spec.json`). A
+- **Parallel branches** `[C]`. A
   **SingleToParallel** (`outSlotsCount: N`, exits `out1…outN`) starts EVERY branch at once. A
   **ParallelToSingle** (`inSlotsCount: N`, entries `in1…inN`, exit
   `out`) is a real join: its step appears as `STAND` as soon as the first branch reaches it and passes only
   when the LAST one arrives. One step per figure, all `PASSED`; a Timer in one branch does
   not hold the others. In the archive they are `FigureSingleToParallelStruct {outSlotsCount}` /
   `FigureParallelToSingleStruct {inSlotsCount}` (§5c) `[C]`.
-- **A Terminator ends the WHOLE process, not just its branch** `[C]` (API and archive; example specs:
-  `tools/process-terminator2.spec.json`, `tools/process-terminator.spec.json`): the moment one branch
+- **A Terminator ends the WHOLE process, not just its branch** `[C]` (API and archive): the moment one branch
   passes a Terminator, **a step standing in another branch (e.g. a Timer) turns `PASSED` with no next
   step** — the figures after it never run, not even after the Timer's due time; a step entered right after
   the Terminator is closed at once. `load-process-steps` shows nothing
@@ -5215,8 +5263,7 @@ Number/string facts below without a marker are `[I]`.
   record's `PROCESS_STATUS` after it is NOT readable this way — `load-boi-values` answers `""` for any
   reference field of a process record, a record ended by an Exit included.) Use it for «stop everything»
   (e.g. a cancel branch); an Exit ends only ITS branch (next point).
-- **An Exit inside one branch ends only that branch** `[C]` (example spec:
-  `tools/process-exit-branch.spec.json`). A process may have SEVERAL Exits —
+- **An Exit inside one branch ends only that branch** `[C]`. A process may have SEVERAL Exits —
   `validate-def` is clean with two, no join needed. Unlike a Terminator, an Exit closes only the branch
   that reached it, and the other branches run to their own end.
 - **A Point is a bend on an arrow, nothing more** `[C]` (API and archive): the
