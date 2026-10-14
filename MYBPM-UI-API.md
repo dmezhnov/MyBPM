@@ -555,8 +555,9 @@ route below is for items on BOs that are already on the stand, and for access ri
 format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it before writing a file. The API is
 `v2/bo-transfer` — template, upload, act, apply and export `[C]` (driven from a page of the stand, §10):
 
-1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<id>,<id>,…` — an
-   ordinary GET with query parameters and the `token` header (no envelope), returning the xlsx `[C]`: the
+1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<id>&selectedFieldIds=<id>…` — an
+   ordinary GET with query parameters and the `token` header (no envelope) — **one `selectedFieldIds` per
+   field**; a comma-separated list fails `NullPointerException … colHeader is null` — returning the xlsx `[C]`: the
    header rows only (one row, or two with merged nested blocks and freeze at A3), no data rows, no table
    part. Field ids come from `load-business-object-by-id` → `formFields[].fieldId`. **Take a fresh template after
    every structure change**: the columns follow the BO, and their positions move between exports.
@@ -618,6 +619,8 @@ format is exacting and is `MYBPM-IMPORTS.md` Part III (§0X cookbook); read it b
    the link and a TABLE block only ADDS children. A child found by a non-unique sub-column alone is not
    linked, with no error.
 **Never write a column for the SINGLE side of a two-way link** — such rows are silently dropped (trap 13).
+**An xlsx import runs none of the BO's scripts** `[C]` — no hook, no field script, on a created record or an
+   updated one (trap 51); what a script would compute must be in the file, or go through the form cycle (§6b).
 
 #### R8 — Export the structure of a company
 
@@ -3599,7 +3602,7 @@ structure import**: the upload builds an "act" you can read, and a second call a
 | # | call | params | note |
 |---|---|---|---|
 | 0 | `load-bo-import-details` | `{businessObjectId}` | what the importer expects of this BO |
-| 1 | `download-template` | `{businessObjectId, selectedFieldIds}` | a plain **GET** with query params, no envelope → the xlsx |
+| 1 | `download-template` | `{businessObjectId, selectedFieldIds}` | a plain **GET** with query params, no envelope → the xlsx; ONE `selectedFieldIds=` per field (a comma list → `NullPointerException … colHeader is null`) `[C]` |
 | 2 | `import-from-file` | multipart: file under **`file`**, plus the form field `businessObjectId` | → a bare `"<actId>"` |
 | 3 | `is-import-file-finished` | `{actId}` | poll |
 | 4 | `load-import-file` | `{actId}` | the act `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` — **nothing written yet**; a blank cell shows up only as «updated» |
@@ -4446,7 +4449,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `IllegalStoredValue … Value_PROGRESS_BAR` for the entire form (so would the UI). `"[]"` is refused the
     same way; **`""` repairs it**. Leave a progress bar alone unless you know its value shape (§6b).
 51. **The §6a record API runs NO script** `[C]` — not «Добавление», not «Сохранение», not
-    a field change. **Neither does an xlsx record import (R7)** `[C]` for a created record (update `[I]`). Use the form cycle of §6b when the BO's hooks must run, §6a when they must not.
+    a field change. **Neither does an xlsx record import (R7)** `[C]` for a created record or an updated one. Use the form cycle of §6b when the BO's hooks must run, §6a when they must not.
 52. **The whole stand answered 502 for ~30 s during a burst of `save-field-value` calls** `[C] symptom,
     [U] cause`. It followed `FILE_UPLOAD = "[]"` and `CHECKLIST = "[]"`; whether one of
     those crashes the backend is unknown — send one value at a time with a
@@ -4563,8 +4566,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
-- Whether an xlsx UPDATE of an existing record runs any hook (a created one runs none, §6b / `MYBPM-IMPORTS.md`
-  §15) — needs a probe BO with scripts AND a unique field.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet
   («Глобальные методы» is answered in §5g).
 
