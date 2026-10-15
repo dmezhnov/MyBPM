@@ -57,7 +57,7 @@ const BO_KEYS = ["@class", "oldId", "code", "category", "kind", "boGroupOldId", 
   "isGroupingEnabled", "isCodeReadonly", "chosenAccessRight", "kanbanCardTemplates", "timelineTemplates",
   "calendarCardTemplates", "signatures", "buttons", "iframes", "currentDates", "captcha", "currentUser"];
 // keys newer builds write; older exports lack them. A re-import WITHOUT them resets the stand to the default
-// (verified on core2 2026-10-01: isTouchEnabled → true, hideAddButtonFromRegistry → false)
+// (verified on <stand> 2026-10-01: isTouchEnabled → true, hideAddButtonFromRegistry → false)
 const BO_KEYS_NEW = ["isTouchEnabled", "hideAddButtonFromRegistry"];
 const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder", "messengerFieldCode", "whatsAppFieldCode", "gridLayoutPosition"];
 // the record card's rail tabs (MYBPM-IMPORTS.md §2 «BO card tabs»)
@@ -743,7 +743,7 @@ for (const bo of bos) {
     if (n.archetype !== "NATIVE") add("ERROR", "0.12", `${ft}: archetype "${n.archetype}", must be NATIVE`);
     if (key in NATIVE_TYPES && n.type !== NATIVE_TYPES[key]) add("ERROR", "0.12", `${ft}: type "${n.type}", the platform fixes ${NATIVE_TYPES[key]}`);
     id(ft, n.newId);
-    // verified on core2 2026-10-01: the import applies chosenAccessRight but never the native's rights
+    // verified on <stand> 2026-10-01: the import applies chosenAccessRight but never the native's rights
     if (n.chosenAccessRight === true) add("WARN", "0.12", `${ft}: chosenAccessRight on a native — the import shows the orange lock but does not apply its rights; set them over the API after the import`);
     for (const k of ["needUploadToOutTable", "needLoadFromInTables"]) if (n[k] === true) add("WARN", "0.12", `${ft}: ${k} on a native is not applied by the import`);
     if (n.inMigrationTimezoneMinutes) add("WARN", "0.12", `${ft}: inMigrationTimezoneMinutes on a native is never stored`);
@@ -763,7 +763,7 @@ for (const bo of bos) {
       if (v.type === "BUTTON" && v.url === undefined) add("WARN", "0.13", `${ft}: BUTTON without url`);
       if (v.type === "IFRAME" && v.url === undefined) add("WARN", "0.13", `${ft}: IFRAME without url`);
       if (v.type === "BUTTON" && typeof v.url === "string" && v.url.trim()) {
-        // what each url does on the record card was clicked through on core2, 2026-10-01
+        // what each url does on the record card was clicked through on <stand>, 2026-10-01
         if (/^(client\/)?(save-current-boi|create-boi\/)/.test(v.url))
           add("WARN", "0.13", `${ft}: url "${v.url}" does nothing on the record card — leave url empty and put the logic into the button's field script`);
         else if (!v.url.startsWith("call/plugin/"))
@@ -775,7 +775,7 @@ for (const bo of bos) {
           if (!known.has(c)) add("ERROR", "0.13", `${ft}: fieldCodes names "${c}", no field of this BO has that code`);
       }
       if (v.type === "SIGNATURE") {
-        // round-tripped on core2 2026-10-01: everything by CODE; printFormCodes / massPrintFormCodes values are 1
+        // round-tripped on <stand> 2026-10-01: everything by CODE; printFormCodes / massPrintFormCodes values are 1
         const dyn = bo.dynamicFields ?? {};
         for (const c of Object.keys(v.fieldCodes ?? {}))
           if (!(c in dyn)) add("ERROR", "0.13", `${ft}: fieldCodes names "${c}", no dynamic field of this BO has that code`);
@@ -791,18 +791,18 @@ for (const bo of bos) {
         for (const c of Object.keys(v.printFormCodes ?? {}))
           if (!pfCodes.has(c)) add("ERROR", "0.13", `${ft}: printFormCodes names "${c}", not a printForms[].printFormCode of this BO`);
         if (Object.keys(v.massPrintFormCodes ?? {}).length)
-          add("WARN", "0.13", `${ft}: massPrintFormCodes did NOT survive an import on core2 (2026-10-01) — check it on the stand after applying`);
+          add("WARN", "0.13", `${ft}: massPrintFormCodes did NOT survive an import on <stand> (2026-10-01) — check it on the stand after applying`);
       }
       if (WIDGET_MAPS.currentDates.includes(v.type) && v.widgetType !== v.type)
-        // core2 2026-10-01: a stand export and the generator both carry widgetType = type in currentDates
+        // <stand> 2026-10-01: a stand export and the generator both carry widgetType = type in currentDates
         add("ERROR", "0.13", `${ft}: widgetType "${v.widgetType}" must repeat type "${v.type}"`);
       if (v.type === "CAPTCHA")
-        // core2 2026-10-01: both record-API cycles answer CaptchaNotVerified for a changed or new record
+        // <stand> 2026-10-01: both record-API cycles answer CaptchaNotVerified for a changed or new record
         add("WARN", "0.13", `${ft}: a CAPTCHA makes the server refuse every save that changes a record until a person solves it — no record API, no headless client`);
       if (v.type === "IFRAME" && typeof v.url === "string" && /^http:/i.test(v.url))
         add("ERROR", "0.13", `${ft}: http: url — the stand silently drops it, the iframe keeps no url; use https:`);
       if (v.type === "CURRENT_USER") {
-        // round-tripped on core2 2026-10-01: TABLE/SINGLE only; fieldRefs keyed by «Пользователи» field CODES
+        // round-tripped on <stand> 2026-10-01: TABLE/SINGLE only; fieldRefs keyed by «Пользователи» field CODES
         if (v.viewType !== undefined && v.viewType !== "TABLE" && v.viewType !== "SINGLE")
           add("ERROR", "0.13", `${ft}: viewType "${v.viewType}" — CURRENT_USER takes only TABLE or SINGLE`);
         const refs = v.fieldRefs ?? {};
