@@ -733,15 +733,33 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
 work path, automations, reports, roles. The job is the whole spec, not «the BOs it names»; shipping the BOs
 and dropping the rest «for scope» is a fraction reported as done.
 
+0. **Stand data — read it yourself, ask only for the group.** Unless the request says the stand is empty
+   («пустой стенд», «новая компания»), ask one thing: «в какую группу бизнес-объектов (раздел конструктора,
+   где будут лежать новые БО) их положить — в новую (как её назвать) или в существующую (какую)?». Then read
+   the rest: the group's `code`, `name`, `orderIndex` by `load-bo-groups {"forEdit":true}` (R4) — copy them
+   verbatim into the archive; a group whose `code` is `null` cannot be targeted by an archive — build a new
+   group and say why, or give it a code (`save-business-object-group`, §«Verifying an import through the
+   API» — one-way, ask first). Taken BO codes: `load-bo-id-by-code` for every code you plan — a free code
+   finds no BO `[I]`; an export of all BOs (R8) lists them all. **Without stand access** (the user only
+   hands files over) ask exactly the question of `MYBPM-IMPORTS.md` 0.2 step 0: «Стенд пустой (новая
+   компания)? Если нет: (1) в какую группу бизнес-объектов их положить — в новую (как её назвать) или в
+   существующую (тогда пришлите экспорт структуры любого БО из неё — группу возьму из него); (2) чтобы коды
+   новых БО не совпали с уже существующими, пришлите экспорт структуры всех БО компании — или скажите «без
+   экспорта», и я добавлю к кодам короткий случайный суффикс.» An export holds a `BoGroupStructDto` line only
+   for the groups of the exported BOs `[C]`; a line without `code` is a code-less old group. There is no
+   per-group export, and BO codes are unique across the company.
+
 1. **Decompose the spec into a coverage table BEFORE the first write** — one row per requirement (an object,
    a list of values, a status path, an automation, a calculation, a report, a role, a notification) — each
-   automation, report and role a row of its own —, each row given exactly ONE route from this table («where
-   possible», «partly» are no route):
+   automation, report and role a row of its own —, each row given exactly ONE route from this table, written
+   as the literal text of its «Route» cell («where possible», «partly», «если поддерживается», «требует
+   серверной логики», «внешняя настройка», «настройка на стенде» and two routes joined by «или» are no route —
+   an item that fits none is «not doable» with its row of the last table):
 
    | Route | What goes there | Recipe |
    |---|---|---|
    | structure | BOs, dictionaries, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0) or the constructor | R3, or R1 / R2 |
-   | a hook script | computed fields and totals, auto-fill, «when X is saved, set Y» | §5g |
+   | a hook script | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | §5g |
    | a business process | a path someone RUNS figure by figure, with forms and branches (approval) | R2 / §5f |
    | the menu | one group for the system, one item per working BO, kanban by status, an icon by meaning on every line | R6 |
    | rights by role | read the stand's groups, then write the rules | R5 |
@@ -801,6 +819,7 @@ and dropping the rest «for scope» is a fraction reported as done.
 | SMS, telephony, calls, a messenger bot | external services configured by the stand's admin | not done — say so; only a record's Telegram / WhatsApp link field exists (§5k) |
 | E-mail / push notifications from a script | the script palette has the actions; their delivery was never checked `[U]` | only if asked, marked `[U]` |
 | A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5f) | a hook on save, or a process started by hand |
+| A guard: forbid a save or a status change until a condition («без согласования нельзя начать работы») | no hook that refuses a save or rolls a status back is known `[U]` (§5g) | a path someone RUNS step by step → a business process with an approval branch (§5f); a value that must be there → «Обязательное» (§5h); otherwise not done — say so |
 | Deleting a field, a tab or an option by an archive | an import never deletes | the constructor or `deletedFieldIds` (R1) |
 
 ### 0U.5 Hard rules
