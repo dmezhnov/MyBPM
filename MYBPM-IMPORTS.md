@@ -989,6 +989,13 @@ each box stretches over 1000+ px for a 20-character value. **Full width, alone i
 `TEXTAREA_LANG`, a `BO` `TABLE`, a `STATIC_TEXT` heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
 `GEO_POINT`, `PROGRESS_BAR`.
 
+- **A short field with no partner by meaning stands alone at `x: 0`, `cols: 8`** — never stretched to 15; the
+  right half stays empty and the row is the one exception to «cols sum to 15». The hole is safe only while no
+  cell of the NEXT row fits wholly into columns 8–14: such a cell floats up beside the lone field, and the rest
+  of the form follows it `[C]` (§4 «The grid compacts VERTICALLY» — a cell stops at the first cell above in its
+  own columns). So right below a lone field put a full-width row, or a pair split **7 + 8** (its right cell
+  starts at `x: 7` and touches the lone field's columns), or nothing (the last row of the form or the tab);
+  never an 8 + 7 pair or a 5 + 5 + 5 row there.
 - **Never mix heights inside a row**: a 3-row cell beside a 6-row one leaves a hole under the short cell,
   and the next row floats up into it (§4 «The grid compacts VERTICALLY»). Pair only cells of equal `rows`.
 - A `CHECKBOX` in a row draws its toggle at the TOP of its cell, a little higher than the neighbouring
@@ -1160,7 +1167,8 @@ the BO's category. Count it in `objectCount`.
       grid pushes one of them down and the whole form below shifts. `tools/validate-archive.bun.ts` reports it.
 - [ ] Layout by 0.8: the cells of one row share `y` and `rows`, their `cols` sum to 15 and `x` runs 0, 0 + cols …;
       the next row's `y` = this `y` + this `rows`; short one-line fields share rows (2–3 per row), full width
-      only for the kinds 0.8 lists; a `BO` `SINGLE` is 3 rows, a `TABLE` 6.
+      only for the kinds 0.8 lists; a `BO` `SINGLE` is 3 rows, a `TABLE` 6; a short field left alone is
+      `x 0, cols 8`, and no cell of the row below starts at `x` 8 or more (a pair under it is 7 + 8).
 - [ ] Every `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning (0.5) — `"[]"` for a
       plain comment or note.
 - [ ] Every `BO` `TABLE` shows 2–5 columns by meaning (`fieldRefs` with `toShow: true`, 0.5a), never one.

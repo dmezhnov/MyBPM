@@ -716,7 +716,7 @@ for (const bo of bos) {
   // §0.8: rows — the cells of one row share y and rows, x runs 0, 0 + cols …, cols sum to 15; next y = y + rows
   const rowsByY = new Map<number, typeof laid>();
   for (const l of laid) rowsByY.set(l.gp.y, [...(rowsByY.get(l.gp.y) ?? []), l]);
-  let prevY: number | null = null, prevRows = 0, shared = 0, oneLine = 0;
+  let prevY: number | null = null, prevRows = 0, prevEdge = 15, prevFt = "", shared = 0, oneLine = 0;
   for (const y of [...rowsByY.keys()].sort((a, b) => a - b)) {
     const row = rowsByY.get(y)!.sort((a, b) => (a.gp.x ?? 0) - (b.gp.x ?? 0));
     const ft = row[0].ft;
@@ -727,6 +727,14 @@ for (const bo of bos) {
     if (heights.size > 1)
       add("WARN", "0.8", `${row.map(l => l.ft).join(" + ")}: one row of y=${y} mixes heights ${[...heights].join("/")} — the next row floats into the hole under the short cell; pair only equal rows`);
     const cells = row.filter(l => !l.box);
+    // §0.8 «a lone short field»: a cell that fits wholly into the free columns right of the row above floats up
+    // beside it (§4 «The grid compacts VERTICALLY») — every cell of the next row must touch the columns in use
+    if (prevY !== null && prevEdge < 15)
+      for (const l of cells) if ((l.gp.x ?? 0) >= prevEdge)
+        add("ERROR", "0.8", `${l.ft}: x=${l.gp.x} lies wholly in columns ${prevEdge}–14 left free beside ${prevFt} — it floats up into that hole; start it at x ≤ ${prevEdge - 1} (a pair 7 + 8) or put a full-width row there`);
+    const short = (l: (typeof laid)[number]) => ROWS_3.has(l.f.type) || ((l.f.type === "BO" || l.f.type === "CO") && l.f.viewType === "SINGLE");
+    if (cells.length === 1 && cells.length === row.length && short(cells[0]) && (cells[0].gp.cols ?? 0) === 15 && bo.category !== "BO_DICTIONARY")
+      add("WARN", "0.8", `${cells[0].ft}: a short field alone in row y=${y} stretches full width — pair it, or give it x 0, cols 8`);
     if (cells.length > 1) {
       shared++;
       for (const l of cells) if (FULL_WIDTH.has(l.f.type) || l.f.viewType === "TABLE")
@@ -739,10 +747,12 @@ for (const bo of bos) {
         else if ((l.gp.x ?? 0) > x) add("WARN", "0.8", `${l.ft}: x=${l.gp.x} leaves a gap in row y=${y} (expected x=${x})`);
         x = (l.gp.x ?? 0) + (l.gp.cols ?? 0);
       }
-      if (x !== 15) add("WARN", "0.8", `${ft}: row y=${y} spans ${x} of 15 columns — the cols of a row sum to 15`);
+      const lone = cells.length === 1 && short(cells[0]) && (cells[0].gp.x ?? 0) === 0 && cells[0].gp.cols === 8;
+      if (x !== 15 && !lone) add("WARN", "0.8", `${ft}: row y=${y} spans ${x} of 15 columns — the cols of a row sum to 15`);
       if (cells.length === 1 && ROWS_3.has(cells[0].f.type)) oneLine++;
     }
-    prevY = y; prevRows = Math.max(...heights);
+    prevY = y; prevRows = Math.max(...heights); prevFt = ft;
+    prevEdge = row.some(l => l.box) ? 15 : Math.max(...row.map(l => (l.gp.x ?? 0) + (l.gp.cols ?? 0)));
   }
   // §0.8: short one-line fields share rows — a form of nothing but full-width fields is a defect
   if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && shared === 0 && oneLine >= 6)

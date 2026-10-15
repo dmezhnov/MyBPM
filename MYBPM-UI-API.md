@@ -314,7 +314,9 @@ not counting headings, the `TAB_GROUP` and the system fields.
   on its tab). Short one-line fields that belong together stand 2 per row (8 + 7) or 3 (5 + 5 + 5) — телефон +
   email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but full-width fields is a defect.
   Alone at full width: `TEXTAREA`, a `TABLE`, a heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
-  `GEO_POINT`, `PROGRESS_BAR`. Never mix heights in one row — the next row floats into the hole (§4 of
+  `GEO_POINT`, `PROGRESS_BAR`. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched;
+  no cell of the row below may fit wholly into its free columns 8–14 — it would float up beside it — so under
+  it goes a full-width row, a pair split 7 + 8, or nothing. Never mix heights in one row — the next row floats into the hole (§4 of
   `MYBPM-IMPORTS.md`). A `CHECKBOX` toggle sits a little higher than its row-mates' boxes — acceptable.
 - **Editor toolbar of a `TEXTAREA`, by meaning** `[C]`: `params.buttonTypes` (§5i «Per-type settings»); a
   comment, a note, a reason → `"[]"` — no buttons (a thin empty strip stays); a description a user formats →
