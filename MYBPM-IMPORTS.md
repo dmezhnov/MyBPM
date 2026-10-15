@@ -118,9 +118,20 @@ Rules, all `[C]`:
    what the request has not already answered: «пустой стенд», «новая компания», «a fresh stand» answers
    the group (a NEW one — you name it) and the taken codes (none) — never ask those again.
    For a system built from a spec (0.2b) that does not say the stand is empty, ask exactly this, in the
-   same reply as the coverage table, and nothing else: «Стенд пустой (новая компания)? Если нет — код и
-   название группы, куда класть объекты, и коды БО, которые на стенде уже есть.» A `Person` id is never
-   asked (0.2c step 8).
+   same reply as the coverage table, and nothing else: «Стенд пустой (новая компания)? Если нет:
+   (1) в какую группу бизнес-объектов (раздел конструктора, где будут лежать новые БО) их положить — в новую
+   (как её назвать) или в существующую (тогда пришлите экспорт структуры любого БО из неё — группу возьму из
+   него); (2) чтобы коды новых БО не совпали с уже существующими, пришлите экспорт структуры всех БО
+   компании — или скажите «без экспорта», и я добавлю к кодам короткий случайный суффикс.» Ask for FILES
+   only — never for access to the stand, and never for «the export of a group»: an export is of the
+   company's BOs that were picked for it, there is no per-group export, and BO codes are unique across
+   the whole company. A `Person` id is never asked (0.2c step 8).
+   **Reading the export the user sends** `[C]`: it holds a `BoGroupStructDto` line only for the groups of
+   the exported BOs (`BoStructDto.boGroupOldId` = the group's `oldId`) — copy that line's `code`, `name`
+   and `orderIndex` verbatim; the taken codes are the `code` of every `BoStructDto` line. **A group line
+   without `code`** is an old group that has none — an archive cannot target it (a code-less line renames
+   a fixed group, 0.9 rule 1): put the new BOs into a NEW group and say why. A group that has a code
+   carries it in the export `[I]`.
 1. **Collect the input**: the display name of the BO, its fields (label + UI type), and the name of the
    BO group **that already exists on the target stand** (ask the user for it — §0.2a).
 2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
@@ -176,8 +187,8 @@ stand id either — it is resolved by `boInfo.code` (§6 «Person reference»), 
 
 | Ask for | Why guessing fails silently | Fallback if the user declines to supply it |
 |---|---|---|
-| The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted until it is given one — `save-business-object-group` with a new `code`, §8 «After the import — the stand-side calls»; that is a stand write and one-way, a code never goes back to `null`, so ask before doing it); for a new one mint a new `code` and say that a group will be CREATED |
-| The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
+| The **BO group**: the `code`, `name` and `orderIndex` of an existing group (its `BoGroupStructDto` line in an export of any BO of that group, 0.2 step 0), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim from the export (a group whose `code` is `null` — no `code` in its export line — cannot be targeted until it is given one; without that, build a new group and say why — `save-business-object-group` with a new `code`, §8 «After the import — the stand-side calls»; that is a stand write and one-way, a code never goes back to `null`, so ask before doing it); for a new one mint a new `code` and say that a group will be CREATED |
+| The **BO codes already on the stand** — the `code` of every `BoStructDto` line of an export of all the company's BOs (0.2 step 0) | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a `BO` / `CO` field to a BO that EXISTS on the stand — the target's **`oldRefBoId` + code + name** (not for `Person`: it resolves by code, §6 «Person reference»); for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 | To CHANGE a BO that already exists (add a field, rename, re-lay the form) — a **fresh export of that BO** (its `BoStructDto` line as the stand wrote it) | the importer matches the BO by `oldId` and its fields by `newId` (0.7); a BO line rebuilt from the template of 0.4 RESETS every header setting the template carries (`isTouchEnabled`, `description`, `instanceViewType`, views, `orderIndex` — the BO moves in the sidebar) and lays the new field over the existing ones, and the report still says success | build NOTHING: no archive. Say that a change to an existing BO is made on its export — take the line, ADD the new field entry (new `newId`, `y` = below the last field, next `tableColOrderIndex`), keep every other key and value as exported — and ask for the export. **Deleting a field, a tab or an option is impossible by import** (§8: an import never deletes) — say so and name the route: the constructor, or `deletedFieldIds` of `save-business-object-portion` (`MYBPM-UI-API.md` R1) |
 
@@ -217,13 +228,15 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    of the spec (an object, a list of values, a status path, a link between objects, an automation, a
    calculation, a report, a role, a notification), columns «spec item | route | built by». Each
    automation, report and role is a row of its own — never one row for «rights, reports and notifications».
-   Each row gets exactly ONE route from the table below; «where the format supports it», «if possible»,
-   «partly» are no route:
+   Each row gets exactly ONE route from the table below, written as the literal text of its «Route» cell;
+   «where the format supports it», «if possible», «partly», «если поддерживается», «требует серверной
+   логики», «внешняя настройка», «настройка на стенде» and two routes joined by «или» are no route — an
+   item that fits none is «not expressible» with its row of 0.2d:
 
    | Route | What goes there | Built by |
    |---|---|---|
    | an archive line | BOs, dictionaries, fields, links between BOs, tabs and layout, kanban card templates, the menu | 0.3–0.5d, 0.2c |
-   | a hook script in the archive | computed fields and totals, auto-fill, «when X is saved, set Y» | 0.2c step 7, §5d, Part II |
+   | a hook script in the archive | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | 0.2c step 7, §5d, Part II |
    | a business process in the archive | a path someone RUNS step by step, with forms and branches (approval) | 0.18, §5c |
    | an xlsx after the import | dictionary values, initial records | Part III, 0.2d |
    | stand-only | rights by role, users and groups, a field on a built-in BO | 0.2d |
@@ -311,6 +324,7 @@ your own.
 | SMS, telephony, calls, a messenger bot | external services configured on the stand, not structure | not built — say so. Only the link FIELD of a record to Telegram / WhatsApp travels (`messengerFieldCode`, `whatsAppFieldCode`, §2 «BO card tabs») |
 | E-mail / push notifications from a script | the script palette has the actions (§12a «Built-in objects», `alert`); their delivery was never checked `[U]` | build them only if asked and say they are `[U]` |
 | A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5c) | not built — say so; a hook on save or a manually started process is the working route |
+| A guard: forbid a save or a status change until a condition («без согласования нельзя начать работы») | no hook that refuses a save or rolls a status back is known `[U]` (§5d) | a path someone RUNS step by step → a business process with an approval branch (0.18); a value that must be there → «Обязательное» (`isRequired`, 0.5); otherwise not built — say so |
 | Users, departments, groups | org structure is stand data; `Person` / `Department` / `PersonGroup` are reserved codes (0.2a) | created on the stand |
 | A field on a built-in BO (`Person`) | untested `[U]` (§6 «Built-in BOs») | the constructor, by hand |
 | Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1) |
