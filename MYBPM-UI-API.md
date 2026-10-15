@@ -461,7 +461,8 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
    `rollback-import` — `P {"importId":…,"processId":…}` (a fresh `processId` from
    `pre-create-process`) → `{"type":"ROLLED_BACK"}`, status `ROLLED_BACK`, `canRollback:false`.
    Only the import with `canRollback:true` can be undone, and «latest» may not be the one you applied
-   last — read §5 «Rollback trap» before undoing anything but a single import.
+   last — read §5 «Rollback trap» before undoing anything but a single import. A rolled-back BO is deleted
+   SOFTLY: an archive with the same `oldId` revives it with all its old fields (§5 «A deleted BO comes back»).
 
 Traps: **`load-import-state` is not a reliable «is something open?» probe** — it answered
 `{"importExists":false}` while an analysed import was waiting (trap 35). Take the `importId` from
@@ -1392,6 +1393,20 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - **`load-business-object-name` is not an existence check** `[C]`: after a rollback it still answers
   the deleted BO's name, while `load-bo-id-by-code` gives `No bo with code` and
   `load-business-object-by-id` «бизнес-объект не существует». Verify a removal with those two.
+- **A deleted BO comes back — with ALL its old fields** `[C]`. A rollback and `delete-business-object` both
+  delete a BO SOFTLY: gone by code (`load-bo-id-by-code` → «No bo with code», out of the sidebar, an emptied
+  group created by the import vanishes), while its id still holds the BO with every field
+  (`load-business-object-name`, `load-bo-fields-for-drag` by id answer). An archive that carries the same
+  `oldId` again brings it back with all its OLD fields beside the new ones; the old fields keep their
+  `gridPosition` and overlap the new layout, and the analysis diff lists only the new fields as «added», with
+  no warning `[C]`. A revived `BO` field whose dictionary was removed by a ROLLBACK keeps the dead id:
+  `v2/script/load-bo-field-options` (opening the dropdown on a record) answers «Cgf5V16VU4 :: … данный
+  бизнес-объект не существует» `[C]`; a dictionary removed by `delete-business-object` stays resolvable
+  and the options are empty `[C]` (why the two differ — `[I]`: the rollback deletes a dictionary hard).
+  Deleting instead of rolling back does not help. **A new attempt of a rolled-back or deleted system needs
+  NEW ids** — a new build salt (`MYBPM-IMPORTS.md` 0.7 «Which ids», case 4); to keep a revived BO, delete its
+  stale fields with `deletedFieldIds` (R1). Ids seeded from the code alone repeat across attempts — every
+  build of a «Client» mints the same `oldId`.
 - Enums in chunk `5675`: import status `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
   INTERNAL_ERROR|CANCELED`; apply result `APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|HANDLING_ERROR`; struct
   types `STRUCTURE|ACCESS_RIGHTS|SCRIPTS|GLOBAL_METHODS|MENU|REPORTS|SETTINGS` (our archive → `STRUCTURE`).
@@ -5249,6 +5264,10 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     cleared, `massPrintFormCodes` is not restored, and rolling the import back adds one more copy of each form
     and restores neither the phone nor a radio's dictionary. Drop `printForms` from such an archive, then
     check phone and forms by hand. §5 «Rollback trap», §5i, `MYBPM-IMPORTS.md` §0.13.
+72. **A rolled-back or deleted BO revives on the next import with the same `oldId`** `[C]` — with every old
+    field (old positions, overlapping the new form), the diff silent about them; a revived reference to a
+    rolled-back dictionary answers «данный бизнес-объект не существует» on its options. A new attempt gets new
+    ids (a new build salt, `MYBPM-IMPORTS.md` 0.7). §5 «A deleted BO comes back».
 
 ## 12. Open questions
 

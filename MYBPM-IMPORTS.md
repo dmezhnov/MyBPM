@@ -29,7 +29,8 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    - [ ] one kanban card template per `DROPDOWN_SINGLE` of a BO — **0.5c**;
    - [ ] the sidebar menu: one `GROUP` + one item per working BO, kanban on the status dropdown, every line
      with an icon BY MEANING (`phosphor:car`, `phosphor:wrench` …), never the generic default — **0.5d**, 0.2b step 4;
-   - [ ] ids hashed from a seed per object kind, distinct across the file — **0.7**;
+   - [ ] ids: what the given archive (or your own earlier archive of this chat) already holds keeps its ids and
+     codes; everything new is hashed from a seed per object kind + this build's salt, distinct across the file — **0.7**;
    - [ ] the layout (tabs over 12 fields, `y` chain, window size) — **0.8a**;
    - [ ] the hard rules and the self-check, then the zip and the report — **0.9, 0.10, 0.11**.
 
@@ -41,7 +42,7 @@ table at the top of §0S, records at the top of §0X.
 |---|---|---|---|
 | Names | any `@class`, key, `type` or enum not printed here: `TEXT_AREA`, `NUMBER`, `DATETIME`, `SidebarMenuItemStructDto`, `menuItemType: "BO_REGISTRY"`, a parent menu by id | copied from a template: `TEXTAREA`, `INPUT_NUMBER`, `FULL_DATE`, `MenuItemStructDto` + `menuItemType: "BO"` + `parentMenuItemCode` | 0.5, 0.5d |
 | Field type | a number, sum or date typed as a dropdown; a link to another object typed as text | the type of the VALUE (`INPUT_NUMBER`, `DATE` …); another object = a `BO` field | 0.5, 0.5a |
-| Ids | random ids (even from a seeded generator); any length but 16; one seed for two objects (a field seed from the field code alone gives every BO's `status` the same id) | 16 chars over `A-Za-z0-9@~`, hashed from a seed per object kind (field = BO code + field code), distinct across the whole file | 0.7 |
+| Ids | random ids (even from a seeded generator); any length but 16; one seed for two objects (a field seed from the field code alone gives every BO's `status` the same id); a fresh salt or a renamed code for an object that is being AMENDED (a duplicate field, the old one stays); the salt of an earlier build for a build from scratch (the stand revives the old deleted BO with its old fields) | 16 chars over `A-Za-z0-9@~`, hashed from a seed per object kind + the build salt (field = salt + BO code + field code), distinct across the whole file; an amendment keeps every existing id and code | 0.7 |
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
@@ -141,7 +142,9 @@ Rules, all `[C]`:
 2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
    BO, `client_name` for a field, `is_*` for a checkbox, `tabs` / `tab_*` for tabs. At most 30
    characters, shortened by meaning. These are the ONLY values you invent.
-3. **Mint the ids** by the rule in 0.7 — one per group, one for the BO, one per field.
+3. **Mint the ids** by the rule in 0.7 — one per group, one for the BO, one per field. First decide «new build or
+   amendment» (0.7 «Which ids: a new build or an amendment»): what already exists keeps its ids, only the new
+   gets fresh ones from this build's salt.
 4. **Write the group lines first** = one group DTO per group, template 0.3.
 5. **Write line 2** = the BO DTO, template 0.4, with one entry of template 0.5 per field inside
    `dynamicFields` — and, if the form also carries «системные поля» or «виджеты», their own maps
@@ -194,7 +197,7 @@ stand id either — it is resolved by `boInfo.code` (§6 «Person reference»), 
 | The **BO group**: the `code`, `name` and `orderIndex` of an existing group (its `BoGroupStructDto` line in an export of any BO of that group, 0.2 step 0), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim from the export (a group whose `code` is `null` — no `code` in its export line — cannot be targeted until it is given one; without that, build a new group and say why — `save-business-object-group` with a new `code`, §8 «After the import — the stand-side calls»; that is a stand write and one-way, a code never goes back to `null`, so ask before doing it); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** — the `code` of every `BoStructDto` line of an export of all the company's BOs (0.2 step 0) | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
 | For a `BO` / `CO` field to a BO that EXISTS on the stand — the target's **`oldRefBoId` + code + name** (not for `Person`: it resolves by code, §6 «Person reference»); for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
-| To CHANGE a BO that already exists (add a field, rename, re-lay the form) — a **fresh export of that BO** (its `BoStructDto` line as the stand wrote it) | the importer matches the BO by `oldId` and its fields by `newId` (0.7); a BO line rebuilt from the template of 0.4 RESETS every header setting the template carries (`isTouchEnabled`, `description`, `instanceViewType`, views, `orderIndex` — the BO moves in the sidebar) and lays the new field over the existing ones, and the report still says success | build NOTHING: no archive. Say that a change to an existing BO is made on its export — take the line, ADD the new field entry (new `newId`, `y` = below the last field, next `tableColOrderIndex`), keep every other key and value as exported — and ask for the export. **Deleting a field, a tab or an option is impossible by import** (§8: an import never deletes) — say so and name the route: the constructor, or `deletedFieldIds` of `save-business-object-portion` (`MYBPM-UI-API.md` R1) |
+| To CHANGE a BO that already exists (add a field, rename, re-lay the form) — a **fresh export of that BO** (its `BoStructDto` line as the stand wrote it), or your own last archive of THIS conversation if the BO was imported from it and not changed on the stand since (0.7 case 2) | the importer matches the BO by `oldId` and its fields by `newId` (0.7); a BO line rebuilt from the template of 0.4 RESETS every header setting the template carries (`isTouchEnabled`, `description`, `instanceViewType`, views, `orderIndex` — the BO moves in the sidebar) and lays the new field over the existing ones, and the report still says success | build NOTHING: no archive. Say that a change to an existing BO is made on its export — take the line, ADD the new field entry (new `newId`, `y` = below the last field, next `tableColOrderIndex`), keep every other key and value as exported — and ask for the export — unless your own last archive of this conversation is that BO (0.7 case 2): then edit it the same way. **Deleting a field, a tab or an option is impossible by import** (§8: an import never deletes) — say so and name the route: the constructor, or `deletedFieldIds` of `save-business-object-portion` (`MYBPM-UI-API.md` R1) |
 
 
 
@@ -725,7 +728,7 @@ dictionary's BO line:
 
 ```text
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.ExportStructInstanceDto",
- "compositeId":"<D>-<R>",                       ← <D> = the dictionary's oldId, <R> = the row id (0.7, seed = dictionary code + row code)
+ "compositeId":"<D>-<R>",                       ← <D> = the dictionary's oldId, <R> = the row id (0.7, seed = salt + dictionary code + row code)
  "boCode":"Car_brand",                          ← the dictionary's code
  "kind":"GENERAL",
  "fieldMap":{
@@ -917,21 +920,42 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
 `A-Z a-z 0-9 @ ~` (e.g. `WbX5Wa8gcabbVbF1`, `3H84o9iM@G4jaOL3`, `Q0zI~z9Ra2R7Q3yd`). **Those three are
 `<company-a>`'s — they show the shape, they are not values to copy** (0.2a).
 
-- **Derive them deterministically from a seed** — e.g. take sha256 of `"bo." + <code>` and map the first
-  16 bytes onto the alphabet. Reason: the stand keeps the archive's `oldId` as the BO's REAL id, so a
-  re-import of a regenerated archive UPDATES the same BO instead of creating a duplicate. Random ids
+- **Derive them deterministically from a seed** — take sha256 of the seed and map the first 16 bytes onto
+  the alphabet (byte % 64 → `A-Za-z0-9@~`). Reason: the stand keeps the archive's `oldId` as the BO's REAL
+  id, so a re-import of a regenerated archive UPDATES the same BO instead of creating a duplicate. Random ids
   fork the object on every re-import.
+- **Every seed starts with the build salt** — a short random string (e.g. `k7f2`) you pick ONCE at the
+  start of a new build and reuse for every later build of the same system in the same conversation. Without
+  it the code alone decides the id, and every build from scratch of a «Client» mints the SAME id — which the
+  stand still remembers after a rollback or a deletion (§8 «A deleted BO comes back»).
 - **One seed per id, unique across the WHOLE file** — the seed names everything that makes the id
   unique, never the code alone (field and option codes repeat between BOs: `work_order`, `status`):
 
   | Id | Seed |
   |---|---|
-  | group `oldId` / `newId` | `"group." + code` / `"group-new." + code` |
-  | BO `oldId` | `"bo." + BO code` |
-  | field `newId` | `"field." + BO code + "." + field code` |
-  | option `newOptionId` | `"opt." + BO code + "." + field code + "." + option code` |
-  | tab `newId` | `"tab." + BO code + "." + tab code` |
-  | dictionary row `<R>` (0.5b) | `"row." + dictionary code + "." + row code` |
+  | group `oldId` / `newId` | `salt + ".group." + code` / `salt + ".group-new." + code` |
+  | BO `oldId` | `salt + ".bo." + BO code` |
+  | field `newId` | `salt + ".field." + BO code + "." + field code` |
+  | option `newOptionId` | `salt + ".opt." + BO code + "." + field code + "." + option code` |
+  | tab `newId` | `salt + ".tab." + BO code + "." + tab code` |
+  | dictionary row `<R>` (0.5b) | `salt + ".row." + dictionary code + "." + row code` |
+- **Which ids: a new build or an amendment** — decide before minting anything:
+  1. **An archive or a stand export is attached** and the user asks to change or extend it → it is an
+     amendment. Every object already in that file — group, BO, field, option, tab, dictionary row — keeps its
+     id AND its code exactly as the file has them, whoever built the file and whatever its ids look like.
+     Edit that file's lines; never rebuild an existing object from memory (a single mistyped id makes a
+     duplicate instead of an update). Only what is NEW gets ids, from a fresh salt of this build.
+  2. **Nothing is attached, but you built the archive earlier in THIS conversation** and the user asks to
+     change it → also an amendment: take your own last archive (the file you produced) and edit it as in 1.
+     If that file is gone, regenerate with the SAME salt you reported (0.11) and the SAME codes — the
+     formula then gives every unchanged object its old id.
+  3. **The user asks to amend, but there is neither a file nor a salt of yours in the conversation** → ask
+     for the last archive or a stand export of those BOs. Never start over with a new salt silently: every
+     object would come in as a duplicate.
+  4. **A build from scratch** (the first build of the conversation, or the user says «заново», «с нуля»)
+     → a NEW salt, even when an earlier attempt of the same system was imported and rolled back or deleted.
+  In an amendment never rename the code of an existing field or BO: a new code is a new seed, a new id,
+  and the old field stays on the stand beside the new one.
 - Which ids must be equal:
   - `BoStructDto.boGroupOldId` **=** `BoGroupStructDto.oldId`;
   - `BoProcessVersionsStructDto.oldId` **=** `BoStructDto.oldId` (processes only);
@@ -939,8 +963,8 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
 - Field ids use `newId` (not `oldId`); the BO and the group use `oldId` (the group also carries a
   `newId`, any unique value).
 - **A re-import matches the BO by `oldId` and its fields by `newId`, NOT by code** `[C]` — keep both fixed
-  between builds of the same object (derive them from a seed, as above). What a re-import does to an existing
-  BO: §8 «Re-import of the same ids».
+  between builds of the same object (the same salt and code, or the ids of the given file, as above). What a
+  re-import does to an existing BO, and to one that was rolled back or deleted: §8 «Re-import of the same ids».
 
 ### 0.8 Layout in one rule
 
@@ -1132,6 +1156,8 @@ the BO's category. Count it in `objectCount`.
       | grep -oE '"(oldId|newId|newOptionId)":"[^"]{16}"' | sort | uniq -d` prints nothing.
 - [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
       `code`; no widget or native type hides in `dynamicFields`.
+- [ ] No two cells of one form share `x`,`y` or overlap (a cell covers `x … x+cols-1` × `y … y+rows-1`): the
+      grid pushes one of them down and the whole form below shifts. `tools/validate-archive.bun.ts` reports it.
 - [ ] Layout by 0.8: the cells of one row share `y` and `rows`, their `cols` sum to 15 and `x` runs 0, 0 + cols …;
       the next row's `y` = this `y` + this `rows`; short one-line fields share rows (2–3 per row), full width
       only for the kinds 0.8 lists; a `BO` `SINGLE` is 3 rows, a `TABLE` 6.
@@ -1151,6 +1177,8 @@ the BO's category. Count it in `objectCount`.
       gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
       a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
 - [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
+- [ ] Ids by 0.7 «Which ids»: an amendment keeps every id and code of the given (or your own earlier) archive;
+      a build from scratch used a NEW salt, and the report names it.
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.9 rule 12).
 - [ ] 0.8a: more than 12 visible fields → tabs, balanced; themes → `STATIC_TEXT` headings (3 rows,
       `hideLabel`, `tableColToShow: false`); each `TAB_GROUP` = tallest tab + 3 (nested + 2); system fields
@@ -1207,6 +1235,8 @@ the BO's category. Count it in `objectCount`.
   o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? "", o.category ?? o.menuItemType ?? "") }'`
   — groups, BOs by category, scripts by owner and hook, the process, the menu items. An object the file does
   not contain is never named: «составной объект для поставщиков» with no `BO_COMPOSITE` line is a false report.
+- **Name the build salt in one line** — «Соль сборки: `k7f2`» — so a later amendment in this conversation
+  mints the same ids (0.7 case 2).
 - **Name each 0.10 check you ran and how** (the validator, by hand). Asserts inside your own builder are not
   0.10; «проверено» without the list of checks is not a report.
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
@@ -2065,7 +2095,7 @@ archive aimed at another stand (0.2a).
   does not match groups by it — see §8.
 - **The stand keeps the archive's `oldId` as the BO's real id** `[C]` — it appears verbatim in the
   registry URL and comes back from `v2/business-objects/load-bo-id-by-code`. Deterministic ids therefore address the same BO on every
-  re-import — one more reason to seed them, never randomise.
+  re-import — one more reason to seed them, never randomise; the build salt of 0.7 keeps two builds from scratch apart.
 - **A generated archive may be STORED (zip method 0)** `[C]` — the importer accepts it; no compression
   needed (a self-contained writer: 0.11 «Zipping by hand»). Optional accelerators if `tools/` is available:
   `tools/make-probe-archive.bun.ts` builds it (deterministic sha256-seeded ids, `--with-metadata` adds
@@ -3519,6 +3549,18 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   as above). When you copy an archive to make a NEW BO, change the BO's `oldId` as well as its `code`.
   Change the field `newId`s too: what happens when a new BO's `newId` equals a field id of ANOTHER BO is `[U]`.
   A stand export is safe to copy this way, since its ids are freshly minted (§2).
+- **A deleted BO comes back — with ALL its old fields** `[C]`. Both a rollback of the import and
+  `delete-business-object` delete a BO SOFTLY: it is gone by code (`load-bo-id-by-code` → «No bo with code»,
+  out of the sidebar), but its id still holds the BO with every field. An archive that carries the same
+  `oldId` again brings it back with all its OLD fields beside the new ones — fields the new archive does not
+  name stay, each with its old `gridPosition`, so they overlap the new layout. The analysis diff lists only
+  the new fields as «added» and warns about nothing `[C]`. A revived `BO` field that pointed at a
+  dictionary removed by a ROLLBACK keeps the dead id: opening its options answers «… данный бизнес-объект не
+  существует» `[C]`; a dictionary removed by `delete-business-object` stays resolvable and the options
+  are simply empty `[C]`. Why the two removals differ is `[I]` (rollback deletes the dictionary hard).
+  **So a new attempt of a rolled-back or deleted system needs NEW ids** — a new salt (0.7 case 4), never the
+  seeds of the earlier attempt; to reuse a revived BO instead, delete its stale fields (`deletedFieldIds`,
+  `MYBPM-UI-API.md` R1).
 
 ### BO groups on import — matched by `code` `[C]`
 

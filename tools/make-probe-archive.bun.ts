@@ -17,7 +17,7 @@
  * to tie the lines of this archive together.
  *
  * Usage:  bun tools/make-probe-archive.bun.ts --group-code CODE --group-name NAME --group-order N
- *         [--with-metadata] [--out DIR] [--code CODE] [--name NAME]
+ *         [--with-metadata] [--out DIR] [--code CODE] [--name NAME] [--salt SALT]
  *         [--category BO|BO_DICTIONARY|BO_COMPOSITE|BO_PANEL|BO_PROCESS] [--field "Метка:TYPE"]...
  *         [--process-figure "Exit@440,104"]... [--process-status <refBoId>:<CREATED row id>]  (optional; ids are resolved by code)
  *         [--process-spec <spec.json>]   (a CONFIGURED process — the spec of tools/process-builder.ts)
@@ -46,6 +46,9 @@
  *   --hide-tab tabs/tab_system                                — the hidden system tab «Системные» (0.8a step 6): an
  *     AccessStructDto, all BO actions open + VIEW «никому» on that tab; REPLACES the BO's rights — a NEW BO only
  *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3)
+ *   --salt <s>                                                — the build salt (MYBPM-IMPORTS.md 0.7): every id seed
+ *     starts with it, so a build from scratch does not revive a rolled-back BO of the same code; keep it for every
+ *     later build of the same system. Without it the ids depend on the codes alone (the old behaviour)
  *   --bo-order <n>                                            — the BO's place in its sidebar group (orderIndex, default
  *     47480000 = the §0.4 template); a re-import MOVES an existing BO to the archive's group and this place, and BOs
  *     sharing one value cannot be reordered between each other by drag (MYBPM-IMPORTS.md §2 «BO place in the sidebar»)
@@ -413,8 +416,10 @@ function codeOf(label: string): string {
   return s.slice(0, 30);
 }
 
-/** Deterministic 16-char platform-shaped id (alphabet seen in real exports: A-Za-z0-9@~_). */
+/** Deterministic 16-char platform-shaped id (alphabet seen in real exports: A-Za-z0-9@~_); `--salt` prefixes every seed. */
 function id(seed: string): string {
+  const salt = flag("salt", "");
+  if (salt) seed = `${salt}.${seed}`;
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@~";
   const h = createHash("sha256").update(seed).digest();
   let s = "";
