@@ -65,6 +65,8 @@
  *     --field "Состав:CO@<coId>@Sostav!linkedCoSettings.<source code>.linkedFieldCode=Back,linkedCoSettings.<source code>.removeType=HIDE"
  *     needChangeParentBoByLinkedBo=false is lost when the import CREATES the field — import the archive twice
  *     (dotted = nested, e.g. `!params.url=https://…`; value parsed as JSON, else a string; no «,» in it)
+ *   --field "Источник:INPUT_TEXT!half"                       — a short field alone in its row: x 0, cols 8, the
+ *     right half free; a pair right below it splits 7 + 8 so its right cell cannot float up into the hole (0.8)
  *   --field "Телефон:INPUT_PHONE!row"                         — the field shares the row of the field before it (same
  *     y, the 15 columns split 8 + 7 / 5 + 5 + 5); give row-mates the same height (MYBPM-IMPORTS.md 0.8)
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
@@ -202,7 +204,7 @@ function fieldFlags(): FieldSpec[] {
       return { path: kv.slice(0, eq).split("."), value };
     });
     flags = flags.filter(f => !f.includes("="));
-    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "tile", "camera", "track", "row"].includes(f));
+    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "tile", "camera", "track", "row", "half"].includes(f));
     if (unknown.length) throw new Error(`unknown --field flag(s): ${unknown.join(", ")}`);
     out.push({ label: raw.slice(0, at), type, refBoId, refBoCode, options, flags, sets });
   }
@@ -732,7 +734,7 @@ if (isComposite) {
   const tabY = new Map<string, number>();
   let col = Object.keys(dynamicFields).length;
   // `!row` puts a field into the row of the field before it (MYBPM-IMPORTS.md 0.8): same y, the 15 columns split
-  let curRow: string[] = [], curRowY = 0;
+  let curRow: string[] = [], curRowY = 0, prevHalf = false, curHalf = false;
   custom.forEach((f, i) => {
     const code = codeOf(f.label);
     // The heights that fit the content (MYBPM-IMPORTS.md 0.8): a table, a file or a text block 6 rows, a
@@ -833,12 +835,16 @@ if (isComposite) {
     }
     // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
     if (!inTab) {
-      if (joins) curRow.push(code); else { curRow = [code]; curRowY = y; }
+      if (joins) curRow.push(code); else { prevHalf = curHalf; curRow = [code]; curRowY = y; }
+      curHalf = curRow.length === 1 && f.flags.includes("half");
       y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++;
-      // the row's 15 columns split evenly: 8 + 7, 5 + 5 + 5, 4 + 4 + 4 + 3
+      // the row's 15 columns split evenly: 8 + 7, 5 + 5 + 5, 4 + 4 + 4 + 3; `!half` = one cell of 8; under a `!half`
+      // row a pair splits 7 + 8 (an 8 + 7 pair's right cell would float up into the free half, 0.8)
       let x = 0;
       curRow.forEach((c, j) => {
-        const cols = Math.floor(15 / curRow.length) + (j < 15 % curRow.length ? 1 : 0);
+        const cols = curHalf ? 8
+          : prevHalf && curRow.length === 2 ? (j === 0 ? 7 : 8)
+          : Math.floor(15 / curRow.length) + (j < 15 % curRow.length ? 1 : 0);
         Object.assign((dynamicFields[c] as any).gridPosition, { x, cols });
         x += cols;
       });
