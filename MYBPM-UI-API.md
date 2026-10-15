@@ -734,8 +734,9 @@ work path, automations, reports, roles. The job is the whole spec, not «the BOs
 and dropping the rest «for scope» is a fraction reported as done.
 
 1. **Decompose the spec into a coverage table BEFORE the first write** — one row per requirement (an object,
-   a list of values, a status path, an automation, a calculation, a report, a role, a notification), each
-   row given exactly ONE route:
+   a list of values, a status path, an automation, a calculation, a report, a role, a notification) — each
+   automation, report and role a row of its own —, each row given exactly ONE route from this table («where
+   possible», «partly» are no route):
 
    | Route | What goes there | Recipe |
    |---|---|---|
@@ -1337,6 +1338,18 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   defects `[I]`: undoing a re-import of an existing BO did NOT bring back a SIGNATURE phone or a radio's
   dictionary, and it ADDED one more copy of every print form instead of removing the copies `[C]`. Check
   those by hand after an undo.
+- **A group line with `kind: "DEFAULT"` is permanent** `[C]`: a group CREATED by import with the kind copied
+  from an export's «Общее» becomes the company's general group — `delete-business-object-group` and the
+  rollback of that import both fail «Can not delete general group» (the rollback deletes the BOs, then stops,
+  and the import stays `APPLIED`), `save-business-object-group` with `kind: MANUAL` is ignored, and the group
+  now lists every BO that is in no group. An archive's group line carries `kind: "MANUAL"`
+  (`MYBPM-IMPORTS.md` 0.3).
+- **A reference to the built-in `Person` in an archive resolves by `boInfo.code`** `[C]`: `oldRefBoId` may be
+  `""` or another company's `personBoId`, with or without the `CompanyMetadataStructDto` line — the imported
+  field points at THIS company's `Person` and picks its users. No `personBoId` needs to be read off the stand
+  for an archive; `boInfo` itself is mandatory (without it the analysis ends `INTERNAL_ERROR` «fieldStruct with
+  type BO don't have boRef»). In the constructor (R1) the field still takes the company's `personBoId` as
+  `fieldBoId`.
 - **`load-business-object-name` is not an existence check** `[C]`: after a rollback it still answers
   the deleted BO's name, while `load-bo-id-by-code` gives `No bo with code` and
   `load-business-object-by-id` «бизнес-объект не существует». Verify a removal with those two.

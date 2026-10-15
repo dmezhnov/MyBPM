@@ -43,7 +43,7 @@ table at the top of §0S, records at the top of §0X.
 | Field type | a number, sum or date typed as a dropdown; a link to another object typed as text | the type of the VALUE (`INPUT_NUMBER`, `DATE` …); another object = a `BO` field | 0.5, 0.5a |
 | Ids | random ids (even from a seeded generator); any length but 16; one seed for two objects (a field seed from the field code alone gives every BO's `status` the same id) | 16 chars over `A-Za-z0-9@~`, hashed from a seed per object kind (field = BO code + field code), distinct across the whole file | 0.7 |
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
-| Stand data | every reference left out because ONE of them needs stand data | only a reference to `Person` / `Department` / `PersonGroup` needs a stand id; a reference between the BOs of your own file never does — build it | 0.2c step 8, 0.5a |
+| Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
 | Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a status path or a short fixed list as a dictionary (it ships empty → a board with no columns); a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields; statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
 | Layout | `y = index × 3` while a `BO` table is 6 rows and a `TEXTAREA` 4 (fields overlap); `w: 10` and no tabs on every window | `y` = previous `y` + previous `rows`; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
@@ -117,6 +117,10 @@ Rules, all `[C]`:
    Do not start building before the user has answered, or has told you to build without them. Ask ONLY
    what the request has not already answered: «пустой стенд», «новая компания», «a fresh stand» answers
    the group (a NEW one — you name it) and the taken codes (none) — never ask those again.
+   For a system built from a spec (0.2b) that does not say the stand is empty, ask exactly this, in the
+   same reply as the coverage table, and nothing else: «Стенд пустой (новая компания)? Если нет — код и
+   название группы, куда класть объекты, и коды БО, которые на стенде уже есть.» A `Person` id is never
+   asked (0.2c step 8).
 1. **Collect the input**: the display name of the BO, its fields (label + UI type), and the name of the
    BO group **that already exists on the target stand** (ask the user for it — §0.2a).
 2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
@@ -140,8 +144,8 @@ Rules, all `[C]`:
    built from a spec the menu counts as asked (0.2b step 4).
 8. **Check against 0.9 and 0.10**, then zip as in 0.1 and hand it over as in 0.11.
 
-A `CompanyMetadataStructDto` line is **not** needed and must be omitted unless the archive references
-the built-in Person / Department / PersonGroup BOs (§1).
+A `CompanyMetadataStructDto` line is **not** needed — omit it. A reference to the built-in `Person` is
+resolved by its code, not by an id (§6 «Person reference»).
 
 ### 0.2a Stand data — ASK for it, never invent it
 
@@ -153,9 +157,8 @@ build — a guess is allowed only when it has been named out loud and confirmed.
 
 **Decide FIRST, object by object: does the request say it already EXISTS on the stand?** This one
 question settles every case below. **An empty stand** («пустой стенд», «новая компания») settles the first
-two rows of the table without asking: the group is NEW and the codes are free. What it does NOT settle is
-an id the platform creates in every company — `Person`'s `personBoId` (§6 «Person reference») differs per
-company even on an empty one, so a `Person` field still needs it asked (or degraded and listed).
+two rows of the table without asking: the group is NEW and the codes are free. A `Person` field needs no
+stand id either — it is resolved by `boInfo.code` (§6 «Person reference»), so it is built, never asked for.
 
 - **Not said to exist → it is NEW, and you build it in THIS archive** — together with every supporting
   object it needs. «Каталог товаров, категория выбирается из справочника категорий» = build the
@@ -175,7 +178,7 @@ company even on an empty one, so a `Person` field still needs it asked (or degra
 |---|---|---|
 | The **BO group**: the `code`, `name` and `orderIndex` of an existing group (from `load-bo-groups`), or «a new group» + its name | the importer matches groups BY `code`; a line without `code` **renames an existing group**, and a matched line overwrites the group's `name` and `orderIndex` with its own (§0.3, §8) — the customer's group list is destroyed | ask which group; for an existing one copy its `code`, `name` and `orderIndex` verbatim (a group whose `code` is `null` cannot be targeted until it is given one — `save-business-object-group` with a new `code`, §8 «After the import — the stand-side calls»; that is a stand write and one-way, a code never goes back to `null`, so ask before doing it); for a new one mint a new `code` and say that a group will be CREATED |
 | The **BO codes already on the stand** | import MERGES by code: a colliding code edits an EXISTING BO instead of creating a new one, and the report still says success | append a short random suffix to the code (`Demo_bo_p7q2`) so a collision is improbable, and say you did |
-| For a `BO` / `CO` field — the target's **`oldRefBoId` + code + name**; for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
+| For a `BO` / `CO` field to a BO that EXISTS on the stand — the target's **`oldRefBoId` + code + name** (not for `Person`: it resolves by code, §6 «Person reference»); for a `DROPDOWN_SINGLE` fed `FROM_BO` — the **dictionary CODE** (a `RADIO_BUTTON_GROUP` cannot take a dictionary at all) | ids and codes live on the stand; a wrong id is a dangling reference, and the analysis only warns («В Составном объекте не достаёт БО») — the warning does **not** block ПРИМЕНИТЬ | do NOT emit the field with an invented id. Either drop it, or degrade it — a dropdown to a local list (`optionSource: "FROM_FIELD"`), a reference to `INPUT_TEXT` — and list every field you dropped or degraded |
 | To CHANGE a BO that already exists (add a field, rename, re-lay the form) — a **fresh export of that BO** (its `BoStructDto` line as the stand wrote it) | the importer matches the BO by `oldId` and its fields by `newId` (0.7); a BO line rebuilt from the template of 0.4 RESETS every header setting the template carries (`isTouchEnabled`, `description`, `instanceViewType`, views, `orderIndex` — the BO moves in the sidebar) and lays the new field over the existing ones, and the report still says success | build NOTHING: no archive. Say that a change to an existing BO is made on its export — take the line, ADD the new field entry (new `newId`, `y` = below the last field, next `tableColOrderIndex`), keep every other key and value as exported — and ask for the export. **Deleting a field, a tab or an option is impossible by import** (§8: an import never deletes) — say so and name the route: the constructor, or `deletedFieldIds` of `save-business-object-portion` (`MYBPM-UI-API.md` R1) |
 
 
@@ -212,8 +215,10 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 
 1. **Print the coverage table FIRST — in your reply, before any file is written.** One row per requirement
    of the spec (an object, a list of values, a status path, a link between objects, an automation, a
-   calculation, a report, a role, a notification), columns «spec item | route | built by». Each row gets
-   exactly ONE route:
+   calculation, a report, a role, a notification), columns «spec item | route | built by». Each
+   automation, report and role is a row of its own — never one row for «rights, reports and notifications».
+   Each row gets exactly ONE route from the table below; «where the format supports it», «if possible»,
+   «partly» are no route:
 
    | Route | What goes there | Built by |
    |---|---|---|
@@ -284,12 +289,10 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    variable, assign the variable to the header's field (0S.7 «A nested table», «Writing a field»). Every
    step is `[C]`; the whole sum hook as one recipe is `[I]`. It recomputes when the HEADER is saved; a line
    edited in its own card does not run the header's hook `[I]`.
-8. **A responsible person?** (мастер, менеджер, автор записи) → a reference to the built-in `Person` (§6
-   «Person reference») — its `oldRefBoId` is the company's `personBoId`, STAND DATA (0.2a). Or the
-   current-user widget / the system «Автор» (0.12, 0.13), which need no id. **No `personBoId` from the
-   user → the field is NOT in the file**: ask for the id and list the field in the report (0.2b step 5,
-   first reason). A `BO` field without `oldRefBoId` is a reference to nothing. Only THAT field drops out — every reference between
-   the BOs of your own file is still built (0.5a).
+8. **A responsible person?** (мастер, менеджер, автор записи) → a `BO` field to the built-in `Person` (§6
+   «Person reference»): `"oldRefBoId": ""`, `boInfo {code:"Person", name:"Пользователи", boCategory:"BO"}`
+   — the stand resolves it by that code, so it needs no stand id and is ALWAYS built. Or the current-user
+   widget / the system «Автор» (0.12, 0.13) when the person is simply who created the record.
 9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
    записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
    table — and NOT dictionaries; those go into one «Справочники» subgroup at the end of the menu group, or
@@ -334,7 +337,11 @@ your own.
 - The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
-- `kind` is always `MANUAL`; `orderIndex` is the group's place in the list — a new group takes it, and
+- `kind` is always `MANUAL` — **never copy `"kind": "DEFAULT"` from an export** (the general group «Общее»):
+  a group CREATED by import with `kind: DEFAULT` becomes the company's general group, which cannot be
+  deleted — not by `delete-business-object-group`, not by the rollback of that import («Can not delete general
+  group»), and saving it as `MANUAL` is ignored. It then lists every BO of the company that is in no group `[C]`.
+  `orderIndex` is the group's place in the list — a new group takes it, and
   a matched group is MOVED to it `[C]` (above), so repeat the stand's own value.
 - **Several group lines in one archive work** when every one of them has a `code` `[C]`. Without codes they collapse into the one fixed
   group (§8).
@@ -545,7 +552,8 @@ The types that need extra keys — every shape `[C]`:
   `"viewType": "TABLE"` (or `SINGLE`), `"isHeightDynamic": true`, and
   `"boRefStruct": {"boInfo": {"code": "<target code>", "name": "<target name>", "boCategory": "BO"}, "fieldRefs": {}}`.
   The target must already exist on the stand and **its id and code must be read off the stand**, never
-  guessed — unless this same archive creates it, in which case its `oldId` IS the id (0.2a).
+  guessed — unless this same archive creates it, in which case its `oldId` IS the id (0.2a), or it is the
+  built-in `Person`, which needs `"oldRefBoId": ""` and `boInfo.code: "Person"` only (§6 «Person reference»).
 - `CO` — the same, with `"boCategory": "BO_COMPOSITE"` and the composite's id (which itself often starts
   with «@», e.g. `@feclOAWUnwXFQ8c` — parse such a spec from the right).
 - `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` — one extra key, `fieldOptionsStruct`, in exactly one of the
@@ -971,7 +979,7 @@ the BO's category. Count it in `objectCount`.
 1. Every `BoGroupStructDto` carries a `code` — the stand matches groups BY `code`; a line without one
    RENAMES a fixed stand group (0.3, §8). Several group lines are fine when each has its own `code`.
    A line for an EXISTING group repeats that group's `name` and `orderIndex` exactly — the import
-   overwrites both (0.3).
+   overwrites both (0.3). `kind` is `MANUAL`: a `DEFAULT` group created by import can never be deleted (0.3).
 2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
 3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
 4. Every line carries its `"@class"` with the full package
@@ -1102,7 +1110,7 @@ the BO's category. Count it in `objectCount`.
       sum or date typed as a dropdown; every `DROPDOWN_SINGLE` has its kanban template; every computed
       value of the spec has its hook line or a closed-list reason.
 - [ ] **References — walk every `type: "BO"` field of the file**: it has `oldRefBoId` (a BO line of this
-      file or a stand id from the user), `boRefStruct.boInfo` and a `fieldRefs` entry `toShow: true`; its
+      file, `""` for `Person`, or a stand id from the user), `boRefStruct.boInfo` and a `fieldRefs` entry `toShow: true`; its
       `linkedFieldCode`, if any, is a field of the target BO whose own `linkedFieldCode` names this field
       back; every child document (payments, records of a stage) that points at a header with a `SINGLE`
       has the header's `TABLE` back (0.2c step 2).
@@ -1960,12 +1968,12 @@ archive aimed at another stand (0.2a).
   importing it REPLACES the stand's whole list). A one-BO export
   = 3 lines + its `AccessStructDto` if any. `[C]`
 - `CompanyMetadataStructDto` carries the company ids `personBoId`, `departmentBoId`, `personGroupBoId`
-  (different per company — read them from a stand export). It has **no** stand host/URL, so record the
-  stand URL in project memory. CompanyMetadata ids copied from another company import fine. `[C]`
+  (different per company). It has **no** stand host/URL, so record the stand URL in project memory.
+  CompanyMetadata ids copied from another company import fine, and the line can be left out. `[C]`
 - **`CompanyMetadataStructDto` is OPTIONAL** `[C]`: a **2-line**
   archive (`BoGroupStructDto` + `BoStructDto`, `objectCount-2`, no access DTO) analyses with an empty
-  error list and applies. Ship the line only when the archive
-  actually references Person/Department/PersonGroup.
+  error list and applies. A `Person` reference does not need it either — it resolves by `boInfo.code`
+  (§6 «Person reference»). `[C]`
 - **Group `oldId`/`newId` are generated at EXPORT time, not stable ids** `[C]`: the same group carries a different
   `oldId` in every export. So `boGroupOldId` only ties the lines of ONE archive together, and the importer
   does not match groups by it — see §8.
@@ -3286,8 +3294,14 @@ Open `[U]`: where else a kanban can be switched on besides a menu item (0.14).
 
 ### Person reference
 
-Type `BO`, `boInfo{code:"Person", name:"Пользователи", boCategory:"BO"}`, `oldRefBoId` = the company's
-`personBoId`. Platform default for a fresh Person reference `[C]`: `surname`, `name`, `email`,
+Type `BO`, `boInfo{code:"Person", name:"Пользователи", boCategory:"BO"}`, `"oldRefBoId": ""`.
+**The stand resolves a reference to `Person` by `boInfo.code`, not by `oldRefBoId`** `[C]`: `""`, the
+source company's `personBoId` (an export from another company, with or without its `CompanyMetadataStructDto`
+line) and the target's own id all import into a field that points at the TARGET company's `Person` and picks
+its users; a re-export writes the target's `personBoId`. So a `Person` reference is never stand data — build
+it without asking. **`boInfo` is mandatory on every `BO` field**: a `BO` field without it fails the analysis
+with `INTERNAL_ERROR` «fieldStruct with type BO don't have boRef» `[C]`. `Department` / `PersonGroup`
+references resolve the same way `[I]`. Platform default for a fresh Person reference `[C]`: `surname`, `name`, `email`,
 `personGroup` are `toShow:true`, every other Person field false (phone, position, department, status,
 accessLevel, adGuid, ad_employee_id, is_external, is_lang, person_avatar, phoneVerified). To show ФИО
 only, write `email` and `personGroup` as explicit `toShow:false` — because import merges (§7).
@@ -5754,6 +5768,9 @@ here; the rules themselves are §0X.4.
 - SIGNATURE: what clears `signFieldUnsupported` («такой-же тип подписания») on a referenced BO — nothing on
   the stand does (`MYBPM-UI-API.md` §5i), so only the vendor can answer; until then `massPrintFormCodes`
   never survives an import (§0.13 «SIGNATURE round-trips»).
+- `[U]` Whether a reference to an ordinary user BO of the stand also resolves by `boInfo.code` with a foreign or
+  empty `oldRefBoId`, as a `Person` reference does (§6) — check: export a BO with such a reference from one company,
+  import it into another that has a BO of the target's code, read the field's `refBoId`.
 - The storage format of a `Date` constant, and which output each swapped `DatePattern` label really gives.
 - Whether a CO element's `#Сохранить` stores the SOURCE record, and whether `F-ADD` on a CO field accepts
   a record of a BO that is not one of the composite's sources.
