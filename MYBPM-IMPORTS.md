@@ -2840,9 +2840,20 @@ that field is the only link between them. An export of one process carries 7 obj
   **A figure no arrow leads to never runs** — its `ScriptDefStructDto` (`compositeId` `<version>-<figure
   id>`) still travels in the archive and may look like the core logic, but it is dead: leave it out of
   the logic and name it separately as «не подключена к схеме, не выполняется». Figures have no captions,
-  so refer to a step by the `name` of the arrow entering it (and of the arrows leaving a Switch); a step
-  whose arrows are all nameless is named by its type and position («скрипт после формы «Заявка»»), never
-  by figure id or x/y alone.
+  and a person sees neither figure ids nor coordinates, so **point to a step by its ordinal on the path
+  from the Enter plus the labels of BOTH its arrows**: «3-й шаг от «Входа» — скрипт; входящая стрелка без
+  подписи, исходящая «Оповещение пользователя»» (a Switch: every outgoing label). Several arrows may carry
+  the same `name`, and many carry none — then the ordinal is what tells the steps apart; never refer to a
+  step by figure id or x/y. Every such pointer starts with the process itself — its `name` and `code`
+  («процесс «<name>» (`<code>`), 3-й шаг…») — so a person looking at another process notices the mismatch.
+- **Check what the person says against the archive before agreeing** `[C]`: when the person describes a
+  figure by its arrows («входящая «X», исходящая без подписи»), find the figures whose `arrows`
+  (`finishFigureId` = it / `startFigureId` = it) carry exactly those labels. If that is a different step
+  from the one discussed, say which step it is; if no figure matches, or the person quotes captions or
+  shows a diagram that the archive does not contain, they are looking at another process or a newer
+  version than the export — say so and ask for the export of what they see. **Never retract a fact the
+  archive proves** because a pasted fragment or screenshot does not fit it: compare first (a copy-buffer
+  fragment, §9, is matched to an archive script by its act codes and variable names, never by block ids).
 - **A Script / Switch figure WITHOUT its `ScriptDefStructDto` is a silent trap** `[C]`:
   the analysis reports nothing, the import applies, `validate-def` answers `[]` — and on the first record the
   figure turns `FAILED` with «Скрипт не определен» (`script.not.found`, `NoScriptWithId ScriptId=<figure id>`),
@@ -4113,6 +4124,11 @@ Run all of it — the IDE will not tell you about any of these:
   `9qzhdpJfhU~cu4Uj`). `[C]`
 - **External references are not part of the fragment**: `actId`, `targetArrowId`, `boiId` point outside the
   JSON — a dangling-reference checker must skip them.
+- **A copied fragment gets fresh block and expression ids** on every copy, so its ids match nothing in an
+  export. To tell which script of an archive it came from, compare the act codes (`F-…-K-…` names in
+  `ExprAct`), variable names and constant texts with each `ScriptDefStructDto`. Nothing in common = the
+  fragment is from another process, or from a version on the stand that differs from the export (an export
+  is a snapshot); say that, and keep what the archive proves (§5c «Check what the person says»). `[I]`
 - A process script is the same shape plus `startBlockIds` holding entry points and other top-level keys a
   block patch must not touch. Size reference: 684 blocks / 1726 expressions ≈ 554 KB.
 - **The same two maps ride inside a structure archive** as `ScriptDefStructDto.blocks` / `.expressions`,

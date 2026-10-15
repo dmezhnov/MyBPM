@@ -2070,9 +2070,16 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   **A figure has no caption of its own — an arrow `name` is the only text on a diagram** `[C]`: name the
   arrow entering each Form / Script / Switch / Timer with what the step does; that label is how a person
   finds the step. When explaining an existing process, walk `arrows` from the Enter and describe only the
-  figures reachable from it, naming each step by its incoming arrow: **a figure no arrow leads to never
-  runs**, even though its script is stored and exported — mention it only as «не подключена, не
-  выполняется» (`MYBPM-IMPORTS.md` §5c «Explaining what an existing process does»).
+  figures reachable from it: **a figure no arrow leads to never runs**, even though its script is stored
+  and exported — mention it only as «не подключена, не выполняется». A person sees neither figure ids nor
+  x/y, and arrow names repeat or are empty, so point to a step by the process (`name` + `code`), its
+  ordinal on the path from the Enter and the labels of BOTH its arrows («процесс «<name>», 3-й шаг от
+  «Входа»: входящая без подписи, исходящая «Оповещение пользователя»»). When the person describes a
+  figure by its arrows, match the description against `arrows` before agreeing — it may be another step;
+  captions, a screenshot or a copied script fragment that the export does not contain mean another
+  process or a newer version: say so and ask for that export, never retract what the export proves. A
+  copied fragment has fresh block ids — match it to a script by act codes and variable names
+  (`MYBPM-IMPORTS.md` §5c «Explaining what an existing process does», «Check what the person says»).
 - **Script / Switch** — born as `{x, y, type:"Script", script:null}` / `{x, y, type:"Switch"}`.
   Double-click → `save-editing-script-figure-id {boProcessId, scriptFigureId}` and the ordinary Block IDE
   opens with **`scriptModuleId = boProcessId` (the version id) and `scriptId = the figure id`**
