@@ -19,6 +19,18 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    out of that reading too — asking them after the first chunk is building from memory.
 3. **Copy, never compose.** Every `@class`, every key and every `type` value in your file is printed in
    this document — find it there and copy it. A name that merely looks right is invented.
+4. **An archive for a whole system (a CRM, a spec of several objects) is not done without EVERY item
+   below.** Each has its template in the core; the ones past line ~600 are the ones a single read misses —
+   jump to them by heading (with a shell: `grep -n '^### 0\.' MYBPM-IMPORTS.md` prints the line of each).
+   - [ ] the group line and one BO line per object — 0.3, 0.4, 0.5;
+   - [ ] every header–lines / parent–child link as a `SINGLE`↔`TABLE` pair, a line BO separate from the
+     catalogue it points at — **0.5a**, 0.2c;
+   - [ ] a `BO_DICTIONARY` line per open reference list; statuses and short fixed lists as LOCAL dropdowns — **0.5b**, 0.2c;
+   - [ ] one kanban card template per `DROPDOWN_SINGLE` of a BO — **0.5c**;
+   - [ ] the sidebar menu: one `GROUP` + one item per working BO, kanban on the status dropdown — **0.5d**, 0.2b step 4;
+   - [ ] ids hashed from a seed per object kind, distinct across the file — **0.7**;
+   - [ ] the layout (tabs over 12 fields, `y` chain, window size) — **0.8a**;
+   - [ ] the hard rules and the self-check, then the zip and the report — **0.9, 0.10, 0.11**.
 
 What a model invents when it skips the reading, by class of mistake. Each class holds for ANY spec — the
 examples are only examples; each broken row breaks the import or is silently dropped. A script has its own
@@ -382,7 +394,7 @@ everything after it on that line — the shipped line must be pure minified JSON
 `code`.
 
 > **Reading in chunks? You are NOT done.** The cookbook core runs on to «0.11 Building the zip»
-> (≈ 730 more lines): the field template right below, links 0.5a, dictionary 0.5b, kanban 0.5c, menu 0.5d,
+> (≈ 700 more lines): the field template right below, links 0.5a, dictionary 0.5b, kanban 0.5c, menu 0.5d,
 > ids 0.7, layout 0.8a, hard rules 0.9, self-check
 > 0.10. Call the reader again with the next offset before you ask, plan or write anything.
 
@@ -580,6 +592,11 @@ Cell heights the constructor itself assigns: 3 rows for a one-line input, 4 for 
 `STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets: a heading
 needs 3 and a `TAB_GROUP` needs its tallest tab + 3 — write the heights of 0.8a.
 
+> **Your first read most likely ended near here — the core is only half read.** Still ahead, and every
+> system needs them: links 0.5a (right below), dictionary 0.5b, kanban 0.5c, **menu 0.5d**, ids 0.7, layout
+> 0.8a, hard rules 0.9, self-check 0.10, zip 0.11. Call the reader again NOW with `offset` = the line after
+> the last one you got and `limit` 400 (a larger limit may be refused as too big), and repeat until «0.11
+> Building the zip» has scrolled past. Do not ask, plan or write before that.
 
 ### 0.5a A link between two BOs — the `SINGLE`↔`TABLE` pair
 
@@ -687,6 +704,10 @@ columns), the inner keys are the fields shown on the card:
   Ids never appear here, exactly like everywhere else in a `BoStructDto`.
 - `locationType` is `HEADER` | `CONTENT` | `FOOTER`; `cardOrderIndex` orders the fields inside one
   location and is a plain int.
+- **Column colours live on the dropdown, not here**: each option's `fieldOption.color` (0.5) — a CSS colour
+  name in any case (`RED`, `green`) or hex (`#0048ff`, `#0f0`) `[C]` — colours that column's title and bar;
+  `null` = black title, default blue bar. Give statuses colours when the spec names them or implies them
+  (new = blue, done = green, cancelled = grey `#9e9e9e`); avoid light ones (`YELLOW`), they are unreadable on white.
 - `tools/make-probe-archive.bun.ts --kanban "Статус:HEADER=Наименование;CONTENT=Исполнитель,CREATED_BY;FOOTER=Комментарий"`
   writes exactly this.
 
@@ -2414,7 +2435,7 @@ field in `dynamicFields`; the field links are by CODE:
 | `TAB_GROUP` | `params.showAsStepper: "true"` | travels, but **changes nothing on a card on this build** |
 | `TAB_GROUP` | `fieldTabs.<code>.isRight: true` | the tab sits at the right end of the strip |
 | `TEXTAREA`, `TEXTAREA_LANG` | `params.buttonTypes` = JSON TEXT of an array, `"[\"bold\",\"italic\",\"table\",\"codeview\"]"` | the editor toolbar shows exactly those buttons, from `style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height`; no key = the default ten `bold underline italic fontsize color ul ol table link picture` |
-| `DROPDOWN_SINGLE` | `fieldOptionsStruct.options.<code>.fieldOption.color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour (the card shows the option uncoloured). On a `RADIO_BUTTON_GROUP` the colour travels too but shows nowhere: a kanban is built only on a `DROPDOWN_SINGLE` |
+| `DROPDOWN_SINGLE` | `fieldOptionsStruct.options.<code>.fieldOption.color` = any CSS colour string — a colour name in any case (`RED`, `green`, `PURPLE`, `PINK`…) or hex (`#0048ff`, `#0f0`); `null` = no colour | the kanban column colour: the column title text and the bar under it take the colour, `null` leaves a black title over the default blue bar (the record card shows the option uncoloured). A light colour (`YELLOW`, `PINK`) makes the title hard to read on white — prefer a darker hex such as `#c99a00`. On a `RADIO_BUTTON_GROUP` the colour travels too but shows nowhere: a kanban is built only on a `DROPDOWN_SINGLE` |
 
 - `params` values are strings, as everywhere (`"true"`, not `true`).
 - The option, questionnaire, step and tab codes in the archive are kept as written by the import (an API ADD,
@@ -2584,7 +2605,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   - a LOCAL list («Задать вручную») — `{"optionSource":"FROM_FIELD","options":{"<код варианта>":
     {"fieldOption":{"label":"Новый","orderIndex":0,"color":"#00d9ff","code":"Новый→код",
     "hiddenInKanban":false},"newOptionId":"<16 chars>"}},"dictionaryOptionSetting":{}}` — an OBJECT keyed
-    by the variant's own transliterated code, `orderIndex` stepping 0, 10000, 20000…, `color` may be null.
+    by the variant's own transliterated code, `orderIndex` stepping 0, 10000, 20000…, `color` = a CSS colour name or hex, or null (§3 «Per-type settings»).
     A `FROM_FIELD` field with `options: {}` is simply a dropdown whose list is still empty.
     **An option's `label` is a PLAIN STRING, single-language** `[C]` — no `label: {rus, eng}` map and no
     `labelEng` sibling — do not emit one.
@@ -2652,6 +2673,21 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
   `printForms` are all empty. There is no layout — a composite has no form: its fields carry no
   `gridPosition`, no `tableColOrderIndex` and no `removeType`, and an archive generated without them
   imports fine `[C]`.
+- **An attribute may be of any field type** `[C]` — every field type except `CO` itself, which was not tried
+  as an attribute `[U]`; the import keeps the type. Give a typed attribute the per-type settings of its
+  FIRST source field, copied — options with fresh ids (`fieldOptionsStruct`), `oldRefBoId` + `boRefStruct` of a
+  reference, `questionnaires`, `progressSteps`, `fieldTabs`, a checklist's `defaultValue`, `params`; the stand keeps
+  that payload as given. **It does not drive what the registry shows**: each cell of the composite's registry
+  comes from the SOURCE record's own field, so a dropdown, radio or checklist shows the option of its source even
+  when the attribute's option list lacks it. Different option sets per source are therefore harmless. An attribute
+  merging fields of DIFFERENT types is not known yet `[U]` — keep one type per attribute.
+- **The registry columns are all attributes except `STATIC_TEXT` and `TAB_GROUP`** `[C]` — those two may be
+  attributes but are never shown. A source not linked to an attribute leaves its cell empty.
+- **An export of a composite gives every attribute a fresh `newId`** `[C]` — the payload is otherwise the archive
+  as imported (`boRefStruct.boInfo.name` becomes the target BO's name). Never match export ids against stand ids.
+- **A plain BO holds composite rows through a `CO` field** (`refBoId`/`oldRefBoId` = the composite) `[C]`; its
+  table shows the composite's attributes and may hold rows of any source; through the API its value is
+  `["<source boId>-<boiId>", …]` (`MYBPM-UI-API.md` §5e, §6b).
 - **Generator**: `tools/make-probe-archive.bun.ts --category BO_COMPOSITE`
   `--source "<код БО>:<Имя>[:<категория>]"` (repeatable) and
   `--co-field "Метка:TYPE=<boCode>.<fieldCode>[+<boCode>.<fieldCode>…]"` (repeatable) — one link makes a

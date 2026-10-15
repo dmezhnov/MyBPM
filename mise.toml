@@ -127,3 +127,60 @@ if (!(await pidFile.exists())) { console.log("no bridge pid file"); process.exit
 try { process.kill(Number(await pidFile.text())); console.log("bridge stopped"); } catch { console.log("bridge was not running"); }
 await pidFile.delete();
 '''
+
+[tasks.eval-crm]
+description = "Run N local Haiku 4.5 evals of MYBPM-IMPORTS.md (a git ref or the working copy) on a CRM concept PDF, in parallel; each run sees only the two files, traces + results land in tools/out/eval-crm/<label>-<i>/ (score them with tools/score-eval-crm.bun.ts)"
+usage = '''
+arg "<ref>" help="Doc version: a git ref such as v1.4.93, or 'current' for the working copy"
+arg "<n>" help="Number of parallel runs"
+flag "--pdf <pdf>" help="CRM concept PDF" default="~/Downloads/crm/CRM-автосервис.pdf"
+flag "--model <model>" help="Model id" default="claude-haiku-4-5"
+'''
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+const ref = Bun.env.usage_ref ?? "", n = Number(Bun.env.usage_n), model = Bun.env.usage_model!;
+const pdf = Bun.env.usage_pdf!.replace(/^~/, Bun.env.HOME!);
+if (!ref || !(n > 0)) { console.error("usage: mise run eval-crm <ref|current> <n>"); process.exit(1); }
+const doc = ref === "current" ? await Bun.file("MYBPM-IMPORTS.md").text() : await $`git show ${ref}:MYBPM-IMPORTS.md`.text();
+const pdfName = pdf.split("/").pop()!;
+const prompt = "Создай архив для импорта. Нужно реализовать данный CRM. Буду импортировать на пустой стенд (Новая Компания)\n\n" +
+  `Приложены файлы (в текущей папке): MYBPM-IMPORTS.md, ${pdfName}`;
+// A run that stops on questions (0.2a) gets ONE fixed answer, the same for every run, as a user would give it.
+const answer = "Стенд пустой (Новая Компания), группу создай новую, коды выбери сам. id Person не знаю. Собери всё, что можно.";
+// The run must see nothing but the two files: no CLAUDE.md, memory, skills, plugins (the mybpm plugin carries
+// the same docs), hooks, MCP or settings. --bare would do it but accepts only ANTHROPIC_API_KEY, not OAuth.
+const env: Record<string, string> = {};
+for (const [k, v] of Object.entries(Bun.env)) if (!/^(CLAUDE|LLMTRIM|AI_AGENT)/.test(k) && v !== undefined) env[k] = v;
+Object.assign(env, {
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+  CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL: "1", CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL: "1", CLAUDE_CODE_DISABLE_POLICY_SKILLS: "1",
+  CLAUDE_CODE_DISABLE_THINKING: "1", MAX_THINKING_TOKENS: "0", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+});
+const flags = ["--model", model, "--setting-sources", "", "--strict-mcp-config", "--tools", "Read,Write,Bash",
+  "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"];
+const label = (ref === "current" ? "current" : ref.replace(/^v/, "")) + "-" + new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "");
+const runs = Array.from({ length: n }, async (_, i) => {
+  // Work outside the repo so neither its git status nor any parent CLAUDE.md reaches the run.
+  const work = `${Bun.env.TMPDIR ?? "/tmp"}/mybpm-eval/${label}-${i + 1}`;
+  const out = `${process.cwd()}/tools/out/eval-crm/${label}-${i + 1}`; // absolute: stdout files open relative to the child cwd
+  await $`rm -rf ${work} && mkdir -p ${work} ${out}`;
+  await Bun.write(`${work}/MYBPM-IMPORTS.md`, doc);
+  await $`cp ${pdf} ${work}/${pdfName}`;
+  const t0 = Date.now();
+  console.log(`${out}: started`);
+  // bwrap: a private /tmp per run, so runs that build in /tmp/<something> cannot collide; every run sees /tmp/run.
+  const turn = (args: string[], trace: string) => Bun.spawn(["bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp",
+    "--bind", work, "/tmp/run", "--chdir", "/tmp/run", "claude", "-p", ...args, ...flags],
+    { env, stdin: "ignore", stdout: Bun.file(`${out}/${trace}.jsonl`), stderr: Bun.file(`${out}/${trace}.stderr.txt`) }).exited;
+  let code = await turn([prompt], "trace");
+  if (code === 0 && !(await $`find ${work} -name "*.mybpm.zip"`.text()).trim()) {
+    const session = JSON.parse((await Bun.file(`${out}/trace.jsonl`).text()).split("\n")[0]).session_id;
+    console.log(`${out}: no archive after turn 1, answering`);
+    code = await turn([answer, "--resume", session], "trace2");
+  }
+  await $`rm ${work}/MYBPM-IMPORTS.md ${work}/${pdfName} && cp -r ${work}/. ${out}/files/`.nothrow();
+  console.log(`${out}: exit ${code}, ${Math.round((Date.now() - t0) / 1000)} s`);
+});
+await Promise.all(runs);
+'''

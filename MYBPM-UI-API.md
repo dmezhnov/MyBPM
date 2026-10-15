@@ -1743,6 +1743,24 @@ plus a `BoGroupStructDto` and the metadata — 3 objects, no `AccessStructDto`:
 identical to a composite built in the constructor.
 Details and the failure mode in `MYBPM-IMPORTS.md` §5b.
 
+#### Attributes of every type, and the records `[C]`
+
+- **An attribute may be of any field type** — text, number, every date kind, checkbox, phone, e-mail, dropdown
+  (local and dictionary), radio, checklist, BO reference, file, the `*_LANG` texts, `PERIOD`, `GEO_POINT`, `LINK`,
+  `QUESTIONNAIRE`, `PROGRESS_BAR`, `STATIC_TEXT`, `TAB_GROUP`; the type is kept. An attribute merging fields of
+  DIFFERENT types is not known yet `[U]`. A co field DTO carries `optionSource` (`FROM_FIELD`/`FROM_BO`) and
+  `refBoId` (reference and dictionary dropdown) but **no options**.
+- **The composite's registry lists the records of every source BO**; a row id is `"<source boId>-<boiId>"`. The
+  columns are all attributes except `STATIC_TEXT` and `TAB_GROUP`. **Each cell comes from the SOURCE record's own
+  field** (the value carries the source `fieldId`/`fieldCode`): a dropdown, radio or checklist shows the option of
+  ITS source, also one the composite attribute's own option list lacks — so the attribute's copied settings
+  (`MYBPM-IMPORTS.md` §5b) do not drive the display. A source not linked to an attribute leaves the cell empty.
+- **«Добавить» in the composite's registry** offers a picker of the source BOs and opens a NEW record of the
+  picked source; a row opens the SOURCE BO's card.
+- **A `CO` field on a plain BO** (`type:"CO"`, `refBoId` = the composite) holds rows of any source: its value is a
+  JSON array of `"<source boId>-<boiId>"` (§6b, which also has the read-back trap). Its «Добавить» on the card
+  offers the same source picker and opens a NEW record of that source — not a picker of existing rows.
+
 ### 5f. The matrix «4 routes × 5 object kinds» — column «Бизнес-процесс» `[C]`
 
 A business process (`boCategory: "BO_PROCESS"`) is the second kind with machinery of its own: its own
@@ -3191,7 +3209,7 @@ cycle (§6b) and the card.
 | `TAB_GROUP` | settings (offered only with ≤ 1 tab) | `params.needDisableTabs` «Отключить вкладки» | the tab strip is hidden; the fields of the tab show as plain form fields |
 | `TAB_GROUP` | tab strip in the body | `tabs[].isRight` | the tab sits at the right end of the strip |
 | `TEXTAREA`, `TEXTAREA_LANG` | settings, 16 checkboxes «Включить настройку '…'» | `params.buttonTypes` = JSON TEXT of an array (`{fieldId, params:{buttonTypes:"[\"bold\",\"table\",\"codeview\",\"height\",\"italic\"]"}}`) | the editor toolbar shows exactly those buttons. Members: `style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height`; absent = the default ten `bold underline italic fontsize color ul ol table link picture` |
-| `DROPDOWN_SINGLE` | option chip in the body / kanban editor | `options[].color` (`RED`, `GREEN`, `BLUE`, …) | the kanban column colour; the record card shows the option uncoloured. A `RADIO_BUTTON_GROUP` stores a colour too, and it shows nowhere — no kanban is built on a radio |
+| `DROPDOWN_SINGLE` | option chip in the body / kanban editor | `options[].color` = any CSS colour string — a colour name in any case (`RED`, `green`, `PURPLE`, `PINK`…) or hex (`#0048ff`, `#0f0`); `null` = no colour | the kanban column colour: the column title text and the bar under it, `null` = black title over the default blue bar; a light colour (`YELLOW`, `PINK`) is hard to read — prefer a darker hex; the record card shows the option uncoloured. A `RADIO_BUTTON_GROUP` stores a colour too, and it shows nowhere — no kanban is built on a radio |
 
 - **The gear differs per type.** A checklist's block: «Обязателен один пункт», «Обязательны все пункты»,
   «Добавляемый», «Только для чтения», «Выбор без редактирования», «Не сохранять значение», «Убрать
@@ -4321,17 +4339,17 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `INPUT_NUMBER` | `"42"` | `[C]` |
 | `CHECKBOX` | `"true"` / `"false"` | `[C]` |
 | `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""` | `[C]` |
-| `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}` | `[C]` |
-| `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare | `[C]` |
+| `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}`; `PERIOD_TIME` reads back with both ends as epoch milliseconds | `[C]` |
+| `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare. A dictionary dropdown (`optionSource:"FROM_BO"`): send the dictionary record's CODE — it is stored as that record's id and the card shows it; the bare record id is stored too, but the card shows the field empty | `[C]` |
 | `BO` | a JSON array of record ids `["<boiId>"]` | `[C]` |
-| `CO` | a JSON array of `"<source BO id>-<boiId>"` (bare ids → `IllegalStoredValue … Value_CO`); the UI adds one row with `saveType:"ADD"` | `[C]` fires the script |
+| `CO` | a JSON array of `"<source BO id>-<boiId>"` — rows of DIFFERENT sources in one array, the whole set in one call, no `saveType` needed (bare ids → `IllegalStoredValue … Value_CO`); the UI adds one row with `saveType:"ADD"`. **`load-boi-values` answers `value:""` for a `CO` field even when it holds rows** — read it back from `load-field-data` of an existing-record draft, then `remove-draft` | `[C]` fires the script |
 | `QUESTIONNAIRE` | `[{"rowId":"…","columnId":"…"}]` | `[C]` |
 | `GEO_POINT` | `{"lat":43.238,"lon":76.945}` | `[C]` |
 | `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages; for `TEXTAREA_LANG` / `STATIC_TEXT` each language may be HTML, §8) | `[C]` |
 | `TAB_GROUP` | `""` | `[C]` fires the script |
 | `FILE_UPLOAD` | a JSON array of file ids `["<fileId>"]`; the UI first uploads with `POST /web/v2/file/upload?draftId=…&boId=…&boiId=…&fieldId=…` (multipart `file`, `token` header → the 24-hex fileId as a JSON string), then `file-meta-info-list` `B {fileIds}`; an upload without the query parameters works the same | `[C]` fires the script |
 | `CHECKLIST` | the whole item list as JSON text: `[{"label":"Пункт 1","checked":true},…]` (also on a field whose constructor list is empty) | `[C]` fires the script |
-| `PROGRESS_BAR` | a MAP `{"<step code>":"GREEN"}` (`RED GREEN YELLOW BLUE ORANGE PURPLE`); it reads back as `[{stepCode, color}]`, and THAT array, `["<stepId>"]` or `"[]"` sent as a value break the draft (trap 50) — §5h «Per-type settings» | `[C]` |
+| `PROGRESS_BAR` | a MAP `{"<step code>":"GREEN"}` (`RED GREEN YELLOW BLUE ORANGE PURPLE`); it reads back as `[{stepCode, color}]`, and THAT array, `["<stepId>"]` or `"[]"` sent as a value break the draft (trap 50) — §5h «Per-type settings»; the registry column shows a stored bar empty | `[C]` |
 
 **The server does not validate the value** — a wrong shape (`"10:30"` for `TIME`, an array for `PERIOD`)
 is stored as is; most shapes still read back, but see trap 50.
