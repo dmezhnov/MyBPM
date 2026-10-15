@@ -184,3 +184,63 @@ const runs = Array.from({ length: n }, async (_, i) => {
 });
 await Promise.all(runs);
 '''
+
+[tasks.eval-bp-explain]
+description = "Run N local Haiku 4.5 three-turn dialogues «what does this process do» on a process export: T1 explain + where Excel is read, T2 a figure described by arrows that do not match, T3 a copy-buffer fragment of ANOTHER process; answers land in tools/out/eval-bp-explain/<label>-<i>/answers.md (read them by hand)"
+usage = '''
+arg "<ref>" help="Doc version: a git ref such as v1.4.100, or 'current' for the working copy"
+arg "<n>" help="Number of parallel runs"
+flag "--zip <zip>" help="Process export .mybpm.zip" required=#true
+flag "--fragment <fragment>" help="Block IDE copy-buffer JSON taken from a DIFFERENT process" required=#true
+flag "--model <model>" help="Model id" default="claude-haiku-4-5"
+'''
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+const ref = Bun.env.usage_ref ?? "", n = Number(Bun.env.usage_n), model = Bun.env.usage_model!;
+const zip = Bun.env.usage_zip!.replace(/^~/, Bun.env.HOME!), fragment = Bun.env.usage_fragment!.replace(/^~/, Bun.env.HOME!);
+if (!ref || !(n > 0)) { console.error("usage: mise run eval-bp-explain <ref|current> <n> --zip … --fragment …"); process.exit(1); }
+const doc = ref === "current" ? await Bun.file("MYBPM-IMPORTS.md").text() : await $`git show ${ref}:MYBPM-IMPORTS.md`.text();
+// Same three turns for every run; T2 describes the step BEFORE/AFTER the one with the Excel read, T3 hands a foreign fragment.
+const turns = [
+  "Что делает этот бизнес-процесс? В каком шаге читается Excel и как мне найти этот шаг на схеме?\n\n" +
+    "Приложены файлы (в текущей папке): MYBPM-IMPORTS.md, process.mybpm.zip",
+  "Я нашёл фигуру: у неё входящая стрелка «Оповещение пользователя», а исходящая без подписи. Это тот шаг, где читается Excel?",
+  "Я скопировал из Block IDE скрипт этого шага, он в файле fragment.json в текущей папке. Посмотри — получается, ты ошибся?",
+];
+const env: Record<string, string> = {};
+for (const [k, v] of Object.entries(Bun.env)) if (!/^(CLAUDE|LLMTRIM|AI_AGENT)/.test(k) && v !== undefined) env[k] = v;
+Object.assign(env, {
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+  CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL: "1", CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL: "1", CLAUDE_CODE_DISABLE_POLICY_SKILLS: "1",
+  CLAUDE_CODE_DISABLE_THINKING: "1", MAX_THINKING_TOKENS: "0", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+});
+const flags = ["--model", model, "--setting-sources", "", "--strict-mcp-config", "--tools", "Read,Write,Bash",
+  "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"];
+const label = (ref === "current" ? "current" : ref.replace(/^v/, "")) + "-" + new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "");
+const runs = Array.from({ length: n }, async (_, i) => {
+  const work = `${Bun.env.TMPDIR ?? "/tmp"}/mybpm-eval-bp/${label}-${i + 1}`;
+  const out = `${process.cwd()}/tools/out/eval-bp-explain/${label}-${i + 1}`;
+  await $`rm -rf ${work} && mkdir -p ${work} ${out}`;
+  await Bun.write(`${work}/MYBPM-IMPORTS.md`, doc);
+  await $`cp ${zip} ${work}/process.mybpm.zip`;
+  const t0 = Date.now();
+  let session = "", md = "";
+  for (const [t, text] of turns.entries()) {
+    // The fragment appears only for the turn that mentions it.
+    if (t === 2) await $`cp ${fragment} ${work}/fragment.json`;
+    const trace = `${out}/trace${t + 1}.jsonl`;
+    const code = await Bun.spawn(["bwrap", "--dev-bind", "/", "/", "--tmpfs", "/tmp", "--bind", work, "/tmp/run",
+      "--chdir", "/tmp/run", "claude", "-p", text, ...(session ? ["--resume", session] : []), ...flags],
+      { env, stdin: "ignore", stdout: Bun.file(trace), stderr: Bun.file(`${out}/trace${t + 1}.stderr.txt`) }).exited;
+    const lines = (await Bun.file(trace).text()).split("\n").filter(Boolean).map(l => JSON.parse(l));
+    session ||= lines[0]?.session_id ?? "";
+    const result = lines.findLast(l => l.type === "result")?.result ?? `(exit ${code}, no result)`;
+    md += `## T${t + 1}: ${text.split("\n")[0]}\n\n${result}\n\n`;
+    if (code !== 0) break;
+  }
+  await Bun.write(`${out}/answers.md`, md);
+  console.log(`${out}: done, ${Math.round((Date.now() - t0) / 1000)} s`);
+});
+await Promise.all(runs);
+'''
