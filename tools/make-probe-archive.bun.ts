@@ -45,7 +45,7 @@
  *     columns, H rows of 30 px (default form rows + 5); without the flag a BO / process dialog gets W 10
  *   --hide-tab tabs/tab_system                                — the hidden system tab «Системные» (0.8a step 6): an
  *     AccessStructDto, all BO actions open + VIEW «никому» on that tab; REPLACES the BO's rights — a NEW BO only
- *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8a — one-line 3, text block 4, reference/file 6, TAB_GROUP = tallest tab + 3)
+ *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3)
  *   --bo-order <n>                                            — the BO's place in its sidebar group (orderIndex, default
  *     47480000 = the §0.4 template); a re-import MOVES an existing BO to the archive's group and this place, and BOs
  *     sharing one value cannot be reordered between each other by drag (MYBPM-IMPORTS.md §2 «BO place in the sidebar»)
@@ -62,6 +62,8 @@
  *     --field "Состав:CO@<coId>@Sostav!linkedCoSettings.<source code>.linkedFieldCode=Back,linkedCoSettings.<source code>.removeType=HIDE"
  *     needChangeParentBoByLinkedBo=false is lost when the import CREATES the field — import the archive twice
  *     (dotted = nested, e.g. `!params.url=https://…`; value parsed as JSON, else a string; no «,» in it)
+ *   --field "Телефон:INPUT_PHONE!row"                         — the field shares the row of the field before it (same
+ *     y, the 15 columns split 8 + 7 / 5 + 5 + 5); give row-mates the same height (MYBPM-IMPORTS.md 0.8)
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
  *   --field "Табельный номер:INPUT_TEXT!uniq"                 — «Уникальное поле» (isUnique)
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
@@ -197,7 +199,7 @@ function fieldFlags(): FieldSpec[] {
       return { path: kv.slice(0, eq).split("."), value };
     });
     flags = flags.filter(f => !f.includes("="));
-    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "tile", "camera", "track"].includes(f));
+    const unknown = flags.filter(f => !["req", "uniq", "readonly", "nocol", "multiple", "tile", "camera", "track", "row"].includes(f));
     if (unknown.length) throw new Error(`unknown --field flag(s): ${unknown.join(", ")}`);
     out.push({ label: raw.slice(0, at), type, refBoId, refBoCode, options, flags, sets });
   }
@@ -724,22 +726,27 @@ if (isComposite) {
   let y = Object.keys(dynamicFields).length * 4;
   const tabY = new Map<string, number>();
   let col = Object.keys(dynamicFields).length;
+  // `!row` puts a field into the row of the field before it (MYBPM-IMPORTS.md 0.8): same y, the 15 columns split
+  let curRow: string[] = [], curRowY = 0;
   custom.forEach((f, i) => {
     const code = codeOf(f.label);
-    // The heights that fit the content (MYBPM-IMPORTS.md 0.8a): a reference or a file 6 rows, a questionnaire or
-    // a map 8, a text block 4, a one-line input or a heading 3; a TAB_GROUP is resized to its tallest tab + 3
-    // after all fields are placed (below). `!rows=N` overrides any of them.
+    // The heights that fit the content (MYBPM-IMPORTS.md 0.8): a table, a file or a text block 6 rows, a
+    // questionnaire or a map 8, a one-line input, a SINGLE reference or a heading 3; a TAB_GROUP is resized to its
+    // tallest tab + 3 after all fields are placed (below). `!rows=N` overrides any of them.
     const rowsSet = f.sets.find(s => s.path[0] === "rows");
+    const single = (f.type === "BO" || f.type === "CO") && f.sets.some(s => s.path[0] === "viewType" && s.value === "SINGLE");
     const rows = rowsSet ? Number(rowsSet.value)
-      : ["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR"].includes(f.type)
+      : single ? 3
+      : ["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR", "TEXTAREA", "TEXTAREA_LANG"].includes(f.type)
       ? 6
-      : ["QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"].includes(f.type) ? 8
-      : ["TEXTAREA", "TEXTAREA_LANG"].includes(f.type) ? 4 : 3;
+      : ["QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"].includes(f.type) ? 8 : 3;
     if (f.type === "TAB_GROUP" && !rowsSet) autoTabGroups.add(code);
     const isRef = f.type === "BO" || f.type === "CO";
     // `#…` means a different thing per type: options for a list, steps for a bar, tabs for a tab group,
     // «колонки^строки» for a questionnaire, and the HTML itself for «Текст».
     const hash = f.options;
+    const joins = f.flags.includes("row") && curRow.length > 0 && !f.sets.some(s => s.path[0] === "tab");
+    if (joins) y = curRowY;
     dynamicFields[code] = field({
       code,
       label: f.label,
@@ -820,7 +827,17 @@ if (isComposite) {
         ? (typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)) : value;
     }
     // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
-    if (!inTab) { y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++; }
+    if (!inTab) {
+      if (joins) curRow.push(code); else { curRow = [code]; curRowY = y; }
+      y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++;
+      // the row's 15 columns split evenly: 8 + 7, 5 + 5 + 5, 4 + 4 + 4 + 3
+      let x = 0;
+      curRow.forEach((c, j) => {
+        const cols = Math.floor(15 / curRow.length) + (j < 15 % curRow.length ? 1 : 0);
+        Object.assign((dynamicFields[c] as any).gridPosition, { x, cols });
+        x += cols;
+      });
+    }
   });
   // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 2 when it sits on a tab of another group) — one row
   // less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it

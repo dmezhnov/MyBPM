@@ -255,8 +255,9 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    (**not** `DATE_TIME` — that name never existed), `INPUT_TEXT_LANG`, `STATIC_TEXT`, `BO`, … (the full
    enum with the palette labels is §5i «Field types — label → `fieldType`», which also covers widgets
    and system fields). `cols: 15` is
-   the full form width, `rows: 3` one line (what the constructor itself assigns `[C]`; 4 leaves an empty band),
-   so one-line field *i* sits at `y = 3·i`; other types take other heights — see «Layout» below.
+   the full form width, `rows: 3` one line (what the constructor itself assigns `[C]`; 4 leaves an empty band);
+   short fields share a row (same `y`, `cols` 8 + 7 or 5 + 5 + 5), other types take other heights — see
+   «Layout» below.
    **Get the label right the first time**: a FIELD's code is generated from its label at the first save
    and never regenerated (trap 22).
 7. **Save the BO with the fields.** `save-business-object-portion` — `P {}`, `B` as in step 3, but the
@@ -304,10 +305,23 @@ empty space, no wasted band, **no scroll inside a scroll**. «Visible field» = 
 not counting headings, the `TAB_GROUP` and the system fields.
 
 - **Heights** `[C]` (one grid row = 30 px): `rows` = **3** for a one-line input (`INPUT_*`, the date and time
-  types, `DROPDOWN_SINGLE`, `CHECKBOX`) and a one-line heading (4 rows leaves a band); **4** for `TEXTAREA` /
-  `TEXTAREA_LANG`; **6** for `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` /
-  `PROGRESS_BAR`; **8** for `QUESTIONNAIRE` / `GEO_POINT`. `x: 0, cols: 15`; each next `y` = previous `y` +
-  previous `rows` (a field on a tab counts `y` from 0 on its tab).
+  types, `DROPDOWN_SINGLE`, `CHECKBOX`), a one-line heading (4 rows leaves a band) and a `BO` / `CO` `SINGLE`
+  reference (one line, no band); **6** for `TEXTAREA` / `TEXTAREA_LANG` (4 shows only about two lines of text),
+  a `BO` `TABLE`, `LINK`, `FILE_UPLOAD`, `CHECKLIST`, `RADIO_BUTTON_GROUP`, `PROGRESS_BAR`; **8** for
+  `QUESTIONNAIRE` / `GEO_POINT`.
+- **Rows** `[C]`: a row is one or more cells with the SAME `y` and the SAME `rows`; `x` runs 0, 0 + cols …, and
+  the `cols` of a row sum to 15; the next row's `y` = this `y` + this `rows` (a field on a tab counts `y` from 0
+  on its tab). Short one-line fields that belong together stand 2 per row (8 + 7) or 3 (5 + 5 + 5) — телефон +
+  email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but full-width fields is a defect.
+  Alone at full width: `TEXTAREA`, a `TABLE`, a heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
+  `GEO_POINT`, `PROGRESS_BAR`. Never mix heights in one row — the next row floats into the hole (§4 of
+  `MYBPM-IMPORTS.md`). A `CHECKBOX` toggle sits a little higher than its row-mates' boxes — acceptable.
+- **Editor toolbar of a `TEXTAREA`, by meaning** `[C]`: `params.buttonTypes` (§5i «Per-type settings»); a
+  comment, a note, a reason → `"[]"` — no buttons (a thin empty strip stays); a description a user formats →
+  `["bold","italic","ul","ol"]`; the default ten only for rich content (a letter, an instruction).
+- **Columns of a `TABLE`, by meaning**: 2–5 fields of the line BO with `toShow: true` — what the line is, then
+  количество, цена, сумма, дата, статус; never one column. A `SINGLE` chip: the name, plus a field that tells
+  records apart (номер, госномер) when the name alone does not.
 - **Groups**: when the visible fields fall into two or more themes, open each with a heading — a `STATIC_TEXT`
   with `staticValueMap: {RUS: "<h3><b>Тема</b></h3>"}`, `hideLabel: true`, `tableColToShow: false`, `rows: 3`
   `[C]` (2 scrolls inside itself; heading + subheading line = 4). The heading names the SECTION, never a field
@@ -734,16 +748,20 @@ work path, automations, reports, roles. The job is the whole spec, not «the BOs
 and dropping the rest «for scope» is a fraction reported as done.
 
 0. **Stand data — read it yourself, ask only for the group.** Unless the request says the stand is empty
-   («пустой стенд», «новая компания»), ask one thing: «в какую группу бизнес-объектов (раздел конструктора,
-   где будут лежать новые БО) их положить — в новую (как её назвать) или в существующую (какую)?». Then read
+   («пустой стенд», «новая компания»), ask one thing: «куда положить новые БО (группы — разделы конструктора): в новые
+   группы по темам (назову их сам) или все в одну существующую (какую)?». When the stand is empty never ask
+   the group name — name the groups yourself. **New groups go by theme**: more than ~6 BOs → 2–4 groups by
+   meaning (автосервис: «Клиенты и автомобили», «Заказы и работы», «Склад и закупки», «Справочники»), each
+   at least 2 BOs; fewer stay in one group named after the system. Then read
    the rest: the group's `code`, `name`, `orderIndex` by `load-bo-groups {"forEdit":true}` (R4) — copy them
    verbatim into the archive; a group whose `code` is `null` cannot be targeted by an archive — build a new
    group and say why, or give it a code (`save-business-object-group`, §«Verifying an import through the
    API» — one-way, ask first). Taken BO codes: `load-bo-id-by-code` for every code you plan — a free code
    finds no BO `[I]`; an export of all BOs (R8) lists them all. **Without stand access** (the user only
    hands files over) ask exactly the question of `MYBPM-IMPORTS.md` 0.2 step 0: «Стенд пустой (новая
-   компания)? Если нет: (1) в какую группу бизнес-объектов их положить — в новую (как её назвать) или в
-   существующую (тогда пришлите экспорт структуры любого БО из неё — группу возьму из него); (2) чтобы коды
+   компания)? Если нет: (1) куда положить новые БО (группы — разделы конструктора): в новые группы по темам
+   (назову их сам) или все в одну существующую (тогда пришлите экспорт структуры любого БО из неё — группу
+   возьму из него); (2) чтобы коды
    новых БО не совпали с уже существующими, пришлите экспорт структуры всех БО компании — или скажите «без
    экспорта», и я добавлю к кодам короткий случайный суффикс.» An export holds a `BoGroupStructDto` line only
    for the groups of the exported BOs `[C]`; a line without `code` is a code-less old group. There is no
@@ -758,19 +776,20 @@ and dropping the rest «for scope» is a fraction reported as done.
 
    | Route | What goes there | Recipe |
    |---|---|---|
-   | structure | BOs, dictionaries, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0) or the constructor | R3, or R1 / R2 |
+   | structure | BOs, dictionaries AND their values, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0, dictionary values as row lines 0.5b) or the constructor | R3, or R1 / R2 |
    | a hook script | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | §5g |
    | a business process | a path someone RUNS figure by figure, with forms and branches (approval) | R2 / §5f |
-   | the menu | one group for the system, one item per working BO, kanban by status, an icon by meaning on every line | R6 |
+   | the menu | one item per working BO — at the root up to ~5, else one group per theme; kanban by status, an icon by meaning on every line | R6 |
    | rights by role | read the stand's groups, then write the rules | R5 |
-   | records | dictionary values, initial records | R7 or R9 |
+   | records | initial records of working BOs; values of a dictionary already on the stand | R7 or R9 |
    | not doable | the last table of this recipe | — |
 
 2. **Do every row that has a recipe — in this task.** On a live stand even rights and dictionary values are
    doable (the group ids are readable here, R5; a dictionary row is an ordinary record, R9 step 3). Never
    «the structure now, the rest later».
 3. **The menu counts as ASKED** — a system the user has to dig out of «Бизнес-объекты» is not delivered. One
-   menu group named after the system; one item per working BO; the kanban on the item of every BO with a
+   item per working BO — up to ~5 at the root, more in one menu group per theme (the themes of the BO groups),
+   never one group holding everything; the kanban on the item of every BO with a
    status dropdown; an icon BY MEANING on every line, unasked (R6 step 3, §4 «Icons by meaning»).
 4. **A row you do not do needs a reason from this closed list — nothing else is a reason:** a stand input
    is missing (0U.1, the user has it — ask); the platform cannot do it (name its row of the last table); its
@@ -798,18 +817,19 @@ and dropping the rest «for scope» is a fraction reported as done.
   it came from, so the chain is navigable both ways. **Many-to-many**: two `TABLE` fields naming each other.
 - **Dictionary or local list**: values users add to over time, or that several BOs pick from → a dictionary +
   a «Выпадающий список» «из справочника»; a short fixed list owned by one field (способ оплаты) → a local list
-  («Задать вручную»).
+  («Задать вручную»). **No dropdown opens empty**: every value the spec names or implies (марки, типы КПП,
+  посты) is filled — by the archive's row lines (`MYBPM-IMPORTS.md` 0.5b) or as dictionary records (R9).
 - **Status**: a record's lifecycle is a dropdown `status` with a LOCAL list of the spec's stages («Задать
-  вручную») and its kanban card template (§7) — never a dictionary, which starts empty and gives a board with no
-  columns; a business
+  вручную») and its kanban card template (§7) — never a dictionary: the stages belong to one field, and the local list fixes their order
+  and colours; a business
   process is for a path someone runs step by step. Do not turn every status into a process.
 - **Computed values** (сумма заказа = сумма строк, остаток = сумма − оплачено): a plain field plus the owner BO's
   «Сохранение» hook that fills it (§5g); a total = a foreach over the header's `TABLE` value, add each line's
   number, assign the sum to the header's field. Each step `[C]`, the whole recipe `[I]`; it recomputes when
   the HEADER is saved, not when a line is edited in its own card `[I]`.
 - **Which BO gets a menu item**: every working list (клиенты, автомобили, заказы, записи, оплаты, поставщики);
-  NOT the line BOs (edited inside the header's table) and NOT dictionaries (a «Справочники» subgroup at the
-  end, or none).
+  NOT the line BOs (edited inside the header's table) and NOT dictionaries (a root «Справочники» group, last,
+  or none).
 
 **What the platform cannot do** — name the row for every spec item you skip:
 
