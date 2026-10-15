@@ -2067,6 +2067,12 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
 - **Arrow name** — double-click the arrow → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
+  **A figure has no caption of its own — an arrow `name` is the only text on a diagram** `[C]`: name the
+  arrow entering each Form / Script / Switch / Timer with what the step does; that label is how a person
+  finds the step. When explaining an existing process, walk `arrows` from the Enter and describe only the
+  figures reachable from it, naming each step by its incoming arrow: **a figure no arrow leads to never
+  runs**, even though its script is stored and exported — mention it only as «не подключена, не
+  выполняется» (`MYBPM-IMPORTS.md` §5c «Explaining what an existing process does»).
 - **Script / Switch** — born as `{x, y, type:"Script", script:null}` / `{x, y, type:"Switch"}`.
   Double-click → `save-editing-script-figure-id {boProcessId, scriptFigureId}` and the ordinary Block IDE
   opens with **`scriptModuleId = boProcessId` (the version id) and `scriptId = the figure id`**

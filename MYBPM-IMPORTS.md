@@ -1747,7 +1747,9 @@ saved records; do not «complete» it.) `defaultValue` is a JSON array written a
 Slot names are FIXED per figure — Enter/Exit `main`/`top`/`bottom`; Form `left`/`right`/`top`; Script
 `left`/`right`/`top`/`bottom`; Switch `up`/`right`/`down`/`left` — any other name silently breaks the
 arrow. Every arrow leaving a Switch has a `name` (the branch label); a Script has exactly ONE outgoing
-arrow.
+arrow. **A figure has no caption of its own — the only text on a diagram is an arrow `name`** `[C]`, so
+name every arrow that enters a Form / Script / Switch / Timer with what that step does (`«Заявка на
+согласование»`, `«Расчёт суммы»`) — that label is how a person finds the step in the editor.
 
 ```text
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoProcessVersionsStructDto","oldId":"<P>",
@@ -1761,9 +1763,9 @@ arrow.
   "scriptsDefIds":["<V>-<fScript>","<V>-<fSwitch>"],
   "methodScriptIds":[],
   "arrows":{
-   "<a1>": {"startFigureId":"<fEnter>","startSlotName":"main","finishFigureId":"<fForm>","finishSlotName":"left"},
-   "<a2>": {"startFigureId":"<fForm>","startSlotName":"right","finishFigureId":"<fScript>","finishSlotName":"left"},
-   "<a3>": {"startFigureId":"<fScript>","startSlotName":"right","finishFigureId":"<fSwitch>","finishSlotName":"left"},
+   "<a1>": {"name":"Заявка","startFigureId":"<fEnter>","startSlotName":"main","finishFigureId":"<fForm>","finishSlotName":"left"},
+   "<a2>": {"name":"Проверка","startFigureId":"<fForm>","startSlotName":"right","finishFigureId":"<fScript>","finishSlotName":"left"},
+   "<a3>": {"name":"Одобрено?","startFigureId":"<fScript>","startSlotName":"right","finishFigureId":"<fSwitch>","finishSlotName":"left"},
    "<aYes>":{"name":"Да","startFigureId":"<fSwitch>","startSlotName":"right","finishFigureId":"<fYes>","finishSlotName":"main"},
    "<aNo>": {"name":"Нет","startFigureId":"<fSwitch>","startSlotName":"down","finishFigureId":"<fNo>","finishSlotName":"top"}},
   "runWayMap":{}},
@@ -2832,6 +2834,15 @@ that field is the only link between them. An export of one process carries 7 obj
   (`F-Zayavka-K-DYN-S-boi_fields`), so the body is portable; `targetArrowId` is an `arrows` key of the
   same line. Ticking «Скрипты» in the export basket is NOT needed — the process's script defs come out
   with the structure `[C]`.
+- **Explaining what an existing process does — walk the arrows, not the scripts** `[C]`: a run starts at
+  the `FigureEnterStruct` and moves ONLY along `arrows` (`startFigureId` → `finishFigureId`). Build the
+  graph from `arrows`, list the figures reachable from the Enter, and describe only those, in arrow order.
+  **A figure no arrow leads to never runs** — its `ScriptDefStructDto` (`compositeId` `<version>-<figure
+  id>`) still travels in the archive and may look like the core logic, but it is dead: leave it out of
+  the logic and name it separately as «не подключена к схеме, не выполняется». Figures have no captions,
+  so refer to a step by the `name` of the arrow entering it (and of the arrows leaving a Switch); a step
+  whose arrows are all nameless is named by its type and position («скрипт после формы «Заявка»»), never
+  by figure id or x/y alone.
 - **A Script / Switch figure WITHOUT its `ScriptDefStructDto` is a silent trap** `[C]`:
   the analysis reports nothing, the import applies, `validate-def` answers `[]` — and on the first record the
   figure turns `FAILED` with «Скрипт не определен» (`script.not.found`, `NoScriptWithId ScriptId=<figure id>`),
