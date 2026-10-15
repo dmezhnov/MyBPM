@@ -3879,7 +3879,7 @@ All of them read back in `load-business-object-by-id` at once. Defaults of a new
 The dialog runs controller **`bo/refresh-code`** — `/web/bo/refresh-code/<m>`, NOT under `v2` (a `v2/bo/…` call
 answers 404): `analyze-code-usage {boId}` → `{refreshCodeDtoId, migrationType: [], alreadyInUse,
 involvedInAnyMigration}`; poll `is-analyze-done {refreshId}` → `{done, errorMessage, scriptOwners, bpOwners}`;
-then `apply-new-code {refreshId, newBoCode}`; `cancel {refreshId}` drops it. The analysis scans the scripts and
+then `apply-new-code {refreshId, newBoCode}` (answers `""` and the new code is live at once `[C]`); `cancel {refreshId}` drops it, though the run on the server goes on to its end `[I]`. The analysis scans the scripts and
 processes that use the code (so the dialog can list them). Fields have the same cycle under `field/refresh-code`
 (`analyze-code-usage {boId, fieldId}`, `apply-new-code {refreshId, newFieldCode}`).
 
@@ -3892,7 +3892,16 @@ processes that use the code (so the dialog can list them). Fields have the same 
   `[C]` — they accept a code already used by another BO of the company (two BOs then share it), Cyrillic,
   spaces and the empty string. They also skip the usage analysis, so scripts and processes that name the old
   code are not migrated. Before calling either, run `verify-business-object-code` yourself.
-- **One undecodable script makes the dialog fail now and then in every company of the stand** `[C]` — a failed analysis leaves «Изменить код» disabled; reopen the dialog and it usually passes (trap 59).
+- **One undecodable script makes the dialog fail in every company of the stand** `[C]` — a failed analysis
+  leaves «Изменить код» disabled (trap 59).
+- **Only one field-code analysis runs on the stand at a time** `[C]` — an `analyze-code-usage` started while
+  another one is still running (any field, any company; BO-code analyses are counted apart) gets a
+  `refreshCodeDtoId` the server does not keep: `is-analyze-done` answers `done: true`, `errorMessage: null`
+  at once, and `apply-new-code` then fails with `RuntimeException «no refreshCodeDto with id: …»`. An unknown
+  id behaves the same — **`done: true` within a second or two is NOT a finished analysis**; a real one takes
+  ~35 s. `cancel` does not free the slot, and each lost call seems to keep it busy longer `[I]`: run code
+  changes one at a time, never in parallel, never cancel-and-retry in a loop; if analyses keep coming back
+  instantly, stop calling for ~5 min, then one analysis runs normally (trap 72).
 
 ### 5k. Card tabs — `boTabs`, `delBoTabs`, the messenger link field `[C]`
 
@@ -5141,16 +5150,15 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `DROPDOWN_SINGLE` / `RADIO_BUTTON_GROUP` is exported as the source stand's option id while the options get
     fresh `newOptionId`s, which become their ids on import; the copy's default then points at nothing. Rewrite
     it to the matching `newOptionId` (`MYBPM-IMPORTS.md` §3 «Единичный выбор»).
-59. **One undecodable script breaks code changes across the whole stand — intermittently** `[C]` — the code-usage
+59. **One undecodable script breaks code changes across the whole stand** `[C]` — the code-usage
     analysis of `bo/refresh-code` and `field/refresh-code` reads the scripts of EVERY company on the stand,
     not only the caller's: a script broken in one company makes the analysis fail in another company of the
     same stand that never had it (its BO groups do not include the broken BO's). One stored script
-    the server cannot decode (e.g. a version holding `"opType":"GreaterEq"`, trap 49) can make
+    the server cannot decode (e.g. a version holding `"opType":"GreaterEq"`, trap 49) makes
     `is-analyze-done` end with `done: true` + `errorMessage: "…No enum constant …OpType.GreaterEq"` for any BO
-    or field — but **not on every run** `[C]`: the same analysis of the same field fails on one run and passes on
-    the next, and most runs pass, so the broken module does not block every code change. A failed run leaves
-    the «Изменение кода» dialog with «Изменить код» disabled and no visible error; close the dialog and open it
-    again — a fresh analysis usually passes. Way round when it keeps failing: `save-business-object-code` (BO)
+    or field. A run that seems to pass despite it — `done: true` with no error within a second or two — is a
+    LOST analysis, not a clean one (trap 72): its `apply-new-code` fails `[I]`. A failed run leaves
+    the «Изменение кода» dialog with «Изменить код» disabled and no visible error. Way round: `save-business-object-code` (BO)
     after your own `verify-business-object-code` (§5j), `save-business-field-code` (field) — both skip the
     analysis and the list of scripts that use the code.
     **Deleting the BO does NOT fix it** `[C]`: after `delete-business-object` on the bricked BO the
@@ -5165,7 +5173,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `apply-import` answers the same 500 while the BO exists and the import stays `ANALYZED` — cancel it; a
     structure-only archive of that BO applies. After the BO is deleted the scripts archive applies and brings
     the BO back under its old id with a new script version, yet `load-bo-script-versions` still fails. Only the
-    vendor (database) can repair it. **Where the bad value sits** `[C]`: the defs are NOT separate documents — they are embedded in the ONE MongoDB document of the script MODULE (server cache `scriptModuleCached`), nesting module → map of defs by script id → the def → map `expressions` → the expression → `opType`; `load-script-def {scriptModuleId, scriptId}` fails only for the broken module, the other modules of the same BO read. The database fix `[I]` is therefore one field in that module document: `opType` `"GreaterEq"` → `"MoreEq"` (or the module document deleted); the collection name is not visible through the API. Through the API, on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~23 s — poll until `done: true`, an early
+    vendor (database) can repair it, and that repair works `[C]`. **Where the bad value sits** `[C]`: the defs are NOT separate documents — they are embedded in the ONE MongoDB document of the script MODULE (server cache `scriptModuleCached`), nesting module → map of defs by script id → the def → map `expressions` → the expression → `opType`; `load-script-def {scriptModuleId, scriptId}` fails only for the broken module, the other modules of the same BO read. The database fix `[C]` is one field in that module document: `opType` `"GreaterEq"` → `"MoreEq"` — after it `load-script-def` reads the def and both analyses end clean; the collection name is not visible through the API. Through the API, on the BO brought back alive that way, `save-bo-scripts` (200, no effect), `copy-bo-script-version` and `unset-in-work-version` fail the same, and so does the scripts archive whose `compositeId` prefix is the broken module id. Also: each analysis takes ~35 s — poll until `done: true`, an early
     `is-analyze-done` answers `{done:false}` (an object, not `false`).
 60. **The direct code setters validate nothing** `[C]` — `save-business-object-code` /
     `save-business-object-settings` accept a code another BO already has, Cyrillic, spaces and `""`, and do
@@ -5207,6 +5215,14 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     cleared, `massPrintFormCodes` is not restored, and rolling the import back adds one more copy of each form
     and restores neither the phone nor a radio's dictionary. Drop `printForms` from such an archive, then
     check phone and forms by hand. §5 «Rollback trap», §5i, `MYBPM-IMPORTS.md` §0.13.
+72. **A field-code analysis started while another runs is lost — and looks finished** `[C]` — the stand runs
+    one `field/refresh-code` analysis at a time (all companies; BO-code analyses apart). A second
+    `analyze-code-usage` returns a `refreshCodeDtoId` the server does not keep; `is-analyze-done` answers
+    `done: true`, `errorMessage: null` at once (exactly as for a made-up id), and `apply-new-code` fails with
+    `«no refreshCodeDto with id: …»`. A real analysis takes ~35 s, so an instant `done` means lost. `cancel`
+    does not free the slot, and repeated lost calls seem to keep it busy `[I]`. Change codes one at a time;
+    after a lost one stop calling for ~5 min, then start ONE analysis and let it finish. In the dialog the
+    lost case shows as «Изменить код» enabled at once and the change failing on click `[I]`. §5j.
 
 ## 12. Open questions
 
