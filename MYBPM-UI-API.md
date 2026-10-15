@@ -575,7 +575,8 @@ route below is for items on BOs that are already on the stand, and for access ri
 2. `create-menu-item` — `P {}`, `B` = the item itself:
    `{"id":…,"type":"GROUP"|"BO","displayName":…,"displayNameMap":{"RUS":…},"boId":…,"iconName":…,
    "orderIndex":100000,"isPanel":false,"boPages":{…},"chosenAccessRight":false,"parentId":…}`.
-   Default `iconName`: GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable`.
+   `iconName`: an icon BY MEANING for every item, unasked (§4 «Icons by meaning»); the generic defaults
+   GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable` only when the user wants no icons.
    The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it.
 3. Icons: `save-menu-item-icon-name` — `P {"menuItemId":…,"iconName":"<namespace>:<name>"}` → empty
    body (or set `iconName` right in `create-menu-item`). **Take the name from §4 «Menu icon catalogue»**
@@ -741,7 +742,7 @@ and dropping the rest «for scope» is a fraction reported as done.
    | structure | BOs, dictionaries, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0) or the constructor | R3, or R1 / R2 |
    | a hook script | computed fields and totals, auto-fill, «when X is saved, set Y» | §5g |
    | a business process | a path someone RUNS figure by figure, with forms and branches (approval) | R2 / §5f |
-   | the menu | one group for the system, one item per working BO, kanban by status | R6 |
+   | the menu | one group for the system, one item per working BO, kanban by status, an icon by meaning on every line | R6 |
    | rights by role | read the stand's groups, then write the rules | R5 |
    | records | dictionary values, initial records | R7 or R9 |
    | not doable | the last table of this recipe | — |
@@ -751,7 +752,7 @@ and dropping the rest «for scope» is a fraction reported as done.
    «the structure now, the rest later».
 3. **The menu counts as ASKED** — a system the user has to dig out of «Бизнес-объекты» is not delivered. One
    menu group named after the system; one item per working BO; the kanban on the item of every BO with a
-   status dropdown (R6, §7).
+   status dropdown; an icon BY MEANING on every line, unasked (R6 step 3, §4 «Icons by meaning»).
 4. **A row you do not do needs a reason from this closed list — nothing else is a reason:** a stand input
    is missing (0U.1, the user has it — ask); the platform cannot do it (name its row of the last table); its
    only route is `[U]` (name the section that marks it). «Out of scope», «too large», «better by hand», «there
@@ -1066,7 +1067,28 @@ Everything in this section is `[C]`.
 - **The UI creates only `BO` and `GROUP` items** `[C]`. The client enum also has `ANALYTIC`,
   `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` (the built-in items, one of each per company), `REPORT`
   (operative reports, their own export basket, R4a) and `PROCEDURES` — none is created by hand.
-- Default `iconName`: GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable`.
+- `iconName`: **every item you create gets an icon BY MEANING, without being asked** — the group by the
+  system (автосервис → `phosphor:car`), each item by what its records are (клиенты → `phosphor:users`,
+  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), dictionaries → `phosphor:book`; two items
+  of one group differ; the report lists «item → icon». The generic defaults GROUP `bo-g-draggable`, BO
+  `man-with-company`, dictionary `bo-d-draggable` (no prefix) only when the user wants no icons.
+- **Icons by meaning** `[C]` — a short list, all names exist on the stand (the full 1153: «Menu icon catalogue» below):
+
+  | Meaning | `iconName` |
+  |---|---|
+  | people, clients, contacts, staff | `phosphor:users`, `phosphor:user`, `phosphor:user-circle`, `phosphor:address-book`, `phosphor:identification-card`, `phosphor:handshake` |
+  | vehicles, transport, delivery | `phosphor:car`, `phosphor:truck`, `phosphor:bus`, `phosphor:airplane`, `phosphor:gas-pump` |
+  | work, service, repair, tasks | `phosphor:wrench`, `phosphor:gear`, `phosphor:clipboard-text`, `phosphor:list-checks`, `phosphor:kanban`, `phosphor:note-pencil` |
+  | money, payments, invoices | `phosphor:money`, `phosphor:wallet`, `phosphor:credit-card`, `phosphor:receipt`, `phosphor:coins`, `phosphor:currency-rub`, `phosphor:bank`, `phosphor:calculator` |
+  | goods, stock, purchases, suppliers | `phosphor:package`, `phosphor:shopping-cart`, `phosphor:storefront`, `phosphor:archive-box`, `phosphor:barcode`, `phosphor:tag`, `phosphor:factory` |
+  | documents, contracts, folders | `phosphor:file-text`, `phosphor:files`, `phosphor:folder`, `phosphor:folder-open`, `phosphor:briefcase`, `phosphor:notebook` |
+  | dictionaries, catalogues | `phosphor:book`, `phosphor:books`, `phosphor:list-bullets` |
+  | schedule, appointments, time | `phosphor:calendar`, `phosphor:calendar-check`, `phosphor:clock`, `phosphor:timer` |
+  | places, branches, objects | `phosphor:house`, `phosphor:buildings`, `phosphor:map-pin`, `phosphor:globe` |
+  | calls, mail, chats, campaigns | `phosphor:phone`, `phosphor:envelope`, `phosphor:chat`, `phosphor:megaphone` |
+  | reports, analytics | `phosphor:chart-bar`, `phosphor:chart-pie`, `phosphor:chart-line-up`, `phosphor:trend-up` |
+  | medicine, education, food, hotel | `phosphor:first-aid`, `phosphor:heartbeat`, `phosphor:pill`, `phosphor:graduation-cap`, `phosphor:student`, `phosphor:fork-knife`, `phosphor:bed` |
+  | IT, equipment, quality, risks | `phosphor:desktop`, `phosphor:database`, `phosphor:shield-check`, `phosphor:star`, `phosphor:warning` |
 - `delete-menu-item {menuItemId}`; `load-nav-items {parentId}` → the children with their ids
   (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
   archive addresses it (`MYBPM-IMPORTS.md` §5e); the kebab's «Изменить код» edits it.

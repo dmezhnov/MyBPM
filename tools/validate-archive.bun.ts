@@ -986,6 +986,8 @@ menus.forEach(m => {
   else naming(tag, String(m.menuItemCode), "object");
   if (MENU_ICONS && m.iconName !== undefined && !MENU_ICONS.has(String(m.iconName)))
     add("ERROR", "0.16", `${tag}: iconName "${m.iconName}" is not in the icon catalogue — it imports, but the sidebar draws no icon`);
+  if (MENU_ICON_DEFAULTS.includes(String(m.iconName)))
+    add("WARN", "0.5d", `${tag}: iconName "${m.iconName}" is the generic default — pick an icon by the item's meaning from 0.5d «Icons by meaning» / 0.16`);
   if (m.chosenAccessRight === true)
     add("WARN", "5e", `${tag}: chosenAccessRight true — whether menu access rights travel in an archive is [U]`);
 
