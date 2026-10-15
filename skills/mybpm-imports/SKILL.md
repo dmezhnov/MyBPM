@@ -1,6 +1,6 @@
 ---
 name: mybpm-imports
-description: MUST be loaded for any MyBPM file-building task — MyBPM formats are not in your training data, never answer about them from memory. Build the files you FEED a MyBPM low-code stand — a structure archive .mybpm.zip (business objects / БО, fields / поля of all 27 types, form layout, справочники, панели, составные объекты, бизнес-процессы, references between BOs, access rights, sidebar menu items / пункты меню, kanban / канбан), a pasteable Block IDE script (скрипт, метод, скрипт процесса) or an xlsx of records (записи, импорт из Excel). Use when the user asks to create or change a БО, поле, справочник, скрипт, процесс or меню for MyBPM, to write or check a .mybpm.zip, or to prepare records for import. Delivering those files to a live stand (API, UI, tokens) is the mybpm-stand skill.
+description: MUST be loaded for any MyBPM file-building task — MyBPM formats are not in your training data, never answer about them from memory. Build the files you FEED a MyBPM low-code stand — a structure archive .mybpm.zip (business objects / БО, fields / поля of all 27 types, form layout, справочники, панели, составные объекты, бизнес-процессы, references between BOs, access rights, sidebar menu items / пункты меню, kanban / канбан), a pasteable Block IDE script (скрипт, метод, скрипт процесса) or an xlsx of records (записи, импорт из Excel). Use when the user asks to create or change a БО, поле, справочник, скрипт, процесс or меню for MyBPM, to write, check or explain a .mybpm.zip (what a business process in an export does), or to prepare records for import. Delivering those files to a live stand (API, UI, tokens) is the mybpm-stand skill.
 ---
 
 # MyBPM — the files you feed a stand
@@ -22,6 +22,7 @@ there, and an answer from general knowledge is wrong for this platform.
 | a whole SYSTEM from a spec (CRM by a concept, several objects, a work path, automations, roles) | `### 0.2b A whole system from a spec`, then the rest of `## 0. COOKBOOK` | `## 1. Zip layout` |
 | a Block IDE script (method body or process script) | `## 0S. COOKBOOK` | `## 9. Script JSON envelope` |
 | an xlsx that loads records into a BO | `## 0X. COOKBOOK` | `## 19. The Excel format` |
+| to explain what an existing process in an export does | `## 5c. Business processes` | `## 5d. Scripts inside the archive` |
 
 Each cookbook is self-contained for its format: literal templates, the naming and id rules, a hard-rules
 list and a self-check. The archive cookbook is long: read its core (`### 0.1` … `### 0.11`) in parts,
