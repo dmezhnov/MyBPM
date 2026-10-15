@@ -10,7 +10,7 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    line?** Then you stopped at the range you guessed: call the reader again for the NEXT pages (e.g. «6–20»)
    until it returns nothing new — the last sections (work path, automations, reports, roles) are the ones lost.
 2. **Read the whole core of your cookbook BEFORE building anything — and before asking anything**: an
-   archive → the first ~1100 lines, from the top down to and including «0.11 Building the zip» — every
+   archive → the first ~1300 lines, from the top down to and including «0.11 Building the zip» — every
    template a typical system needs (BO, fields, links between BOs, dictionaries, kanban, menu), then ids,
    layout, hard rules, self-check, all inside that range; a script → §0S down to and including «0S.12
    Delivering the file»; records → §0X down to and including «0X.6 Handing the file over». **If you read
@@ -33,6 +33,16 @@ gets the names wrong: the importer then rejects the file or silently drops what 
      codes; everything new is hashed from a seed per object kind + this build's salt, distinct across the file — **0.7**;
    - [ ] the layout (tabs over 12 fields, `y` chain, window size) — **0.8a**;
    - [ ] the hard rules and the self-check, then the zip and the report — **0.9, 0.10, 0.11**.
+5. **The defects a build most often ships while the text says otherwise** — check each one in your file:
+   - a `BO` `SINGLE` is **3 rows** and may share a row — never 6 rows, never alone at full width (0.5a, 0.8);
+   - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15 (0.8);
+   - **every** `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning, `"[]"` for a comment (0.5);
+   - every computed value / total of the spec is a hook script and every approval path a process, **built in
+     the same archive** — or a reason from the closed list of 0.2b step 5 (0.2c step 7, 0.18);
+   - each Route cell of the coverage table is copied literally: no «где это поддерживается форматом», no
+     «настройка на стенде», no «требует серверной логики» (0.2b);
+   - **run the form lint of 0.10 and paste its output**; the report names the build salt and the list of checks
+     run (0.10 «The report»).
 
 What a model invents when it skips the reading, by class of mistake. Each class holds for ANY spec — the
 examples are only examples; each broken row breaks the import or is silently dropped. A script has its own
@@ -236,8 +246,9 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    calculation, a report, a role, a notification), columns «spec item | route | built by». Each
    automation, report and role is a row of its own — never one row for «rights, reports and notifications».
    Each row gets exactly ONE route from the table below, written as the literal text of its «Route» cell;
-   «where the format supports it», «if possible», «partly», «если поддерживается», «требует серверной
-   логики», «внешняя настройка», «настройка на стенде» and two routes joined by «или» are no route — an
+   «where the format supports it», «if possible», «partly», «если поддерживается», «где это поддерживается
+   форматом», «требует серверной логики», «внешняя настройка», «настройка на стенде» and two routes joined by
+   «или» are no route — an
    item that fits none is «not expressible» with its row of 0.2d:
 
    | Route | What goes there | Built by |
@@ -1150,6 +1161,63 @@ the BO's category. Count it in `objectCount`.
 - [ ] Every line parses on its own (`unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
       Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
       MUST fail — that proves it is JSONL.
+- [ ] **Run the form lint below and paste its output into the report.** It prints every layout, toolbar and
+      table defect of 0.5, 0.5a and 0.8 a build most often ships, one line each, and `form lint: OK` when there is
+      none; fix every line it prints and run it again. The two `REMINDER` lines are not defects by themselves: each
+      one asks whether the spec has a computed value or an approval path that is missing from the file. The prose
+      checks below stay mandatory — the lint does not replace them.
+
+```bash
+unzip -p <zip> 'data-*/0000001.mybpm' | bun -e '
+const L = (await Bun.stdin.text()).trimEnd().split("\n").map((l) => JSON.parse(l)), out = [];
+const cls = (o) => o["@class"].split(".").pop(), bos = L.filter((o) => cls(o) === "BoStructDto");
+const R3 = new Set(["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_PHONE", "INPUT_EMAIL", "INPUT_NUMBER", "TIME", "FULL_DATE",
+  "YEAR_AND_MONTH", "YEAR", "DATE", "PERIOD", "PERIOD_TIME", "CHECKBOX", "DROPDOWN_SINGLE"]);
+for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
+  const forms = new Map(), put = (tab, c) => forms.set(tab, [...(forms.get(tab) ?? []), c]);
+  for (const f of Object.values(bo.dynamicFields ?? {})) {
+    const t = `${bo.code}.${f.code}`, g = f.gridPosition, ref = f.type === "BO" || f.type === "CO";
+    const single = ref && f.viewType === "SINGLE", table = ref && f.viewType === "TABLE", text = /^TEXTAREA/.test(f.type);
+    if (text && f.params?.buttonTypes === undefined) out.push(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
+    if (table && Object.values(f.boRefStruct?.fieldRefs ?? {}).filter((r) => r.toShow).length < 2)
+      out.push(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
+    if (!g || f.trackedFieldCode || f.code === "PROCESS_STATUS") continue;
+    if ((single || R3.has(f.type)) && g.rows !== 3) out.push(`${t}: rows ${g.rows}, must be 3 (0.8)`);
+    if ((table || text) && g.rows < 6) out.push(`${t}: rows ${g.rows}, must be 6 (0.8)`);
+    put(f.tabCodePath?.tabCode ?? "", { t, g, short: single || R3.has(f.type) });
+  }
+  for (const w of ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"].flatMap((m) => Object.values(bo[m] ?? {})))
+    if (w.gridPosition) put(w.tabCode?.tabCode ?? "", { t: `${bo.code}.${w.code}`, g: w.gridPosition, box: true });
+  for (const n of Object.values(bo.nativeFields ?? {}))
+    if (n.gridPosition) put(n.tabCodePath?.tabCode ?? "", { t: `${bo.code}.${n.nativeFieldId}`, g: n.gridPosition, box: true });
+  for (const cells of forms.values()) {
+    let next = 0, edge = 15;
+    for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => a - b)) {
+      const row = cells.filter((c) => c.g.y === y).sort((a, b) => a.g.x - b.g.x);
+      if (y !== next) out.push(`${row[0].t}: y ${y}, expected ${next} (0.8)`);
+      let x = 0;
+      for (const c of row) {
+        if (c.g.x < x) out.push(`${c.t}: overlaps the cell before it in row y ${y} (0.10)`);
+        if (!c.box && c.g.x >= edge) out.push(`${c.t}: x ${c.g.x} lies in the free columns ${edge}–14 of the row above — it floats up (0.8)`);
+        x = Math.max(x, c.g.x + c.g.cols);
+      }
+      if (row.length > 1 && x !== 15) out.push(`${row[0].t}: row y ${y} spans ${x} of 15 columns (0.8)`);
+      if (new Set(row.map((c) => c.g.rows)).size > 1) out.push(`${row[0].t}: row y ${y} mixes heights (0.8)`);
+      if (row.length === 1 && row[0].short && row[0].g.cols === 15 && bo.category !== "BO_DICTIONARY")
+        out.push(`${row[0].t}: a short field alone at full width — pair it by meaning or x 0, cols 8 (0.8)`);
+      next = y + Math.max(...row.map((c) => c.g.rows));
+      edge = row.some((c) => c.box) ? 15 : x;
+    }
+  }
+}
+if (!L.some((o) => cls(o) === "ScriptDefStructDto"))
+  out.push("REMINDER no script line: every computed value and total of the spec is a hook (0.2c step 7) or a reason from 0.2b step 5");
+if (!bos.some((b) => b.category === "BO_PROCESS"))
+  out.push("REMINDER no process: an approval path of the spec is a BO_PROCESS (0.18) or a reason from 0.2b step 5");
+console.log(out.length ? out.join("\n") : "form lint: OK");
+'
+```
+
 - [ ] Every BO's `boGroupOldId` == the `oldId` of a group line of the file; new groups go by theme — a
       system of more than ~6 BOs has 2–4 group lines (0.2 step 1).
 - [ ] 0.9 rule 15, on EVERY BO including a process: at least one field has `tableColToShow: true`, and every
@@ -1246,7 +1314,8 @@ the BO's category. Count it in `objectCount`.
 - **Name the build salt in one line** — «Соль сборки: `k7f2`» — so a later amendment in this conversation
   mints the same ids (0.7 case 2).
 - **Name each 0.10 check you ran and how** (the validator, by hand). Asserts inside your own builder are not
-  0.10; «проверено» without the list of checks is not a report.
+  0.10; «проверено» without the list of checks is not a report. **Paste the output of the 0.10 form lint**
+  as it printed — `form lint: OK`, or the `REMINDER` lines each with the coverage row that answers it.
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
   reason from the closed list / to do after the import.
 - **The steps after the import**: import the archive — analysis first, then apply (0.11 «What the user does with it»), load the initial records

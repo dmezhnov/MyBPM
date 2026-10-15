@@ -244,3 +244,65 @@ const runs = Array.from({ length: n }, async (_, i) => {
 });
 await Promise.all(runs);
 '''
+
+[tasks.stand-login]
+description = "Log in to a stand headlessly (password asked at a hidden prompt, never an argument) and save the token to ~/.config/mybpm/tokens/<host>/<login>.token (mode 600); prints who logged in, never the token"
+usage = '''
+arg "<host>" help="Stand host, e.g. core2.mybpm.kz (https:// and a trailing / are stripped)"
+arg "<login>" help="The user's login (e-mail)"
+'''
+raw = true
+shell = "bun -e"
+run = '''
+// node:fs only for chmod — Bun has no API to set file permissions.
+import { chmodSync } from "node:fs";
+const host = Bun.env.usage_host!.replace(/^https?:\/\//, "").replace(/\/+$/, ""), login = Bun.env.usage_login!;
+const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+process.stdout.write(`Пароль ${login} @ ${host}: `);
+Bun.spawnSync(["stty", "-echo"], { stdin: "inherit" });
+let password = "";
+try { for await (const line of console) { password = line; break; } }
+finally { Bun.spawnSync(["stty", "echo"], { stdin: "inherit" }); process.stdout.write("\n"); }
+if (!password) { console.error("пустой пароль"); process.exit(1); }
+const r = await fetch(`https://${host}/web/v2/auth/v3/login`, { method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: null, body_o1nhHUG480: {
+    "dXNlcm5hbWU=": b64(login), "cGFzc3dvcmQ=": b64(password), timeOffsetZoneInMinutes: -300,
+    timezoneRegion: "Asia/Almaty", clientType: "WEB", userAgent: "mise stand-login", pushToken: null, clientVersion: "" } }) });
+const body = await r.json().catch(() => null);
+if (typeof body !== "string") { console.error("вход не удался:", body?.errorType ?? r.status, body?.message ?? ""); process.exit(1); }
+const info = await fetch(`https://${host}/web/v2/auth/load-auth-info`, { headers: { token: body } }).then((x) => x.json());
+const path = `${Bun.env.HOME}/.config/mybpm/tokens/${host}/${login}.token`;
+await Bun.write(path, body);
+chmodSync(path, 0o600);
+console.log(`токен сохранён: ${path}`);
+console.log(`вошёл: ${info.fio ?? "?"} (${info.email ?? login}), компания ${info.companyCode ?? info.companyId ?? "?"}`);
+'''
+
+[tasks.stand-call]
+description = "Call a stand /web/ API method with the token saved by stand-login, in the standard envelope; prints the response JSON (auth calls that return a token are refused)"
+usage = '''
+arg "<host>" help="Stand host, as given to stand-login"
+arg "<login>" help="The login whose saved token to use"
+arg "<path>" help="Path after /web/, e.g. v2/business-objects/load-bo-groups or import-structure/load-import-state"
+flag "--params <json>" help="params_Lr1oSgwPR8 as JSON" default="{}"
+flag "--body <json>" help="body_o1nhHUG480 as JSON" default="{}"
+flag "--get" help="Send a GET without the envelope (e.g. v2/auth/load-auth-info)"
+'''
+shell = "bun -e"
+run = '''
+const host = Bun.env.usage_host!.replace(/^https?:\/\//, "").replace(/\/+$/, ""), login = Bun.env.usage_login!;
+const path = Bun.env.usage_path!.replace(/^\/?(web\/)?/, "");
+if (/auth\/(v3\/login|load-token|fast-login|otp-login)/.test(path)) { console.error("этот вызов возвращает токен — не через stand-call"); process.exit(1); }
+const file = Bun.file(`${Bun.env.HOME}/.config/mybpm/tokens/${host}/${login}.token`);
+if (!(await file.exists())) { console.error(`нет токена — сначала: mise run stand-login ${host} ${login}`); process.exit(1); }
+const token = (await file.text()).trim();
+const r = Bun.env.usage_get === "true"
+  ? await fetch(`https://${host}/web/${path}`, { headers: { token } })
+  : await fetch(`https://${host}/web/${path}`, { method: "POST", headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: JSON.parse(Bun.env.usage_params!), body_o1nhHUG480: JSON.parse(Bun.env.usage_body!) }) });
+const text = await r.text();
+let out: unknown = text; try { out = JSON.parse(text); } catch {}
+if ((out as any)?.errorType === "SecurityError") { console.error(`сессия истекла — заново: mise run stand-login ${host} ${login}`); process.exit(2); }
+console.log(typeof out === "string" ? out : JSON.stringify(out, null, 2));
+if (!r.ok) process.exit(1);
+'''
