@@ -27,7 +27,8 @@ gets the names wrong: the importer then rejects the file or silently drops what 
      catalogue it points at — **0.5a**, 0.2c;
    - [ ] a `BO_DICTIONARY` line per open reference list; statuses and short fixed lists as LOCAL dropdowns — **0.5b**, 0.2c;
    - [ ] one kanban card template per `DROPDOWN_SINGLE` of a BO — **0.5c**;
-   - [ ] the sidebar menu: one `GROUP` + one item per working BO, kanban on the status dropdown — **0.5d**, 0.2b step 4;
+   - [ ] the sidebar menu: one `GROUP` + one item per working BO, kanban on the status dropdown, every line
+     with an icon BY MEANING (`phosphor:car`, `phosphor:wrench` …), never the generic default — **0.5d**, 0.2b step 4;
    - [ ] ids hashed from a seed per object kind, distinct across the file — **0.7**;
    - [ ] the layout (tabs over 12 fields, `y` chain, window size) — **0.8a**;
    - [ ] the hard rules and the self-check, then the zip and the report — **0.9, 0.10, 0.11**.
@@ -230,7 +231,8 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    up front, so a `TABLE` can name a BO written after it, 0.2a), script lines, process lines, menu lines last. Never «the structure now, the scripts later».
 4. **The menu counts as ASKED** (0.5d). Ship one menu `GROUP` named after the system and, inside it, one
    item per working BO (0.2c step 9); on the item of every BO with a status path switch the kanban on by
-   its status dropdown. The «never added unasked» of 0.2 step 7a is about a request for single objects.
+   its status dropdown; every line carries an icon by meaning (0.5d «Icons by meaning»). The «never added
+   unasked» of 0.2 step 7a is about a request for single objects.
 5. **A row you do not build needs a reason from this closed list — nothing else is a reason:**
    - a stand id or code is missing (0.2a) — name it, and ask;
    - the archive cannot carry it — name its row of 0.2d;
@@ -730,7 +732,7 @@ folder (`GROUP`) holding such rows. One line per item; a group and the items ins
  "menuItemName":"Заявки",                        ← the text in the sidebar
  "boCode":"Request",                             ← the BO's `code`
  "boName":"Заявки",                              ← the BO's `name.rus`
- "iconName":"man-with-company",
+ "iconName":"phosphor:clipboard-text",          ← an icon BY MEANING, 0.5d «Icons by meaning»
  "orderIndex":950000,                            ← position among its siblings
  "boPages":{"isKanbanEnabled":false,"kanbanIndex":0,
             "isCalendarEnabled":false,"calendarIndex":0,"isTimelineEnabled":false,"timelineIndex":0,
@@ -749,7 +751,7 @@ folder (`GROUP`) holding such rows. One line per item; a group and the items ins
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
  "menuItemCode":"Probe_menu",            ← your code
  "menuItemName":"Проба меню",          ← the text in the sidebar
- "iconName":"bo-g-draggable",
+ "iconName":"phosphor:folder",        ← an icon BY MEANING, 0.5d «Icons by meaning»
  "orderIndex":950000,
  "chosenAccessRight":false,"needCountMenuItem":false,"isPanel":false,"needHideInMobApp":false,
  "menuItemType":"GROUP"}
@@ -779,9 +781,32 @@ Rules `[C]`:
   `parentMenuItemCode`: a `GROUP` line of this archive, or a group code given by the user — never guessed.
 - Put the `GROUP` line BEFORE its children. `orderIndex`: the built-in root «Системные» is 60000 — put
   your roots after it (950000), children count inside their parent (10000, 20000 …).
-- `iconName`: keep the defaults — `bo-g-draggable` for a group, `man-with-company` for a BO item,
-  `bo-d-draggable` for a dictionary — unless the user wants an icon; then copy a name from 0.16 WITH its
-  prefix (the importer accepts any name and shows an empty place for a wrong one).
+- `iconName`: **every line gets an icon BY MEANING, without being asked** — the group by the system
+  (автосервис → `phosphor:car`), each item by what its records are (клиенты → `phosphor:users`,
+  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), a «Справочники» subgroup and dictionary
+  items → `phosphor:book`. Take the name from the table below (or from 0.16) WITH its prefix; never compose
+  one from memory — the importer accepts any string and the sidebar shows an EMPTY place for a wrong one.
+  Two items of one group should differ. In the report list «item → icon» so the user can change them. The
+  generic defaults `bo-g-draggable` (group), `man-with-company` (BO), `bo-d-draggable` (dictionary) only
+  when the user asked for no icons.
+
+  **Icons by meaning** `[C]` — all names exist on the stand (0.16 has the full 1153):
+
+  | Meaning | `iconName` |
+  |---|---|
+  | people, clients, contacts, staff | `phosphor:users`, `phosphor:user`, `phosphor:user-circle`, `phosphor:address-book`, `phosphor:identification-card`, `phosphor:handshake` |
+  | vehicles, transport, delivery | `phosphor:car`, `phosphor:truck`, `phosphor:bus`, `phosphor:airplane`, `phosphor:gas-pump` |
+  | work, service, repair, tasks | `phosphor:wrench`, `phosphor:gear`, `phosphor:clipboard-text`, `phosphor:list-checks`, `phosphor:kanban`, `phosphor:note-pencil` |
+  | money, payments, invoices | `phosphor:money`, `phosphor:wallet`, `phosphor:credit-card`, `phosphor:receipt`, `phosphor:coins`, `phosphor:currency-rub`, `phosphor:bank`, `phosphor:calculator` |
+  | goods, stock, purchases, suppliers | `phosphor:package`, `phosphor:shopping-cart`, `phosphor:storefront`, `phosphor:archive-box`, `phosphor:barcode`, `phosphor:tag`, `phosphor:factory` |
+  | documents, contracts, folders | `phosphor:file-text`, `phosphor:files`, `phosphor:folder`, `phosphor:folder-open`, `phosphor:briefcase`, `phosphor:notebook` |
+  | dictionaries, catalogues | `phosphor:book`, `phosphor:books`, `phosphor:list-bullets` |
+  | schedule, appointments, time | `phosphor:calendar`, `phosphor:calendar-check`, `phosphor:clock`, `phosphor:timer` |
+  | places, branches, objects | `phosphor:house`, `phosphor:buildings`, `phosphor:map-pin`, `phosphor:globe` |
+  | calls, mail, chats, campaigns | `phosphor:phone`, `phosphor:envelope`, `phosphor:chat`, `phosphor:megaphone` |
+  | reports, analytics | `phosphor:chart-bar`, `phosphor:chart-pie`, `phosphor:chart-line-up`, `phosphor:trend-up` |
+  | medicine, education, food, hotel | `phosphor:first-aid`, `phosphor:heartbeat`, `phosphor:pill`, `phosphor:graduation-cap`, `phosphor:student`, `phosphor:fork-knife`, `phosphor:bed` |
+  | IT, equipment, quality, risks | `phosphor:desktop`, `phosphor:database`, `phosphor:shield-check`, `phosphor:star`, `phosphor:warning` |
 - **A `menuItemCode` that already exists on the stand is an EDIT of that item** — your codes must be new to
   the stand; a re-import of your own archive updates your items in place.
 - Calendar, timeline and map views, menu rights, a menu-only archive: 0.15.
@@ -1062,8 +1087,9 @@ the BO's category. Count it in `objectCount`.
       every `parentMenuItemCode` is a GROUP line of this archive or a code the
       user gave off the stand; every `boCode` is a BO line of this archive or a stand code; every
       `kanbanFieldCode` is a `DROPDOWN_SINGLE` of that BO AND a key of its `kanbanCardTemplates`; no
-      `GROUP` line carries `boPages` or `bracketFilter`; every `iconName` is one of the three defaults
-      or a name copied from 0.16 WITH its prefix (the importer accepts a wrong name silently).
+      `GROUP` line carries `boPages` or `bracketFilter`; every `iconName` is an icon BY MEANING copied from
+      0.5d «Icons by meaning» or 0.16 WITH its prefix (the importer accepts a wrong name silently) — the
+      generic defaults only when the user asked for no icons.
 - [ ] A whole system from a spec (0.2b): every spec item has a row of the coverage table; every row routed
       to an archive line, a hook script or a process IS in the file; every row left out carries a reason from
       the closed list of 0.2b step 5; the menu group and items are there (0.2b step 4); every header–lines and
@@ -1528,8 +1554,9 @@ More rules `[C]`:
 
 - **Icons** `[C]`: `iconName` takes ANY name of the catalogue in **0.16**, written with
   its prefix exactly as listed there — `"phosphor:house-line"`, `"menu-item:025-building"`. Without a
-  wish from the user keep the defaults: `bo-g-draggable` for a group, `man-with-company` for a BO item,
-  `bo-d-draggable` for a dictionary (these three have no prefix). **The importer does not check the
+  wish from the user pick one BY MEANING for every line (0.5d «Icons by meaning»); the generic defaults
+  `bo-g-draggable` (group), `man-with-company` (BO item), `bo-d-draggable` (dictionary), no prefix, are
+  only for «no icons». **The importer does not check the
   name**: a name that is not in 0.16 analyses clean, applies (`APPLIED`), is stored verbatim — and the
   sidebar shows an EMPTY place where the icon should be. So every `iconName` must be copied from 0.16;
   when the user describes an icon by meaning («домик», «деньги», «люди»), pick the closest name from
