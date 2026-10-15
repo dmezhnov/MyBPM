@@ -211,7 +211,7 @@ for (const g of groups) {
     add("FATAL", "0.9/1", `group "${g.name}" has no code — the importer renames a fixed stand group instead (§8)`);
   else if (groupCodes.has(g.code)) add("ERROR", "0.3", `group code "${g.code}" repeats`);
   else { groupCodes.add(g.code); naming(`group "${g.name}"`, g.code, "object"); }
-  if (g.kind !== "MANUAL") add("ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL`);
+  if (g.kind !== "MANUAL") add(g.kind === "DEFAULT" ? "FATAL" : "ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL${g.kind === "DEFAULT" ? " — a DEFAULT group created by import becomes the general group and can never be deleted, not even by rollback" : ""}`);
   if (!ID_RE.test(String(g.oldId))) add("ERROR", "0.7", `group oldId "${g.oldId}" is not 16 chars over A-Za-z0-9@~`);
   if (!g.newId) add("WARN", "0.3", "group has no newId");
   if (typeof g.name !== "string" || !g.name) add("FATAL", "0.3", "group has no name");
@@ -560,9 +560,11 @@ for (const bo of bos) {
       } else add("ERROR", "5", `${ft}: optionSource "${fo.optionSource}" is neither FROM_BO nor FROM_FIELD`);
     }
     if (type === "BO" || type === "CO") {
-      if (!f.oldRefBoId) add("ERROR", "0.5", `${ft}: ${type} without oldRefBoId (the target's id ON THE STAND)`);
-      else if (!/^[A-Za-z0-9@~]{16}$/.test(String(f.oldRefBoId))) add("ERROR", "0.5", `${ft}: oldRefBoId "${f.oldRefBoId}" has the wrong shape`);
       const bi = f.boRefStruct?.boInfo;
+      // a reference to a built-in BO is resolved by boInfo.code, so its oldRefBoId may be "" (§6 «Person reference»)
+      const builtIn = ["Person", "Department", "PersonGroup"].includes(bi?.code);
+      if (!f.oldRefBoId) { if (!builtIn) add("ERROR", "0.5", `${ft}: ${type} without oldRefBoId (the target's id ON THE STAND)`); }
+      else if (!/^[A-Za-z0-9@~]{16}$/.test(String(f.oldRefBoId))) add("ERROR", "0.5", `${ft}: oldRefBoId "${f.oldRefBoId}" has the wrong shape`);
       if (!bi?.code) add("ERROR", "0.5", `${ft}: ${type} without boRefStruct.boInfo.code`);
       if (type === "CO" && bi && bi.boCategory !== "BO_COMPOSITE")
         add("ERROR", "0.5", `${ft}: CO boInfo.boCategory = ${bi.boCategory}, expected BO_COMPOSITE`);

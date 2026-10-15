@@ -11,7 +11,8 @@
  *   read      highest MYBPM-IMPORTS.md line the model got through Read / core end (the `### 0.11` heading)
  *   BO/dict   BOs of category BO / BO_DICTIONARY
  *   ref ok    BO fields with a real target (oldRefBoId = an oldId of the file, boInfo.code = that BO, a toShow
- *             fieldRef naming a field of it) / all BO fields
+ *             fieldRef naming a field of it) / all BO fields except Person references
+ *   person    BO fields to the built-in Person (boInfo.code "Person") — resolved by code, need no stand id
  *   pairs     TABLE fields whose linkedFieldCode names a SINGLE on the target that links back
  *   line=cat  TABLE fields whose target BO is also referenced by a BO field of ANOTHER BO — a shared catalogue
  *             used as the line BO (0.2c: lines are their own BO pointing at the catalogue); lower is better
@@ -70,7 +71,7 @@ function archiveStats(objs: any[]) {
   const byId = new Map(bos.map(b => [b.oldId, b]));
   const dicts = new Set(bos.filter(b => b.category === "BO_DICTIONARY").map(b => b.code));
   const s = { bo: 0, dict: dicts.size, refOk: 0, refs: 0, pairs: 0, menu: objs.filter(o => cls(o) === "MenuItemStructDto").length,
-    lineCat: 0, kanban: 0, dd: 0, statusLocal: 0, status: 0, badDD: 0, idBad: 0, idDup: 0, overlap: 0 };
+    person: 0, lineCat: 0, kanban: 0, dd: 0, statusLocal: 0, status: 0, badDD: 0, idBad: 0, idDup: 0, overlap: 0 };
   // which BOs point at each BO through a BO field
   const referrers = new Map<string, Set<string>>();
   for (const b of bos) for (const f of Object.values<any>(b.dynamicFields ?? {}))
@@ -82,7 +83,8 @@ function archiveStats(objs: any[]) {
     if (b.category === "BO") s.bo++;
     const fields: Record<string, any> = b.dynamicFields ?? {};
     for (const [key, f] of Object.entries(fields)) {
-      if (f.type === "BO") {
+      if (f.type === "BO" && f.boRefStruct?.boInfo?.code === "Person") s.person++;
+      else if (f.type === "BO") {
         s.refs++;
         const target = byId.get(f.oldRefBoId);
         const show = Object.entries<any>(f.boRefStruct?.fieldRefs ?? {}).some(([k, r]) => r?.toShow && target?.dynamicFields?.[k]);
@@ -127,7 +129,7 @@ function archiveStats(objs: any[]) {
 }
 
 const rows: string[][] = [];
-const head = ["run", "ask", "read", "BO", "dict", "ref ok", "pairs", "line=cat", "menu", "kanban", "status", "badDD", "ids", "overlap", "F/E/W", "$", "turns", "s"];
+const head = ["run", "ask", "read", "BO", "dict", "ref ok", "person", "pairs", "line=cat", "menu", "kanban", "status", "badDD", "ids", "overlap", "F/E/W", "$", "turns", "s"];
 const labels = [...new Bun.Glob("*/trace.jsonl").scanSync(runsDir)].map(p => p.split("/")[0]).sort();
 for (const label of labels) {
   const dir = `${runsDir}/${label}`;
@@ -148,8 +150,8 @@ for (const label of labels) {
     try { const c = JSON.parse(v.stdout.toString()).counts; few = `${c.FATAL}/${c.ERROR}/${c.WARN}` + (c.FATAL > 0 ? " INVALID" : ""); } catch { few = "?"; }
   }
   rows.push([label, asked ? "yes" : "", `${t.maxLine}/${end}`,
-    ...(a ? [a.bo, a.dict, `${a.refOk}/${a.refs}`, a.pairs, a.lineCat, a.menu, `${a.kanban}/${a.dd}`, `${a.statusLocal}/${a.status}`,
-      a.badDD, `${a.idBad}+${a.idDup}`, a.overlap] : Array(11).fill("—")).map(String),
+    ...(a ? [a.bo, a.dict, `${a.refOk}/${a.refs}`, a.person, a.pairs, a.lineCat, a.menu, `${a.kanban}/${a.dd}`, `${a.statusLocal}/${a.status}`,
+      a.badDD, `${a.idBad}+${a.idDup}`, a.overlap] : Array(12).fill("—")).map(String),
     few, t.cost.toFixed(2), String(t.turns), String(t.secs)]);
 }
 
