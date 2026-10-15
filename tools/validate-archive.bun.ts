@@ -40,8 +40,10 @@ const WIDGET_MAPS: Record<string, string[]> = {
   currentUser: ["CURRENT_USER"],
 };
 
-// §0.5 "Cell heights the constructor itself assigns"
-const ROWS_6 = new Set(["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR"]);
+// §0.8: the heights that fit the content (a BO / CO SINGLE is one line = 3, a TEXTAREA 6)
+const ROWS_6 = new Set(["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR", "TEXTAREA", "TEXTAREA_LANG"]);
+// §0.8: kinds that stand alone in their row, full width
+const FULL_WIDTH = new Set(["TEXTAREA", "TEXTAREA_LANG", "STATIC_TEXT", "TAB_GROUP", "CHECKLIST", "QUESTIONNAIRE", "GEO_POINT", "PROGRESS_BAR"]);
 const ROWS_8 = new Set(["QUESTIONNAIRE", "GEO_POINT"]);
 // §0.8a: a label + one-line box is 58 px = 3 rows of 30; 4 leaves an empty band
 const ROWS_3 = new Set(["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_PHONE", "INPUT_EMAIL", "INPUT_NUMBER", "TIME", "FULL_DATE",
@@ -574,6 +576,11 @@ for (const bo of bos) {
       if (bo.category !== "BO_PANEL" && bi?.code !== "Person"
           && !Object.values<any>(f.boRefStruct?.fieldRefs ?? {}).some((r: any) => r?.toShow === true))
         add("ERROR", "0.9/15", `${ft}: boRefStruct.fieldRefs has no toShow: true — the reference renders an empty selector; list at least one field of ${bi?.code}`);
+      // 0.5a: a table shows 2–5 columns chosen by meaning
+      if (f.viewType === "TABLE" && bo.category !== "BO_PANEL" && bi?.code !== "Person") {
+        const shown = Object.values<any>(f.boRefStruct?.fieldRefs ?? {}).filter((r: any) => r?.toShow === true).length;
+        if (shown === 1) add("WARN", "0.5a", `${ft}: a TABLE showing one column — show 2–5 key fields of ${bi?.code}`);
+      }
       checkRefSettings(bo, key, f, ft);
     } else {
       if (f.linkedCoSettings && Object.keys(f.linkedCoSettings).length)
@@ -645,11 +652,9 @@ for (const bo of bos) {
       const gp = f.gridPosition;
       if (!gp) add("ERROR", "0.8", `${ft}: no gridPosition`);
       else {
-        if (gp.x !== 0) add("WARN", "0.8", `${ft}: x=${gp.x}; the safe layout is x=0, cols=15`);
-        if (gp.cols !== 15) add("WARN", "0.8", `${ft}: cols=${gp.cols}; the safe layout is cols=15`);
         // §0.8 / §0.8a: the heights that fit the content; a TAB_GROUP and a heading are checked below
-        const wantRows = trackedWrapper ? 4 : ROWS_3.has(type) ? 3 : ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6
-          : type === "TEXTAREA" || type === "TEXTAREA_LANG" ? 4 : null;
+        const single = (type === "BO" || type === "CO") && f.viewType === "SINGLE";
+        const wantRows = trackedWrapper ? 4 : ROWS_3.has(type) || single ? 3 : ROWS_8.has(type) ? 8 : ROWS_6.has(type) ? 6 : null;
         if (wantRows !== null && gp.rows !== wantRows) add("WARN", "0.8", `${ft}: rows=${gp.rows}, a ${type} takes ${wantRows}`);
         laid.push({ ft, f, gp });
       }
@@ -708,14 +713,40 @@ for (const bo of bos) {
     else if (typeof win.h === "number" && win.h < formRows + 5)
       add("WARN", "0.8a", `${tag}: gridLayoutPosition.h=${win.h} for ${formRows} form rows — the window scrolls; h = ${formRows + 5}${formRows + 5 > 28 ? " (over ~28 does not fit a 1080p screen: split into tabs or instanceViewType TAB)" : ""}`);
   }
-  laid.sort((a, b) => a.gp.y - b.gp.y);
-  let prevY: number | null = null, prevRows = 0;
-  for (const { ft, gp } of laid) {
-    if (prevY !== null && gp.y !== prevY + prevRows)
-      add("ERROR", "0.8", `${ft}: y=${gp.y}, expected ${prevY + prevRows} (previous y ${prevY} + previous rows ${prevRows})`);
-    if (prevY === null && gp.y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${gp.y}`);
-    prevY = gp.y; prevRows = gp.rows;
+  // §0.8: rows — the cells of one row share y and rows, x runs 0, 0 + cols …, cols sum to 15; next y = y + rows
+  const rowsByY = new Map<number, typeof laid>();
+  for (const l of laid) rowsByY.set(l.gp.y, [...(rowsByY.get(l.gp.y) ?? []), l]);
+  let prevY: number | null = null, prevRows = 0, shared = 0, oneLine = 0;
+  for (const y of [...rowsByY.keys()].sort((a, b) => a - b)) {
+    const row = rowsByY.get(y)!.sort((a, b) => (a.gp.x ?? 0) - (b.gp.x ?? 0));
+    const ft = row[0].ft;
+    if (prevY !== null && y !== prevY + prevRows)
+      add("ERROR", "0.8", `${ft}: y=${y}, expected ${prevY + prevRows} (previous row y ${prevY} + its rows ${prevRows})`);
+    if (prevY === null && y !== 0) add("ERROR", "0.8", `${ft}: the first field must start at y=0, got ${y}`);
+    const heights = new Set(row.map(l => l.gp.rows));
+    if (heights.size > 1)
+      add("WARN", "0.8", `${row.map(l => l.ft).join(" + ")}: one row of y=${y} mixes heights ${[...heights].join("/")} — the next row floats into the hole under the short cell; pair only equal rows`);
+    const cells = row.filter(l => !l.box);
+    if (cells.length > 1) {
+      shared++;
+      for (const l of cells) if (FULL_WIDTH.has(l.f.type) || l.f.viewType === "TABLE")
+        add("WARN", "0.8", `${l.ft}: a ${l.f.viewType === "TABLE" ? "TABLE" : l.f.type} shares row y=${y} — it stands alone, full width`);
+    }
+    if (cells.length && cells.length === row.length) {
+      let x = 0;
+      for (const l of cells) {
+        if ((l.gp.x ?? 0) < x) add("ERROR", "0.8", `${l.ft}: x=${l.gp.x} overlaps the cell before it in row y=${y} (free from x=${x})`);
+        else if ((l.gp.x ?? 0) > x) add("WARN", "0.8", `${l.ft}: x=${l.gp.x} leaves a gap in row y=${y} (expected x=${x})`);
+        x = (l.gp.x ?? 0) + (l.gp.cols ?? 0);
+      }
+      if (x !== 15) add("WARN", "0.8", `${ft}: row y=${y} spans ${x} of 15 columns — the cols of a row sum to 15`);
+      if (cells.length === 1 && ROWS_3.has(cells[0].f.type)) oneLine++;
+    }
+    prevY = y; prevRows = Math.max(...heights);
   }
+  // §0.8: short one-line fields share rows — a form of nothing but full-width fields is a defect
+  if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && shared === 0 && oneLine >= 6)
+    add("WARN", "0.8", `${tag}: ${oneLine} one-line fields, each alone at full width — put short fields that belong together 2–3 per row`);
   // 0.5: tableColOrderIndex is a counter — the values form 0, 1, 2 … n-1, no duplicates, no gaps. Not checked
   // against y: a progress bar or a tab group on top of the form (y 0) may stand after the name field, and a
   // stand export lists the map in any order

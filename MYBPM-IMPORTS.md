@@ -45,8 +45,8 @@ table at the top of §0S, records at the top of §0X.
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
-| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a status path or a short fixed list as a dictionary (it ships empty → a board with no columns); a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields; statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
-| Layout | `y = index × 3` while a `BO` table is 6 rows and a `TEXTAREA` 4 (fields overlap); `w: 10` and no tabs on every window | `y` = previous `y` + previous `rows`; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
+| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
+| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width; `w: 10` and no tabs on every window | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows`; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
@@ -116,12 +116,12 @@ Rules, all `[C]`:
 0. **Ask for the stand data of 0.2a** — group name, taken BO codes, ids/codes of referenced objects.
    Do not start building before the user has answered, or has told you to build without them. Ask ONLY
    what the request has not already answered: «пустой стенд», «новая компания», «a fresh stand» answers
-   the group (a NEW one — you name it) and the taken codes (none) — never ask those again.
+   the groups (NEW ones — you name them yourself, by theme, step 1) and the taken codes (none) — never ask
+   those again, not even «как назвать группу».
    For a system built from a spec (0.2b) that does not say the stand is empty, ask exactly this, in the
    same reply as the coverage table, and nothing else: «Стенд пустой (новая компания)? Если нет:
-   (1) в какую группу бизнес-объектов (раздел конструктора, где будут лежать новые БО) их положить — в новую
-   (как её назвать) или в существующую (тогда пришлите экспорт структуры любого БО из неё — группу возьму из
-   него); (2) чтобы коды новых БО не совпали с уже существующими, пришлите экспорт структуры всех БО
+   (1) куда положить новые БО (группы — разделы конструктора): в новые группы по темам (назову их сам) или все
+   в одну существующую (тогда пришлите экспорт структуры любого БО из неё — группу возьму из него); (2) чтобы коды новых БО не совпали с уже существующими, пришлите экспорт структуры всех БО
    компании — или скажите «без экспорта», и я добавлю к кодам короткий случайный суффикс.» Ask for FILES
    only — never for access to the stand, and never for «the export of a group»: an export is of the
    company's BOs that were picked for it, there is no per-group export, and BO codes are unique across
@@ -132,13 +132,17 @@ Rules, all `[C]`:
    without `code`** is an old group that has none — an archive cannot target it (a code-less line renames
    a fixed group, 0.9 rule 1): put the new BOs into a NEW group and say why. A group that has a code
    carries it in the export `[I]`.
-1. **Collect the input**: the display name of the BO, its fields (label + UI type), and the name of the
-   BO group **that already exists on the target stand** (ask the user for it — §0.2a).
+1. **Collect the input**: the display name of the BO, its fields (label + UI type), and its BO group —
+   an EXISTING one the user named (§0.2a), or new ones you name yourself. **New groups go by theme**: a
+   system of more than ~6 BOs is split into 2–4 groups by meaning (автосервис: «Клиенты и автомобили»,
+   «Заказы и работы», «Склад и закупки», «Справочники»), each group at least 2 BOs; fewer BOs stay in one
+   group named after the system. Each group is its own line of 0.3 with its own `code` (several group lines
+   work, 0.3), and each BO's `boGroupOldId` names the `oldId` of its theme's line.
 2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
    BO, `client_name` for a field, `is_*` for a checkbox, `tabs` / `tab_*` for tabs. At most 30
    characters, shortened by meaning. These are the ONLY values you invent.
-3. **Mint the ids** by the rule in 0.7 — one for the group, one for the BO, one per field.
-4. **Write line 1** = the group DTO, template 0.3.
+3. **Mint the ids** by the rule in 0.7 — one per group, one for the BO, one per field.
+4. **Write the group lines first** = one group DTO per group, template 0.3.
 5. **Write line 2** = the BO DTO, template 0.4, with one entry of template 0.5 per field inside
    `dynamicFields` — and, if the form also carries «системные поля» or «виджеты», their own maps
    (0.12 `nativeFields`, 0.13 `signatures` / `buttons` / `iframes` / `captcha` / `currentDates` /
@@ -235,21 +239,23 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 
    | Route | What goes there | Built by |
    |---|---|---|
-   | an archive line | BOs, dictionaries, fields, links between BOs, tabs and layout, kanban card templates, the menu | 0.3–0.5d, 0.2c |
+   | an archive line | BOs, dictionaries AND their values, fields, links between BOs, tabs and layout, kanban card templates, the menu | 0.3–0.5d, 0.2c |
    | a hook script in the archive | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | 0.2c step 7, §5d, Part II |
    | a business process in the archive | a path someone RUNS step by step, with forms and branches (approval) | 0.18, §5c |
-   | an xlsx after the import | dictionary values, initial records | Part III, 0.2d |
+   | an xlsx after the import | initial records of working BOs (clients, cars, stock) | Part III, 0.2d |
    | stand-only | rights by role, users and groups, a field on a built-in BO | 0.2d |
    | not expressible | reports and dashboards, SMS / telephony, anything 0.2d lists | 0.2d |
 
 2. **Model the objects by 0.2c** — every link between two objects of the spec becomes a `BO` field (0.5a),
    never a text field; every list of values becomes a dictionary (0.5b) or a local list (0.5).
 3. **Build every row routed to an archive line, a hook script or a process — in this reply, in one
-   archive**, in this line order: group line, dictionaries, BOs (every BO `oldId` minted from its seed
+   archive**, in this line order: group lines (by theme, 0.2 step 1), dictionaries, BOs (every BO `oldId` minted from its seed
    up front, so a `TABLE` can name a BO written after it, 0.2a), script lines, process lines, menu lines last. Never «the structure now, the scripts later».
-4. **The menu counts as ASKED** (0.5d). Ship one menu `GROUP` named after the system and, inside it, one
-   item per working BO (0.2c step 9); on the item of every BO with a status path switch the kanban on by
-   its status dropdown; every line carries an icon by meaning (0.5d «Icons by meaning»). The «never added
+4. **The menu counts as ASKED** (0.5d). One item per working BO (0.2c step 9). Up to ~5 items → all at
+   the root, no group. More → one menu `GROUP` per theme (the same themes as the BO groups, 0.2 step 1),
+   each holding its items — never one group holding everything. On the item of every BO with a status
+   path switch the kanban on by its status dropdown; every line carries an icon by meaning (0.5d «Icons by
+   meaning»). The «never added
    unasked» of 0.2 step 7a is about a request for single objects.
 5. **A row you do not build needs a reason from this closed list — nothing else is a reason:**
    - a stand id or code is missing (0.2a) — name it, and ask;
@@ -286,13 +292,15 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    виды работ, категории запчастей) → a dictionary (`BO_DICTIONARY`, 0.5b) + `DROPDOWN_SINGLE` `FROM_BO`.
    A catalogue whose rows carry more than a name — a price, a duration (работы, запчасти с ценой) — is a
    plain `BO` with those fields that the lines reference (step 1). A short fixed list owned by one field
-   (способ оплаты: наличные / карта / перевод) → a local list (`FROM_FIELD`, 0.5). A local list's options
-   TRAVEL in the archive; a dictionary's rows do not (0.2d) — it ships empty and is filled by the xlsx
-   after the import. A dropdown never ships with an empty local list.
+   (способ оплаты: наличные / карта / перевод) → a local list (`FROM_FIELD`, 0.5). Both TRAVEL in the
+   archive: a local list's options inside the field, a dictionary's values as its row lines (0.5b). **No
+   dropdown opens empty**: every value the spec names or implies (марки, категории, типы КПП, виды топлива,
+   посты) is shipped — a dictionary with no row lines only when its values are truly the user's own data
+   and the spec gives none, and then the report says «заполнить после импорта».
 6. **A status path?** A record's lifecycle (Новый → В работе → Готов → Выдан) → a `DROPDOWN_SINGLE`
    `status` with a LOCAL list (`FROM_FIELD`) holding the spec's stages as options, its kanban card template
    (0.5c), and in a system build its menu item shows the kanban by it (0.2b step 4). Never a dictionary for
-   statuses: a dictionary ships empty (0.2d), so the board has no columns until someone fills it. A `BO_PROCESS` is for a path someone RUNS figure by figure — forms, a script, a branch
+   statuses: the stages belong to one field, and the local list fixes their order and colours. A `BO_PROCESS` is for a path someone RUNS figure by figure — forms, a script, a branch
    (approval, 0.18). Do not turn every status into a process, and never fake `PROCESS_STATUS` with a
    dropdown.
 7. **A computed value?** (сумма заказа = сумма строк, остаток = сумма − оплачено, дата готовности = приём
@@ -308,7 +316,7 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    widget / the system «Автор» (0.12, 0.13) when the person is simply who created the record.
 9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
    записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
-   table — and NOT dictionaries; those go into one «Справочники» subgroup at the end of the menu group, or
+   table — and NOT dictionaries; those go into one root «Справочники» `GROUP`, last, or
    nowhere (they stay reachable under «Бизнес-объекты»).
 
 ### 0.2d What never travels in an archive
@@ -319,7 +327,7 @@ your own.
 | Spec item | Why the archive cannot carry it | What to do instead |
 |---|---|---|
 | Rights by role («мастер видит только свои заказы») | an `AccessStructDto` names `G-<group id>` of the TARGET stand's groups, and it REPLACES the rights set there (0.9 rule 10) | ask for the group ids (0.2a); without them list the rights matrix in the report as a stand-side step (`MYBPM-UI-API.md` R5) |
-| Dictionary values, initial records | records are an xlsx (0.9 rule 11); arbitrary dictionary rows as `ExportStructInstanceDto` lines are `[U]` (§5, §18) | ship the dictionaries empty; put the values into the report as a table and load them by Part III after the import |
+| Initial records of working BOs (clients, cars, stock) | records are an xlsx (0.9 rule 11); only a dictionary's values travel as row lines (0.5b) | put them into the report as a table and load them by Part III after the import |
 | Reports, dashboards, analytics | operative reports have their own export basket (`menuItemType` `REPORT`, §5e); none was shipped in an archive `[U]` | not built — say so; a registry with its columns, grouping (§2 «BO views») or a kanban covers a simple list report |
 | SMS, telephony, calls, a messenger bot | external services configured on the stand, not structure | not built — say so. Only the link FIELD of a record to Telegram / WhatsApp travels (`messengerFieldCode`, `whatsAppFieldCode`, §2 «BO card tabs») |
 | E-mail / push notifications from a script | the script palette has the actions (§12a «Built-in objects», `alert`); their delivery was never checked `[U]` | build them only if asked and say they are `[U]` |
@@ -562,8 +570,13 @@ The types that need extra keys — every shape `[C]`:
   `"hideLabel": true`, `"tableColToShow": false` and the cell `{"x":0,"y":<y>,"cols":15,"rows":3}` — a
   one-line group heading (0.8a). A heading text **must not repeat any field label of the same BO** — that
   breaks Excel import.
+- `TEXTAREA` / `TEXTAREA_LANG` — **choose the editor toolbar by meaning, unasked**: `params.buttonTypes` is
+  the JSON TEXT of an array of buttons (§3 «Per-type settings»). A comment, a note, a reason, an address,
+  a complaint → `"params": {"buttonTypes": "[]"}` — no buttons at all (a thin empty strip stays) `[C]`. A
+  description a user may format → `"[\"bold\",\"italic\",\"ul\",\"ol\"]"`. No key (the default ten,
+  with tables, links and pictures) only for rich content — a letter, an article, an instruction.
 - `BO` (nested object / reference) — add `"oldRefBoId": "<the target BO's id ON THE STAND>"`,
-  `"viewType": "TABLE"` (or `SINGLE`), `"isHeightDynamic": true`, and
+  `"viewType": "TABLE"` (or `SINGLE`, 3 rows — 0.8), `"isHeightDynamic": true`, and
   `"boRefStruct": {"boInfo": {"code": "<target code>", "name": "<target name>", "boCategory": "BO"}, "fieldRefs": {}}`.
   The target must already exist on the stand and **its id and code must be read off the stand**, never
   guessed — unless this same archive creates it, in which case its `oldId` IS the id (0.2a), or it is the
@@ -614,7 +627,8 @@ The types that need extra keys — every shape `[C]`:
 Cell heights the constructor itself assigns: 3 rows for a one-line input, 4 for other plain fields, **6** for
 `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for
 `STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets: a heading
-needs 3 and a `TAB_GROUP` needs its tallest tab + 3 — write the heights of 0.8a.
+and a `SINGLE` reference need 3, a `TEXTAREA` 6, a `TAB_GROUP` its tallest tab + 3 — write the heights of
+0.8 and 0.8a.
 
 > **Your first read most likely ended near here — the core is only half read.** Still ahead, and every
 > system needs them: links 0.5a (right below), dictionary 0.5b, kanban 0.5c, **menu 0.5d**, ids 0.7, layout
@@ -652,7 +666,7 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
   "boRefStruct": {"boInfo": {"code": "Work_order", "name": "Заказ-наряд", "boCategory": "BO"},
                   "fieldRefs": {"number": {"toShow": true, "orderIndex": 0}},  ← what the chip shows: a Work_order field
                   "linkedFieldCode": "works"},          ← the code of the TABLE on Work_order
-  "gridPosition": {"x": 0, "y": <y>, "cols": 15, "rows": 6} }
+  "gridPosition": {"x": 0, "y": <y>, "cols": 15, "rows": 3} }   ← a SINGLE is one line: 3 rows; it may share a row (0.8)
 ```
 
 - **Every `BO` field carries all three**: `oldRefBoId` (the target), `boRefStruct.boInfo` (the target's
@@ -664,6 +678,10 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
   `linkedFieldCode` is `"history"`. One back field serves only one field.
 - `fieldRefs` keys are field CODES of the TARGET BO; at least one `toShow: true` (0.9 rule 15) — without it
   the reference renders empty.
+- **Columns by meaning, unasked.** A `TABLE` shows **2–5** columns, `orderIndex` 0, 1, 2 …: what the line
+  is (работа, запчасть, автомобиль), then the values a user checks at a glance — количество, цена, сумма,
+  дата, статус. A table of one column is a defect. A `SINGLE` chip shows the name, plus one field that
+  tells two records apart (номер, дата, госномер) when the name alone does not.
 - **Line order**: for a pair that points both ways the order does not matter `[C]` — so mint ALL BO `oldId`s
   from their seeds (0.7) before building any field, and fill both ends from those ids. A builder that
   records ids only as it emits lines writes the header's `TABLE` before its line BO exists → `oldRefBoId: ""`.
@@ -677,7 +695,8 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
 A dictionary is the same two lines of 0.3 + 0.4 with `"category": "BO_DICTIONARY"`, `"gridLayoutPosition":
 null`, `"dictionaryFields": ["CODE","LABEL"]` and these two REQUIRED system fields as the first entries of
 `dynamicFields` (0.9 rule 18 — the importer does not add them and a dictionary without them is broken).
-A dropdown on another BO points at it BY CODE (0.5, the `FROM_BO` shape). Its rows do not travel — 0.2d.
+A dropdown on another BO points at it BY CODE (0.5, the `FROM_BO` shape). Its values travel as row lines —
+«The values» below.
 
 **`dictionaryFields` is a key of EVERY BO, not a dictionary-only key.** The template of 0.4 already
 carries `"dictionaryFields": []` and it stays there on a plain BO, a panel, a composite and a process.
@@ -698,6 +717,35 @@ A dictionary's two system fields — the template of 0.5 with these values, at `
   `"label": {"rus":"Значение","kaz":"Мәні","qaz":"Mani","eng":"Value"}`
 
 Dictionary row codes are **case-sensitive** (`MRP` ≠ `mrp`).
+
+**The values — one `ExportStructInstanceDto` line per row** `[C]`. Ship every value the spec names or
+implies (0.2c step 5); a dictionary without row lines opens every dropdown on it empty. Copy the line,
+change the `←` values, one line per row, minified to ONE line (0.9 rule 3), placed right AFTER the
+dictionary's BO line:
+
+```text
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.ExportStructInstanceDto",
+ "compositeId":"<D>-<R>",                       ← <D> = the dictionary's oldId, <R> = the row id (0.7, seed = dictionary code + row code)
+ "boCode":"Car_brand",                          ← the dictionary's code
+ "kind":"GENERAL",
+ "fieldMap":{
+   "code":{"type":"INPUT_TEXT","storedValue":"toyota","isUnique":true,"showTable":true,"orderIndex":2147483647,"kind":"GENERAL"},      ← the row code (0.6a)
+   "label":{"type":"INPUT_TEXT_LANG","storedValue":"{\"RUS\":\"Toyota\"}","isUnique":false,"showTable":true,"orderIndex":2147483647,"kind":"GENERAL"}}}   ← the text the dropdown shows: a JSON STRING, key RUS in capitals
+```
+
+- The stand keeps `<R>` as the record id `[C]`, the registry shows `code` and `label` as sent, and every
+  `FROM_BO` dropdown on the dictionary lists the row at once. A rollback of the import deletes the rows `[C]`.
+- `sources` is not needed — a row line with no `sources` key, with `[]` and with a `DEFAULT_VALUE` source all
+  land the same `[C]`. Count every row line in `objectCount`.
+- `label.storedValue` is the language map as a JSON TEXT (`"{\"RUS\":\"…\"}"`), not an object; `code.storedValue`
+  a plain string. An extra field of the dictionary goes into `fieldMap` under its code with its own `type` `[I]`.
+- **The dropdown does not keep the file order** `[C]` — the rows come out in the stand's own order; there is
+  no known key that sets it `[U]`.
+- **A dropdown default on a dictionary row does not work** `[C]`: `"defaultValue": "<R>"` on a `FROM_BO`
+  field is stored, but the create form does not preselect it. Do not ship one; a field that needs a preset
+  value gets it from a hook (§5d) or is a local list with its `defaultValue` (0.5).
+- Rows only for a dictionary THIS archive creates. The values of a dictionary already on the stand are
+  records — the xlsx of Part III.
 
 
 ### 0.5c Kanban card template — one per dropdown
@@ -767,7 +815,7 @@ folder (`GROUP`) holding such rows. One line per item; a group and the items ins
 
 (This list-only shape is what the stand EXPORTS for such an item, and it IMPORTS as is `[C]`.)
 
-**A group** (a folder in the sidebar) — always in a system build (0.2b step 4), otherwise when the user wants the items grouped:
+**A group** (a folder in the sidebar) — in a system build of more than ~5 items, one per theme (0.2b step 4); otherwise when the user wants the items grouped:
 
 ```json
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.MenuItemStructDto",
@@ -805,7 +853,7 @@ Rules `[C]`:
   your roots after it (950000), children count inside their parent (10000, 20000 …).
 - `iconName`: **every line gets an icon BY MEANING, without being asked** — the group by the system
   (автосервис → `phosphor:car`), each item by what its records are (клиенты → `phosphor:users`,
-  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), a «Справочники» subgroup and dictionary
+  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), a «Справочники» group and dictionary
   items → `phosphor:book`. Take the name from the table below (or from 0.16) WITH its prefix; never compose
   one from memory — the importer accepts any string and the sidebar shows an EMPTY place for a wrong one.
   Two items of one group should differ. In the report list «item → icon» so the user can change them. The
@@ -883,6 +931,7 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
   | field `newId` | `"field." + BO code + "." + field code` |
   | option `newOptionId` | `"opt." + BO code + "." + field code + "." + option code` |
   | tab `newId` | `"tab." + BO code + "." + tab code` |
+  | dictionary row `<R>` (0.5b) | `"row." + dictionary code + "." + row code` |
 - Which ids must be equal:
   - `BoStructDto.boGroupOldId` **=** `BoGroupStructDto.oldId`;
   - `BoProcessVersionsStructDto.oldId` **=** `BoStructDto.oldId` (processes only);
@@ -896,18 +945,31 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
 ### 0.8 Layout in one rule
 
 The form is a grid **15 columns** wide, and it **compacts vertically** — a hole is eaten and the cells
-below float up. The safe layout, which is what the generator emits and what imports predictably:
+below float up. Lay the form out in ROWS `[C]`:
 
-> Every field: `"x": 0, "cols": 15`. `rows` = **3** for a one-line input (`INPUT_*`, the date and time
-> types, `DROPDOWN_SINGLE`, `CHECKBOX`) and for a one-line `STATIC_TEXT` heading, **4** for `TEXTAREA` /
-> `TEXTAREA_LANG`, **6** for `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` /
-> `PROGRESS_BAR`, **8** for `QUESTIONNAIRE` / `GEO_POINT`, and for a `TAB_GROUP` = its tallest tab + 3
-> (0.8a). The first field starts at `y: 0`, and each next field's `y` = the previous `y` + the previous
-> `rows`. Fields on a tab count `y` from 0 again, separately per tab (0.5 `TAB_GROUP`).
+> A row is one or more cells side by side with the SAME `y` and the SAME `rows`. The first cell has
+> `x: 0`, each next one `x` = the previous `x` + the previous `cols`, and the `cols` of a row sum to
+> **15**. The first row starts at `y: 0`, the next row's `y` = this row's `y` + its `rows`. Fields on a tab
+> count `y` from 0 again, separately per tab (0.5 `TAB_GROUP`).
+>
+> `rows` = **3** for a one-line input (`INPUT_*`, the date and time types, `DROPDOWN_SINGLE`, `CHECKBOX`),
+> a one-line `STATIC_TEXT` heading and a `BO` / `CO` `SINGLE` reference; **6** for `TEXTAREA` /
+> `TEXTAREA_LANG` (4 shows only about two lines of text), a `BO` `TABLE`, `LINK`, `FILE_UPLOAD`, `CHECKLIST`,
+> `RADIO_BUTTON_GROUP`, `PROGRESS_BAR`; **8** for `QUESTIONNAIRE` / `GEO_POINT`; a `TAB_GROUP` = its
+> tallest tab + 3 (0.8a).
 
-That gives one full-width field per row, in order. Only reach for multi-column layouts (`cols: 5`,
-three fields per row) after reading §4 — the compaction rules there are subtle and a wrong `y` silently
-reshuffles the form.
+**Which fields share a row — decide it by meaning, unasked.** Short one-line fields that belong together
+stand 2 per row (`cols` 8 + 7) or 3 per row (5 + 5 + 5): телефон + email, марка + модель + год, дата +
+сумма + оплачено, a `SINGLE` reference + a dropdown. A form whose every field is full width is a defect —
+each box stretches over 1000+ px for a 20-character value. **Full width, alone in the row:** `TEXTAREA` /
+`TEXTAREA_LANG`, a `BO` `TABLE`, a `STATIC_TEXT` heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
+`GEO_POINT`, `PROGRESS_BAR`.
+
+- **Never mix heights inside a row**: a 3-row cell beside a 6-row one leaves a hole under the short cell,
+  and the next row floats up into it (§4 «The grid compacts VERTICALLY»). Pair only cells of equal `rows`.
+- A `CHECKBOX` in a row draws its toggle at the TOP of its cell, a little higher than the neighbouring
+  input boxes — acceptable; §4 «Checkbox alignment» has the fix if the user asks.
+- A row of 2–3 fields wants a wider window: `w: 12` (0.8a step 7).
 
 ### 0.8a Layout that looks right — tabs, groups, the window, the system tab
 
@@ -1013,6 +1075,7 @@ the BO's category. Count it in `objectCount`.
     step 6**: a new BO ships the all-open line printed there, an existing BO its freshly exported line plus
     the `tab_system` rule.
 11. Records (instance data) do NOT go into this archive — they are an xlsx, **Part III** of this document.
+    The one exception is the values of a dictionary this archive creates: they travel as its row lines (0.5b).
 12. A `STATIC_TEXT` heading must not repeat any field label of the same BO (0.5). «Контакты» as a
     heading над полем «Контакты» breaks the Excel import of records (Part III, §19): the header row is
     matched against ALL fields including the headings, and the column becomes ambiguous. Name the
@@ -1056,7 +1119,8 @@ the BO's category. Count it in `objectCount`.
 - [ ] Every line parses on its own (`unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
       Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
       MUST fail — that proves it is JSONL.
-- [ ] `boGroupOldId` == the group's `oldId`.
+- [ ] Every BO's `boGroupOldId` == the `oldId` of a group line of the file; new groups go by theme — a
+      system of more than ~6 BOs has 2–4 group lines (0.2 step 1).
 - [ ] 0.9 rule 15, on EVERY BO including a process: at least one field has `tableColToShow: true`, and every
       `BO` / `CO` field has a `fieldRefs` entry with `toShow: true`. `tools/validate-archive.bun.ts` reports
       both as `ERROR §0.9/15`.
@@ -1068,7 +1132,12 @@ the BO's category. Count it in `objectCount`.
       | grep -oE '"(oldId|newId|newOptionId)":"[^"]{16}"' | sort | uniq -d` prints nothing.
 - [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
       `code`; no widget or native type hides in `dynamicFields`.
-- [ ] The `y` of each field == previous `y` + previous `rows`.
+- [ ] Layout by 0.8: the cells of one row share `y` and `rows`, their `cols` sum to 15 and `x` runs 0, 0 + cols …;
+      the next row's `y` = this `y` + this `rows`; short one-line fields share rows (2–3 per row), full width
+      only for the kinds 0.8 lists; a `BO` `SINGLE` is 3 rows, a `TABLE` 6.
+- [ ] Every `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning (0.5) — `"[]"` for a
+      plain comment or note.
+- [ ] Every `BO` `TABLE` shows 2–5 columns by meaning (`fieldRefs` with `toShow: true`, 0.5a), never one.
 - [ ] `tableColOrderIndex` runs 0, 1, 2… down `dynamicFields` — not `0` on every field (0.5).
 - [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
       `fieldOption`, its `label` a plain string (0.5).
@@ -1114,12 +1183,13 @@ the BO's category. Count it in `objectCount`.
       generic defaults only when the user asked for no icons.
 - [ ] A whole system from a spec (0.2b): every spec item has a row of the coverage table; every row routed
       to an archive line, a hook script or a process IS in the file; every row left out carries a reason from
-      the closed list of 0.2b step 5; the menu group and items are there (0.2b step 4); every header–lines and
+      the closed list of 0.2b step 5; the menu items are there — at the root up to ~5, else one `GROUP` per theme (0.2b step 4); every header–lines and
       parent–child pair is a `SINGLE`↔`TABLE` joined by `linkedFieldCode` (0.2c).
 - [ ] **Omissions — a system build that fails any of these is not done** (0.2b, 0.2c):
       at least one `type: "BO"` field whenever the spec has two objects that refer to each other — no
       «клиент», «поставщик», «заказ» typed as `INPUT_TEXT`; every header has its line BO with the 0.5a pair,
-      not a `TEXTAREA` list; at least one `MenuItemStructDto` line (a `GROUP` + its items); every dictionary
+      not a `TEXTAREA` list; a `MenuItemStructDto` item per working BO, grouped by theme when there are more than ~5 (0.2b step 4); every
+      dictionary whose values the spec names or implies has its row lines (0.5b); every dictionary
       is `BO_DICTIONARY` with `code` + `label`; no `DROPDOWN_SINGLE` with an empty local list and no number,
       sum or date typed as a dropdown; every `DROPDOWN_SINGLE` has its kanban template; every computed
       value of the spec has its hook line or a closed-list reason.
@@ -1141,7 +1211,7 @@ the BO's category. Count it in `objectCount`.
   0.10; «проверено» without the list of checks is not a report.
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
   reason from the closed list / to do after the import.
-- **The steps after the import**: import the archive — analysis first, then apply (0.11 «What the user does with it»), load the dictionary values and records
+- **The steps after the import**: import the archive — analysis first, then apply (0.11 «What the user does with it»), load the initial records
   by xlsx (Part III), set the rights on the stand if no group ids were given (0.2d).
 
 
@@ -2576,6 +2646,10 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 
 - Cell sizes the constructor itself assigns `[C]`: FULL_DATE / PERIOD 15×4; LINK / FILE_UPLOAD / Person
   ref 15×6; one-line inputs 3 rows; nested tables 9 rows; STATIC_TEXT 15×8; dictionary `code`/`label` 15×4.
+- **Cells that fit** `[C]`: a `BO` `SINGLE` reference is one line — 3 rows, no band under it (a chip with a
+  chosen record fits too `[I]`); a `TEXTAREA` of 4 rows shows about two lines of text, a comment wants 6.
+  Rows of 2 and 3 fields (`cols` 8 + 7, 5 + 5 + 5, same `y`, same `rows`) are drawn exactly as written,
+  no overlap; the recipe is 0.8.
 - **Heights that fit their content** `[C]` (one grid row = 30 px): a one-line input needs 3 rows (label +
   box = 58 px; 4 leaves an empty band); a `<h3><b>…</b></h3>` heading with `hideLabel` needs 46 px = 3 rows
   (2 rows scrolls inside the cell); a top-level `TAB_GROUP` draws a box of `rows·30 − 61` px and a tab of
@@ -2643,9 +2717,9 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   read `dynamicFields`. `[C]`
 - Values are `ExportStructInstanceDto` lines, `compositeId` = `<boId>-<instId>`, sources
   `DEFAULT_VALUE{boCode, fieldCode:code}`. The `boId` inside `compositeId`/`oldRefBoId` differs from
-  `BoStructDto.oldId` in real exports — normal. Whether an archive imports ARBITRARY dictionary rows this way
-  (beyond the `DEFAULT_VALUE` / `PROCESS_STATUS` rows it needs) is not known yet `[U]` — §18; fill a dictionary's
-  rows by the records xlsx (Part III, «Код» / «Значение»).
+  `BoStructDto.oldId` in real exports — normal. An archive imports ARBITRARY dictionary rows this way `[C]`,
+  with or without `sources` — the line template and its rules are 0.5b «The values». The rows of a dictionary
+  already on the stand are filled by the records xlsx (Part III, «Код» / «Значение»).
 - **A «Выпадающий список» carries `fieldOptionsStruct`** `[C]` — both kinds round-trip through
   an import exactly as sent. Two kinds:
   - fed by a DICTIONARY — `{"optionSource":"FROM_BO","options":{},"dictionaryBoInfo":{"code":"Dolzh",
@@ -5822,8 +5896,8 @@ here; the rules themselves are §0X.4.
   constructor («Календарь» hover card, «Диаграмма Ганта» columns), export, re-import onto a copy.
 - `[U]` A field added to a built-in BO (Person) through its archive line — check: on a scratch field, export
   Person's structure if the basket offers it, append a field, import, read `load-business-object-by-id`.
-- `[U]` Arbitrary dictionary rows as `ExportStructInstanceDto` lines (not only `DEFAULT_VALUE` / `PROCESS_STATUS`)
-  — check: ship a dictionary with two extra row lines, read its registry.
+- `[U]` A key that sets the order of dictionary rows in a dropdown (0.5b) — check: ship rows with an `orderIndex`
+  at the line level, open the dropdown.
 - `[U]` Whether a re-import UNWIRES a hook it omits / nulls in `workScripts`, or REMOVES a local method it
   drops from `methodScriptIds` — check: re-import so, read `load-bo-scripts` and `list-local-methods`.
 - `[U]` A process's local methods in `methodScriptIds` of `BoProcessVersionsStructDto` — check: create one with
