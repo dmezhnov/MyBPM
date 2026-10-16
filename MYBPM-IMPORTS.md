@@ -146,9 +146,10 @@ Rules, all `[C]`:
 1. **Collect the input**: the display name of the BO, its fields (label + UI type), and its BO group —
    an EXISTING one the user named (§0.2a), or new ones you name yourself. **New groups go by theme**: a
    system of more than ~6 BOs is split into 2–4 groups by meaning (автосервис: «Клиенты и автомобили»,
-   «Заказы и работы», «Склад и закупки», «Справочники»), each group at least 2 BOs; fewer BOs stay in one
+   «Заказы и работы», «Склад и закупки»), each group at least 2 BOs; fewer BOs stay in one
    group named after the system. Each group is its own line of 0.3 with its own `code` (several group lines
-   work, 0.3), and each BO's `boGroupOldId` names the `oldId` of its theme's line.
+   work, 0.3), and each BO's `boGroupOldId` names the `oldId` of its theme's line. A dictionary goes to the
+   theme whose BOs pick from it (марки → «Клиенты и автомобили»), never into a group of all dictionaries.
 2. **Decide the codes** by the naming convention of 0.6a: English, snake_case — `Client_order` for the
    BO, `client_name` for a field, `is_*` for a checkbox, `tabs` / `tab_*` for tabs. At most 30
    characters, shortened by meaning. These are the ONLY values you invent.
@@ -330,8 +331,11 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    widget / the system «Автор» (0.12, 0.13) when the person is simply who created the record.
 9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
    записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
-   table — and NOT dictionaries; those go into one root «Справочники» `GROUP`, last, or
-   nowhere (they stay reachable under «Бизнес-объекты»). A `BO_PROCESS` started by a run way
+   table. A dictionary or a catalogue BO (прайс работ, номенклатура) gets its item in the menu group of the
+   theme whose BOs pick from it, next to them (марки авто → «Клиенты и автомобили», статьи расходов → beside
+   «Оплаты»); one used by several themes goes to the theme it belongs to most, or gets no item (it stays
+   reachable under «Бизнес-объекты»). **Never one group collecting all dictionaries** — group by meaning, not
+   by object kind. A `BO_PROCESS` started by a run way
    (0.18) gets an item only when users need the list of running approvals; otherwise none.
 
 ### 0.2d What never travels in an archive
@@ -868,8 +872,7 @@ Rules `[C]`:
   your roots after it (950000), children count inside their parent (10000, 20000 …).
 - `iconName`: **every line gets an icon BY MEANING, without being asked** — the group by the system
   (автосервис → `phosphor:car`), each item by what its records are (клиенты → `phosphor:users`,
-  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), a «Справочники» group and dictionary
-  items → `phosphor:book`. Take the name from the table below (or from 0.16) WITH its prefix; never compose
+  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), dictionary items → `phosphor:book`. Take the name from the table below (or from 0.16) WITH its prefix; never compose
   one from memory — the importer accepts any string and the sidebar shows an EMPTY place for a wrong one.
   Two items of one group should differ. In the report list «item → icon» so the user can change them. The
   generic defaults `bo-g-draggable` (group), `man-with-company` (BO), `bo-d-draggable` (dictionary) only
