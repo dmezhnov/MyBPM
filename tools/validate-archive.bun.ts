@@ -626,6 +626,9 @@ for (const bo of bos) {
       const pv = f.params?.viewType;
       if (pv === undefined) add("WARN", "0.5", `${ft}: FILE_UPLOAD without params.viewType SINGLE/MULTIPLE/TILE`);
       else if (!["SINGLE", "MULTIPLE", "TILE"].includes(pv)) add("ERROR", "0.5", `${ft}: FILE_UPLOAD params.viewType "${pv}" is not SINGLE/MULTIPLE/TILE`);
+      // 0.19: only «Плиточный» shows a photo in the field; MULTIPLE shows «Прикрепите файл»
+      if (pv !== "TILE" && /фото|снимк|снимок|photo/i.test(`${key} ${f.label?.rus ?? ""}`))
+        add("WARN", "0.19", `${ft}: a photo field with params.viewType ${pv} — TILE shows the pictures, ${pv} only «Прикрепите файл»`);
       const ct = f.params?.contentType;
       if (ct === undefined) add("WARN", "0.5", `${ft}: FILE_UPLOAD without params.contentType ALL/FOR_CAMERA`);
       else if (!["ALL", "IMAGE", "DOCUMENT", "FOR_CAMERA"].includes(ct)) add("ERROR", "0.5", `${ft}: FILE_UPLOAD params.contentType "${ct}" is not ALL/IMAGE/DOCUMENT/FOR_CAMERA`);
@@ -768,6 +771,11 @@ for (const bo of bos) {
   if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && shared === 0 && oneLine >= 6)
     add("WARN", "0.8", `${tag}: ${oneLine} one-line fields, each alone at full width — put short fields that belong together 2–3 per row`);
   // §0.8: a lone short field is the exception — three or more of them is a one-field-per-row form
+  // 0.5b / 0.8: a dictionary's Код and Значение are each alone at x 0, cols 15 — one width
+  if (bo.category === "BO_DICTIONARY") for (const c of ["code", "label"]) {
+    const gp = bo.dynamicFields?.[c]?.gridPosition;
+    if (gp && (gp.x !== 0 || gp.cols !== 15)) add("WARN", "0.5b", `${tag}.${c}: x ${gp.x}, cols ${gp.cols} — a dictionary's Код and Значение are both x 0, cols 15`);
+  }
   if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && loneShort >= 3)
     add("WARN", "0.8", `${tag}: ${loneShort} rows hold one short field each — pair short fields by meaning 2–3 per row; a lone field is the exception, at most 2 per form`);
   // §0.8a steps 2–3: more than 12 visible fields need tabs, more than 8 need tabs or group headings
@@ -775,6 +783,12 @@ for (const bo of bos) {
     const fs = Object.values<any>(bo.dynamicFields ?? {});
     const visible = fs.filter((f) => f && !f.trackedFieldCode && f.type !== "STATIC_TEXT" && f.type !== "TAB_GROUP" && f.tabCodePath?.tabCode !== "tab_system").length;
     const tabs = fs.some((f) => f?.type === "TAB_GROUP" && Object.keys(f.fieldTabs ?? {}).some((t) => t !== "tab_system"));
+    // 0.8a step 3: a tab holds at least 2 fields
+    for (const g of fs.filter((f) => f?.type === "TAB_GROUP"))
+      for (const c of Object.keys(g.fieldTabs ?? {}).filter((c) => c !== "tab_system")) {
+        const n = fs.filter((x) => x?.tabCodePath?.tabCode === c && x.type !== "STATIC_TEXT").length;
+        if (n < 2) add("WARN", "0.8a", `${tag}.${g.code}.${c}: a tab with ${n} field(s) — at least 2, else a group heading`);
+      }
     if (visible > 12 && !tabs) add("WARN", "0.8a", `${tag}: ${visible} visible fields and no tabs — split by meaning into tabs of ≤ 12 fields (also on instanceViewType TAB)`);
     else if (visible > 8 && !tabs && !fs.some((f) => f?.type === "STATIC_TEXT"))
       add("WARN", "0.8a", `${tag}: ${visible} visible fields with no group heading and no tabs — open each theme with a STATIC_TEXT heading`);
@@ -1155,6 +1169,12 @@ menus.forEach(m => {
   if (new Set(on).size !== on.length || on.some(v => !(v >= 1)))
     add("WARN", "0.15", `${tag}: the *Index of the enabled views should be distinct and 1-based, got ${JSON.stringify(on)}`);
 });
+// 0.5d: every group by its own theme, every dictionary by what it lists — one icon on all of them is a template
+for (const [ic, ms] of Map.groupBy(menus.filter((m) => m.menuItemType === "GROUP"), (m) => String(m.iconName)))
+  if (ms.length > 1) add("WARN", "0.5d", `menu ${ms.map((m) => m.menuItemCode).join(", ")}: groups share icon ${ic} — each group by its own theme`);
+for (const sib of Map.groupBy(menus.filter((m) => m.menuItemType !== "GROUP"), (m) => String(m.parentMenuItemCode ?? "")).values())
+  for (const [ic, ms] of Map.groupBy(sib, (m) => String(m.iconName)))
+    if (ms.length >= 3) add("WARN", "0.5d", `menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists`);
 
 // ---------------------------------------------------------------- report
 function report() {

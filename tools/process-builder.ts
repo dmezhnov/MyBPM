@@ -31,6 +31,9 @@
  *                                                       //   {setDate: <path>, plus: 1, unit: "MINUTES"} —
  *                                                       //     <path>.#Значение := Сейчас.увеличить(plus, unit)
  *                                                       //   {updateTrap: <path>} — <path>.#Обновить таймер для процесса
+ *                                                       //   {setOption: <path>, boCode, fieldCode, optionId} —
+ *                                                       //     <path>.#Значение := the option <optionId> (its CODE)
+ *                                                       //     of the DROPDOWN_SINGLE <fieldCode> of BO <boCode>
  *                          | {exit: "<arrow key>"}      // Switch: «… по стрелке»
  *                          | {if: [<path>], then: "<arrow key>", else: "<arrow key>"}}}
  *   A path starts at ЭТОТ_ПРОЦЕСС: its first element is `@<field key>` (a process field of this spec) or a
@@ -44,7 +47,8 @@ export type FigureType = "Enter" | "Exit" | "Switch" | "SingleToParallel" | "Par
   "Script" | "Timer" | "Point" | "Terminator";
 
 /** A statement run before a script's exit. Paths as in `if` (below); `unit` is a DateDeltaUnit (§12 enums). */
-export type ScriptStep = { setDate: string[]; plus: number; unit: string } | { updateTrap: string[] };
+export type ScriptStep = { setDate: string[]; plus: number; unit: string } | { updateTrap: string[] }
+  | { setOption: string[]; boCode: string; fieldCode: string; optionId: string };
 
 export type ScriptSpec = { exit: string; steps?: ScriptStep[] } | { if: string[]; then: string; else: string };
 
@@ -122,6 +126,13 @@ export function scriptBody(spec: ScriptSpec, arrowId: (key: string) => string, f
         actId: "F-updateTrapDate-K-FIX-T-BoiFieldRefCode", type: "ExprAct" }), downBlockId: down, type: "BlockAssign" };
       return id;
     }
+    if ("setOption" in st) {
+      const opt = expr({ exprValueType: "CONST", constType: "SingleSelectRefCode", boCode: st.boCode, fieldCode: st.fieldCode,
+        optionId: st.optionId, valueType: { type: "SingleSelect", baseType: "SingleSelectRefCode", boCode: st.boCode,
+          fieldCode: st.fieldCode }, type: "ExprValue" });
+      blocks[id] = { leftExprId: path(st.setOption, true), rightExprId: opt, downBlockId: down, type: "BlockAssign" };
+      return id;
+    }
     const now = expr({ exprValueType: "CONST", constType: "JavaObjectFactories", objectDescriptor: "BEAN_METHOD-DateExtensions-now",
       valueType: { type: "Object", baseType: "Date" }, type: "ExprValue" });
     const amount = expr({ exprValueType: "CONST", valueType: { baseType: "BigDecimal", type: "Number" }, constType: "BigDecimal",
@@ -149,7 +160,8 @@ export function scriptBody(spec: ScriptSpec, arrowId: (key: string) => string, f
 
 /**
  * The same script in the ARCHIVE's shape (`ScriptDefStructDto`, MYBPM-IMPORTS.md §5d): `type: "BlockExit"`
- * becomes `@class: "…bo.process.block.BlockExitStruct"`, `valueType` becomes `valueTypeStruct`, and the
+ * becomes `@class: "…bo.process.block.BlockExitStruct"`, `valueType` becomes `valueTypeStruct`, an option constant's `optionId` becomes `optionCode` (the importer
+ * drops `optionId`, and the assignment then writes an empty option), and the
  * defaults an export writes are filled in.
  */
 export function toArchiveScript(body: { blocks: Record<string, any>; expressions: Record<string, any> }) {
@@ -161,7 +173,8 @@ export function toArchiveScript(body: { blocks: Record<string, any>; expressions
     blocks[id] = { "@class": `${P}.block.${type}Struct`, ...rest };
   }
   const expressions: Record<string, any> = {};
-  for (const [id, { type, valueType, ...rest }] of Object.entries(body.expressions)) {
+  for (const [id, { type, valueType, optionId, ...rest }] of Object.entries(body.expressions)) {
+    if (optionId !== undefined) rest.optionCode = optionId;
     if (valueType) rest.valueTypeStruct = { isArray: false, ...valueType };
     const defaults = type === "ExprValue"
       ? { isTextMultiline: false, latitude: 0, longitude: 0, methodArgs: {} }

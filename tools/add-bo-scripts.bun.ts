@@ -84,10 +84,12 @@ const work: any = {
   onCloseScriptId: id16(`${boCode}-onClose`), onInstanceCreationId: id16(`${boCode}-onCreate`),
   methodScriptIds: [], fieldScripts: {}, scriptDefIds: [],
 };
-// clipboard form (Part II) → archive form (§5d): `type` → `@class`, `valueType` → `valueTypeStruct`
+// clipboard form (Part II) → archive form (§5d): `type` → `@class`, `valueType` → `valueTypeStruct`, an option
+// constant's `optionId` → `optionCode` (the importer drops `optionId` and the script then writes an empty option)
 const PKG = "kz.greetgo.mybpm.reg.structure.model.bo.process";
 const toStruct = (o: any, kind: "block" | "expr") => {
-  const { type, valueType, ...rest } = o;
+  const { type, valueType, optionId, ...rest } = o;
+  if (optionId !== undefined) rest.optionCode = optionId;
   return { "@class": `${PKG}.${kind}.${type}Struct`, ...rest, ...(valueType ? { valueTypeStruct: { isArray: false, ...valueType } } : {}) };
 };
 const specs = [...defs];
