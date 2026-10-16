@@ -739,8 +739,8 @@ field codes. The two system fields it refers to have the LOWERCASE codes `code` 
 spellings appear, and they are not interchangeable: capitals in `dictionaryFields`, lowercase as the keys
 of `dynamicFields`.
 
-A dictionary's two system fields — the template of 0.5 with these values, at `y: 0` and `y: 4`,
-`cols: 15`, `rows: 4`, `isSystem: true`:
+A dictionary's two system fields — the template of 0.5 with these values, at `y: 0` and `y: 3`,
+`cols: 15`, `rows: 3`, `tableColOrderIndex` 0 and 1, `isSystem: true`:
 
 - `code`: `"type": "INPUT_TEXT"`, `"isUnique": true`, `"isRequired": true`,
   `"label": {"rus":"Код","kaz":"Код","qaz":"Kod","eng":"Code"}`
@@ -1191,12 +1191,9 @@ the BO's category. Count it in `objectCount`.
 - [ ] Every line parses on its own — in JavaScript `jsonl.trimEnd().split("\n").forEach((l) => JSON.parse(l))`
       with `jsonl` = the text of `data-*/0000001.mybpm`. `JSON.parse` of the whole member at once MUST fail —
       that proves it is JSONL.
-- [ ] **Run the form lint below and paste its output into the report.** It prints every layout, toolbar and
-      table defect of 0.5, 0.5a and 0.8 (a run of lone fields included), every form with no tabs or groups, every
-      registry of more than 6 columns, every record window too tall, too short for its form or not narrower
-      than its parent's (0.8a)
-      and every process diagram defect of 0.18 (overlapping labels, bent arrows, long names, no run way) a
-      build most often ships, one line each, and `form lint: OK` when there is
+- [ ] **Run the form lint below and paste its output into the report.** It prints every defect of the hard
+      rules (0.9), the ids (0.7), the templates (0.5–0.5d), the layout (0.8, 0.8a) and the process diagram (0.18)
+      that a check can see — the list is under the function — one line each, and `form lint: OK` when there is
       none; fix every line it prints and run it again. The two `REMINDER` lines are not defects by themselves: each
       one asks whether the spec has a computed value or an approval path that is missing from the file. The prose
       checks below stay mandatory — the lint does not replace them.
@@ -1209,7 +1206,89 @@ the BO's category. Count it in `objectCount`.
 ```js
 function lintArchive(jsonl) { // jsonl = the whole text of data-*/0000001.mybpm
 const L = jsonl.trimEnd().split("\n").map((l) => JSON.parse(l)), out = [];
-const cls = (o) => o["@class"].split(".").pop(), bos = L.filter((o) => cls(o) === "BoStructDto");
+const cls = (o) => String(o["@class"]).split(".").pop(), bos = L.filter((o) => cls(o) === "BoStructDto");
+const ID = /^[A-Za-z0-9@~]{16}$/, CODE = /^[A-Za-z0-9_]{1,30}$/, ids = new Map(), all = (o) => Object.entries(o ?? {});
+const id = (t, v) => !ID.test(String(v)) ? out.push(`${t}: id "${v}" is not 16 chars of A-Za-z0-9@~ (0.7)`)
+  : ids.has(v) ? out.push(`${t}: id ${v} repeats ${ids.get(v)} — one seed per id (0.7)`) : ids.set(v, t);
+L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|access\.AccessStructDto)$/.test(o["@class"])
+  || out.push(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
+const groups = L.filter((o) => cls(o) === "BoGroupStructDto"), order = new Map();
+for (const g of groups) {
+  if (!g.code) out.push(`group «${g.name}»: no code — it renames a fixed stand group (0.9 rule 1)`);
+  if (g.kind !== "MANUAL") out.push(`group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
+  id(`group ${g.code}`, g.oldId); id(`group ${g.code} newId`, g.newId);
+}
+if (bos.length > 6 && groups.length < 2) out.push(`${bos.length} BOs in one group — 2–4 groups by theme (0.2 step 1)`);
+const NOT_DYN = /^(BUTTON|IFRAME|CAPTCHA|SIGNATURE|CURRENT_.*|CREATED_.*|LAST_MODIFIED_.*|OPEN_COUNT|PARTICIPANTS)$/;
+for (const bo of bos) {
+  const b = bo.code, dict = bo.category === "BO_DICTIONARY", df = bo.dynamicFields ?? {}, fs = all(df);
+  if (!CODE.test(b ?? "")) out.push(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+  id(b, bo.oldId);
+  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) out.push(`${b}: boGroupOldId names no group line of the file (0.7)`);
+  const place = `${bo.boGroupOldId} ${bo.orderIndex}`;
+  if (typeof bo.orderIndex !== "number" || order.has(place)) out.push(`${b}: orderIndex ${bo.orderIndex} — a number of its own in its group (0.9 rule 17)`);
+  order.set(place, b);
+  const want = dict ? '["CODE","LABEL"]' : "[]";
+  if (JSON.stringify(bo.dictionaryFields) !== want) out.push(`${b}: dictionaryFields ${JSON.stringify(bo.dictionaryFields)}, must be ${want} (0.5b)`);
+  if (dict) for (const [c, ty] of [["code", "INPUT_TEXT"], ["label", "INPUT_TEXT_LANG"]])
+    if (!(df[c]?.type === ty && df[c].isSystem && df[c].isRequired)) out.push(`${b}: dictionary field ${c} missing or not ${ty} + isSystem + isRequired (0.5b, 0.9 rule 18)`);
+  if (bo.category === "BO_PROCESS" && !(df.PROCESS_STATUS?.type === "BO" && df.PROCESS_STATUS.isSystem && df.PROCESS_STATUS.isRequired))
+    out.push(`${b}: PROCESS_STATUS missing or not type BO + isSystem + isRequired — copy it from 0.18 (0.9 rule 18)`);
+  if (bo.category !== "BO_COMPOSITE" && ![...fs.map(([, f]) => f), ...Object.values(bo.nativeFields ?? {})].some((f) => f.tableColToShow === true))
+    out.push(`${b}: no field has tableColToShow: true — the registry lists nothing (0.9 rule 15)`);
+  for (const m of ["nativeFields", "signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"])
+    for (const [k, w] of all(bo[m])) if (k !== (m === "nativeFields" ? w.nativeFieldId : w.code)) out.push(`${b}.${k}: ${m} key differs from the entry's own code (0.9 rule 5)`);
+  const labels = new Set(fs.filter(([, f]) => f.type !== "STATIC_TEXT").map(([, f]) => String(f.label?.rus).trim().toLowerCase()));
+  const tci = fs.filter(([k]) => k !== "PROCESS_STATUS").map(([, f]) => f.tableColOrderIndex);
+  if (bo.category !== "BO_COMPOSITE" && (tci.some((v) => typeof v !== "number") || new Set(tci).size < tci.length))
+    out.push(`${b}: tableColOrderIndex missing or repeated — 0, 1, 2… on every field (0.5)`);
+  if (fs.some(([, f]) => f.fieldTabs?.tab_system) && !L.some((o) => cls(o) === "AccessStructDto" && o.boCode === b))
+    out.push(`${b}: tab_system without its AccessStructDto «никому» line (0.8a step 6)`);
+  for (const [k, f] of fs) {
+    const t = `${b}.${k}`, op = f.fieldOptionsStruct?.options, bi = f.boRefStruct?.boInfo;
+    if (k !== f.code) out.push(`${t}: key differs from code "${f.code}" (0.9 rule 5)`);
+    if (!CODE.test(k)) out.push(`${t}: field code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+    id(t, f.newId);
+    if (NOT_DYN.test(f.type)) out.push(`${t}: type ${f.type} is a widget or system field — it goes into its own map (0.9 rule 13)`);
+    if (f.isRequired && f.isReadonly) out.push(`${t}: isRequired + isReadonly — the record can never be saved (0.9 rule 9)`);
+    if (f.type === "STATIC_TEXT" && f.tableColToShow) out.push(`${t}: STATIC_TEXT with tableColToShow: true — an empty registry column (0.8a step 2)`);
+    if (f.type === "STATIC_TEXT" && labels.has(String(f.staticValue?.rus).replace(/<[^>]*>/g, "").trim().toLowerCase()))
+      out.push(`${t}: heading repeats a field label — name the section (0.9 rule 12)`);
+    if (op !== undefined && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
+      out.push(`${t}: options — an object keyed by option code, each {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"} (0.5)`);
+    else for (const [c, o] of all(op)) id(`${t}.${c}`, o.newOptionId);
+    if (f.type === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) out.push(`${t}: a local list with no options (0.5)`);
+    if (f.type === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) out.push(`${t}: no kanbanCardTemplates.${k} {"kanbanFields": …} (0.9 rule 16)`);
+    for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
+    if (f.type === "TAB_GROUP" && f.gridPosition) {
+      const tall = Math.max(0, ...fs.filter(([, x]) => x.tabCodePath?.tabGroupCode === k && x.gridPosition).map(([, x]) => x.gridPosition.y + x.gridPosition.rows));
+      const need = tall + (f.tabCodePath?.tabCode ? 2 : 3);
+      if (tall && f.gridPosition.rows !== need) out.push(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
+    }
+    if (f.type !== "BO" && f.type !== "CO") continue;
+    if (!bi?.code) out.push(`${t}: no boRefStruct.boInfo.code (0.5a)`);
+    if (f.oldRefBoId ? !ID.test(f.oldRefBoId) : !["Person", "Department", "PersonGroup"].includes(bi?.code))
+      out.push(`${t}: oldRefBoId "${f.oldRefBoId}" — the target BO's oldId; "" only for Person (0.5a)`);
+    if (bo.category !== "BO_PANEL" && bi?.code !== "Person" && !Object.values(f.boRefStruct?.fieldRefs ?? {}).some((r) => r.toShow))
+      out.push(`${t}: no fieldRefs entry with toShow: true — the reference renders empty (0.9 rule 15)`);
+    const tg = bos.find((x) => x.oldId === f.oldRefBoId);
+    if (f.linkedFieldCode && tg && tg.dynamicFields?.[f.linkedFieldCode]?.linkedFieldCode !== k)
+      out.push(`${t}: linkedFieldCode ${f.linkedFieldCode} — ${tg.code} has no such field naming ${k} back (0.5a)`);
+  }
+}
+const menus = L.filter((o) => cls(o) === "MenuItemStructDto"), mc = new Set();
+for (const m of menus) {
+  const t = `menu ${m.menuItemCode}`, grp = m.menuItemType === "GROUP", bo = bos.find((x) => x.code === m.boCode), kf = m.boPages?.kanbanFieldCode;
+  if (!CODE.test(m.menuItemCode ?? "") || mc.has(m.menuItemCode)) out.push(`${t}: menuItemCode — unique, at most 30 of A-Za-z0-9_ (0.5d)`);
+  mc.add(m.menuItemCode);
+  for (const k of ["menuItemName", "iconName", "orderIndex", "chosenAccessRight", "needCountMenuItem", "isPanel", "needHideInMobApp", "menuItemType"])
+    if (!(k in m)) out.push(`${t}: key ${k} missing — copy the 0.5d line (0.5d)`);
+  for (const k of ["oldId", "newId", "id", "boId", "parentId"]) if (k in m) out.push(`${t}: carries ${k} — a menu line names everything by code (0.9 rule 14)`);
+  for (const k of grp ? ["boPages", "bracketFilter"] : ["boCode", "boName", "boPages", "bracketFilter"])
+    if ((k in m) === grp) out.push(`${t}: ${grp ? "a GROUP line carries" : "a BO line needs"} ${k} (0.9 rule 14)`);
+  if (kf && bo && !(bo.dynamicFields?.[kf]?.type === "DROPDOWN_SINGLE" && bo.kanbanCardTemplates?.[kf]))
+    out.push(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
+}
 const R3 = new Set(["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_PHONE", "INPUT_EMAIL", "INPUT_NUMBER", "TIME", "FULL_DATE",
   "YEAR_AND_MONTH", "YEAR", "DATE", "PERIOD", "PERIOD_TIME", "CHECKBOX", "DROPDOWN_SINGLE"]);
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
@@ -1315,56 +1394,36 @@ return out.length ? out.join("\n") : "form lint: OK";
 }
 ```
 
-- [ ] Every BO's `boGroupOldId` == the `oldId` of a group line of the file; new groups go by theme — a
-      system of more than ~6 BOs has 2–4 group lines (0.2 step 1).
-- [ ] 0.9 rule 15, on EVERY BO including a process: at least one field has `tableColToShow: true`, and every
-      `BO` / `CO` field has a `fieldRefs` entry with `toShow: true`. `tools/validate-archive.bun.ts` reports
-      both as `ERROR §0.9/15`.
-- [ ] 0.9 rule 18: every `BO_PROCESS` has `PROCESS_STATUS` (required, system, with its `CREATED` default and
-      the `DEFAULT_VALUE` line); every `BO_DICTIONARY` has `code` + `label`, both required. The validator
-      reports a missing one as `ERROR §0.9/18`; the generator refuses to build without them.
-- [ ] Every `dynamicFields` key equals its entry's `code`, and every `oldId` / `newId` / `newOptionId` is
-      distinct across the WHOLE file, not only inside one BO (0.7 seeds) — `unzip -p <zip> 'data-*/0000001.mybpm'
-      | grep -oE '"(oldId|newId|newOptionId)":"[^"]{16}"' | sort | uniq -d` prints nothing.
-- [ ] Every `nativeFields` key equals its `nativeFieldId`, and every widget map key equals that widget's
-      `code`; no widget or native type hides in `dynamicFields`.
-- [ ] No two cells of one form share `x`,`y` or overlap (a cell covers `x … x+cols-1` × `y … y+rows-1`): the
-      grid pushes one of them down and the whole form below shifts. `tools/validate-archive.bun.ts` reports it.
-- [ ] Layout by 0.8: the cells of one row share `y` and `rows`, their `cols` sum to 15 and `x` runs 0, 0 + cols …;
-      the next row's `y` = this `y` + this `rows`; short one-line fields share rows (2–3 per row), full width
-      only for the kinds 0.8 lists; a `BO` `SINGLE` is 3 rows, a `TABLE` 6; a short field left alone is
-      `x 0, cols 8`, and no cell of the row below starts at `x` 8 or more (a pair under it is 7 + 8).
-- [ ] Every `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning (0.5) — `"[]"` for a
-      plain comment or note.
-- [ ] Every `BO` `TABLE` shows 2–5 columns by meaning (`fieldRefs` with `toShow: true`, 0.5a), never one.
-- [ ] `tableColOrderIndex` runs 0, 1, 2… down `dynamicFields` — not `0` on every field (0.5).
-- [ ] Every local list is `"options": {…}` — an OBJECT keyed by the option code, each entry wrapped in
-      `fieldOption`, its `label` a plain string (0.5).
-- [ ] Every new code follows 0.6a: English snake_case; objects, groups and menu items `Capitalised`, the
-      rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab; ≤ 30 chars.
-- [ ] Every group line has a `code`: an existing group's code confirmed by the user, or a new code for a
-      group the archive creates (0.2a, 0.3).
+- [ ] **What the lint checks is not repeated here — its output is the proof.** It covers: `@class` packages;
+      group `code` + `MANUAL`; 2–4 groups for more than 6 BOs; every `boGroupOldId` naming a group line; ids
+      16 chars of `A-Za-z0-9@~` and distinct across the WHOLE file (0.7); codes ≤ 30 of `A-Za-z0-9_`; map keys
+      = codes; widget / system types outside `dynamicFields`; `isRequired` + `isReadonly`; `orderIndex` per
+      BO; `dictionaryFields`; a dictionary's `code` + `label`; a process's `PROCESS_STATUS`; a registry
+      column per BO; `tableColOrderIndex` 0, 1, 2… on every field; `options` as a keyed object, never an
+      empty local list; a kanban template per `DROPDOWN_SINGLE`; a heading repeating a field label; a
+      `STATIC_TEXT` registry column; every `BO` / `CO` field's `oldRefBoId`, `boInfo`, `toShow` field and
+      `linkedFieldCode` named back; `TABLE` columns, `TEXTAREA` toolbars; the 0.8 rows, heights, lone fields
+      and floating cells; tabs over 12 fields, headings over 8, registry ≤ 6 columns, `TAB_GROUP` = tallest
+      tab + 3 (nested + 2), `tab_system` with its `AccessStructDto`, the window `h` and a child's `w` (0.8a);
+      menu keys, no ids, `GROUP` / `BO` line keys, `kanbanFieldCode`; the process diagram (0.18).
+      `tools/validate-archive.bun.ts`, if present, checks the same and more.
+- [ ] Every new code follows 0.6a by MEANING: English snake_case; objects, groups and menu items `Capitalised`,
+      the rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab.
+- [ ] Every group code is an existing group's code confirmed by the user, or a new code for a group the
+      archive creates (0.2a, 0.3).
 - [ ] No `oldRefBoId` / dictionary code in the file was invented; every one came from the stand, or is the
-      `oldId` of a BO line of this same archive — earlier OR later in the file; none is `""` (0.2a).
+      `oldId` of a BO line of this same archive — earlier OR later in the file (0.2a).
 - [ ] For a `BO_COMPOSITE`: every `bos[].code` is either a BO line of this archive or a code the user
       gave off the stand, and every `boFieldCodes[].fieldCode` really exists in that source BO —
       a missing field code crashes the import with `INTERNAL_ERROR` (0.2a, §5b).
 - [ ] No id literal was copied out of this document — the sample's ids are `<company-a>`'s (0.2a).
 - [ ] Ids by 0.7 «Which ids»: an amendment keeps every id and code of the given (or your own earlier) archive;
       a build from scratch used a NEW salt, and the report names it.
-- [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.9 rule 12).
-- [ ] 0.8a: more than 12 visible fields → tabs, balanced; themes → `STATIC_TEXT` headings (3 rows,
-      `hideLabel`, `tableColToShow: false`); each `TAB_GROUP` = tallest tab + 3 (nested + 2); system fields
-      on `tab_system` «Системные» with its «никому» rule; `gridLayoutPosition.h` = form rows + 5 (above 28 → tabs or `TAB`), a child
-      dialog's `w` below its parent's; a big document is `instanceViewType: "TAB"` (0.8a step 8).
+- [ ] 0.8a by meaning: tabs split by theme and balanced; system fields on `tab_system` «Системные»; a big
+      document is `instanceViewType: "TAB"` (step 8).
 - [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
       table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
       15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
-- [ ] EVERY entry of `dynamicFields` carries `tableColOrderIndex` — including `STATIC_TEXT`,
-      `TAB_GROUP`, `PROGRESS_BAR`, `QUESTIONNAIRE`, `FILE_UPLOAD` (0.5; exempt: a `BO_COMPOSITE`, and a
-      process's `PROCESS_STATUS` copied from 0.18).
-- [ ] `dictionaryFields` is present on EVERY BO line — `[]` everywhere, `["CODE","LABEL"]` on a
-      dictionary (0.5b).
 - [ ] For every object the request names: if it was NOT said to exist on the stand, it is BUILT in this
       archive (a dictionary for a «из справочника» dropdown, the target BO of a reference) — not degraded to
       text or a local list; if it WAS said to exist, its id / code came from the user (0.2a «Decide FIRST»).
@@ -1375,13 +1434,11 @@ return out.length ? out.join("\n") : "form lint: OK";
       `TAB_GROUP` replaced by `STATIC_TEXT` headings, no `PROCESS_STATUS` faked as a local dropdown
       (0.2a, 0.17). Only a missing stand id or stand code ever justifies a degrade.
 - [ ] Menu lines (0.5d), if any: every `menuItemCode` is NEW to the stand (an existing one is edited in
-      place) unless the user asked to change that very item;
-      every `parentMenuItemCode` is a GROUP line of this archive or a code the
-      user gave off the stand; every `boCode` is a BO line of this archive or a stand code; every
-      `kanbanFieldCode` is a `DROPDOWN_SINGLE` of that BO AND a key of its `kanbanCardTemplates`; no
-      `GROUP` line carries `boPages` or `bracketFilter`; every `iconName` is an icon BY MEANING copied from
-      0.5d «Icons by meaning» or 0.16 WITH its prefix (the importer accepts a wrong name silently) — the
-      generic defaults only when the user asked for no icons.
+      place) unless the user asked to change that very item; every `parentMenuItemCode` is a GROUP line of
+      this archive or a code the user gave off the stand; every `boCode` is a BO line of this archive or a
+      stand code; every `iconName` is an icon BY MEANING copied from 0.5d «Icons by meaning» or 0.16 WITH its
+      prefix (the importer accepts a wrong name silently) — the generic defaults only when the user asked for
+      no icons.
 - [ ] A whole system from a spec (0.2b): every spec item has a row of the coverage table; every row routed
       to an archive line, a hook script or a process IS in the file; every row left out carries a reason from
       the closed list of 0.2b step 5; the menu items are there — at the root up to ~5, else one `GROUP` per theme (0.2b step 4); every header–lines and
@@ -1390,15 +1447,10 @@ return out.length ? out.join("\n") : "form lint: OK";
       at least one `type: "BO"` field whenever the spec has two objects that refer to each other — no
       «клиент», «поставщик», «заказ» typed as `INPUT_TEXT`; every header has its line BO with the 0.5a pair,
       not a `TEXTAREA` list; a `MenuItemStructDto` item per working BO, grouped by theme when there are more than ~5 (0.2b step 4); every
-      dictionary whose values the spec names or implies has its row lines (0.5b); every dictionary
-      is `BO_DICTIONARY` with `code` + `label`; no `DROPDOWN_SINGLE` with an empty local list and no number,
-      sum or date typed as a dropdown; every `DROPDOWN_SINGLE` has its kanban template; every computed
-      value of the spec has its hook line or a closed-list reason.
-- [ ] **References — walk every `type: "BO"` field of the file**: it has `oldRefBoId` (a BO line of this
-      file, `""` for `Person`, or a stand id from the user), `boRefStruct.boInfo` and a `fieldRefs` entry `toShow: true`; its
-      `linkedFieldCode`, if any, is a field of the target BO whose own `linkedFieldCode` names this field
-      back; every child document (payments, records of a stage) that points at a header with a `SINGLE`
-      has the header's `TABLE` back (0.2c step 2).
+      dictionary whose values the spec names or implies has its row lines (0.5b) and is a `BO_DICTIONARY`;
+      no number, sum or date typed as a dropdown; every computed value of the spec has its hook line or a
+      closed-list reason; every child document (payments, records of a stage) that points at a header with a
+      `SINGLE` has the header's `TABLE` back (0.2c step 2).
 
 #### The report — what you tell the user along with the archive
 
