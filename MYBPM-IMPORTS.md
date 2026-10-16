@@ -1205,207 +1205,186 @@ the BO's category. Count it in `objectCount`.
 
 ```js
 function lintArchive(jsonl) { // jsonl = the whole text of data-*/0000001.mybpm
-const L = jsonl.trimEnd().split("\n").map((l) => JSON.parse(l)), out = [];
-const cls = (o) => String(o["@class"]).split(".").pop(), bos = L.filter((o) => cls(o) === "BoStructDto");
-const ID = /^[A-Za-z0-9@~]{16}$/, CODE = /^[A-Za-z0-9_]{1,30}$/, ids = new Map(), all = (o) => Object.entries(o ?? {});
-const id = (t, v) => !ID.test(String(v)) ? out.push(`${t}: id "${v}" is not 16 chars of A-Za-z0-9@~ (0.7)`)
-  : ids.has(v) ? out.push(`${t}: id ${v} repeats ${ids.get(v)} — one seed per id (0.7)`) : ids.set(v, t);
+const L = jsonl.trimEnd().split("\n").map((l) => JSON.parse(l)), out = [], err = (s) => out.push(s);
+const cls = (o) => String(o["@class"]).split(".").pop(), of = (c) => L.filter((o) => cls(o) === c);
+const all = (o) => Object.entries(o ?? {}), vals = (o) => Object.values(o ?? {}), bos = of("BoStructDto");
+const low = (s) => String(s).replace(/<[^>]*>/g, "").trim().toLowerCase(), isRef = (f) => f.type === "BO" || f.type === "CO";
+const ID = /^[A-Za-z0-9@~]{16}$/, CODE = /^[A-Za-z0-9_]{1,30}$/, ids = new Map();
+const id = (t, v) => !ID.test(String(v)) ? err(`${t}: id "${v}" is not 16 of A-Za-z0-9@~ (0.7)`)
+  : ids.has(v) ? err(`${t}: id ${v} repeats ${ids.get(v)} (0.7)`) : ids.set(v, t);
+const W = ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"];
 L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|access\.AccessStructDto)$/.test(o["@class"])
-  || out.push(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
-const groups = L.filter((o) => cls(o) === "BoGroupStructDto"), order = new Map();
+  || err(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
+const groups = of("BoGroupStructDto"), order = new Set();
 for (const g of groups) {
-  if (!g.code) out.push(`group «${g.name}»: no code — it renames a fixed stand group (0.9 rule 1)`);
-  if (g.kind !== "MANUAL") out.push(`group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
+  if (!g.code) err(`group «${g.name}»: no code (0.9 rule 1)`);
+  if (g.kind !== "MANUAL") err(`group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
   id(`group ${g.code}`, g.oldId); id(`group ${g.code} newId`, g.newId);
 }
-if (bos.length > 6 && groups.length < 2) out.push(`${bos.length} BOs in one group — 2–4 groups by theme (0.2 step 1)`);
+if (bos.length > 6 && groups.length < 2) err(`${bos.length} BOs in one group — 2–4 groups by theme (0.2 step 1)`);
 const NOT_DYN = /^(BUTTON|IFRAME|CAPTCHA|SIGNATURE|CURRENT_.*|CREATED_.*|LAST_MODIFIED_.*|OPEN_COUNT|PARTICIPANTS)$/;
+const SYS = { BO_DICTIONARY: [["code", "INPUT_TEXT", "0.5b"], ["label", "INPUT_TEXT_LANG", "0.5b"]], BO_PROCESS: [["PROCESS_STATUS", "BO", "0.18"]] };
 for (const bo of bos) {
-  const b = bo.code, dict = bo.category === "BO_DICTIONARY", df = bo.dynamicFields ?? {}, fs = all(df);
-  if (!CODE.test(b ?? "")) out.push(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+  const b = bo.code, cat = bo.category, df = bo.dynamicFields ?? {}, fs = all(df), place = `${bo.boGroupOldId} ${bo.orderIndex}`;
+  if (!CODE.test(b ?? "")) err(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
   id(b, bo.oldId);
-  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) out.push(`${b}: boGroupOldId names no group line of the file (0.7)`);
-  const place = `${bo.boGroupOldId} ${bo.orderIndex}`;
-  if (typeof bo.orderIndex !== "number" || order.has(place)) out.push(`${b}: orderIndex ${bo.orderIndex} — a number of its own in its group (0.9 rule 17)`);
-  order.set(place, b);
-  const want = dict ? '["CODE","LABEL"]' : "[]";
-  if (JSON.stringify(bo.dictionaryFields) !== want) out.push(`${b}: dictionaryFields ${JSON.stringify(bo.dictionaryFields)}, must be ${want} (0.5b)`);
-  if (dict) for (const [c, ty] of [["code", "INPUT_TEXT"], ["label", "INPUT_TEXT_LANG"]])
-    if (!(df[c]?.type === ty && df[c].isSystem && df[c].isRequired)) out.push(`${b}: dictionary field ${c} missing or not ${ty} + isSystem + isRequired (0.5b, 0.9 rule 18)`);
-  if (bo.category === "BO_PROCESS" && !(df.PROCESS_STATUS?.type === "BO" && df.PROCESS_STATUS.isSystem && df.PROCESS_STATUS.isRequired))
-    out.push(`${b}: PROCESS_STATUS missing or not type BO + isSystem + isRequired — copy it from 0.18 (0.9 rule 18)`);
-  if (bo.category !== "BO_COMPOSITE" && ![...fs.map(([, f]) => f), ...Object.values(bo.nativeFields ?? {})].some((f) => f.tableColToShow === true))
-    out.push(`${b}: no field has tableColToShow: true — the registry lists nothing (0.9 rule 15)`);
-  for (const m of ["nativeFields", "signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"])
-    for (const [k, w] of all(bo[m])) if (k !== (m === "nativeFields" ? w.nativeFieldId : w.code)) out.push(`${b}.${k}: ${m} key differs from the entry's own code (0.9 rule 5)`);
-  const labels = new Set(fs.filter(([, f]) => f.type !== "STATIC_TEXT").map(([, f]) => String(f.label?.rus).trim().toLowerCase()));
+  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) err(`${b}: boGroupOldId names no group line (0.7)`);
+  if (typeof bo.orderIndex !== "number" || order.has(place)) err(`${b}: orderIndex ${bo.orderIndex} — one number per BO in its group (0.9 rule 17)`);
+  order.add(place);
+  const want = cat === "BO_DICTIONARY" ? '["CODE","LABEL"]' : "[]";
+  if (JSON.stringify(bo.dictionaryFields) !== want) err(`${b}: dictionaryFields must be ${want} (0.5b)`);
+  for (const [c, ty, s] of SYS[cat] ?? [])
+    if (!(df[c]?.type === ty && df[c].isSystem && df[c].isRequired)) err(`${b}: ${c} missing or not ${ty} + isSystem + isRequired (${s}, 0.9 rule 18)`);
+  if (cat !== "BO_COMPOSITE" && ![...vals(df), ...vals(bo.nativeFields)].some((f) => f.tableColToShow === true))
+    err(`${b}: no field has tableColToShow: true (0.9 rule 15)`);
+  for (const m of ["nativeFields", ...W]) for (const [k, w] of all(bo[m]))
+    if (k !== (w.code ?? w.nativeFieldId)) err(`${b}.${k}: ${m} key differs from its code (0.9 rule 5)`);
+  const labels = new Set(fs.filter(([, f]) => f.type !== "STATIC_TEXT").map(([, f]) => low(f.label?.rus)));
   const tci = fs.filter(([k]) => k !== "PROCESS_STATUS").map(([, f]) => f.tableColOrderIndex);
-  if (bo.category !== "BO_COMPOSITE" && (tci.some((v) => typeof v !== "number") || new Set(tci).size < tci.length))
-    out.push(`${b}: tableColOrderIndex missing or repeated — 0, 1, 2… on every field (0.5)`);
-  if (fs.some(([, f]) => f.fieldTabs?.tab_system) && !L.some((o) => cls(o) === "AccessStructDto" && o.boCode === b))
-    out.push(`${b}: tab_system without its AccessStructDto «никому» line (0.8a step 6)`);
+  if (cat !== "BO_COMPOSITE" && (tci.some((v) => typeof v !== "number") || new Set(tci).size < tci.length))
+    err(`${b}: tableColOrderIndex missing or repeated — 0, 1, 2… (0.5)`);
+  if (fs.some(([, f]) => f.fieldTabs?.tab_system) && !of("AccessStructDto").some((o) => o.boCode === b))
+    err(`${b}: tab_system without its AccessStructDto line (0.8a step 6)`);
   for (const [k, f] of fs) {
-    const t = `${b}.${k}`, op = f.fieldOptionsStruct?.options, bi = f.boRefStruct?.boInfo;
-    if (k !== f.code) out.push(`${t}: key differs from code "${f.code}" (0.9 rule 5)`);
-    if (!CODE.test(k)) out.push(`${t}: field code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+    const t = `${b}.${k}`, ty = f.type, op = f.fieldOptionsStruct?.options, bi = f.boRefStruct?.boInfo;
+    if (k !== f.code) err(`${t}: key differs from code "${f.code}" (0.9 rule 5)`);
+    if (!CODE.test(k)) err(`${t}: field code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
     id(t, f.newId);
-    if (NOT_DYN.test(f.type)) out.push(`${t}: type ${f.type} is a widget or system field — it goes into its own map (0.9 rule 13)`);
-    if (f.isRequired && f.isReadonly) out.push(`${t}: isRequired + isReadonly — the record can never be saved (0.9 rule 9)`);
-    if (f.type === "STATIC_TEXT" && f.tableColToShow) out.push(`${t}: STATIC_TEXT with tableColToShow: true — an empty registry column (0.8a step 2)`);
-    if (f.type === "STATIC_TEXT" && labels.has(String(f.staticValue?.rus).replace(/<[^>]*>/g, "").trim().toLowerCase()))
-      out.push(`${t}: heading repeats a field label — name the section (0.9 rule 12)`);
+    if (NOT_DYN.test(ty)) err(`${t}: ${ty} is a widget or system field — its own map (0.9 rule 13)`);
+    if (f.isRequired && f.isReadonly) err(`${t}: isRequired + isReadonly — never saves (0.9 rule 9)`);
+    if (ty === "STATIC_TEXT" && f.tableColToShow) err(`${t}: STATIC_TEXT as a registry column (0.8a step 2)`);
+    if (ty === "STATIC_TEXT" && labels.has(low(f.staticValue?.rus))) err(`${t}: heading repeats a field label (0.9 rule 12)`);
     if (op !== undefined && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
-      out.push(`${t}: options — an object keyed by option code, each {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"} (0.5)`);
+      err(`${t}: options — {<code>: {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"}} (0.5)`);
     else for (const [c, o] of all(op)) id(`${t}.${c}`, o.newOptionId);
-    if (f.type === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) out.push(`${t}: a local list with no options (0.5)`);
-    if (f.type === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) out.push(`${t}: no kanbanCardTemplates.${k} {"kanbanFields": …} (0.9 rule 16)`);
+    if (ty === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) err(`${t}: a local list with no options (0.5)`);
+    if (ty === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) err(`${t}: no kanbanCardTemplates.${k}.kanbanFields (0.9 rule 16)`);
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
-    if (f.type === "TAB_GROUP" && f.gridPosition) {
+    if (ty === "TAB_GROUP" && f.gridPosition) {
       const tall = Math.max(0, ...fs.filter(([, x]) => x.tabCodePath?.tabGroupCode === k && x.gridPosition).map(([, x]) => x.gridPosition.y + x.gridPosition.rows));
       const need = tall + (f.tabCodePath?.tabCode ? 2 : 3);
-      if (tall && f.gridPosition.rows !== need) out.push(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
+      if (tall && f.gridPosition.rows !== need) err(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
     }
-    if (f.type !== "BO" && f.type !== "CO") continue;
-    if (!bi?.code) out.push(`${t}: no boRefStruct.boInfo.code (0.5a)`);
+    if (!isRef(f)) continue;
+    if (!bi?.code) err(`${t}: no boRefStruct.boInfo.code (0.5a)`);
     if (f.oldRefBoId ? !ID.test(f.oldRefBoId) : !["Person", "Department", "PersonGroup"].includes(bi?.code))
-      out.push(`${t}: oldRefBoId "${f.oldRefBoId}" — the target BO's oldId; "" only for Person (0.5a)`);
-    if (bo.category !== "BO_PANEL" && bi?.code !== "Person" && !Object.values(f.boRefStruct?.fieldRefs ?? {}).some((r) => r.toShow))
-      out.push(`${t}: no fieldRefs entry with toShow: true — the reference renders empty (0.9 rule 15)`);
+      err(`${t}: oldRefBoId "${f.oldRefBoId}" — the target's oldId, "" only for Person (0.5a)`);
+    if (cat !== "BO_PANEL" && bi?.code !== "Person" && !vals(f.boRefStruct?.fieldRefs).some((r) => r.toShow))
+      err(`${t}: no fieldRefs entry with toShow: true (0.9 rule 15)`);
     const tg = bos.find((x) => x.oldId === f.oldRefBoId);
     if (f.linkedFieldCode && tg && tg.dynamicFields?.[f.linkedFieldCode]?.linkedFieldCode !== k)
-      out.push(`${t}: linkedFieldCode ${f.linkedFieldCode} — ${tg.code} has no such field naming ${k} back (0.5a)`);
+      err(`${t}: linkedFieldCode — ${tg.code}.${f.linkedFieldCode} does not name ${k} back (0.5a)`);
   }
 }
-const menus = L.filter((o) => cls(o) === "MenuItemStructDto"), mc = new Set();
-for (const m of menus) {
+const mc = new Set(), MENU = ["menuItemName", "iconName", "orderIndex", "chosenAccessRight", "needCountMenuItem", "isPanel", "needHideInMobApp", "menuItemType"];
+for (const m of of("MenuItemStructDto")) {
   const t = `menu ${m.menuItemCode}`, grp = m.menuItemType === "GROUP", bo = bos.find((x) => x.code === m.boCode), kf = m.boPages?.kanbanFieldCode;
-  if (!CODE.test(m.menuItemCode ?? "") || mc.has(m.menuItemCode)) out.push(`${t}: menuItemCode — unique, at most 30 of A-Za-z0-9_ (0.5d)`);
+  if (!CODE.test(m.menuItemCode ?? "") || mc.has(m.menuItemCode)) err(`${t}: menuItemCode — unique, at most 30 of A-Za-z0-9_ (0.5d)`);
   mc.add(m.menuItemCode);
-  for (const k of ["menuItemName", "iconName", "orderIndex", "chosenAccessRight", "needCountMenuItem", "isPanel", "needHideInMobApp", "menuItemType"])
-    if (!(k in m)) out.push(`${t}: key ${k} missing — copy the 0.5d line (0.5d)`);
-  for (const k of ["oldId", "newId", "id", "boId", "parentId"]) if (k in m) out.push(`${t}: carries ${k} — a menu line names everything by code (0.9 rule 14)`);
+  for (const k of MENU) if (!(k in m)) err(`${t}: key ${k} missing (0.5d)`);
+  for (const k of ["oldId", "newId", "id", "boId", "parentId"]) if (k in m) err(`${t}: carries ${k} — name by code (0.9 rule 14)`);
   for (const k of grp ? ["boPages", "bracketFilter"] : ["boCode", "boName", "boPages", "bracketFilter"])
-    if ((k in m) === grp) out.push(`${t}: ${grp ? "a GROUP line carries" : "a BO line needs"} ${k} (0.9 rule 14)`);
+    if ((k in m) === grp) err(`${t}: ${grp ? "a GROUP line carries" : "a BO line needs"} ${k} (0.9 rule 14)`);
   if (kf && bo && !(bo.dynamicFields?.[kf]?.type === "DROPDOWN_SINGLE" && bo.kanbanCardTemplates?.[kf]))
-    out.push(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
+    err(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
 }
-const R3 = new Set(["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_PHONE", "INPUT_EMAIL", "INPUT_NUMBER", "TIME", "FULL_DATE",
-  "YEAR_AND_MONTH", "YEAR", "DATE", "PERIOD", "PERIOD_TIME", "CHECKBOX", "DROPDOWN_SINGLE"]);
+const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
-  const forms = new Map(), put = (tab, c) => forms.set(tab, [...(forms.get(tab) ?? []), c]);
-  for (const f of Object.values(bo.dynamicFields ?? {})) {
-    const t = `${bo.code}.${f.code}`, g = f.gridPosition, ref = f.type === "BO" || f.type === "CO";
-    const single = ref && f.viewType === "SINGLE", table = ref && f.viewType === "TABLE", text = /^TEXTAREA/.test(f.type);
-    if (f.archetype !== "DYNAMIC" || !f.kind) out.push(`${t}: archetype / kind missing — every dynamicFields entry has "archetype": "DYNAMIC", "kind": "GENERAL" (0.5)`);
-    if (text && f.params?.buttonTypes === undefined) out.push(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
-    if (table && Object.values(f.boRefStruct?.fieldRefs ?? {}).filter((r) => r.toShow).length < 2)
-      out.push(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
+  const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
+  for (const f of fs) {
+    const t = `${bo.code}.${f.code}`, g = f.gridPosition, text = /^TEXTAREA/.test(f.type);
+    const short = isRef(f) ? f.viewType === "SINGLE" : R3.test(f.type), table = isRef(f) && f.viewType === "TABLE";
+    if (f.archetype !== "DYNAMIC" || !f.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
+    if (text && f.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
+    if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
     if (!g || f.trackedFieldCode || f.code === "PROCESS_STATUS") continue;
-    if ((single || R3.has(f.type)) && g.rows !== 3) out.push(`${t}: rows ${g.rows}, must be 3 (0.8)`);
-    if ((table || text) && g.rows < 6) out.push(`${t}: rows ${g.rows}, must be 6 (0.8)`);
-    put(f.tabCodePath?.tabCode ?? "", { t, g, short: single || R3.has(f.type) });
+    if (short && g.rows !== 3) err(`${t}: rows ${g.rows}, must be 3 (0.8)`);
+    if ((table || text) && g.rows < 6) err(`${t}: rows ${g.rows}, must be 6 (0.8)`);
+    put(f.tabCodePath?.tabCode, { t, g, short });
   }
-  for (const w of ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"].flatMap((m) => Object.values(bo[m] ?? {})))
-    if (w.gridPosition) put(w.tabCode?.tabCode ?? "", { t: `${bo.code}.${w.code}`, g: w.gridPosition, box: true });
-  for (const n of Object.values(bo.nativeFields ?? {}))
-    if (n.gridPosition) put(n.tabCodePath?.tabCode ?? "", { t: `${bo.code}.${n.nativeFieldId}`, g: n.gridPosition, box: true });
+  for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
+    if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
   for (const [tab, cells] of forms) {
     let next = 0, edge = 15, lone = 0;
     for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => a - b)) {
-      const row = cells.filter((c) => c.g.y === y).sort((a, b) => a.g.x - b.g.x);
-      if (y !== next) out.push(`${row[0].t}: y ${y}, expected ${next} (0.8)`);
+      const row = cells.filter((c) => c.g.y === y).sort((a, b) => a.g.x - b.g.x), r = row[0].t;
+      if (y !== next) err(`${r}: y ${y}, expected ${next} (0.8)`);
       let x = 0;
       for (const c of row) {
-        if (c.g.x < x) out.push(`${c.t}: overlaps the cell before it in row y ${y} (0.10)`);
-        if (!c.box && c.g.x >= edge) out.push(`${c.t}: x ${c.g.x} lies in the free columns ${edge}–14 of the row above — it floats up (0.8)`);
+        if (c.g.x < x) err(`${c.t}: overlaps the cell before it in row y ${y} (0.10)`);
+        if (!c.box && c.g.x >= edge) err(`${c.t}: x ${c.g.x} in the free columns ${edge}–14 above — floats up (0.8)`);
         x = Math.max(x, c.g.x + c.g.cols);
       }
-      if (row.length > 1 && x !== 15) out.push(`${row[0].t}: row y ${y} spans ${x} of 15 columns (0.8)`);
-      if (new Set(row.map((c) => c.g.rows)).size > 1) out.push(`${row[0].t}: row y ${y} mixes heights (0.8)`);
-      if (row.length === 1 && row[0].short && row[0].g.cols === 15 && bo.category !== "BO_DICTIONARY")
-        out.push(`${row[0].t}: a short field alone at full width — pair it by meaning or x 0, cols 8 (0.8)`);
-      if (row.length === 1 && row[0].short) lone++;
+      if (row.length > 1 && x !== 15) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
+      if (new Set(row.map((c) => c.g.rows)).size > 1) err(`${r}: row y ${y} mixes heights (0.8)`);
+      if (row.length === 1 && row[0].short) {
+        lone++;
+        if (row[0].g.cols === 15 && bo.category !== "BO_DICTIONARY") err(`${r}: a short field alone at full width — pair it or x 0, cols 8 (0.8)`);
+      }
       next = y + Math.max(...row.map((c) => c.g.rows));
       edge = row.some((c) => c.box) ? 15 : x;
     }
     if (lone >= 3 && bo.category !== "BO_DICTIONARY")
-      out.push(`${bo.code}${tab ? " tab " + tab : ""}: ${lone} rows hold one short field each — pair by meaning 2–3 per row, a lone field at most 2 per form (0.8)`);
+      err(`${bo.code}${tab ? " tab " + tab : ""}: ${lone} rows hold one short field each — 2–3 per row, a lone field at most 2 per form (0.8)`);
   }
   if (bo.category === "BO_DICTIONARY" || bo.category === "BO_PROCESS") continue;
-  const fs = Object.values(bo.dynamicFields ?? {}), seen = fs.filter((f) => !f.trackedFieldCode && f.type !== "STATIC_TEXT"
-    && f.type !== "TAB_GROUP" && f.tabCodePath?.tabCode !== "tab_system").length;
+  const seen = fs.filter((f) => !f.trackedFieldCode && f.type !== "STATIC_TEXT" && f.type !== "TAB_GROUP" && f.tabCodePath?.tabCode !== "tab_system").length;
   const tabs = fs.some((f) => f.type === "TAB_GROUP" && Object.keys(f.fieldTabs ?? {}).some((k) => k !== "tab_system"));
-  if (seen > 12 && !tabs) out.push(`${bo.code}: ${seen} visible fields and no tabs — tabs of ≤ 12 fields by meaning, also on instanceViewType TAB (0.8a step 3)`);
-  else if (seen > 8 && !tabs && !fs.some((f) => f.type === "STATIC_TEXT"))
-    out.push(`${bo.code}: ${seen} visible fields, no group heading and no tabs — a STATIC_TEXT heading per theme (0.8a step 2)`);
   const cols = fs.filter((f) => f.tableColToShow === true).length;
-  if (cols > 6) out.push(`${bo.code}: ${cols} registry columns — tableColToShow: true on the name + at most 5 key values (0.5)`);
+  if (seen > 12 && !tabs) err(`${bo.code}: ${seen} visible fields and no tabs — tabs of ≤ 12 fields, also on instanceViewType TAB (0.8a step 3)`);
+  else if (seen > 8 && !tabs && !fs.some((f) => f.type === "STATIC_TEXT")) err(`${bo.code}: ${seen} visible fields, no heading and no tabs (0.8a step 2)`);
+  if (cols > 6) err(`${bo.code}: ${cols} registry columns — the name + at most 5 (0.5)`);
 }
 for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && b.gridLayoutPosition && /^BO(_PROCESS)?$/.test(b.category))) {
-  const g = bo.gridLayoutPosition, rows = Math.max(0, ...Object.values(bo.dynamicFields ?? {})
-    .filter((f) => f.gridPosition && !f.tabCodePath?.tabCode && !f.trackedFieldCode).map((f) => f.gridPosition.y + f.gridPosition.rows));
-  if (g.h > 28) out.push(`${bo.code}: FORM window h ${g.h} > 28 — tabs (0.8a step 3) or instanceViewType TAB (step 8)`);
-  else if (g.h < rows + 5) out.push(`${bo.code}: FORM window h ${g.h} for ${rows} form rows scrolls — h = ${rows + 5}; over 28 → tabs or TAB (0.8a step 7)`);
-  for (const f of Object.values(bo.dynamicFields ?? {}).filter((f) => f.type === "BO" && f.viewType === "TABLE")) {
-    const c = bos.find((b) => b.oldId === f.oldRefBoId), back = Object.values(c?.dynamicFields ?? {})
-      .some((x) => x.viewType === "TABLE" && x.oldRefBoId === bo.oldId);
-    if (c && !back && c.instanceViewType !== "TAB" && c.gridLayoutPosition?.w >= g.w)
-      out.push(`${bo.code}.${f.code}: child ${c.code} window w ${c.gridLayoutPosition.w} not below ${g.w} — narrower, or TAB (0.8a steps 7–8)`);
+  const g = bo.gridLayoutPosition, fs = vals(bo.dynamicFields);
+  const rows = Math.max(0, ...fs.filter((f) => f.gridPosition && !f.tabCodePath?.tabCode && !f.trackedFieldCode).map((f) => f.gridPosition.y + f.gridPosition.rows));
+  if (g.h > 28) err(`${bo.code}: FORM window h ${g.h} > 28 — tabs or instanceViewType TAB (0.8a steps 3, 8)`);
+  else if (g.h < rows + 5) err(`${bo.code}: FORM window h ${g.h} scrolls ${rows} form rows — h ${rows + 5} (0.8a step 7)`);
+  for (const f of fs.filter((f) => f.type === "BO" && f.viewType === "TABLE")) {
+    const c = bos.find((b) => b.oldId === f.oldRefBoId);
+    if (c && c.instanceViewType !== "TAB" && c.gridLayoutPosition?.w >= g.w && !vals(c.dynamicFields).some((x) => x.viewType === "TABLE" && x.oldRefBoId === bo.oldId))
+      err(`${bo.code}.${f.code}: child ${c.code} window w ${c.gridLayoutPosition.w} ≥ ${g.w} — narrower or TAB (0.8a steps 7–8)`);
   }
 }
 const SZ = { Enter: [30, 30], Exit: [30, 30], Point: [20, 20], Terminator: [40, 40], Script: [80, 50], Timer: [80, 50],
   Form: [100, 50], Switch: [60, 60], SingleToParallel: [39, 64], ParallelToSingle: [39, 64] };
 const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-for (const pv of L.filter((o) => cls(o) === "BoProcessVersionsStructDto")) {
+for (const pv of of("BoProcessVersionsStructDto")) {
   const pc = bos.find((b) => b.oldId === pv.oldId)?.code ?? pv.oldId;
-  for (const v of [pv.workProcess, ...Object.values(pv.processVersions ?? {})].filter(Boolean)) {
-    const F = Object.fromEntries(Object.entries(v.figureStructs ?? {}).map(([id, f]) => {
+  for (const v of [pv.workProcess, ...vals(pv.processVersions)].filter(Boolean)) {
+    const F = Object.fromEntries(all(v.figureStructs).map(([id, f]) => {
       const t = cls(f).replace(/^Figure|Struct$/g, ""), [w, h] = SZ[t] ?? [80, 50];
       return [id, { t, x: f.x, y: f.y, b: [f.x - w / 2, f.y - h / 2, f.x + w / 2, f.y + h / 2] }];
     }));
     const at = (f, s) => s === "main" ? [f.t === "Enter" ? f.b[2] : f.b[0], f.y] : s === "left" ? [f.b[0], f.y]
       : s === "right" ? [f.b[2], f.y] : /^(top|up)$/.test(s) ? [f.x, f.b[1]] : /^(bottom|down)$/.test(s) ? [f.x, f.b[3]] : [f.x, f.y];
     const labs = [];
-    for (const a of Object.values(v.arrows ?? {})) {
+    for (const a of vals(v.arrows)) {
       const st = F[a.startFigureId], fi = F[a.finishFigureId];
       if (!st || !fi) continue;
       const [x1, y1] = at(st, a.startSlotName), [x2, y2] = at(fi, a.finishSlotName), n = [...(a.name ?? "")].length;
-      const t = `${pc} arrow «${a.name ?? ""}»`, pt = st.t === "Point" || fi.t === "Point";
-      if (!pt && x1 !== x2 && y1 !== y2) out.push(`${t}: not straight — both slots on one y or one x (0.18)`);
-      if (n > 12) out.push(`${t}: name longer than 12 characters (0.18)`);
-      if (y1 === y2 && Math.abs(x2 - x1) < 15 * n + 20) out.push(`${t}: gap ${Math.abs(x2 - x1)} px, needs ${15 * n + 20} (0.18)`);
-      if (x1 === x2 && Math.abs(y2 - y1) < 50) out.push(`${t}: vertical gap ${Math.abs(y2 - y1)} px, needs 50 (0.18)`);
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-      if (n) labs.push({ t, b: [mx, my, mx + 7.5 * n, my + 18] });
+      const t = `${pc} arrow «${a.name ?? ""}»`, dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+      if (st.t !== "Point" && fi.t !== "Point" && dx && dy) err(`${t}: not straight — both slots on one y or one x (0.18)`);
+      if (n > 12) err(`${t}: name longer than 12 characters (0.18)`);
+      if (!dy && dx < 15 * n + 20) err(`${t}: gap ${dx} px, needs ${15 * n + 20} (0.18)`);
+      if (!dx && dy < 50) err(`${t}: vertical gap ${dy} px, needs 50 (0.18)`);
+      if (n) labs.push({ t, b: [(x1 + x2) / 2, (y1 + y2) / 2, (x1 + x2) / 2 + 7.5 * n, (y1 + y2) / 2 + 18] });
     }
     for (const [i, l] of labs.entries()) {
-      for (const f of Object.values(F)) if (hit(l.b, f.b)) out.push(`${l.t}: label overlaps a ${f.t} figure (0.18)`);
-      for (const m of labs.slice(i + 1)) if (hit(l.b, m.b)) out.push(`${l.t}: label overlaps ${m.t} (0.18)`);
-      if (l.b[2] > 1200) out.push(`${l.t}: label ends at x ${Math.round(l.b[2])}, beyond 1200 (0.18)`);
+      for (const f of vals(F)) if (hit(l.b, f.b)) err(`${l.t}: label overlaps a ${f.t} figure (0.18)`);
+      for (const m of labs.slice(i + 1)) if (hit(l.b, m.b)) err(`${l.t}: label overlaps ${m.t} (0.18)`);
+      if (l.b[2] > 1200) err(`${l.t}: label ends at x ${Math.round(l.b[2])}, beyond 1200 (0.18)`);
     }
-    if (!Object.keys(v.runWayMap ?? {}).length) out.push(`${pc}: empty runWayMap — nothing starts the process from its document (0.18)`);
+    if (!all(v.runWayMap).length) err(`${pc}: empty runWayMap — nothing starts the process (0.18)`);
   }
 }
-if (!L.some((o) => cls(o) === "ScriptDefStructDto"))
-  out.push("REMINDER no script line: every computed value and total of the spec is a hook (0.2c step 7) or a reason from 0.2b step 5");
-if (!bos.some((b) => b.category === "BO_PROCESS"))
-  out.push("REMINDER no process: an approval path of the spec is a BO_PROCESS (0.18) or a reason from 0.2b step 5");
+if (!of("ScriptDefStructDto").length) err("REMINDER no script line: every computed value and total of the spec is a hook (0.2c step 7) or a reason from 0.2b step 5");
+if (!bos.some((b) => b.category === "BO_PROCESS")) err("REMINDER no process: an approval path of the spec is a BO_PROCESS (0.18) or a reason from 0.2b step 5");
 return out.length ? out.join("\n") : "form lint: OK";
 }
 ```
 
-- [ ] **What the lint checks is not repeated here — its output is the proof.** It covers: `@class` packages;
-      group `code` + `MANUAL`; 2–4 groups for more than 6 BOs; every `boGroupOldId` naming a group line; ids
-      16 chars of `A-Za-z0-9@~` and distinct across the WHOLE file (0.7); codes ≤ 30 of `A-Za-z0-9_`; map keys
-      = codes; widget / system types outside `dynamicFields`; `isRequired` + `isReadonly`; `orderIndex` per
-      BO; `dictionaryFields`; a dictionary's `code` + `label`; a process's `PROCESS_STATUS`; a registry
-      column per BO; `tableColOrderIndex` 0, 1, 2… on every field; `options` as a keyed object, never an
-      empty local list; a kanban template per `DROPDOWN_SINGLE`; a heading repeating a field label; a
-      `STATIC_TEXT` registry column; every `BO` / `CO` field's `oldRefBoId`, `boInfo`, `toShow` field and
-      `linkedFieldCode` named back; `TABLE` columns, `TEXTAREA` toolbars; the 0.8 rows, heights, lone fields
-      and floating cells; tabs over 12 fields, headings over 8, registry ≤ 6 columns, `TAB_GROUP` = tallest
-      tab + 3 (nested + 2), `tab_system` with its `AccessStructDto`, the window `h` and a child's `w` (0.8a);
-      menu keys, no ids, `GROUP` / `BO` line keys, `kanbanFieldCode`; the process diagram (0.18).
+- [ ] **What the lint checks is not repeated here — its output is the proof**; the function itself is the list.
       `tools/validate-archive.bun.ts`, if present, checks the same and more.
 - [ ] Every new code follows 0.6a by MEANING: English snake_case; objects, groups and menu items `Capitalised`,
       the rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab.
