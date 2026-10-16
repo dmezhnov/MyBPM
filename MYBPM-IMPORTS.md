@@ -28,7 +28,8 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    - [ ] a `BO_DICTIONARY` line per open reference list; statuses and short fixed lists as LOCAL dropdowns — **0.5b**, 0.2c;
    - [ ] one kanban card template per `DROPDOWN_SINGLE` of a BO — **0.5c**;
    - [ ] the sidebar menu: a `GROUP` per theme + one item per user JOB (0.2c step 9), kanban on the status dropdown, every line
-     with an icon BY MEANING (`phosphor:car`, `phosphor:wrench` …), never the generic default — **0.5d**, 0.2b step 4;
+     with an icon BY ITS OWN MEANING — each group by its theme, each dictionary by what it lists, no two
+     `GROUP` lines and no three siblings with one icon, never the generic default — **0.5d**, 0.2b step 4;
    - [ ] ids: what the given archive (or your own earlier archive of this chat) already holds keeps its ids and
      codes; everything new is hashed from a seed per object kind + this build's salt, distinct across the file — **0.7**;
    - [ ] the layout (tabs over 12 fields, `y` chain, window size) — **0.8a**;
@@ -38,6 +39,9 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15, and at most 2 such per form — every field alone at cols 8 is still «one per row»; a build script takes the rows as lists of field codes, never one field per row (0.8);
    - over 12 visible fields → tabs (also on a `TAB` record), over 8 → tabs or group headings; the registry shows the name + at most 5 key values, never every field (0.8a, 0.5);
    - **every** `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning, `"[]"` for a comment (0.5);
+   - a photo field is `params.viewType: "TILE"` (0.19); a dictionary's «Код» and «Значение» are both `x 0, cols 15` (0.5b);
+   - a tab holds at least 2 fields and is named by ITS content — never the same «Общее / Технические данные / Финансы»
+     copied onto every BO (0.8a step 3);
    - every computed value / total of the spec is a hook script and every approval path a process, **built in
      the same archive** — or its own «not built» row with a reason from the closed list of 0.2b step 5, never a
      blanket «это пока структурная основа» (0.2b step 6, 0.2c step 7, 0.18);
@@ -276,8 +280,8 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 4. **The menu counts as ASKED** (0.5d). One item per user job (0.2c step 9). Up to ~5 items → all at
    the root, no group. More → one menu `GROUP` per theme (the same themes as the BO groups, 0.2 step 1),
    each holding its items — never one group holding everything. On the item of every BO with a status
-   path switch the kanban on by its status dropdown; every line carries an icon by meaning (0.5d «Icons by
-   meaning»). The «never added
+   path switch the kanban on by its status dropdown; every line carries an icon by ITS OWN meaning — every group a different one, every dictionary by what it
+   lists (0.5d «Icons by meaning»). The «never added
    unasked» of 0.2 step 7a is about a request for single objects.
 5. **A row you do not build needs a reason from this closed list — nothing else is a reason:**
    - a stand id or code is missing (0.2a) — name it, and ask;
@@ -333,8 +337,9 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    + срок) → a plain field (`INPUT_NUMBER`, `DATE` …) plus the owner BO's `afterSaveScriptId` hook that
    fills it (§5d «Generated bodies on every trigger», the body by 0S). A total over lines: `BlockForeach`
    over the header's `TABLE` `.#Значение`, read each line's number with the two hops, add it to a
-   variable, assign the variable to the header's field (0S.7 «A nested table», «Writing a field»). Every
-   step is `[C]`; the whole sum hook as one recipe is `[I]`. It recomputes when the HEADER is saved; a line
+   variable, assign the variable to the header's field (0S.7 «A nested table», «Writing a field»). The whole
+   sum hook is `[C]` and READY — §5d «A ready sum hook»: copy it, rename the five field codes; it also
+   writes each line's own sum (часы × цена) in the same loop, and an empty number reads as 0 `[C]`. It recomputes when the HEADER is saved; a line
    edited in its own card does not run the header's hook `[I]`.
 8. **A responsible person?** (мастер, менеджер, автор записи) → a `BO` field to the built-in `Person` (§6
    «Person reference»): `"oldRefBoId": ""`, `boInfo {code:"Person", name:"Пользователи", boCategory:"BO"}`
@@ -345,7 +350,7 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    поставщики, заказы поставщикам) usually has one. NONE for the line BOs — they are edited inside the
    header's table — and none for a service BO nobody opens by hand. SEVERAL when another view or another
    filter serves a different job of the spec: «Мои заказы» (records I created), «Заказы в работе» (status
-   = a value), «Запись на сервис» as a calendar beside the list — each its own item with its own name, view
+   = a value), «Запись на сервис» as a calendar beside the list (its BO `isCalendarEnabled: true`, §2 «BO views») — each its own item with its own name, view
    and `bracketFilter` (0.15 «One BO, several items»). Never add an item to reach a quota, never one per
    view the BO merely supports. A dictionary or a catalogue BO (прайс работ, номенклатура) gets its item in the menu group of the
    theme whose BOs pick from it, next to them (марки авто → «Клиенты и автомобили», статьи расходов → beside
@@ -593,7 +598,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Вкладки | `TAB_GROUP` | `fieldTabs` |
 | Карта | `GEO_POINT` | — |
 | Ссылка | `LINK` | — |
-| Загрузка файла | `FILE_UPLOAD` | `params.viewType` SINGLE/MULTIPLE/TILE + `params.contentType` ALL/FOR_CAMERA (also IMAGE/DOCUMENT; mobile app only, below) |
+| Загрузка файла | `FILE_UPLOAD` | `params.viewType` SINGLE/MULTIPLE/TILE + `params.contentType` ALL/FOR_CAMERA (also IMAGE/DOCUMENT; mobile app only, below); **a field for photos (фото, снимки, photo) → `params.viewType: "TILE"`** — MULTIPLE shows only «Прикрепите файл», no pictures (0.19) |
 | Email / Телефон | `INPUT_EMAIL` / `INPUT_PHONE` | — |
 | Мультиязычное текстовое поле | `INPUT_TEXT_LANG` | — |
 | Мультиязычный текстовый блок | `TEXTAREA_LANG` | — (the value may be HTML, below) |
@@ -889,9 +894,14 @@ Rules `[C]`:
   `parentMenuItemCode`: a `GROUP` line of this archive, or a group code given by the user — never guessed.
 - Put the `GROUP` line BEFORE its children. `orderIndex`: the built-in root «Системные» is 60000 — put
   your roots after it (950000), children count inside their parent (10000, 20000 …).
-- `iconName`: **every line gets an icon BY MEANING, without being asked** — the group by the system
-  (автосервис → `phosphor:car`), each item by what its records are (клиенты → `phosphor:users`,
-  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), dictionary items → `phosphor:book`. Take the name from the table below (or from 0.16) WITH its prefix; never compose
+- `iconName`: **every line gets an icon BY MEANING, without being asked** — each group by ITS OWN theme
+  (Клиенты и авто → `phosphor:users`, Работы → `phosphor:wrench`, Склад → `phosphor:package`), never the one icon
+  of the whole system on every group; each item by what its records are (клиенты → `phosphor:users`,
+  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`); each dictionary by what it LISTS (марки →
+  `phosphor:car`, посты/боксы → `phosphor:buildings`, виды топлива → `phosphor:gas-pump`, причины отказа →
+  `phosphor:warning`, единицы → `phosphor:ruler`), `phosphor:book` only when nothing in the table fits.
+  **Two `GROUP` lines never share an icon, and three or more siblings with one icon is a defect** (the lint of
+  0.10 reports both). Take the name from the table below (or from 0.16) WITH its prefix; never compose
   one from memory — the importer accepts any string and the sidebar shows an EMPTY place for a wrong one.
   Two items of one group should differ. In the report list «item → icon» so the user can change them. The
   generic defaults `bo-g-draggable` (group), `man-with-company` (BO), `bo-d-draggable` (dictionary) only
@@ -1018,6 +1028,9 @@ below float up. Lay the form out in ROWS `[C]`:
 > `RADIO_BUTTON_GROUP`, `PROGRESS_BAR`; **8** for `QUESTIONNAIRE` / `GEO_POINT`; a `TAB_GROUP` = its
 > tallest tab + 3, + 5 on `instanceViewType: "TAB"` (0.8a).
 
+A dictionary's two system fields «Код» and «Значение» are the exception to everything below: each alone
+in its row at `x 0, cols 15` (0.5b), so the two boxes have one width — never «Код» at cols 8 under a cols-15 «Значение».
+
 **Which fields share a row — decide it by meaning, unasked.** Short one-line fields that belong together
 stand 2 per row (`cols` 8 + 7) or 3 per row (5 + 5 + 5): телефон + email, марка + модель + год, дата +
 сумма + оплачено, a `SINGLE` reference + a dropdown. A form whose every field is full width is a defect —
@@ -1077,7 +1090,9 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    form. Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
    and **balance the tabs**: the group is as tall as its TALLEST tab `[C]`, so a short tab shows an empty
    band under its fields. Keep the name field (and what a user scans first) outside the tabs, above the
-   group, or on the first, default tab. Tab codes `tab_*`, group code `tabs` (0.6a).
+   group, or on the first, default tab. Tab codes `tab_*`, group code `tabs` (0.6a). **A tab holds at least
+   2 fields** — one field is a group heading's job, not a tab's; and **name each tab by what IT holds** on
+   THIS BO («Работы», «Запчасти», «Оплаты»), never one label set copied onto every BO.
 4. **Nested tabs — rarely.** Only when ONE tab still holds more than 12 visible fields AND at least
    3 groups: turn its groups into the tabs of a second `TAB_GROUP` placed on that tab (its own
    `tabCodePath`; its tabs are drawn as a vertical list on the left). Otherwise use groups (step 2).
@@ -1216,7 +1231,8 @@ the BO's category. Count it in `objectCount`.
       none; fix every line it prints and run it again. A `REMINDER` line is not a defect by itself: it names ONE
       field that looks computed (итого, остаток, резерв, баланс, к оплате) while its BO has no hook script with a
       body, or looks like an approval (согласовано, утверждено) while no process of the file has a script that
-      writes a field (`BlockAssign`). Answer each BY NAME in the report —
+      writes a field (`BlockAssign`), or a BO of visits (запись, визит, приём) has a `FULL_DATE` and no calendar.
+      Such fields in a file with NO script and NO process at all is a defect line, not a REMINDER. Answer each BY NAME in the report —
       «built» (the hook / process you added) or «вводится вручную, потому что …»; a task that needs no script or
       process stays without one. The prose
       checks below stay mandatory — the lint does not replace them.
@@ -1292,6 +1308,12 @@ for (const bo of bos) {
       const need = tall + (f.tabCodePath?.tabCode ? 2 : bo.instanceViewType === "TAB" ? 6 : 3);
       if (tall && f.gridPosition.rows !== need) err(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
     }
+    for (const c of Object.keys(f.fieldTabs ?? {}).filter((c) => c !== "tab_system")) {
+      const n = fs.filter(([, x]) => x.tabCodePath?.tabCode === c && x.type !== "STATIC_TEXT").length;
+      if (n < 2) err(`${t}.${c}: a tab with ${n} field(s) — at least 2, else a heading (0.8a step 3)`);
+    }
+    if (ty === "FILE_UPLOAD" && /фото|снимк|снимок|photo/i.test(`${k} ${f.label?.rus}`) && f.params?.viewType !== "TILE") err(`${t}: a photo field without params.viewType TILE shows no pictures (0.19)`);
+    if (cat === "BO_DICTIONARY" && (k === "code" || k === "label") && f.gridPosition && (f.gridPosition.x !== 0 || f.gridPosition.cols !== 15)) err(`${t}: a dictionary's Код / Значение — x 0, cols 15 each, one width (0.5b, 0.8)`);
     if (!isRef(f)) continue;
     if (!bi?.code) err(`${t}: no boRefStruct.boInfo.code (0.5a)`);
     if (k !== "PROCESS_STATUS" && bi?.boCategory === "BO_DICTIONARY") err(`${t}: dictionary ${bi.code} as a BO reference draws a «Выберите» link — DROPDOWN_SINGLE FROM_BO (0.5)`);
@@ -1316,6 +1338,11 @@ for (const m of of("MenuItemStructDto")) {
   if (kf && bo && !(bo.dynamicFields?.[kf]?.type === "DROPDOWN_SINGLE" && bo.kanbanCardTemplates?.[kf]))
     err(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
 }
+const by = (a, f) => a.reduce((m, x) => ((m[f(x)] ??= []).push(x), m), {});
+const menu = of("MenuItemStructDto"), icon = (ms) => Object.entries(by(ms, (m) => m.iconName ?? ""));
+for (const [ic, ms] of icon(menu.filter((m) => m.menuItemType === "GROUP"))) if (ms.length > 1) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: groups share icon ${ic} — each group by its own theme (0.5d)`);
+for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
+  for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
 const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
@@ -1370,6 +1397,9 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   else if (seen > 8 && !tabs && !fs.some((f) => f.type === "STATIC_TEXT")) err(`${bo.code}: ${seen} visible fields, no heading and no tabs (0.8a step 2)`);
   if (cols > 6) err(`${bo.code}: ${cols} registry columns — the name + at most 5 (0.5)`);
 }
+const tl = by(bos.flatMap((bo) => vals(bo.dynamicFields).filter((f) => f.type === "TAB_GROUP")
+  .flatMap((f) => vals(f.fieldTabs).filter((x) => x.code !== "tab_system" && !x.isDefault).map((x) => ({ bo: bo.code, k: low(x.label?.rus) })))), (s) => s.k);
+for (const [k, s] of Object.entries(tl)) if (k && new Set(s.map((x) => x.bo)).size >= 3) err(`${[...new Set(s.map((x) => x.bo))].join(", ")}: tab «${k}» copied onto every BO — name each tab by what it holds (0.8a step 3)`);
 for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && /^BO(_PROCESS|_DICTIONARY)?$/.test(b.category))) {
   const g = bo.gridLayoutPosition, fs = vals(bo.dynamicFields);
   if (!g) { err(`${bo.code}: no gridLayoutPosition — the record opens at 90 % × 90 % of the screen (0.8a step 7)`); continue; }
@@ -1438,6 +1468,11 @@ for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f
   if (noProcess && /^(CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) && /согласован|утвержд/i.test(l))
     err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
 }
+for (const bo of bos.filter((b) => b.category === "BO" && !b.isCalendarEnabled && /запис|визит|встреч|при[её]м|брон/i.test(b.name?.rus ?? "")))
+  if (vals(bo.dynamicFields).some((f) => f.type === "FULL_DATE")) err(`REMINDER ${bo.code} «${bo.name.rus}»: visits with a date and time but no calendar — isCalendarEnabled + a calendar menu item (§2 «BO views»), or report why not`);
+const asks = out.filter((s) => /^REMINDER .* (looks computed|looks like an approval)/.test(s)).length;
+if (asks && !of("ScriptDefStructDto").length && !of("BoProcessVersionsStructDto").length)
+  err(`${asks} fields look computed or like an approval and the file has NO script and NO process — a blanket «пока не реализовано» is no reason (0.2b step 5): the ready sum hook (§5d «A ready sum hook»), the writing Script (0.18)`);
 return out.length ? out.join("\n") : "form lint: OK";
 }
 ```
@@ -2212,6 +2247,36 @@ Script on the «Да» branch before its Exit that sets the document to «Сог
 body (the lint of 0.10 flags it). The report names, step by step, what each Script / Form changes; a process whose
 steps change nothing is reported as not built.
 
+**A writing Script, literally** `[C]` — put a Script figure on the «Да» branch (Enter → Form → Switch → «Да» Script
+→ Exit, «Нет» → Exit; the skeleton's `<fScript>` before the Switch goes) and give it this body: it sets the
+target's status dropdown `status` to its option `approved` — `ЭТОТ_ПРОЦЕСС.request.status.#Значение = <option>`.
+The write lands in the record at once, without `#Сохранить` and without anyone saving the card.
+
+```text
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.ScriptDefStructDto","compositeId":"<V>-<fScript>",
+ "blocks":{"<b1>":{"@class":"…block.BlockFixEntryPointStruct","x":40,"y":40,"downBlockId":"<b2>"},
+           "<b2>":{"@class":"…block.BlockAssignStruct","leftExprId":"<e4>","rightExprId":"<e5>","downBlockId":"<b3>"},
+           "<b3>":{"@class":"…block.BlockExitStruct","exitType":"FROM_METHOD"}},
+ "expressions":{
+   "<e1>":{"@class":"…expr.ExprValueStruct","exprValueType":"THIS_PROCESS","constType":"BoiRefCode","isTextMultiline":false,"latitude":0,"longitude":0,"methodArgs":{}},
+   "<e2>":{"@class":"…expr.ExprActStruct","leftExprId":"<e1>","actId":"F-request-K-DYN-S-boi_fields","canWriteValue":false},
+   "<e3>":{"@class":"…expr.ExprActStruct","leftExprId":"<e2>","actId":"F-status-K-DYN-S-boi_fields","canWriteValue":false},
+   "<e4>":{"@class":"…expr.ExprActStruct","leftExprId":"<e3>","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","canWriteValue":false},
+   "<e5>":{"@class":"…expr.ExprValueStruct","exprValueType":"CONST","constType":"SingleSelectRefCode",
+           "boCode":"Request","fieldCode":"status","optionCode":"approved",                       ← the option CODE; never optionId here
+           "valueTypeStruct":{"isArray":false,"type":"SingleSelect","baseType":"SingleSelectRefCode","boCode":"Request","fieldCode":"status"},
+           "isTextMultiline":false,"latitude":0,"longitude":0,"methodArgs":{}}}}
+```
+
+The same shape writes any field: `<e5>` becomes a number, a text or a date constant (§11, 0S.7). A Switch that
+the arrow «Да» leaves needs its `<aYes>` to finish on `<fScript>` and a new arrow `<fScript>` → `<fYes>`.
+
+**A save hook on the target BO that writes a field releases the Form at once** `[C]`: an `ON_INSTANCE_CREATE`
+process starts asynchronously after the record's first save, and the target's own `afterSave` write (a total,
+0.2c step 7) counts as a save of the Form's record — the Switch then reads an unticked checkbox and goes «Нет»
+before anyone opened the card. When the target has such a hook, start the approval by `ON_FIELD_CHANGE` of the
+approval checkbox or of the status (§5c «`runWayMap`»), or drop the Form (Enter → Switch → Script → Exit).
+
 ---
 
 ### 0.19 The rarer field types — their extra keys `[C]`
@@ -2240,7 +2305,8 @@ The core template of 0.5 plus these keys; the type table of 0.5 says which type 
   (`FOR_CAMERA` = «только фото с камеры»). The constructor's «Отображение» radio (Одиночный /
   Множественный / Плиточный) lives in **`params.viewType`** (`MYBPM-UI-API.md` §5i «FILE_UPLOAD display
   mode»). **A photo shows in the field without downloading only with «Плиточный»** (not
-  «Множественный»). «Плиточный» = `params.viewType: "TILE"` `[C]`
+  «Множественный») — so **every field meant for photos (label or code says фото / снимок / photo) gets
+  `params.viewType: "TILE"`, unasked**; the lint of 0.10 flags one without it. «Плиточный» = `params.viewType: "TILE"` `[C]`
   (the top-level `viewType` does not matter). In both «Множественный» and «Плиточный» a script sees the field's value as `File[]` `[C]`;
   a script-written PNG shows as a tile thumbnail on the card.
   **«Поведение для MP» = `params.contentType`** `[C]`: the enum is `ALL` / `IMAGE` /
@@ -2492,7 +2558,7 @@ The registry views «Календарь», «Карта», «Группиров�
 
 | key | where | what it does |
 |---|---|---|
-| `isCalendarEnabled` | BO | «Календарь» in the registry's view chooser; events on the date fields (`needShowToCalendar`, §3) |
+| `isCalendarEnabled` | BO | «Календарь» in the registry's view chooser; events on the date fields (`needShowToCalendar`, §3). **Unasked on a BO of visits / appointments / bookings** (запись, визит, встреча, приём, бронь) with a `FULL_DATE`: `true`, plus a calendar menu item beside its list (0.15 «One BO, several items»); the lint of 0.10 reminds of it |
 | `isMapEnabled` | BO | «Карта» — one marker per record at its `GEO_POINT` value; the marker popup shows the KANBAN card fields |
 | `isGroupingEnabled` | BO | «Группировка» — see the warning below |
 | `groupingInfo` | each field | `{"nodeTreeActive": true, "nodeTreeLevel": 0}` = a tree level (a `BO`/`CO` field with `viewType` `SINGLE`/`MULTIPLE`), `{"colToShow": true, "colOrderIndex": 0, "nodeTreeActive": false}` = a column; `{}` = not used |
@@ -3225,6 +3291,7 @@ that field is the only link between them. An export of one process carries 7 obj
   reads `isWork: true, isTest: true` — it runs on test (DEV) AND ordinary records `[C]`.
 - **Re-importing the same process code adds a NEW version** `[C]`: version 2 came in as
   `isWork+isTest`, version 1 dropped to `isWork:false, isTest:false`. The BO itself is updated in place.
+  Records started on version 1 STAY on it — they keep running the old scripts; only new records take the new version.
 - **Scripts of Script / Switch figures** — one `ScriptDefStructDto` per figure, `compositeId =
   "<version id>-<figure id>"`, the same string repeated in `workProcess.scriptsDefIds`. For `workProcess`
   the version id is any id you mint — it only ties the lines together (the stand re-keys it, see above).
@@ -3533,6 +3600,66 @@ translate `{"success":true}`. The runtime result is §15 «When each hook runs»
 - `'' ◊ <an empty field>` gives `""`, not `"null"`; a `TEXTAREA` drops the trailing space of an appended `"; "`.
 - The same bodies written WITHOUT an archive (`save-bo-scripts` + `paste` +
   `apply-update-cmd`, `MYBPM-UI-API.md` §5g) run identically.
+
+#### A ready sum hook — a header total over its lines `[C]`
+
+The `afterSave` hook of a header `Work_order` whose `TABLE` `works` points at the line BO `Order_work`
+(`hours`, `hour_price`, `line_total` — all `INPUT_NUMBER`) and whose `works_total` is the total:
+
+```text
+Пусть #сумма# = 0
+ЦИКЛ #строка# : ЭТА ИНСТАНЦИЯ.works.#Значение
+    #строка#.line_total.#Значение = #строка#.hours.#Значение ∙ #строка#.hour_price.#Значение
+    #сумма# = #сумма# + #строка#.line_total.#Значение
+ЭТА ИНСТАНЦИЯ.works_total.#Значение = #сумма#
+```
+
+Saving a header with two lines (2 h × 6000, 1 h × 10000) writes 12000 and 10000 into the lines and 22000 into
+the header — the lines' writes land without `#Сохранить`; an empty number reads as 0. Literally, with
+`<H>` = the scripts-version id you mint and `<A>` = the bare `afterSaveScriptId` (§5d «Two id shapes»):
+
+```text
+{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.ScriptDefStructDto","compositeId":"<H>-<A>",
+ "blocks":{
+  "<b1>":{"@class":"…block.BlockExitStruct","exitType":"FROM_METHOD"},
+  "<b2>":{"@class":"…block.BlockAssignStruct","leftExprId":"<e23>","rightExprId":"<e24>","downBlockId":"<b1>"},
+  "<b3>":{"@class":"…block.BlockForeachStruct","elementVarName":"#строка#","srcExprId":"<e3>","downBlockId":"<b2>","bodyBlockId":"<b6>"},
+  "<b4>":{"@class":"…block.BlockNewVarStruct","varName":"#сумма#","valueExprId":"<e4>","downBlockId":"<b3>"},
+  "<b5>":{"@class":"…block.BlockAssignStruct","leftExprId":"<e5>","rightExprId":"<e10>"},
+  "<b6>":{"@class":"…block.BlockAssignStruct","leftExprId":"<e13>","rightExprId":"<e20>","downBlockId":"<b5>"},
+  "<b7>":{"@class":"…block.BlockFixEntryPointStruct","x":30,"y":40,"downBlockId":"<b4>"}},
+ "expressions":{
+  "<e1>":{"@class":"…expr.ExprValueStruct","exprValueType":"THIS_PROCESS","constType":"BoiRefCode"},
+  "<e2>":{"@class":"…expr.ExprActStruct","leftExprId":"<e1>","actId":"F-works-K-DYN-S-boi_fields"},
+  "<e3>":{"@class":"…expr.ExprActStruct","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","leftExprId":"<e2>"},
+  "<e4>":{"@class":"…expr.ExprValueStruct","exprValueType":"CONST","constType":"BigDecimal","value":"0","valueTypeStruct":{"isArray":false,"type":"Number","baseType":"BigDecimal"}},
+  "<e5>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b4>"},
+  "<e6>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b4>"},
+  "<e7>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b3>"},
+  "<e8>":{"@class":"…expr.ExprActStruct","leftExprId":"<e7>","actId":"F-line_total-K-DYN-S-boi_fields"},
+  "<e9>":{"@class":"…expr.ExprActStruct","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","leftExprId":"<e8>"},
+  "<e10>":{"@class":"…expr.ExprOpStruct","opType":"Plus","leftExprId":"<e6>","rightExprId":"<e9>"},
+  "<e11>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b3>"},
+  "<e12>":{"@class":"…expr.ExprActStruct","leftExprId":"<e11>","actId":"F-line_total-K-DYN-S-boi_fields"},
+  "<e13>":{"@class":"…expr.ExprActStruct","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","leftExprId":"<e12>"},
+  "<e14>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b3>"},
+  "<e15>":{"@class":"…expr.ExprActStruct","leftExprId":"<e14>","actId":"F-hours-K-DYN-S-boi_fields"},
+  "<e16>":{"@class":"…expr.ExprActStruct","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","leftExprId":"<e15>"},
+  "<e17>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b3>"},
+  "<e18>":{"@class":"…expr.ExprActStruct","leftExprId":"<e17>","actId":"F-hour_price-K-DYN-S-boi_fields"},
+  "<e19>":{"@class":"…expr.ExprActStruct","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","leftExprId":"<e18>"},
+  "<e20>":{"@class":"…expr.ExprOpStruct","opType":"Mul","leftExprId":"<e16>","rightExprId":"<e19>"},
+  "<e21>":{"@class":"…expr.ExprValueStruct","exprValueType":"THIS_PROCESS","constType":"BoiRefCode"},
+  "<e22>":{"@class":"…expr.ExprActStruct","leftExprId":"<e21>","actId":"F-works_total-K-DYN-S-boi_fields"},
+  "<e23>":{"@class":"…expr.ExprActStruct","actId":"F-VALUE-K-DYN-R-D-S-boi_fields","leftExprId":"<e22>"},
+  "<e24>":{"@class":"…expr.ExprValueStruct","exprValueType":"VAR_REF","varBlockId":"<b4>"}}}
+```
+
+Write `…` out in full (`kz.greetgo.mybpm.reg.structure.model.bo.process.`). Wire it: the header's
+`BoScriptVersionsStructDto` gets `"afterSaveScriptId":"<A>"` and `"scriptDefIds":["<H>-<A>"]` (the other
+three hook ids minted, bodiless). Rename the five codes inside the `actId`s together with the fields — a
+`DYN` act embeds the FIELD CODE (below «A body is NOT portable»). A total of several tables: one loop per
+table into the same variable. `ЭТА ИНСТАНЦИЯ` is `THIS_PROCESS` — on a hook it means the saved record.
 
 #### Company-global methods — `CompanyGlobalMethodsStructDto` `[C]`
 
@@ -4191,7 +4318,11 @@ a given BO without `boiId` (IDE `БО/<name>.<пусто>`; note `valueType.base
 ```
 A BO **type** (`BoRefCode` — the left operand of create-instance and of `findByFilter`); a concrete
 **record / dictionary row** (`BoiRefCode` — `boiId` comes from the user); a **SingleSelect option**
-(`optionId` is the option CODE, not its label; an option cannot be stored in a variable).
+(an option cannot be stored in a variable). **The key differs by form** `[C]`: in an ARCHIVE
+(`ScriptDefStructDto`, §5d) it is **`optionCode` = the option's CODE**, and an `optionId` there is dropped
+silently — the script translates and then writes an EMPTY option; in the clipboard / on the stand
+(`load-script-def`, `apply-update-cmd`) it is `optionId` = the option's stand id (`v2/script/load-bo-field-options`)
+— whether a clipboard paste also takes the code is `[U]`.
 
 ```json
 {"exprValueType":"VAR_REF","varBlockId":"<BlockNewVar | BlockForeach | parameter id>","type":"ExprValue"}
@@ -4721,8 +4852,9 @@ Not a reference to a dictionary — in a card it renders as a chip that looks li
               "boCode":"Operator","fieldCode":"operator_type"}}
 ```
 
-`boCode` = the BO owning the field; **`optionId` = the option CODE given at creation** (the UI shows
-labels). An option **cannot be held in a local variable** — carry a numeric code instead `[I]`.
+`boCode` = the BO owning the field; **in an archive the key is `optionCode` = the option CODE given at
+creation; on the stand / clipboard it is `optionId` = the option's stand id** `[C]` (an archive `optionId` is
+dropped silently and the assignment writes an empty option). An option **cannot be held in a local variable** — carry a numeric code instead `[I]`.
 
 ### Dictionary search
 
@@ -4797,7 +4929,7 @@ These 17 are all the values there are.
 | Дата/время | `CONST` `Date` | `value` (format not captured `[U]`) |
 | Гео-координаты | `CONST` `GeoPoint` | `latitude`, `longitude`, `geoPointShowType` (`DEGREES_PARTS`/`DEGREES_MIN_SEC`) |
 | Бизнес-объект (тип) / (экземпляр) | `CONST` `BoRefCode` / `BoiRefCode` | `boCode` / `boCode`+`boiId` |
-| Одиночный выбор | `CONST` `SingleSelectRefCode` | `boCode`, `fieldCode`, `optionId` |
+| Одиночный выбор | `CONST` `SingleSelectRefCode` | `boCode`, `fieldCode`, `optionId` (stand id; in an archive `optionCode` = the code) |
 | **Перечисление** | `CONST` `Enum` | **`enumBaseType`, `enumValue`**; `valueType:{type:"EnumRef",baseType:<enum>,enumNativeName:<enum>}` |
 | **Встроенные объекты** | `CONST` `JavaObjectFactories` | **`objectDescriptor`** (table below); `valueType:{type:"Object",baseType:<class>}` |
 | Метод скрипта | `CONST` `ScriptMethodRef` | `value` (for a timer / a confirm-form button) |
