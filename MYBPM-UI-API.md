@@ -452,6 +452,10 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The
    import's errors look empty); an analyzer crash is not an error
    record but `load-import-data` → `status:"INTERNAL_ERROR"` + a Java stack in `error`; and errors raised
    only while APPLYING never reach either — they are in the apply process (trap 57).
+   **A process's `PROCESS_STATUS` field reported «В системе не найден бизнес объект, на который ссылается
+   поле»** = the company has never had a process, so the «Статус процесса» dictionary does not exist yet:
+   cancel, create any process with `create-bo {boGroupId, boCategory:"BO_PROCESS"}` (R2), delete it with
+   `delete-business-object` — the dictionary stays — and import again (§5f) `[C]`.
 5. `save-import-description` — `P {"importId":…,"value":"что и зачем импортируем"}` → empty body.
    The description is **required**: applying without it gives status `DESCRIPTION_ERROR`.
 6. `POST /web/v2/process-indicator/pre-create-process` — `P {}` → `"<processId>"`.
@@ -1895,6 +1899,9 @@ editor route, TWO controllers and a versioned diagram.
   `isWork` — and `load-dev-bo-process-id` now returns it (the editable, DEV-record version).
   `in-work-bo-process-version` is the same for «в работу». What each exports and imports
   as: `MYBPM-IMPORTS.md` §5c (work → `workProcess`, test → `processVersions.<id>`, the rest not exported).
+  **A process made in the constructor has only a TEST version, and a test version runs — by hand and by its
+  run ways — only for test (DEV) records** `[C]`: publish it with `in-work-bo-process-version` (UI «в работу»)
+  before ordinary records start it. An imported `workProcess` is already the work version.
 - **Run ways — WHEN the process starts** (`process_run_way_settings`, a button of the process BO's
   editor) — the `bo-process-editor2` draft family, all `[C]`:
   `create-draft {boProcessId}` → a draftId; `load-draft-data {draftId}` → `{runWayMap: {…}}`
@@ -1986,6 +1993,17 @@ always with the required `PROCESS_STATUS` (`MYBPM-IMPORTS.md` 0.9 rule 18; `--pr
 only overrides its minted ids) (shape in `MYBPM-IMPORTS.md` §5c); the UI route and
 `tools/api-import-structure.bun.ts` both apply it with zero analysis errors, and the diagram comes back
 identical (`validate-def` clean).
+
+- **The import needs the «Статус процесса» dictionary to exist in the company** `[C]`: it appears with the
+  company's FIRST process created in the constructor, never by import. On a company that has never had a
+  process the analysis reports the process's `PROCESS_STATUS` field: «В системе не найден бизнес объект, на
+  который ссылается поле» (required BO code `PROCESS_STATUS`; `v2/business-objects/load-bo-id-by-code
+  {code:"PROCESS_STATUS"}` answers «No bo with code»). Cancel that import, create any process
+  (`create-bo {boGroupId, boCategory:"BO_PROCESS"}`, R1, or `tools/create-process-constructor.bun.ts`), delete it
+  with `delete-business-object` — the dictionary stays, five rows `CREATED` / `EXECUTING` / `WAITING` /
+  `FINISHED` / `FINISHED_WITH_ERROR` — and import again: zero errors `[C]`. The process's `defaultValue` may
+  keep the archive's minted row id instead of the stand's `CREATED` id; its records still save and the engine
+  sets the status `[C]` (`MYBPM-IMPORTS.md` §5c).
 
 - **An imported version is `isWork: true` — «Версия: 1 (Опубликованный)»**, while a version created in
   the constructor is `isTest: true` / «Версия: 1 (Тест)» `[C]`. The import publishes the process.
@@ -2123,9 +2141,13 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
 - **Arrow name** — double-click the arrow → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
-  **A figure has no caption of its own — an arrow `name` is the only text on a diagram** `[C]`: name the
-  arrow entering each Form / Script / Switch / Timer with what the step does; that label is how a person
-  finds the step. When explaining an existing process, walk `arrows` from the Enter and describe only the
+  **A Form shows its reference field's label inside the figure, a Timer its date field's label; no other
+  figure has a caption — the rest of the text is arrow names** `[C]`: name the arrow entering each Form /
+  Script / Switch / Timer with what the step does; that label is how a person finds the step. An arrow label
+  is 14 px text (≈ 7.5 px per character) whose top-left corner sits at the midpoint of the straight line
+  between the two slots; it never wraps, except that a label crossing the visible editor's right edge folds
+  into one word per line. A diagram that reads: one left-to-right row, straight arrows, names ≤ 12 characters,
+  ≥ 15 px per character + 20 between facing slots, ≤ 1200 px wide (`MYBPM-IMPORTS.md` 0.18) `[C]`. When explaining an existing process, walk `arrows` from the Enter and describe only the
   figures reachable from it: **a figure no arrow leads to never runs**, even though its script is stored
   and exported — mention it only as «не подключена, не выполняется». A person sees neither figure ids nor
   x/y, and arrow names repeat or are empty, so point to a step by the process (`name` + `code`), its
