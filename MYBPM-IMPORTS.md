@@ -71,6 +71,10 @@ Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the 
 - **Part III — records (instances) as Excel** (§0X cookbook, §19–§20): the xlsx that carries the ROWS of a
   business object. A structure archive never carries records, and an xlsx never carries structure.
 
+**Read your cookbook (§0, §0S or §0X), not the whole file.** The reference sections behind them are opened by
+pointer only, and the biggest say at their top when: §2 (export inventory), §12a (the script palette — a lookup
+table), §19 (Excel evidence).
+
 This document says how to BUILD the three files. Loading them into a stand (its API and screens) is the
 other document, `MYBPM-UI-API.md`, or the user does it. **Tools are optional**: everything here can be done
 by hand from the text alone; the repository's `tools/*.bun.ts` (generator, validator), if present, apply the
@@ -2281,6 +2285,9 @@ archive aimed at another stand (0.2a).
 
 ## 1. Zip layout and parsing
 
+**§1–§8 are the reference behind §0 — open one only when a §0 step names it or your case is not in §0.** A build
+from a spec reads §0 and nothing else of Part I.
+
 - File name `MyBPM-export-<tenant>-v<build>-<YYYY-MM-DDTHH-MM-SS>.mybpm.zip` (timestamp ALMT). The outer
   name is free on import. `[C]`
 - Members: `data-<ts>/0000001.mybpm` and `data-<ts>/metadata.mybpm` (= `objectCount-N`). The inner
@@ -2315,6 +2322,10 @@ archive aimed at another stand (0.2a).
   duplicating.
 
 ## 2. What an export actually contains
+
+**Read this section only when** you start from the user's export, or the spec asks for a BO-level setting (card
+tabs, calendar / map / grouping views, sidebar place, company settings, exposed services) — jump to its
+subheading. A build from a spec skips it.
 
 - **Only the objects selected at export time.** A one-BO export holds that BO alone. A tool scanning a folder
   of exports must pick the newest archive that actually contains the wanted BO. `[C]`
@@ -3842,7 +3853,8 @@ semantics of the built-in actions, and the business-process specifics.
 
 **If your task is «write me a script», read §0S and nothing else.** It is the script counterpart of §0:
 complete literal templates of every block and expression, the `actId` catalogue, the rules that break a
-script silently, a whole worked example and a self-check list. §§9–16 are the reference material behind it.
+script silently, a whole worked example and a self-check list. §§9–16 are the reference material behind it;
+§12a is a lookup table, opened only for a name 0S does not print.
 
 ---
 
@@ -4682,6 +4694,9 @@ a variable" needs one IF per field, and a dictionary whose code is computed at r
 enumerated (§15).
 
 ## 12a. The whole palette — read off the stand's own catalogue API `[C]`
+
+**A lookup table, never read top to bottom:** open it only when a script needs an action, function or object
+that 0S.5–0S.8 do not show, and jump to its subheading («Searching records», «Built-in objects» …).
 
 The IDE builds every list it shows from six calls of `v2/script` (`MYBPM-UI-API.md` §5g «The catalogue
 calls»). **This section is the complete language; anything not here does not exist.**
@@ -6311,6 +6326,9 @@ The user loads it: registry kebab → «импорт/экспорт xlsx». The 
 Emptying a `DATE` is not possible from a cell (19.6) — it is a record-API write, `MYBPM-UI-API.md` §6a.
 
 ## 19. The Excel format — evidence
+
+**Read this section only when** an xlsx import failed or your case is not in §0X — §0X holds every rule a build
+needs.
 
 ### 19.1 Sheet format `[C]` unless noted
 
