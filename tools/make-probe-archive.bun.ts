@@ -642,7 +642,7 @@ const DICTIONARY_FIELDS = {
     x: 0,
     y: 0,
     cols: 15,
-    rows: 4,
+    rows: 3,
     isUnique: true,
     isRequired: true,
     isSystem: true,
@@ -653,9 +653,10 @@ const DICTIONARY_FIELDS = {
     labelAll: { rus: "Значение", kaz: "Мәні", qaz: "Mani", eng: "Value" },
     type: "INPUT_TEXT_LANG",
     x: 0,
-    y: 4,
+    y: 3,
     cols: 15,
-    rows: 4,
+    rows: 3,
+    tableColOrderIndex: 1,
     isRequired: true,
     isSystem: true,
   }),
@@ -923,15 +924,17 @@ function addTrackStatus(dateCode: string, y: number) {
  * with not one registry column and a selector showing nothing). So here the field IS a registry column (a BO
  * reference is safe under the search-index sort defect, 0.14) and shows the spec's `show` fields of its target.
  */
-let processCol = 0;
 for (const f of PROCESS_SPEC?.fields ?? []) {
   if ((f.type ?? "BO") !== "BO") continue; // e.g. a Timer's FULL_DATE: an ordinary field, left as generated
   if (!f.show?.length) throw new Error(`--process-spec: field «${f.label}» needs show: [<field codes of ${f.refBoCode}>] — a reference must display at least one field of its target (MYBPM-IMPORTS.md 0.9 rule 15)`);
   const df: any = dynamicFields[codeOf(f.label)];
-  Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: true, tableColOrderIndex: processCol++ });
+  Object.assign(df, { viewType: "SINGLE", isKindAddForSelect: false, tableColToShow: true, tableColOrderIndex: 0 });
   df.boRefStruct.fieldRefs = Object.fromEntries(f.show.map((c, i) => [c, { toShow: true, orderIndex: i }]));
   delete df.isHeightDynamic;
 }
+// the reference fields above restarted the counter at 0 — renumber so no two fields share a registry place (0.5)
+let tableCol = 0;
+for (const f of Object.values<any>(dynamicFields)) if (typeof f.tableColOrderIndex === "number") f.tableColOrderIndex = tableCol++;
 
 /**
  * Every process gets the system field `PROCESS_STATUS` (MYBPM-IMPORTS.md 0.9 rule 18) — the BO-reference
