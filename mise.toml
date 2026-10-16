@@ -58,7 +58,7 @@ if (!lintSrc) { console.error("MYBPM-IMPORTS.md: no lintArchive block"); process
 await $`rm -rf dist/lint-test && bun tools/make-probe-archive.bun.ts --group-code Lint_group --group-name Lint --group-order 1 --code Lint_dict --name Lint --category BO_DICTIONARY --salt lint --bo-order 1 --out dist/lint-test`.quiet();
 const zipFile = [...new Bun.Glob("dist/lint-test/*.zip").scanSync()][0];
 const payload = unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("0000001.mybpm"))!;
-const lint = new Function(`${lintSrc}\nreturn lintArchive;`)()(new TextDecoder().decode(payload.data));
+const lint = new Function(`${lintSrc}\nreturn lintArchive;`)()(new TextDecoder().decode(payload.data), await Bun.file("MYBPM-IMPORTS.md").text());
 const defects = lint.split("\n").filter((l: string) => l !== "form lint: OK" && !l.startsWith("REMINDER"));
 if (defects.length) { console.error(`lintArchive on a generated dictionary:\n${defects.join("\n")}`); process.exit(1); }
 console.log("all tests passed");

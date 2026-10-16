@@ -1175,6 +1175,51 @@ for (const [ic, ms] of Map.groupBy(menus.filter((m) => m.menuItemType === "GROUP
 for (const sib of Map.groupBy(menus.filter((m) => m.menuItemType !== "GROUP"), (m) => String(m.parentMenuItemCode ?? "")).values())
   for (const [ic, ms] of Map.groupBy(sib, (m) => String(m.iconName)))
     if (ms.length >= 3) add("WARN", "0.5d", `menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists`);
+for (const g of menus.filter((m) => m.menuItemType === "GROUP"))
+  for (const c of menus.filter((m) => m.parentMenuItemCode === g.menuItemCode && m.iconName === g.iconName))
+    add("WARN", "0.5d", `menu ${g.menuItemCode}: group icon ${g.iconName} repeats its item ${c.menuItemCode} — the group by its theme, the item by its records`);
+// 0.5d / 0.8a: a BO with a status opens its kanban by it, and shows it in the header row, not inside a tab
+for (const bo of bos) {
+  const st = bo.dynamicFields?.status;
+  if (st?.type !== "DROPDOWN_SINGLE") continue;
+  if (st.tabCodePath?.tabCode) add("WARN", "0.8a", `BO ${bo.code}: status sits on tab ${st.tabCodePath.tabCode} — the header row beside the title field`);
+  const kb = menus.filter((m) => m.boCode === bo.code && m.boPages?.isKanbanEnabled && m.boPages?.kanbanFieldCode);
+  if (kb.length && !kb.some((m) => m.boPages.kanbanFieldCode === "status"))
+    add("WARN", "0.5d", `menu ${kb.map((m) => m.menuItemCode).join(", ")}: the kanban of ${bo.code} opens by ${kb[0].boPages.kanbanFieldCode} while the BO has a status — kanbanFieldCode status`);
+}
+// 0.10 REMINDER: a number field that looks computed and that NO script writes (per field, not «the BO has a hook»)
+{
+  const vals = (o: any) => Object.values(o ?? {}) as any[], low = (s: any) => String(s ?? "").toLowerCase();
+  const defs = objs.filter((o) => cls(o) === "ScriptDefStructDto"), owner = new Map<string, string>(), written = new Set<string>();
+  for (const v of objs.filter((o) => cls(o) === "BoScriptVersionsStructDto")) for (const c of v.workScripts?.scriptDefIds ?? []) owner.set(c, v.ownerBoInfo?.code);
+  const pvs = objs.filter((o) => cls(o) === "BoProcessVersionsStructDto");
+  for (const pv of pvs) for (const v of [pv.workProcess, ...vals(pv.processVersions)]) for (const c of v?.scriptsDefIds ?? []) owner.set(c, bos.find((b) => b.oldId === pv.oldId)?.code);
+  for (const s of defs) {
+    const X = s.expressions ?? {}, B = s.blocks ?? {}, fld = (e: any) => /^F-(\w+)-K-/.exec(e?.actId ?? "")?.[1];
+    const boOf = (e: any, d = 0): string | undefined => {
+      if (!e || d > 20) return;
+      if (e.exprValueType === "THIS_PROCESS") return owner.get(s.compositeId);
+      if (e.exprValueType === "VAR_REF") { const b = B[e.varBlockId]; return boOf(X[b?.srcExprId ?? b?.valueExprId], d + 1); }
+      let a = e; while (a && /^F-VALUE-/.test(a.actId ?? "")) a = X[a.leftExprId];
+      const f = fld(a), host = f && boOf(X[a.leftExprId], d + 1);
+      return bos.find((b) => b.code === host)?.dynamicFields?.[f!]?.boRefStruct?.boInfo?.code;
+    };
+    for (const b of vals(B).filter((x) => /BlockAssign/.test(x["@class"] ?? ""))) {
+      let e = X[b.leftExprId]; while (e && /^F-VALUE-/.test(e.actId ?? "")) e = X[e.leftExprId];
+      if (fld(e)) written.add(`${boOf(X[e.leftExprId]) ?? "*"}.${fld(e)}`);
+    }
+  }
+  const writingProcess = pvs.some((pv) => [pv.workProcess, ...vals(pv.processVersions)].some((v) => (v?.scriptsDefIds ?? []).some((c: string) => /BlockAssign/.test(JSON.stringify(defs.find((s) => s.compositeId === c)?.blocks)))));
+  for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f of vals(bo.dynamicFields)) {
+    const l = f.label?.rus ?? "", nums = vals(bo.dynamicFields).filter((x) => x.type === "INPUT_NUMBER").map((x) => low(x.label?.rus));
+    const line = /сумм/i.test(l) && nums.some((x) => /кол|час|объ[её]м|вес/.test(x)) && nums.some((x) => /цен|тариф|ставк/.test(x));
+    if (!written.has(`${bo.code}.${f.code}`) && !written.has(`*.${f.code}`) && f.type === "INPUT_NUMBER" && !/мин|макс|порог|лимит|норм/i.test(l) && (line || /итого|остат|резерв|баланс|к оплате/i.test(l)))
+      add("WARN", "0.10", `${bo.code}.${f.code} «${l}» looks computed and no script writes it — a hook (§5d), or the report says «вводится вручную, потому что …»`);
+    if (!writingProcess && /^(CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) && /согласован|утвержд/i.test(l)
+      && vals(bo.dynamicFields).some((x) => x !== f && vals(x.fieldOptionsStruct?.options).some((o) => /согласов|утвержд/i.test(o.fieldOption?.label ?? ""))))
+      add("WARN", "0.2b", `${bo.code}.${f.code} «${l}»: an approval field and an approval stage in the status list, no process links them (0.18)`);
+  }
+}
 
 // ---------------------------------------------------------------- report
 function report() {
