@@ -331,7 +331,8 @@ Walk the spec through these nine questions, in order; each answer is a line or a
 9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
    записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
    table — and NOT dictionaries; those go into one root «Справочники» `GROUP`, last, or
-   nowhere (they stay reachable under «Бизнес-объекты»).
+   nowhere (they stay reachable under «Бизнес-объекты»). A `BO_PROCESS` started by a run way
+   (0.18) gets an item only when users need the list of running approvals; otherwise none.
 
 ### 0.2d What never travels in an archive
 
@@ -1072,10 +1073,14 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    `w: 12`–`15` only for a form that carries tables or several fields per row. Centre it:
    `x = ceil((16 − w) / 2)`.
    **A child window is smaller than its parent**: a BO opened from another BO's reference or table gets
-   `w` at least 2 less than the parent's and its own `h` by the same formula.
+   `w` at least 2 less than the parent's and its own `h` by the same formula. This holds between two `FORM`
+   dialogs only; a `TAB` record (step 8) has no window.
 8. **Page tab instead of a dialog**: `instanceViewType: "TAB"` when the record has a lot of content — several
    tables, or still more than ~23 rows after tabs — then the record opens as a page tab of the browser
-   window; otherwise `FORM` with the window of step 7.
+   window; otherwise `FORM` with the window of step 7. It is a property of the BO: a record opens as a tab
+   everywhere, also when it is added or opened from another record's table `[C]`. So a big document (заказ-
+   наряд with works and parts) is `TAB` and keeps its «Добавить» on the parent's table; in a chain of 3–4
+   levels where each dialog cannot be narrower than the one before, the biggest level is `TAB`.
 
 The `AccessStructDto` of step 6 for a NEW BO — one line; `<O>` is the OPEN action and `<N>` the «никому»
 action, write them out in full (the `@class` package is `model.access`, not `model.dto`):
@@ -1162,7 +1167,9 @@ the BO's category. Count it in `objectCount`.
       Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
       MUST fail — that proves it is JSONL.
 - [ ] **Run the form lint below and paste its output into the report.** It prints every layout, toolbar and
-      table defect of 0.5, 0.5a and 0.8 a build most often ships, one line each, and `form lint: OK` when there is
+      table defect of 0.5, 0.5a and 0.8, every record window too tall or not narrower than its parent's (0.8a)
+      and every process diagram defect of 0.18 (overlapping labels, bent arrows, long names, no run way) a
+      build most often ships, one line each, and `form lint: OK` when there is
       none; fix every line it prints and run it again. The two `REMINDER` lines are not defects by themselves: each
       one asks whether the spec has a computed value or an approval path that is missing from the file. The prose
       checks below stay mandatory — the lint does not replace them.
@@ -1208,6 +1215,49 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       next = y + Math.max(...row.map((c) => c.g.rows));
       edge = row.some((c) => c.box) ? 15 : x;
     }
+  }
+}
+for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && b.gridLayoutPosition)) {
+  const g = bo.gridLayoutPosition;
+  if (g.h > 28) out.push(`${bo.code}: FORM window h ${g.h} > 28 — tabs (0.8a step 3) or instanceViewType TAB (step 8)`);
+  for (const f of Object.values(bo.dynamicFields ?? {}).filter((f) => f.type === "BO" && f.viewType === "TABLE")) {
+    const c = bos.find((b) => b.oldId === f.oldRefBoId), back = Object.values(c?.dynamicFields ?? {})
+      .some((x) => x.viewType === "TABLE" && x.oldRefBoId === bo.oldId);
+    if (c && !back && c.instanceViewType !== "TAB" && c.gridLayoutPosition?.w >= g.w)
+      out.push(`${bo.code}.${f.code}: child ${c.code} window w ${c.gridLayoutPosition.w} not below ${g.w} — narrower, or TAB (0.8a steps 7–8)`);
+  }
+}
+const SZ = { Enter: [30, 30], Exit: [30, 30], Point: [20, 20], Terminator: [40, 40], Script: [80, 50], Timer: [80, 50],
+  Form: [100, 50], Switch: [60, 60], SingleToParallel: [39, 64], ParallelToSingle: [39, 64] };
+const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+for (const pv of L.filter((o) => cls(o) === "BoProcessVersionsStructDto")) {
+  const pc = bos.find((b) => b.oldId === pv.oldId)?.code ?? pv.oldId;
+  for (const v of [pv.workProcess, ...Object.values(pv.processVersions ?? {})].filter(Boolean)) {
+    const F = Object.fromEntries(Object.entries(v.figureStructs ?? {}).map(([id, f]) => {
+      const t = cls(f).replace(/^Figure|Struct$/g, ""), [w, h] = SZ[t] ?? [80, 50];
+      return [id, { t, x: f.x, y: f.y, b: [f.x - w / 2, f.y - h / 2, f.x + w / 2, f.y + h / 2] }];
+    }));
+    const at = (f, s) => s === "main" ? [f.t === "Enter" ? f.b[2] : f.b[0], f.y] : s === "left" ? [f.b[0], f.y]
+      : s === "right" ? [f.b[2], f.y] : /^(top|up)$/.test(s) ? [f.x, f.b[1]] : /^(bottom|down)$/.test(s) ? [f.x, f.b[3]] : [f.x, f.y];
+    const labs = [];
+    for (const a of Object.values(v.arrows ?? {})) {
+      const st = F[a.startFigureId], fi = F[a.finishFigureId];
+      if (!st || !fi) continue;
+      const [x1, y1] = at(st, a.startSlotName), [x2, y2] = at(fi, a.finishSlotName), n = [...(a.name ?? "")].length;
+      const t = `${pc} arrow «${a.name ?? ""}»`, pt = st.t === "Point" || fi.t === "Point";
+      if (!pt && x1 !== x2 && y1 !== y2) out.push(`${t}: not straight — both slots on one y or one x (0.18)`);
+      if (n > 12) out.push(`${t}: name longer than 12 characters (0.18)`);
+      if (y1 === y2 && Math.abs(x2 - x1) < 15 * n + 20) out.push(`${t}: gap ${Math.abs(x2 - x1)} px, needs ${15 * n + 20} (0.18)`);
+      if (x1 === x2 && Math.abs(y2 - y1) < 50) out.push(`${t}: vertical gap ${Math.abs(y2 - y1)} px, needs 50 (0.18)`);
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      if (n) labs.push({ t, b: [mx, my, mx + 7.5 * n, my + 18] });
+    }
+    for (const [i, l] of labs.entries()) {
+      for (const f of Object.values(F)) if (hit(l.b, f.b)) out.push(`${l.t}: label overlaps a ${f.t} figure (0.18)`);
+      for (const m of labs.slice(i + 1)) if (hit(l.b, m.b)) out.push(`${l.t}: label overlaps ${m.t} (0.18)`);
+      if (l.b[2] > 1200) out.push(`${l.t}: label ends at x ${Math.round(l.b[2])}, beyond 1200 (0.18)`);
+    }
+    if (!Object.keys(v.runWayMap ?? {}).length) out.push(`${pc}: empty runWayMap — nothing starts the process from its document (0.18)`);
   }
 }
 if (!L.some((o) => cls(o) === "ScriptDefStructDto"))
@@ -1258,8 +1308,8 @@ console.log(out.length ? out.join("\n") : "form lint: OK");
 - [ ] No `STATIC_TEXT` heading repeats a field label of the same BO (0.9 rule 12).
 - [ ] 0.8a: more than 12 visible fields → tabs, balanced; themes → `STATIC_TEXT` headings (3 rows,
       `hideLabel`, `tableColToShow: false`); each `TAB_GROUP` = tallest tab + 3 (nested + 2); system fields
-      on `tab_system` «Системные» with its «никому» rule; `gridLayoutPosition.h` = form rows + 5, a child's
-      `w` below its parent's.
+      on `tab_system` «Системные» with its «никому» rule; `gridLayoutPosition.h` = form rows + 5 (above 28 → tabs or `TAB`), a child
+      dialog's `w` below its parent's; a big document is `instanceViewType: "TAB"` (0.8a step 8).
 - [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
       table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
       15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
@@ -1873,6 +1923,10 @@ unlike any other reference — its ids need not be asked for: the importer resol
 - ship `PROCESS_STATUS` exactly as §5c prints it, **with `defaultValue` = the `CREATED` row id** and the
   `DEFAULT_VALUE` line for that row; both ids may be your own minted ones, used consistently. Without the
   default no record of the process can be saved (§5c);
+- **the dictionary must already exist in the company** — it appears with the company's first process made
+  in the constructor, never by import. On an empty company (or when the user does not know) say in the
+  report: «если импорт покажет у поля `PROCESS_STATUS` ошибку „В системе не найден бизнес объект“ — создайте
+  в конструкторе любой процесс и удалите его (справочник останется), затем импортируйте снова» (§5c) `[C]`;
 - `PROCESS_STATUS` is mandatory on EVERY business process (0.9 rule 18). The importer would take a
   process without it and even run it (§5c) — that is not a licence: such a process is broken (no status,
   no default registry column).
@@ -1938,19 +1992,39 @@ saved records; do not «complete» it.) `defaultValue` is a JSON array written a
 Slot names are FIXED per figure — Enter/Exit `main`/`top`/`bottom`; Form `left`/`right`/`top`; Script
 `left`/`right`/`top`/`bottom`; Switch `up`/`right`/`down`/`left` — any other name silently breaks the
 arrow. Every arrow leaving a Switch has a `name` (the branch label); a Script has exactly ONE outgoing
-arrow. **A figure has no caption of its own — the only text on a diagram is an arrow `name`** `[C]`, so
-name every arrow that enters a Form / Script / Switch / Timer with what that step does (`«Заявка на
-согласование»`, `«Расчёт суммы»`) — that label is how a person finds the step in the editor.
+arrow. **A Form shows the label of its reference field inside the figure and a Timer the label of its date
+field; no other figure has a caption — an arrow `name` is the rest of the text on a diagram** `[C]`, so name
+every arrow that enters a Script / Switch / Form / Timer with what that step does (`«Проверка»`, `«Расчёт»`) —
+that label is how a person finds the step in the editor.
+
+**Lay the diagram out so no label overlaps** `[C]`. A figure's `x`,`y` is its CENTRE; sizes w×h: Enter / Exit
+30×30, Point 20×20, Terminator 40×40, Script / Timer 80×50, Form 100×50, Switch 60×60, SingleToParallel /
+ParallelToSingle 39×64. A slot sits on the figure's edge (`left` / `right` at mid-height, `top` / `up` /
+`bottom` / `down` at mid-width; Enter's `main` is its right edge, Exit's its left). An arrow's label is 14 px
+text, ≈ 7.5 px per character and 18 px high, with its TOP-LEFT corner at the midpoint of the straight line
+between the two slots, running right and down — it never wraps, except that a label crossing the visible
+editor's right edge folds into a column of one word per line. So:
+- **the flow runs left to right in ONE row**: every figure of the main path on the same `y`, every arrow
+  straight — a horizontal hop between figures of one `y`, a branch straight down from a Switch's `down`
+  slot to a figure with the Switch's `x`, then on to the right. No second row reached by a diagonal or curved
+  arrow, no top-down chain;
+- **an arrow name is at most 12 characters** (`«Да»`, `«Смета»`, `«В работу»`) — the step's meaning goes into
+  its name, not a sentence;
+- **the gap between the two facing slots of a horizontal arrow is ≥ 15 px × the name's length + 20**
+  (`«Проверка»` = 8 chars → 140 px); a vertical branch needs ≥ 50 px between the slots;
+- **the whole diagram stays within 1200 px** in `x`.
+The coordinates below follow these rules; keep them when you rename, recompute them when you add figures,
+and run the diagram check of 0.10.
 
 ```text
 {"@class":"kz.greetgo.mybpm.reg.structure.model.dto.BoProcessVersionsStructDto","oldId":"<P>",
  "workProcess":{"figureStructs":{
-   "<fEnter>": {"@class":"…figure.FigureEnterStruct","x":100,"y":100},
-   "<fForm>":  {"@class":"…figure.FigureFormStruct","x":260,"y":90,"fieldCode":"request"},   ← code of the SINGLE reference field
-   "<fScript>":{"@class":"…figure.FigureScriptStruct","x":440,"y":90},
-   "<fSwitch>":{"@class":"…figure.FigureSwitchStruct","x":620,"y":90},
-   "<fYes>":   {"@class":"…figure.FigureExitStruct","x":820,"y":100},
-   "<fNo>":    {"@class":"…figure.FigureExitStruct","x":640,"y":260}},
+   "<fEnter>": {"@class":"…figure.FigureEnterStruct","x":60,"y":100},
+   "<fForm>":  {"@class":"…figure.FigureFormStruct","x":235,"y":100,"fieldCode":"request"},   ← code of the SINGLE reference field
+   "<fScript>":{"@class":"…figure.FigureScriptStruct","x":465,"y":100},
+   "<fSwitch>":{"@class":"…figure.FigureSwitchStruct","x":690,"y":100},
+   "<fYes>":   {"@class":"…figure.FigureExitStruct","x":785,"y":100},
+   "<fNo>":    {"@class":"…figure.FigureExitStruct","x":690,"y":200}},
   "scriptsDefIds":["<V>-<fScript>","<V>-<fSwitch>"],
   "methodScriptIds":[],
   "arrows":{
@@ -1959,11 +2033,23 @@ name every arrow that enters a Form / Script / Switch / Timer with what that ste
    "<a3>": {"name":"Одобрено?","startFigureId":"<fScript>","startSlotName":"right","finishFigureId":"<fSwitch>","finishSlotName":"left"},
    "<aYes>":{"name":"Да","startFigureId":"<fSwitch>","startSlotName":"right","finishFigureId":"<fYes>","finishSlotName":"main"},
    "<aNo>": {"name":"Нет","startFigureId":"<fSwitch>","startSlotName":"down","finishFigureId":"<fNo>","finishSlotName":"top"}},
-  "runWayMap":{}},
+  "runWayMap":{"<16 chars>":{"runWay":"ON_INSTANCE_CREATE","orderIndex":1,
+    "refBoInfo":{"code":"Request","name":"Заявка","boCategory":"BO"},"processFieldCode":"request",
+    "fieldCodes":[],"useFieldValues":[],"fieldValues":{},"changeVariantSet":{"ON_MANUAL_SAVE":1}}}},
  "processVersions":{}}
 ```
 
 Write `…figure.` out in full (`kz.greetgo.mybpm.reg.structure.model.bo.process.figure.FigureEnterStruct`).
+
+**`runWayMap` decides WHEN the process starts — never leave it empty in a build** (here: every new `Request`
+starts an approval). Empty, the process starts
+only when someone creates a record in the PROCESS's own registry by hand. A process of a spec starts from
+the document it serves: one run way (§5c «`runWayMap`») — `ON_INSTANCE_CREATE` of the target BO, or
+`ON_FIELD_CHANGE` of its status to the stage that needs approval («на согласовании») — with
+`processFieldCode` = the reference field the Form shows (here `request`). The run way fills that field when
+it creates the process record, so the Form has its record. Then set `"hideAddButtonFromRegistry": true` on the
+process BO: nobody creates its records by hand, and a run way still starts it `[C]`. A menu item for the
+process: 0.2c step 9.
 
 **Lines 3 and 4, the two scripts.** `@class` prefixes: blocks
 `kz.greetgo.mybpm.reg.structure.model.bo.process.block.`, expressions
@@ -3100,9 +3186,20 @@ that field is the only link between them. An export of one process carries 7 obj
   **Both ids are resolved BY CODE on import** `[C]`: the dictionary is built in with the fixed code
   `PROCESS_STATUS`, its id and its `CREATED` row id differ between stands, and an archive carrying another
   stand's ids or made-up ones (the same made-up ids in the field and in the line's `compositeId`) comes in
-  with the importing stand's own `refBoId` and `CREATED` row id in `defaultValue`. The line names the row by
+  pointing at the importing stand's own dictionary. The line names the row by
   `boCode: "PROCESS_STATUS"` + its unique `code` field `CREATED`, which is what the importer matches. So no
-  stand id is needed for a process — mint the two ids (0.2a). **So an EXPORTED
+  stand id is needed for a process — mint the two ids (0.2a). Whether `defaultValue` is rewritten to the
+  stand's own `CREATED` row id varies — it may keep the minted id — and the process records save and run
+  either way: the engine sets the status itself `[C]`.
+  **The dictionary exists in a company only after its FIRST process was created in the constructor** `[C]`:
+  the importer resolves it by code but never creates it, so on a company that has never had a process the
+  analysis reports the process's `PROCESS_STATUS` field: «В системе не найден бизнес объект, на который
+  ссылается поле» (required BO code `PROCESS_STATUS`). The fix: create any process in the constructor and
+  delete it — the dictionary stays — then import again (`MYBPM-UI-API.md` §5f) `[C]`. Shipping the dictionary
+  itself in the archive (its `BoStructDto` copied from an export + all five rows `CREATED` / `EXECUTING` /
+  `WAITING` / `FINISHED` / `FINISHED_WITH_ERROR`) is harmless on a company that has it — it merges by code
+  into the stand's dictionary, ids, rows and old processes unchanged `[C]` — but whether such a copy works as
+  the system dictionary on a company that has none is `[U]`. **So an EXPORTED
   process never imports runnable as is** `[C]`: the export writes
   `PROCESS_STATUS` with no `defaultValue` key (only the line), so the imported copy
   refuses every record with «validate_required_title»; adding the key to the field — and nothing
