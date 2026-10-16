@@ -386,6 +386,11 @@ for (const bo of bos) {
   if (bo.isGroupingEnabled === true)
     add("WARN", "2", `${tag}: isGroupingEnabled — the registry grouping view is 404 on the server (§2 «BO views»), it renders nothing`);
 
+  // §0.9 rule 5: a map key written as [] makes the stand drop the whole BO silently (boTabs has its own check below)
+  for (const k of ["name", "recordName", "staticValue", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates",
+    "calendarCardTemplates", "signatures", "buttons", "iframes", "currentDates", "captcha", "currentUser"])
+    if (bo[k] !== undefined && (!bo[k] || typeof bo[k] !== "object" || Array.isArray(bo[k])))
+      add("ERROR", "0.9", `${tag}: ${k} must be an object {}, got ${JSON.stringify(bo[k])}`);
   // §2 «BO card tabs»: boTabs is a map TYPE → orderIndex; a re-import only adds and renumbers, never removes
   if (bo.boTabs !== undefined) {
     if (!bo.boTabs || typeof bo.boTabs !== "object" || Array.isArray(bo.boTabs))
