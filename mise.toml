@@ -129,17 +129,18 @@ await pidFile.delete();
 '''
 
 [tasks.eval-crm]
-description = "Run N local Haiku 4.5 evals of MYBPM-IMPORTS.md (a git ref or the working copy) on a CRM concept PDF, in parallel; each run sees only the two files, traces + results land in tools/out/eval-crm/<label>-<i>/ (score them with tools/score-eval-crm.bun.ts)"
+description = "Run N local Haiku evals of MYBPM-IMPORTS.md (a git ref or the working copy) on a CRM concept PDF, in parallel; each run sees only the two files, traces + results land in tools/out/eval-crm/<label>-<i>/ (score them with tools/score-eval-crm.bun.ts)"
 usage = '''
 arg "<ref>" help="Doc version: a git ref such as v1.4.93, or 'current' for the working copy"
 arg "<n>" help="Number of parallel runs"
 flag "--pdf <pdf>" help="CRM concept PDF" default="~/Downloads/crm/CRM-автосервис.pdf"
-flag "--model <model>" help="Model id" default="claude-haiku-4-5"
+flag "--model <model>" help="Model id (Haiku 4.5 is dropped: it never runs the doc lint)" default="claude-haiku-5-5"
+flag "--effort <effort>" help="off (thinking disabled) or a claude --effort level: low, medium, high" default="off"
 '''
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
-const ref = Bun.env.usage_ref ?? "", n = Number(Bun.env.usage_n), model = Bun.env.usage_model!;
+const ref = Bun.env.usage_ref ?? "", n = Number(Bun.env.usage_n), model = Bun.env.usage_model!, effort = Bun.env.usage_effort ?? "off";
 const pdf = Bun.env.usage_pdf!.replace(/^~/, Bun.env.HOME!);
 if (!ref || !(n > 0)) { console.error("usage: mise run eval-crm <ref|current> <n>"); process.exit(1); }
 const doc = ref === "current" ? await Bun.file("MYBPM-IMPORTS.md").text() : await $`git show ${ref}:MYBPM-IMPORTS.md`.text();
@@ -155,11 +156,13 @@ for (const [k, v] of Object.entries(Bun.env)) if (!/^(CLAUDE|LLMTRIM|AI_AGENT)/.
 Object.assign(env, {
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
   CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL: "1", CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL: "1", CLAUDE_CODE_DISABLE_POLICY_SKILLS: "1",
-  CLAUDE_CODE_DISABLE_THINKING: "1", MAX_THINKING_TOKENS: "0", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 });
+// effort off = thinking disabled; any other level goes to claude --effort with thinking left on
+if (effort === "off") Object.assign(env, { CLAUDE_CODE_DISABLE_THINKING: "1", MAX_THINKING_TOKENS: "0" });
 const flags = ["--model", model, "--setting-sources", "", "--strict-mcp-config", "--tools", "Read,Write,Bash",
-  "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"];
-const label = (ref === "current" ? "current" : ref.replace(/^v/, "")) + "-" + new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "");
+  "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose", ...(effort === "off" ? [] : ["--effort", effort])];
+const label = (ref === "current" ? "current" : ref.replace(/^v/, "")) + "-" + model.replace(/^claude-/, "") + "-" + effort + "-" + new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "");
 const runs = Array.from({ length: n }, async (_, i) => {
   // Work outside the repo so neither its git status nor any parent CLAUDE.md reaches the run.
   const work = `${Bun.env.TMPDIR ?? "/tmp"}/mybpm-eval/${label}-${i + 1}`;
@@ -186,13 +189,13 @@ await Promise.all(runs);
 '''
 
 [tasks.eval-bp-explain]
-description = "Run N local Haiku 4.5 three-turn dialogues «what does this process do» on a process export: T1 explain + where Excel is read, T2 a figure described by arrows that do not match, T3 a copy-buffer fragment of ANOTHER process; answers land in tools/out/eval-bp-explain/<label>-<i>/answers.md (read them by hand)"
+description = "Run N local Haiku three-turn dialogues «what does this process do» on a process export: T1 explain + where Excel is read, T2 a figure described by arrows that do not match, T3 a copy-buffer fragment of ANOTHER process; answers land in tools/out/eval-bp-explain/<label>-<i>/answers.md (read them by hand)"
 usage = '''
 arg "<ref>" help="Doc version: a git ref such as v1.4.100, or 'current' for the working copy"
 arg "<n>" help="Number of parallel runs"
 flag "--zip <zip>" help="Process export .mybpm.zip" required=#true
 flag "--fragment <fragment>" help="Block IDE copy-buffer JSON taken from a DIFFERENT process" required=#true
-flag "--model <model>" help="Model id" default="claude-haiku-4-5"
+flag "--model <model>" help="Model id (Haiku 4.5 is dropped)" default="claude-haiku-5-5"
 '''
 shell = "bun -e"
 run = '''
