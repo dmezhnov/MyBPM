@@ -49,7 +49,9 @@ gets the names wrong: the importer then rejects the file or silently drops what 
      «настройка на стенде», no «требует серверной логики» (0.2b);
    - **run the form lint of 0.10 (a plain JavaScript function; no JavaScript engine → port it to your
      language) and paste its output** — a reply without that output is unfinished; the report names the build salt and the list of checks
-     run (0.10 «The report»).
+     run (0.10 «The report»). **A file the lint still flags is not handed over** — fix and rerun until only
+     answered `REMINDER` lines are left; «архив сформирован, но требует исправления», «не рекомендую считать
+     завершённой» is no reply. Cannot fix a line → no file: name the line and what blocks it.
 
 What a model invents when it skips the reading, by class of mistake. Each class holds for ANY spec — the
 examples are only examples; each broken row breaks the import or is silently dropped. A script has its own
@@ -1232,7 +1234,8 @@ the BO's category. Count it in `objectCount`.
 - [ ] **Run the form lint below and paste its output into the report.** It prints every defect of the hard
       rules (0.9), the ids (0.7), the templates (0.5–0.5d), the layout (0.8, 0.8a) and the process diagram (0.18)
       that a check can see — the list is under the function — one line each, and `form lint: OK` when there is
-      none; fix every line it prints and run it again. A `REMINDER` line is not a defect by itself: it names ONE
+      none; fix every line it prints and run it again — a file with a non-`REMINDER` line left is never handed
+      over, not even «с замечаниями». A `REMINDER` line is not a defect by itself: it names ONE
       number field that looks computed (итого, остаток, резерв, баланс, к оплате; «сумма» on a line BO that has a
       quantity and a price) while NO script of the file writes THAT field (a `BlockAssign` to it — a hook on the
       same BO that writes other fields does not count; мин / макс / порог / лимит / норма are thresholds, never
