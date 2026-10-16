@@ -1123,8 +1123,8 @@ Everything in this section is `[C]`.
   `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` (the built-in items, one of each per company), `REPORT`
   (operative reports, their own export basket, R4a) and `PROCEDURES` — none is created by hand.
 - `iconName`: **every item you create gets an icon BY MEANING, without being asked** — each group by ITS
-  OWN theme (Клиенты → `phosphor:users`, Работы → `phosphor:wrench`, Склад → `phosphor:package`; two groups never
-  share an icon), each item by what its records are (клиенты → `phosphor:users`, заказ-наряды →
+  OWN theme (Клиенты → `phosphor:address-book`, Работы → `phosphor:briefcase`, Склад → `phosphor:archive`; two groups never
+  share an icon, a group never takes one of its items' icons), each item by what its records are (клиенты → `phosphor:users`, заказ-наряды →
   `phosphor:wrench`, оплаты → `phosphor:money`), each dictionary by what it lists (марки → `phosphor:car`, посты →
   `phosphor:buildings`, причины → `phosphor:warning`; `phosphor:book` only when nothing fits); items of one group differ; the report lists «item → icon». The generic defaults GROUP `bo-g-draggable`, BO
   `man-with-company`, dictionary `bo-d-draggable` (no prefix) only when the user wants no icons.
