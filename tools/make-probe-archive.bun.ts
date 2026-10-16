@@ -45,7 +45,7 @@
  *     columns, H rows of 30 px (default form rows + 5); without the flag a BO / process dialog gets W 10
  *   --hide-tab tabs/tab_system                                — the hidden system tab «Системные» (0.8a step 6): an
  *     AccessStructDto, all BO actions open + VIEW «никому» on that tab; REPLACES the BO's rights — a NEW BO only
- *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3, + 5 with --tab-view)
+ *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3, + 6 with --tab-view)
  *   --salt <s>                                                — the build salt (MYBPM-IMPORTS.md 0.7): every id seed
  *     starts with it, so a build from scratch does not revive a rolled-back BO of the same code; keep it for every
  *     later build of the same system. Without it the ids depend on the codes alone (the old behaviour)
@@ -771,7 +771,7 @@ if (isComposite) {
         ? { code: f.refBoId, name: f.refBoCode ?? f.refBoId }
         : undefined,
       options: ["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? hash : [],
-      staticValue: f.type === "STATIC_TEXT" ? (hash[0] ?? `<h3><b>${f.label}</b></h3>`) : undefined,
+      staticValue: f.type === "STATIC_TEXT" ? (hash[0] ?? `<div style="font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px">${f.label}</div>`) : undefined,
       // a group heading (0.8a): no label row over the HTML, and no empty registry column
       tableColToShow: f.type === "STATIC_TEXT" || f.type === "TAB_GROUP" ? false : undefined,
       steps: f.type === "PROGRESS_BAR" ? hash : undefined,
@@ -851,7 +851,7 @@ if (isComposite) {
       });
     }
   });
-  // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 5 on an instanceViewType TAB page, + 2 when it sits on
+  // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 6 on an instanceViewType TAB page, + 2 when it sits on
   // a tab of another group) — less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it
   // on its own tab and makes that tab taller. Then every cell below the group in its stack shifts by the change.
   const all = Object.values(dynamicFields) as any[];
@@ -862,7 +862,7 @@ if (isComposite) {
     const onTabs = all.filter(f => f.tabCodePath?.tabGroupCode === code);
     if (!onTabs.length) continue;
     const tallest = Math.max(...onTabs.map(f => f.gridPosition.y + f.gridPosition.rows));
-    const delta = tallest + (g.tabCodePath ? 2 : args.has("--tab-view") ? 5 : 3) - g.gridPosition.rows;
+    const delta = tallest + (g.tabCodePath ? 2 : args.has("--tab-view") ? 6 : 3) - g.gridPosition.rows;
     const sameStack = (f: any) => g.tabCodePath
       ? f.tabCodePath?.tabGroupCode === g.tabCodePath.tabGroupCode && f.tabCodePath?.tabCode === g.tabCodePath.tabCode
       : !f.tabCodePath;

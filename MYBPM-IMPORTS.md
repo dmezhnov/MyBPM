@@ -59,7 +59,7 @@ table at the top of §0S, records at the top of §0X.
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
-| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
+| Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file; a dictionary picked through a `BO` reference field (draws a «Выберите» link, not a dropdown); a dictionary no field uses; a local list repeating a dictionary's rows; or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
 | Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; every field alone at `cols 8` («one per row»); `w: 10` and no tabs on every window; `tableColToShow: true` on every field | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; at most 2 lone short fields per form; over 12 visible fields → tabs, over 8 → tabs or group headings; registry ≤ 6 columns; `w` / `h` by 0.8a | 0.5, 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
@@ -602,7 +602,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 
 The types that need extra keys — every shape `[C]`:
 
-- `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<h3><b>…</b></h3>"}`, with
+- `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<div style=\"font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px\">…</div>"}` (a bare `<h3><b>` renders as a small bold label — the sanitizer strips the size of `h1`–`h3` `[C]`), with
   `"hideLabel": true`, `"tableColToShow": false` and the cell `{"x":0,"y":<y>,"cols":15,"rows":3}` — a
   one-line group heading (0.8a). A heading text **must not repeat any field label of the same BO** — that
   breaks Excel import.
@@ -663,7 +663,7 @@ The types that need extra keys — every shape `[C]`:
 Cell heights the constructor itself assigns: 3 rows for a one-line input, 4 for other plain fields, **6** for
 `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for
 `STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets: a heading
-and a `SINGLE` reference need 3, a `TEXTAREA` 6, a `TAB_GROUP` its tallest tab + 3 (+ 5 on a `TAB` page) — write the heights of
+and a `SINGLE` reference need 3, a `TEXTAREA` 6, a `TAB_GROUP` its tallest tab + 3 (+ 6 on a `TAB` page) — write the heights of
 0.8 and 0.8a.
 
 > **Your first read most likely ended near here — the core is only half read.** Still ahead, and every
@@ -1064,12 +1064,14 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    band of the group's height under the fields `[I]` — keep the system tab short. Never put a field a user
    must fill there.
 2. **Groups.** When the visible fields fall into two or more themes, open each theme with a heading: a
-   `STATIC_TEXT` with `"staticValue": {"rus": "<h3><b>Тема</b></h3>"}`, `hideLabel: true`,
+   `STATIC_TEXT` with `"staticValue": {"rus": "<div style=\"font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px\">Тема</div>"}` (0.5), `hideLabel: true`,
    `tableColToShow: false` (else every heading is an empty registry column) and `rows: 3` `[C]` (2 rows
    scrolls inside itself; a heading WITH a subheading line needs 4). A group = its heading and the
    fields under it, up to the next heading or the end of the form / tab. The heading text names the
    SECTION, never a field label of the BO (0.9 rule 12). **One heading over the whole form (or tab) groups
-   nothing** — it only repeats the window title: two or more headings, or none.
+   nothing** — it only repeats the window title: two or more headings, or none. **Every heading has at least one
+   field under it** before the next heading or the end of the form / tab — a heading with nothing below it is
+   not a group, never add one to reach «two headings».
 3. **Tabs** when the form has **more than 12 visible fields**, or is taller than one window (step 5:
    more than ~23 rows) — **also on `instanceViewType: "TAB"`**: a page tab does not replace tabs inside the
    form. Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
@@ -1081,10 +1083,10 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    `tabCodePath`; its tabs are drawn as a vertical list on the left). Otherwise use groups (step 2).
 5. **Heights** `[C]` (one grid row = 30 px):
    - one-line input: 3 rows (label + box = 58 px; 4 rows leaves a band); heading: 3 rows (step 2);
-   - top-level `TAB_GROUP`: `rows` = (rows of its tallest tab) + **3** in a dialog (`FORM`), + **5** on a page
-     tab (`instanceViewType: "TAB"`) — a tab of `n` rows needs `n·30 + 28` px, and the group's box is
-     `rows·30 − 61` px in a dialog but `rows·30 − 111` on a page tab (+ 3 and + 4 both scroll there); one row
-     less scrolls inside the group;
+   - top-level `TAB_GROUP`: `rows` = (rows of its tallest tab) + **3** in a dialog (`FORM`), + **6** on a page
+     tab (`instanceViewType: "TAB"`) — a tab of `n` rows needs `n·30 + 28` px (a `TEXTAREA` counts its rows,
+     nothing extra), and the group's box is `rows·30 − 61` px in a dialog but `(rows − 1)·30 − 111` on a page tab
+     (+ 5 scrolls there); one row less scrolls inside the group;
    - nested `TAB_GROUP` (on a tab of another group): `rows` = (its tallest tab) + **2**;
    - «rows of a tab» = the bottom of its lowest cell (`max(y + rows)` of the fields on it).
 6. **The system tab rule.** A tab carries ONE right only — VIEW (`[C]`; edit follows from it) — and «никому»
@@ -1212,8 +1214,9 @@ the BO's category. Count it in `objectCount`.
       rules (0.9), the ids (0.7), the templates (0.5–0.5d), the layout (0.8, 0.8a) and the process diagram (0.18)
       that a check can see — the list is under the function — one line each, and `form lint: OK` when there is
       none; fix every line it prints and run it again. A `REMINDER` line is not a defect by itself: it names ONE
-      field that looks computed (итого, остаток, резерв, баланс, к оплате) while the file has no script, or looks
-      like an approval (согласовано, утверждено) while it has no process. Answer each BY NAME in the report —
+      field that looks computed (итого, остаток, резерв, баланс, к оплате) while its BO has no hook script with a
+      body, or looks like an approval (согласовано, утверждено) while no process of the file has a script that
+      writes a field (`BlockAssign`). Answer each BY NAME in the report —
       «built» (the hook / process you added) or «вводится вручную, потому что …»; a task that needs no script or
       process stays without one. The prose
       checks below stay mandatory — the lint does not replace them.
@@ -1277,6 +1280,7 @@ for (const bo of bos) {
     if (f.isRequired && f.isReadonly) err(`${t}: isRequired + isReadonly — never saves (0.9 rule 9)`);
     if (ty === "STATIC_TEXT" && f.tableColToShow) err(`${t}: STATIC_TEXT as a registry column (0.8a step 2)`);
     if (ty === "STATIC_TEXT" && labels.has(low(f.staticValue?.rus))) err(`${t}: heading repeats a field label (0.9 rule 12)`);
+    if (ty === "STATIC_TEXT" && /^\s*<(h\d|b|strong)>/i.test(f.staticValue?.rus ?? "")) err(`${t}: a bare <h3>/<b> heading renders as a small bold label — the styled <div> of 0.5`);
     if (op !== undefined && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
       err(`${t}: options — {<code>: {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"}} (0.5)`);
     else for (const [c, o] of all(op)) id(`${t}.${c}`, o.newOptionId);
@@ -1285,11 +1289,12 @@ for (const bo of bos) {
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
     if (ty === "TAB_GROUP" && f.gridPosition) {
       const tall = Math.max(0, ...fs.filter(([, x]) => x.tabCodePath?.tabGroupCode === k && x.gridPosition).map(([, x]) => x.gridPosition.y + x.gridPosition.rows));
-      const need = tall + (f.tabCodePath?.tabCode ? 2 : bo.instanceViewType === "TAB" ? 5 : 3);
+      const need = tall + (f.tabCodePath?.tabCode ? 2 : bo.instanceViewType === "TAB" ? 6 : 3);
       if (tall && f.gridPosition.rows !== need) err(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
     }
     if (!isRef(f)) continue;
     if (!bi?.code) err(`${t}: no boRefStruct.boInfo.code (0.5a)`);
+    if (k !== "PROCESS_STATUS" && bi?.boCategory === "BO_DICTIONARY") err(`${t}: dictionary ${bi.code} as a BO reference draws a «Выберите» link — DROPDOWN_SINGLE FROM_BO (0.5)`);
     if (f.oldRefBoId ? !ID.test(f.oldRefBoId) : !["Person", "Department", "PersonGroup"].includes(bi?.code))
       err(`${t}: oldRefBoId "${f.oldRefBoId}" — the target's oldId, "" only for Person (0.5a)`);
     if (cat !== "BO_PANEL" && bi?.code !== "Person" && !vals(f.boRefStruct?.fieldRefs).some((r) => r.toShow))
@@ -1348,6 +1353,10 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       edge = row.some((c) => c.box) ? 15 : x;
     }
     const heads = cells.filter((c) => c.head);
+    for (const h of heads) {
+      const below = cells.filter((c) => c.g.y > h.g.y), y = Math.min(...below.map((c) => c.g.y));
+      if (!below.length || below.some((c) => c.g.y === y && c.head)) err(`${h.t}: heading with no field under it — not a group (0.8a step 2)`);
+    }
     if (heads.length === 1 && cells.length > 1 && heads[0].g.y === Math.min(...cells.map((c) => c.g.y)))
       err(`${heads[0].t}: the only heading, on top of the whole ${tab ? "tab" : "form"} — groups nothing; ≥ 2 headings or none (0.8a step 2)`);
     if (lone >= 3 && bo.category !== "BO_DICTIONARY")
@@ -1405,12 +1414,29 @@ for (const pv of of("BoProcessVersionsStructDto")) {
     if (!all(v.runWayMap).length) err(`${pc}: empty runWayMap — nothing starts the process (0.18)`);
   }
 }
-const noScript = !of("ScriptDefStructDto").length, noProcess = !bos.some((b) => b.category === "BO_PROCESS");
+const fields = bos.flatMap((b) => vals(b.dynamicFields)), rows = of("ExportStructInstanceDto");
+const lab = (r) => { try { return low(JSON.parse(r.fieldMap?.label?.storedValue ?? "{}").RUS); } catch { return ""; } };
+for (const d of bos.filter((b) => b.category === "BO_DICTIONARY" && b.code !== "PROCESS_STATUS")) {
+  const used = fields.some((f) => f.fieldOptionsStruct?.dictionaryBoInfo?.code === d.code || f.boRefStruct?.boInfo?.code === d.code);
+  if (!used && bos.some((b) => b.category !== "BO_DICTIONARY")) err(`${d.code}: dictionary no field uses — a DROPDOWN_SINGLE FROM_BO on it, or drop it (0.5b)`);
+  const dl = new Set(rows.filter((r) => r.boCode === d.code).map(lab).filter(Boolean));
+  for (const bo of bos) for (const f of vals(bo.dynamicFields)) {
+    const same = vals(f.fieldOptionsStruct?.options).filter((o) => dl.has(low(o.fieldOption?.label))).length;
+    if (f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && same >= 2) err(`${bo.code}.${f.code}: local list repeats ${same} rows of dictionary ${d.code} — FROM_BO on it (0.5)`);
+  }
+}
+const sid = (c) => String(c).split("-").pop(), body = new Set();
+for (const s of of("ScriptDefStructDto")) {
+  if (vals(s.blocks).every((x) => /Block(FixEntryPoint|Exit)Struct$/.test(x["@class"] ?? x.type ?? ""))) err(`script ${s.compositeId}: only entry → exit — does nothing; give it the step's work or drop it (0.18)`);
+  else body.add(sid(s.compositeId));
+}
+const hooked = new Set(of("BoScriptVersionsStructDto").filter((v) => (v.workScripts?.scriptDefIds ?? []).some((c) => body.has(sid(c)))).map((v) => v.ownerBoInfo?.code));
+const noProcess = !of("BoProcessVersionsStructDto").some((pv) => [pv.workProcess, ...vals(pv.processVersions)].some((v) => (v?.scriptsDefIds ?? []).some((c) => /BlockAssign/.test(JSON.stringify(of("ScriptDefStructDto").find((s) => s.compositeId === c)?.blocks)))));
 for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f of vals(bo.dynamicFields)) {
   const l = f.label?.rus ?? "", t = `REMINDER ${bo.code}.${f.code} «${l}»`;
-  if (noScript && /итого|остат|резерв|баланс|к оплате/i.test(l)) err(`${t} looks computed and the file has no script — a hook (0.2c step 7), or report «вводится вручную, потому что …»`);
+  if (!hooked.has(bo.code) && /итого|остат|резерв|баланс|к оплате/i.test(l)) err(`${t} looks computed and ${bo.code} has no hook script — a hook (0.2c step 7), or report «вводится вручную, потому что …»`);
   if (noProcess && /^(CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) && /согласован|утвержд/i.test(l))
-    err(`${t} looks like an approval and the file has no process — a BO_PROCESS (0.18), or report «отмечается вручную, потому что …»`);
+    err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
 }
 return out.length ? out.join("\n") : "form lint: OK";
 }
@@ -2178,6 +2204,13 @@ a figure without one fails on the first record («Скрипт не опреде
 That Switch reads `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрено.#Значение ТО выйти по стрелке «Да» ИНАЧЕ «Нет»`. In an
 act id the middle part is a FIELD CODE (`F-<field code>-K-DYN-S-boi_fields`), so rename it together with
 the field. Other conditions, loops and writes: Part II (§16 «Business-process scripts», §12a).
+
+**A process must change something — the skeleton is only its frame.** The `<fScript>` body above is entry → exit:
+it runs and does nothing, so the skeleton copied as is shows the Form, reads the checkbox and ends without a trace.
+Give every Script figure the work of its step — write the document's status, a date or a sum (§16, 0S.7), e.g. a
+Script on the «Да» branch before its Exit that sets the document to «Согласовано» — and never ship an entry → exit
+body (the lint of 0.10 flags it). The report names, step by step, what each Script / Form changes; a process whose
+steps change nothing is reported as not built.
 
 ---
 
@@ -2948,7 +2981,7 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 - Cell sizes the constructor itself assigns `[C]`: FULL_DATE / PERIOD 15×4; LINK / FILE_UPLOAD / Person
   ref 15×6; one-line inputs 3 rows; nested tables 9 rows; STATIC_TEXT 15×8; dictionary `code`/`label` 15×4.
 - **Heights** `[C]` (one grid row = 30 px; the rows to write: 0.8, `TAB_GROUP` 0.8a step 5): a one-line input
-  is label + box = 58 px, so 4 rows leave an empty band; a `<h3><b>…</b></h3>` heading with `hideLabel` needs
+  is label + box = 58 px, so 4 rows leave an empty band; a heading (0.5 template) with `hideLabel` needs
   46 px (2 rows scroll inside the cell); a `SINGLE` chip with a chosen record fits 3 rows too `[I]`. Rows of
   2 and 3 fields are drawn exactly as written, no overlap.
 - **Widget widths** `[C]`: a text input FILLS its cell (a wide cell = a wide empty box); reference/select

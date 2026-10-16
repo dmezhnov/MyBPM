@@ -329,15 +329,16 @@ not counting headings, the `TAB_GROUP` and the system fields.
   количество, цена, сумма, дата, статус; never one column. A `SINGLE` chip: the name, plus a field that tells
   records apart (номер, госномер) when the name alone does not.
 - **Groups**: when the visible fields fall into two or more themes, open each with a heading — a `STATIC_TEXT`
-  with `staticValueMap: {RUS: "<h3><b>Тема</b></h3>"}`, `hideLabel: true`, `tableColToShow: false`, `rows: 3`
+  with `staticValueMap: {RUS: '<div style="font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px">Тема</div>'}` (a bare `<h3><b>` renders as a small bold label, §8), `hideLabel: true`, `tableColToShow: false`, `rows: 3`
   `[C]` (2 scrolls inside itself; heading + subheading line = 4). The heading names the SECTION, never a field
-  label of the BO (`SameBoFieldsLabel`, trap 14).
+  label of the BO (`SameBoFieldsLabel`, trap 14); every heading has at least one field under it, and one heading
+  over the whole form groups nothing.
 - **Tabs** (§5i «Tabs (`TAB_GROUP`) over the API») when the form has **more than 12 visible fields** or more than
   ~23 rows — also on a record opened as a page tab (`instanceViewType: "TAB"`); over 8 visible fields at least
   group headings: split by meaning, each tab ≤ 12 visible fields, **balance the tabs** — the group is as tall as its
   TALLEST tab `[C]`. Keep the name field above the group or on the first (default) tab. Codes `tabs`, `tab_*`
   (0U.5 rule 12). Nested tabs (a second `TAB_GROUP` on a tab) only when one tab still holds > 12 visible fields
-  AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3** (+ **5** on a page tab `instanceViewType: "TAB"`), nested =
+  AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3** (+ **6** on a page tab `instanceViewType: "TAB"`: there the group's box is `(rows − 1)·30 − 111` px, + 5 scrolls), nested =
   tallest tab + **2** («rows of a
   tab» = `max(y + rows)` of its fields); one row less scrolls inside the group.
 - **System fields → the hidden tab «Системные»**: every field only a script, process or integration reads or
@@ -927,8 +928,8 @@ and dropping the rest «for scope» is a fraction reported as done.
       or shrink the content (the `height` of an `<iframe>` a script writes). The record window scrolling
       as a whole is a sign the window is too low; a scrollbar INSIDE a field is a defect. Check every tab, and
       a table with its real number of rows.
-- [ ] The layout heights hold `[C]` (one grid row = 30 px): one-line input 3 rows, a `<h3>` heading 3, a
-      top-level `TAB_GROUP` = its tallest tab + 3 (+ 5 on a `TAB` page; nested group + 2), and the record window
+- [ ] The layout heights hold `[C]` (one grid row = 30 px): one-line input 3 rows, a styled heading 3, a
+      top-level `TAB_GROUP` = its tallest tab + 3 (+ 6 on a `TAB` page; nested group + 2), and the record window
       `gridLayoutPosition.h` = form rows + 5 (the dialog is `h·30` px tall, 99 px of it title and buttons).
       Fix a scrolling tab group or window at its source: an archive-built BO in the archive
       (`MYBPM-IMPORTS.md` §0.8a), a constructor-built one by the R1 «Layout» calls (field `gridPosition` in the
@@ -4842,7 +4843,9 @@ over a `TEXTAREA` for a read-only embed. Which sites can be framed at all: `yand
 (no key, draws the road route) has no XFO / `frame-ancestors` and renders `[C]`.
 
 Rules for HTML pasted into a MyBPM HTML field; the same rules work for HTML inside «Текст» (STATIC_TEXT)
-headings (whether that field sanitizes identically is `[U]`).
+headings. **A group heading** `[C]`: `<div style="font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px">Тема</div>` renders
+18 px bold with the underline (a `background` + `border-radius` plate and a `border-left` bar render too; so does
+`<h3 style="font-size:18px;font-weight:700;margin:0">`); a bare `<h3><b>Тема</b></h3>` renders as a small bold label.
 
 - **Rejected**: `text-transform` (probably matched as "transform"), `letter-spacing`.
 - **Stripped together with their styles**: `main`, `header`, `section`, `article` → use only `div` and `span`.
