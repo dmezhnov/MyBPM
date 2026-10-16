@@ -692,18 +692,22 @@ for (const bo of bos) {
             laid.push({ ft: wt, f: w, gp: w.gridPosition, box: true });
         }
   // §0.8a: a heading needs 3 rows (2 scrolls inside itself) and no registry column; a TAB_GROUP = its tallest tab
-  // + 3 on a FORM, + 5 on an instanceViewType TAB page, + 2 when it sits on a tab of another group — less scrolls
+  // + 3 on a FORM, + 6 on an instanceViewType TAB page, + 2 when it sits on a tab of another group — less scrolls
   if (bo.category !== "BO_COMPOSITE") for (const [, f] of entries) {
     const ft = `${tag}.${f.code}`;
     if (f.type === "STATIC_TEXT") {
       if (typeof f.gridPosition?.rows === "number" && f.gridPosition.rows < 3)
         add("WARN", "0.8a", `${ft}: a heading of ${f.gridPosition.rows} rows scrolls inside itself — 3 rows`);
       if (f.tableColToShow === true) add("WARN", "0.8a", `${ft}: a heading with tableColToShow: true is an empty registry column`);
+      if (/^\s*<(h\d|b|strong)>/i.test(f.staticValue?.rus ?? ""))
+        add("WARN", "0.5", `${ft}: a bare <h3>/<b> heading renders as a small bold label (the sanitizer strips its size) — the styled <div> of 0.5`);
     }
+    if (f.type === "BO" && f.code !== "PROCESS_STATUS" && f.boRefStruct?.boInfo?.boCategory === "BO_DICTIONARY")
+      add("WARN", "0.5", `${ft}: dictionary ${f.boRefStruct.boInfo.code} as a BO reference draws a «Выберите» link, not a dropdown — DROPDOWN_SINGLE optionSource FROM_BO`);
     if (f.type === "TAB_GROUP" && !f.trackedFieldCode && typeof f.gridPosition?.rows === "number") {
       const tallest = Math.max(0, ...entries.filter(([, g]) => g.tabCodePath?.tabGroupCode === f.code && g.gridPosition)
         .map(([, g]) => g.gridPosition.y + g.gridPosition.rows));
-      const need = tallest + (f.tabCodePath?.tabGroupCode ? 2 : bo.instanceViewType === "TAB" ? 5 : 3);
+      const need = tallest + (f.tabCodePath?.tabGroupCode ? 2 : bo.instanceViewType === "TAB" ? 6 : 3);
       if (tallest && f.gridPosition.rows < need)
         add("WARN", "0.8a", `${ft}: rows=${f.gridPosition.rows}, its tallest tab is ${tallest} rows — the group scrolls inside itself; give it ${need}`);
       else if (tallest && f.gridPosition.rows > need + 2)
@@ -780,6 +784,12 @@ for (const bo of bos) {
       const heads = cells.filter((f) => f.type === "STATIC_TEXT");
       if (heads.length === 1 && cells.length > 1 && heads[0].gridPosition.y === Math.min(...cells.map((f) => f.gridPosition.y)))
         add("WARN", "0.8a", `${tag}.${heads[0].code}: the only heading, on top of the whole ${tab ? "tab " + tab : "form"} — groups nothing; two or more headings, or none`);
+      // §0.8a step 2: every heading has at least one field under it before the next heading or the end
+      for (const h of heads) {
+        const below = cells.filter((f) => f.gridPosition.y > h.gridPosition.y), y = Math.min(...below.map((f) => f.gridPosition.y));
+        if (!below.length || below.some((f) => f.gridPosition.y === y && f.type === "STATIC_TEXT"))
+          add("WARN", "0.8a", `${tag}.${h.code}: heading with no field under it — not a group; drop it`);
+      }
     }
   }
   // §0.5: registry columns = the name + at most 5 key values
@@ -1017,6 +1027,26 @@ for (const bo of bos) {
       add("ERROR", "5c", `${tag}: no ExportStructInstanceDto with a DEFAULT_VALUE source for PROCESS_STATUS — without that line the field's defaultValue does not take and every record is refused on save`);
   }
 }
+
+// 0.5b / 0.5: a dictionary of a BO archive is used by a FROM_BO dropdown, and no local list repeats its rows
+const dictRows = objs.filter(o => cls(o) === "ExportStructInstanceDto");
+const rowLabel = (r: any) => { try { return String(JSON.parse(r.fieldMap?.label?.storedValue ?? "{}").RUS ?? "").trim().toLowerCase(); } catch { return ""; } };
+const allFields = bos.flatMap(b => Object.values<any>(b.dynamicFields ?? {}).map(f => [b, f] as const));
+for (const d of bos.filter(b => b.category === "BO_DICTIONARY" && b.code !== "PROCESS_STATUS")) {
+  if (bos.some(b => b.category !== "BO_DICTIONARY") && !allFields.some(([, f]) =>
+    f?.fieldOptionsStruct?.dictionaryBoInfo?.code === d.code || f?.boRefStruct?.boInfo?.code === d.code))
+    add("WARN", "0.5b", `${d.code}: a dictionary no field uses — a DROPDOWN_SINGLE FROM_BO on it, or drop it`);
+  const labels = new Set(dictRows.filter(r => r.boCode === d.code).map(rowLabel).filter(Boolean));
+  for (const [b, f] of allFields) {
+    if (f?.fieldOptionsStruct?.optionSource !== "FROM_FIELD") continue;
+    const same = Object.values<any>(f.fieldOptionsStruct.options ?? {}).filter(o => labels.has(String(o.fieldOption?.label ?? "").trim().toLowerCase())).length;
+    if (same >= 2) add("WARN", "0.5", `${b.code}.${f.code}: a local list repeats ${same} rows of dictionary ${d.code} — FROM_BO on it`);
+  }
+}
+// 0.18: a script whose blocks are only entry + exit does nothing
+for (const s of objs.filter(o => cls(o) === "ScriptDefStructDto"))
+  if (Object.values<any>(s.blocks ?? {}).every(b => /Block(FixEntryPoint|Exit)Struct$/.test(b["@class"] ?? b.type ?? "")))
+    add("WARN", "0.18", `script ${s.compositeId}: only entry → exit — runs and does nothing; give it the step's work or drop it`);
 
 // process lines without a BO
 for (const pv of objs.filter(o => cls(o) === "BoProcessVersionsStructDto"))
