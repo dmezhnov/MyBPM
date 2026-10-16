@@ -1213,6 +1213,7 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   for (const f of Object.values(bo.dynamicFields ?? {})) {
     const t = `${bo.code}.${f.code}`, g = f.gridPosition, ref = f.type === "BO" || f.type === "CO";
     const single = ref && f.viewType === "SINGLE", table = ref && f.viewType === "TABLE", text = /^TEXTAREA/.test(f.type);
+    if (f.archetype !== "DYNAMIC" || !f.kind) out.push(`${t}: archetype / kind missing — every dynamicFields entry has "archetype": "DYNAMIC", "kind": "GENERAL" (0.5)`);
     if (text && f.params?.buttonTypes === undefined) out.push(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && Object.values(f.boRefStruct?.fieldRefs ?? {}).filter((r) => r.toShow).length < 2)
       out.push(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
@@ -2009,14 +2010,14 @@ other `<16 chars>` = any fresh id. All by 0.7.
 other key of 0.5 stays):
 
 ```text
-"request": {"code": "request", "type": "BO", "viewType": "SINGLE",                 ← the Form step's field: a SINGLE reference
+"request": {"code": "request", "archetype": "DYNAMIC", "kind": "GENERAL", "type": "BO", "viewType": "SINGLE",                 ← the Form step's field: a SINGLE reference
   "oldRefBoId": "<T>",
   "boRefStruct": {"boInfo": {"code": "Request", "name": "Заявка", "boCategory": "BO"},
                   "fieldRefs": {"request_text": {"toShow": true, "orderIndex": 0},
                                 "is_approved":  {"toShow": true, "orderIndex": 1}}},
   "label": {"rus": "Заявка"}, "tableColToShow": true, "tableColOrderIndex": 0,
   "gridPosition": {"x": 0, "y": 0, "cols": 15, "rows": 6}, …the rest of 0.5…},
-"PROCESS_STATUS": {"code": "PROCESS_STATUS", "newId": "<16 chars>", "type": "BO", "viewType": "SINGLE",
+"PROCESS_STATUS": {"code": "PROCESS_STATUS", "newId": "<16 chars>", "archetype": "DYNAMIC", "kind": "GENERAL", "type": "BO", "viewType": "SINGLE",
   "oldRefBoId": "<S>",
   "boRefStruct": {"boInfo": {"code": "PROCESS_STATUS", "name": "Статус процесса", "boCategory": "BO_DICTIONARY"},
                   "fieldRefs": {"label": {"toShow": true, "orderIndex": 2147483647}}},
