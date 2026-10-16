@@ -1375,7 +1375,8 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (f.archetype !== "DYNAMIC" || !f.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
     if (text && f.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
-    if (!g || f.trackedFieldCode || f.code === "PROCESS_STATUS") continue;
+    if (!g || f.trackedFieldCode) continue;
+    if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
     if (short && g.rows !== 3) err(`${t}: rows ${g.rows}, must be 3 (0.8)`);
     if ((table || text) && g.rows < 6) err(`${t}: rows ${g.rows}, must be 6 (0.8)`);
     put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT" });
