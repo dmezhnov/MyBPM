@@ -692,7 +692,7 @@ for (const bo of bos) {
             laid.push({ ft: wt, f: w, gp: w.gridPosition, box: true });
         }
   // §0.8a: a heading needs 3 rows (2 scrolls inside itself) and no registry column; a TAB_GROUP = its tallest tab
-  // + 3 on the form, + 2 when it sits on a tab of another group — one row less scrolls inside the group
+  // + 3 on a FORM, + 5 on an instanceViewType TAB page, + 2 when it sits on a tab of another group — less scrolls
   if (bo.category !== "BO_COMPOSITE") for (const [, f] of entries) {
     const ft = `${tag}.${f.code}`;
     if (f.type === "STATIC_TEXT") {
@@ -703,15 +703,15 @@ for (const bo of bos) {
     if (f.type === "TAB_GROUP" && !f.trackedFieldCode && typeof f.gridPosition?.rows === "number") {
       const tallest = Math.max(0, ...entries.filter(([, g]) => g.tabCodePath?.tabGroupCode === f.code && g.gridPosition)
         .map(([, g]) => g.gridPosition.y + g.gridPosition.rows));
-      const need = tallest + (f.tabCodePath?.tabGroupCode ? 2 : 3);
+      const need = tallest + (f.tabCodePath?.tabGroupCode ? 2 : bo.instanceViewType === "TAB" ? 5 : 3);
       if (tallest && f.gridPosition.rows < need)
         add("WARN", "0.8a", `${ft}: rows=${f.gridPosition.rows}, its tallest tab is ${tallest} rows — the group scrolls inside itself; give it ${need}`);
       else if (tallest && f.gridPosition.rows > need + 2)
         add("WARN", "0.8a", `${ft}: rows=${f.gridPosition.rows}, its tallest tab needs only ${need} — an empty band under every tab`);
     }
   }
-  // §0.8a step 7: the record window — h = form rows + 5, or the dialog scrolls (FORM only; a dictionary has none)
-  if (bo.category !== "BO_COMPOSITE" && bo.category !== "BO_DICTIONARY" && bo.instanceViewType !== "TAB") {
+  // §0.8a step 7: the record window — h = form rows + 5, or the dialog scrolls (FORM only; a dictionary too, 0.5b)
+  if (bo.category !== "BO_COMPOSITE" && bo.instanceViewType !== "TAB") {
     const formRows = Math.max(0, ...laid.map(l => l.gp.y + l.gp.rows));
     const win = bo.gridLayoutPosition;
     if (!win) add("WARN", "0.8a", `${tag}: no gridLayoutPosition — the record dialog opens at 90 % × 90 % of the screen; give it h = ${formRows + 5}`);
@@ -774,6 +774,13 @@ for (const bo of bos) {
     if (visible > 12 && !tabs) add("WARN", "0.8a", `${tag}: ${visible} visible fields and no tabs — split by meaning into tabs of ≤ 12 fields (also on instanceViewType TAB)`);
     else if (visible > 8 && !tabs && !fs.some((f) => f?.type === "STATIC_TEXT"))
       add("WARN", "0.8a", `${tag}: ${visible} visible fields with no group heading and no tabs — open each theme with a STATIC_TEXT heading`);
+    // §0.8a step 2: one heading on top of the whole form (or tab) groups nothing
+    const sections = Map.groupBy(fs.filter((f) => f?.gridPosition && !f.trackedFieldCode), (f) => f.tabCodePath?.tabCode ?? "");
+    for (const [tab, cells] of sections) {
+      const heads = cells.filter((f) => f.type === "STATIC_TEXT");
+      if (heads.length === 1 && cells.length > 1 && heads[0].gridPosition.y === Math.min(...cells.map((f) => f.gridPosition.y)))
+        add("WARN", "0.8a", `${tag}.${heads[0].code}: the only heading, on top of the whole ${tab ? "tab " + tab : "form"} — groups nothing; two or more headings, or none`);
+    }
   }
   // §0.5: registry columns = the name + at most 5 key values
   if (bo.category !== "BO_COMPOSITE") {
