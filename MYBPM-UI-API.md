@@ -1122,10 +1122,11 @@ Everything in this section is `[C]`.
 - **The UI creates only `BO` and `GROUP` items** `[C]`. The client enum also has `ANALYTIC`,
   `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` (the built-in items, one of each per company), `REPORT`
   (operative reports, their own export basket, R4a) and `PROCEDURES` — none is created by hand.
-- `iconName`: **every item you create gets an icon BY MEANING, without being asked** — the group by the
-  system (автосервис → `phosphor:car`), each item by what its records are (клиенты → `phosphor:users`,
-  заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`), dictionaries → `phosphor:book`; two items
-  of one group differ; the report lists «item → icon». The generic defaults GROUP `bo-g-draggable`, BO
+- `iconName`: **every item you create gets an icon BY MEANING, without being asked** — each group by ITS
+  OWN theme (Клиенты → `phosphor:users`, Работы → `phosphor:wrench`, Склад → `phosphor:package`; two groups never
+  share an icon), each item by what its records are (клиенты → `phosphor:users`, заказ-наряды →
+  `phosphor:wrench`, оплаты → `phosphor:money`), each dictionary by what it lists (марки → `phosphor:car`, посты →
+  `phosphor:buildings`, причины → `phosphor:warning`; `phosphor:book` only when nothing fits); items of one group differ; the report lists «item → icon». The generic defaults GROUP `bo-g-draggable`, BO
   `man-with-company`, dictionary `bo-d-draggable` (no prefix) only when the user wants no icons.
 - **Icons by meaning** `[C]` — a short list, all names exist on the stand (the full 1153: «Menu icon catalogue» below):
 
@@ -5317,6 +5318,9 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     field (old positions, overlapping the new form), the diff silent about them; a revived reference to a
     rolled-back dictionary answers «данный бизнес-объект не существует» on its options. A new attempt gets new
     ids (a new build salt, `MYBPM-IMPORTS.md` 0.7). §5 «A deleted BO comes back».
+73. **`EsDataTooLargeException` on a save or an import step is transient** `[C]` — the stand's Elasticsearch
+    breaker, not the payload: repeat the same call every few seconds until it passes (it may take minutes), and
+    before repeating a CREATE read whether the first one already stored the record (§5b «Data too large»).
 
 ## 12. Open questions
 
