@@ -720,6 +720,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
 **Never write a column for the SINGLE side of a two-way link** — such rows are silently dropped (trap 13).
 **An xlsx import runs none of the BO's scripts** `[C]` — no hook, no field script, on a created record or an
    updated one (trap 51); what a script would compute must be in the file, or go through the form cycle (§6b).
+   A process does start: an `ON_INSTANCE_CREATE` run way with `ON_UPLOAD_XLSX` in `changeVariantSet` runs on
+   every record the file creates `[C]` (§5f «Run ways»).
 
 #### R8 — Export the structure of a company
 
@@ -784,7 +786,8 @@ and dropping the rest «for scope» is a fraction reported as done.
 
 1. **Decompose the spec into a coverage table BEFORE the first write** — one row per requirement (an object,
    a list of values, a status path, an automation, a calculation, a report, a role, a notification) — each
-   automation, report and role a row of its own —, each row given exactly ONE route from this table, written
+   automation, report and role a row of its own, and so is a calculation or automation stated inside an
+   object's description (a number given automatically, a value recomputed on save) —, each row given exactly ONE route from this table, written
    as the literal text of its «Route» cell («where possible», «partly», «если поддерживается», «требует
    серверной логики», «внешняя настройка», «настройка на стенде» and two routes joined by «или» are no route —
    an item that fits none is «not doable» with its row of the last table):
@@ -812,7 +815,8 @@ and dropping the rest «for scope» is a fraction reported as done.
    is no computed field type» are NOT reasons.
 5. **The report** (0U.6): the contents READ BACK from the stand (R4), never from your plan — groups, BOs by
    category, scripts by owner and hook, processes, menu items, rights; plus the coverage table — every spec
-   item, its route, done / not done + the reason.
+   item, its route, done / not done + the reason — printed as a table at the end of the reply; an item not
+   done is a row of its own, never inside a row marked done, never only in a list of limitations.
 
 **Modelling patterns** — how a spec becomes BOs and links:
 
@@ -911,7 +915,7 @@ and dropping the rest «for scope» is a fraction reported as done.
 - [ ] Every call's answer was parsed and checked for `errorType`, not just for HTTP 200.
 - [ ] The report lists what was READ BACK (R4), never the plan, and names no object the stand does not
       have; for a whole system (R10) it carries the coverage table — every spec item, its route, done / not
-      done + a reason from R10's closed list.
+      done + a reason from R10's closed list, an item not done in a row of its own.
 - [ ] The object was read back with R4 and its `name`, `code` and field list match what was asked for.
 - [ ] For a BO built with R1: the code did NOT acquire a 16-character tail (the rename race).
 - [ ] For an import: `load-import-data` says `APPLIED`, and the BO answers to `load-bo-id-by-code`.
@@ -1956,8 +1960,9 @@ editor route, TWO controllers and a versioned diagram.
   `fieldIdsSet` fields (`ON_FIELD_CHANGE`; saving with no change or the same value starts nothing) creates a NEW
   record of the process BO pointing at that target record and runs the process on it; adding run ways does
   not switch off the default (a process record created directly still runs). `changeVariantSet`
-  `ON_MANUAL_SAVE` (the dialog's default) covers a form save AND a record made by the §6a cycle; the other
-  members are `[U]`. **UI** `[I]`: the process editor's run-ways button opens the dialog
+  `ON_MANUAL_SAVE` (the dialog's default) covers a form save AND a record made by the §6a cycle;
+  `ON_UPLOAD_XLSX` makes a record created by an xlsx records import (§6) start the `ON_INSTANCE_CREATE` run
+  way `[C]` — the import itself runs no Block IDE script; the other members are `[U]`. **UI** `[I]`: the process editor's run-ways button opens the dialog
   (`openPopoverBoProcessRunWaysSettings`); its process-field list = the process BO's `BO`/`CO` fields with
   `viewType` `SINGLE`/`FIELDS`, its target-field list = that reference's `boFieldRefs`; it refuses every edit on a WORK version — switch to the test version first (or use the API
   above). The archive form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) — `MYBPM-IMPORTS.md` §5c
@@ -2714,8 +2719,11 @@ by `translate-script`, not stored as poison. The 16 enums and their values: `loa
 - **A child's field written by a script** reaches the child only when the PARENT form is saved (lost on
   cancel) — unless `#Сохранить` (`F-saveBoiChanges-K-FIX-T-BoiRefCode`, void, on a RECORD only) stores it at
   once. A process Script / Switch figure's writes are saved when the figure is left; no `#Сохранить` needed.
+  An open card does not show them until reopened — the client never refreshes a record by itself `[C]`; a
+  process can push a refresh of one record to one user with a dedicated method `[C]` (its name `[U]`).
 - **A DEV record's script sees only DEV records in its `BO`/`CO` fields** (collections read empty otherwise).
-- A dictionary at run time: `F-findByFilter-K-FIX-T-BoRefCode` on a `BoRefCode` constant → rows (no drafts);
+- A dictionary at run time: `F-findByFilter-K-FIX-T-BoRefCode` on a `BoRefCode` constant → rows (no drafts;
+  it searches the Elasticsearch index `[C]`, whose lag behind a save a person in the UI never notices `[C]`);
   `code` matching is case-sensitive.
 
 **Core actIds** (the rest of the 476: walk `load-act-record-list` / `load-act-details` by `valueExtType`, the

@@ -47,6 +47,9 @@ gets the names wrong: the importer then rejects the file or silently drops what 
      blanket «это пока структурная основа» (0.2b step 6, 0.2c step 7, 0.18);
    - each Route cell of the coverage table is copied literally: no «где это поддерживается форматом», no
      «настройка на стенде», no «требует серверной логики» (0.2b);
+   - **the reply ends with the coverage table printed again**, each row marked «сделано» or «не сделано» + its
+     reason; an item not built (a numbering, a computed value, a reminder) is a row of its own — never folded
+     into a row marked «сделано», never only in a paragraph of limitations (0.2b step 6);
    - **run the form lint of 0.10 (a plain JavaScript function; no JavaScript engine → port it to your
      language) and paste its output** — a reply without that output is unfinished; the report names the build salt and the list of checks
      run (0.10 «The report»). **A file the lint still flags is not handed over** — fix and rerun until only
@@ -259,6 +262,9 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    of the spec (an object, a list of values, a status path, a link between objects, an automation, a
    calculation, a report, a role, a notification), columns «spec item | route | built by». Each
    automation, report and role is a row of its own — never one row for «rights, reports and notifications».
+   A calculation or automation stated inside an object's description (a number given automatically, a value
+   recomputed on save, a date derived from another) is a row of its own too — the object's «an archive line»
+   row does not cover it.
    Each row gets exactly ONE route from the table below, written as the literal text of its «Route» cell;
    «where the format supports it», «if possible», «partly», «если поддерживается», «где это поддерживается
    форматом», «требует серверной логики», «внешняя настройка», «настройка на стенде» and two routes joined by
@@ -296,7 +302,10 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    import analysis and it reports what is wrong; scope is what the spec says; a computed field is a plain
    field plus a hook (0.2c step 7).
 6. **Run 0.10 and report by 0.10 «The report»** — the coverage table again, each row now marked built /
-   not built + the reason / to do after the import. **Every row routed to «a hook script in the archive» or
+   not built + the reason / to do after the import — **printed as the table, at the end of the reply**; a prose
+   «Что включено» / «Ограничения» instead is no report. A row is built only when all it names is in the file;
+   a part that is not is split off into a row of its own, not built + its reason — every limitation the reply
+   names («вводится вручную», «не вычисляется автоматически») is such a row. **Every row routed to «a hook script in the archive» or
    «a business process in the archive» is in the file** (a `ScriptDefStructDto` / `BO_PROCESS` line you can
    name), or it is marked «not built» in its own row with a reason from step 5. A blanket line instead —
    «это пока структурная основа», «скрипты и процесс не включены», «будут добавлены позже» — breaks step 3
@@ -1534,7 +1543,7 @@ return out.length ? out.join("\n") : "form lint: OK";
 - [ ] **`form lint: OK` does not mean every rule of this document holds** — it sees the file, not the spec.
       It does NOT see: (a) the coverage table — every row routed to «a hook script» or «a business process»
       needs a script / process in THIS file that does that row's work (writes that field, moves that status);
-      a row not built is «не сделано» + its reason in the table AND in the reply, never «требует уточнения» or
+      a row not built is «не сделано» + its reason in its OWN row of the table AND in the reply, never «требует уточнения» or
       «настроить на стенде»; (b) every check below this one. The report names each of them as done, after the
       lint output — «lint OK» alone is not «проверено».
 - [ ] Every new code follows 0.6a by MEANING: English snake_case; objects, groups and menu items `Capitalised`,
@@ -1598,7 +1607,8 @@ return out.length ? out.join("\n") : "form lint: OK";
   hand and why. A check
   you did not run is named as not run, never folded into «проверка архива».
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
-  reason from the closed list / to do after the import.
+  reason from the closed list / to do after the import — printed as a table at the end of the reply; an item
+  not built is a row of its own, never inside a row marked built, never only in a list of limitations.
 - **The steps after the import**: import the archive — analysis first, then apply (0.11 «What the user does with it»), load the initial records
   by xlsx (Part III), set the rights on the stand if no group ids were given (0.2d).
 
@@ -3335,9 +3345,12 @@ that field is the only link between them. An export of one process carries 7 obj
     «три» → a run) `[C]`; the value of an `INPUT_TEXT` is the plain string, other types `[U]`.
   - `changeVariantSet` — WHICH kind of save counts. `ON_MANUAL_SAVE` (what the dialog sets by default)
     covers both a save through the record form AND a record created by the formless API cycle
-    (`MYBPM-UI-API.md` §6a — which runs no Block IDE script, yet starts the run way) `[C]`. The other
-    members are unverified `[U]` (whether an xlsx-created record starts a process: §20): `ON_IN_MIGRATION | ON_UPLOAD_XLSX | ON_CALL_API | ON_MASS_CHANGE` (field
-    change only) `| ON_PROCESS_CHANGE | ON_PLUGIN_SAVE | ON_KAFKA_IN_MIGRATION`.
+    (`MYBPM-UI-API.md` §6a — which runs no Block IDE script, yet starts the run way) `[C]`.
+    `ON_UPLOAD_XLSX` — a record created by an xlsx records import (Part III) starts the `ON_INSTANCE_CREATE`
+    run way `[C]`, though the import runs no Block IDE script; a run way that must also catch records loaded
+    from a file lists it beside `ON_MANUAL_SAVE`. The other members are unverified `[U]`:
+    `ON_IN_MIGRATION | ON_CALL_API | ON_MASS_CHANGE` (field change only)
+    `| ON_PROCESS_CHANGE | ON_PLUGIN_SAVE | ON_KAFKA_IN_MIGRATION`.
   - `SCHEDULED` — no process field; `schedule = {repeatType (EVERYDAY | EVERY_WEEK | EVERY_MONTH | EVERY_WORKING_DAY | EVERY_LAST_DAY_OF_MONTH | EVERY_LAST_WORKING_DAY_OF_MONTH), repeatUntilType (NO_END_DATE | REPEAT_COUNT | EXPIRATION_DATE), startTime, startRepeatTime, endRepeatTime, repeatCount, interval, daysOfWeek, dayOfMonth}` — **`startTime` is a real UTC instant, `startRepeatTime` is a date** `[C]` (the picked local time is shifted to UTC and then printed with the pattern `yyyy-MM-dd'T'HH:mm:ss'Z'`, so the `Z` is literal but the value IS UTC; the date is the local midnight printed the same way, `…T00:00:00Z`; reading back, the dialog uses only the `HH:mm` of `startTime`). The stand ACCEPTS a scheduled run way and stores it as sent, but **it has not been seen to fire** `[U]`. The client has no call that shows a next run, so there is nothing to read back; whether the build or a switched-off scheduler is the cause is open — **do not rely on `SCHEDULED`; start such a process from a script or by hand**. Its archive form is unverified `[U]`.
   - `ON_MIGRATION_END` — no process field and no options in the dialog; not exercised `[U]`.
   The target BO must already be on the stand or travel in the same archive (`refBoInfo.code`). Building a
@@ -5351,7 +5364,16 @@ Which filter constructors a field offers depends on its type:
 | TextLang kinds, PERIOD*, GEO_POINT, FILE_UPLOAD, CHECKLIST, QUESTIONNAIRE, PROGRESS_BAR | none — only `find*` |
 
 **`findByFilter` never returns draft records** `[C]` — only saved ones, whatever the filter (an unsaved
-new record, a child made by `F-CI` before the save, are not found).
+new record, a child made by `F-CI` before the save, are not found). A save hook of a NEW record runs while
+the record is still a draft, so that hook never finds the record itself `[C]`.
+**`findByFilter` searches the Elasticsearch index** `[C]`; the index lags a save only slightly — a person
+working in the UI never notices it `[C]`. Whether hooks and process runs of one BO run one at a time is
+`[U]` — assume runs started at the same moment race `[I]`. So a search sees every record a person saved
+before it, while runs started at the same moment (one xlsx file, an API loop) can read the same state `[I]`. The result has a cap — its size is unknown, far above 10 000 records `[I]` — so a scan
+with no filter is complete at ordinary volumes.
+**A duplicate in a unique field under a process:** a process that creates a dictionary row whose `code`
+already exists fails `[C]`; whether writing a duplicate into any BO's `isUnique` field fails the process the
+same way is `[U]`.
 
 **Runtime semantics** `[C]` (counts below are for records a1/1/Да, b2/2/Нет, c3/3/Нет; hook «Открытие» of a NEW record): `ExactEquality`/`ExactInequality` on text and number, `StartsWithText «c»` → 1,
 `EndsWithText «1»` → 1, `ContainsPhraseText «b2»` → 1, but **`ContainsText «2»` → 0** — it is a word/token match,
@@ -6190,7 +6212,9 @@ Number/string facts below without a marker are `[I]`.
   a **Form** step stands (status «В ожидании») **until the record held in the Form's BO field is saved**,
   then the process runs on through Script / Switch to the Exit, and the status becomes «Завершён».
   **What a Script / Switch figure writes is saved when the figure is left** (its exit block) `[C]` — no
-  `#Сохранить`, no card save.
+  `#Сохранить`, no card save. **A card that is open does not show such a write** until it is reopened — the
+  client never refreshes a record by itself `[C]`; a process can push a refresh of one record to one user
+  with a dedicated method `[C]` (its name `[U]`).
   **The Form binds to the record that is in the field WHEN THE STEP BEGINS.** A field filled later is never
   watched, and the step stays stuck. So the design rule is: fill a Form's field before the process gets
   there, either in the record's first save or in a Script placed before the Form. **The save that
@@ -6678,6 +6702,8 @@ needs.
   группа» made its import idempotent. **A BO with neither an ID column nor a unique field always CREATES.**
 - **An xlsx import runs none of the BO's scripts** `[C]` — no hook and no field script, on a created record or
   an updated one (§15). Values a script would compute must be in the file or filled later through the form.
+  A process does start: an `ON_INSTANCE_CREATE` run way whose `changeVariantSet` lists `ON_UPLOAD_XLSX`
+  runs on every record the file creates `[C]` (§5c «`runWayMap`») — the way to compute on imported records.
 - Re-importing a full export with rows APPENDED kept the existing rows and added the new ones. `[C]`
 - Built-in «Рабочая группа» registry format: «Имя» + nested «Руководитель» (Email/Фамилия/Имя) + table
   «Пользователи» (Email/Фамилия/Имя); merges A1:A2 / B1:D1 / E1:G1, freeze A3. **Group membership imports
@@ -6779,7 +6805,5 @@ Every record-import behaviour this part relies on is `[C]`; these are open and N
   `load-bo-import-details`.
 - `[U]` Whether a file can create DEV (test) records — check: look for an import in the «Тестовые» registry.
 - `[U]` Whether a file sets a record's participants — check: look for such a column in the template.
-- `[U]` Whether an xlsx-created record starts a process (run way `ON_UPLOAD_XLSX` or the default run way, §5c)
-  — check: import a record into a process BO / a run-way target, read `load-process-steps`.
 - `[U]` A rollback of an APPLIED records import (`MYBPM-UI-API.md` §0U R7) — check: look for a `bo-transfer` rollback call and
   a rollback control in the import log, try it on a probe BO.
