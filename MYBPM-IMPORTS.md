@@ -62,9 +62,9 @@ table at the top of §0S, records at the top of §0X.
 | Ids | random ids (even from a seeded generator); any length but 16; one seed for two objects (a field seed from the field code alone gives every BO's `status` the same id); a fresh salt or a renamed code for an object that is being AMENDED (a duplicate field, the old one stays); the salt of an earlier build for a build from scratch (the stand revives the old deleted BO with its old fields) | 16 chars over `A-Za-z0-9@~`, hashed from a seed per object kind + the build salt (field = salt + BO code + field code), distinct across the whole file; an amendment keeps every existing id and code | 0.7 |
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
-| Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
+| Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none; a BO with a `status` opens its kanban by it | 0.5, 0.5c |
 | Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file; a dictionary picked through a `BO` reference field (draws a «Выберите» link, not a dropdown); a dictionary no field uses; a local list repeating a dictionary's rows; or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
-| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; every field alone at `cols 8` («one per row»); `w: 10` and no tabs on every window; `tableColToShow: true` on every field | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; at most 2 lone short fields per form; over 12 visible fields → tabs, over 8 → tabs or group headings; registry ≤ 6 columns; `w` / `h` by 0.8a | 0.5, 0.8, 0.8a |
+| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; every field alone at `cols 8` («one per row»); `w: 10` and no tabs on every window; `tableColToShow: true` on every field | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; at most 2 lone short fields per form; the status beside the title in the header row, never in a tab; over 12 visible fields → tabs, over 8 → tabs or group headings; registry ≤ 6 columns; `w` / `h` by 0.8a | 0.5, 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
@@ -288,7 +288,8 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    - the archive cannot carry it — name its row of 0.2d;
    - its only route is `[U]` — name the section that marks it.
 
-   «Cannot be verified offline», «out of scope», «too large», «better done by hand», «an archive has no
+   «Cannot be verified offline», «out of scope», «too large», «better done by hand», «отмечается вручную» for a
+   status path with an approval stage, «an archive has no
    computed field type» are NOT reasons. Nothing in this document is verified offline — the user runs the
    import analysis and it reports what is wrong; scope is what the spec says; a computed field is a plain
    field plus a hook (0.2c step 7).
@@ -889,19 +890,21 @@ Rules `[C]`:
 - **A `GROUP` line carries NO `boPages`, NO `bracketFilter`, NO `boCode` / `boName`.** A `BO` line carries
   both `boPages` and `bracketFilter`; `bracketFilter.boCode` repeats `boCode`, `brackets: {}` = every record.
 - `kanbanFieldCode` appears ONLY when the kanban is on; it is a `DROPDOWN_SINGLE` of that BO AND a key of
-  its `kanbanCardTemplates` (0.5c).
+  its `kanbanCardTemplates` (0.5c). **A BO with a `status` dropdown opens its kanban by `status`** — another
+  dropdown (a service type, a category) only on a SECOND item of the same BO beside the status one.
 - `boCode` names a BO of THIS archive, or a BO already on the stand (a stand code — ask, 0.2a). The same for
   `parentMenuItemCode`: a `GROUP` line of this archive, or a group code given by the user — never guessed.
 - Put the `GROUP` line BEFORE its children. `orderIndex`: the built-in root «Системные» is 60000 — put
   your roots after it (950000), children count inside their parent (10000, 20000 …).
 - `iconName`: **every line gets an icon BY MEANING, without being asked** — each group by ITS OWN theme
-  (Клиенты и авто → `phosphor:users`, Работы → `phosphor:wrench`, Склад → `phosphor:package`), never the one icon
+  (Клиенты и авто → `phosphor:address-book`, Работы → `phosphor:briefcase`, Склад → `phosphor:archive`), never the one icon
   of the whole system on every group; each item by what its records are (клиенты → `phosphor:users`,
   заказ-наряды → `phosphor:wrench`, оплаты → `phosphor:money`); each dictionary by what it LISTS (марки →
   `phosphor:car`, посты/боксы → `phosphor:buildings`, виды топлива → `phosphor:gas-pump`, причины отказа →
   `phosphor:warning`, единицы → `phosphor:ruler`), `phosphor:book` only when nothing in the table fits.
-  **Two `GROUP` lines never share an icon, and three or more siblings with one icon is a defect** (the lint of
-  0.10 reports both). Take the name from the table below (or from 0.16) WITH its prefix; never compose
+  **Two `GROUP` lines never share an icon, a `GROUP` never takes the icon of one of its own items, and three or
+  more siblings with one icon is a defect** (the lint of 0.10 reports all three, and checks every name against
+  0.16 when it is given this document). Take the name from the table below (or from 0.16) WITH its prefix; never compose
   one from memory — the importer accepts any string and the sidebar shows an EMPTY place for a wrong one.
   Two items of one group should differ. In the report list «item → icon» so the user can change them. The
   generic defaults `bo-g-draggable` (group), `man-with-company` (BO), `bo-d-draggable` (dictionary) only
@@ -1090,7 +1093,8 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    form. Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
    and **balance the tabs**: the group is as tall as its TALLEST tab `[C]`, so a short tab shows an empty
    band under its fields. Keep the name field (and what a user scans first) outside the tabs, above the
-   group, or on the first, default tab. Tab codes `tab_*`, group code `tabs` (0.6a). **A tab holds at least
+   group, or on the first, default tab. **The status dropdown sits in the header row beside the title field**
+   (number + status, same `y`), never inside a tab. Tab codes `tab_*`, group code `tabs` (0.6a). **A tab holds at least
    2 fields** — one field is a group heading's job, not a tab's; and **name each tab by what IT holds** on
    THIS BO («Работы», «Запчасти», «Оплаты»), never one label set copied onto every BO.
 4. **Nested tabs — rarely.** Only when ONE tab still holds more than 12 visible fields AND at least
@@ -1229,21 +1233,25 @@ the BO's category. Count it in `objectCount`.
       rules (0.9), the ids (0.7), the templates (0.5–0.5d), the layout (0.8, 0.8a) and the process diagram (0.18)
       that a check can see — the list is under the function — one line each, and `form lint: OK` when there is
       none; fix every line it prints and run it again. A `REMINDER` line is not a defect by itself: it names ONE
-      field that looks computed (итого, остаток, резерв, баланс, к оплате) while its BO has no hook script with a
-      body, or looks like an approval (согласовано, утверждено) while no process of the file has a script that
-      writes a field (`BlockAssign`), or a BO of visits (запись, визит, приём) has a `FULL_DATE` and no calendar.
-      Such fields in a file with NO script and NO process at all is a defect line, not a REMINDER. Answer each BY NAME in the report —
+      number field that looks computed (итого, остаток, резерв, баланс, к оплате; «сумма» on a line BO that has a
+      quantity and a price) while NO script of the file writes THAT field (a `BlockAssign` to it — a hook on the
+      same BO that writes other fields does not count; мин / макс / порог / лимит / норма are thresholds, never
+      computed), or looks like an approval (согласовано, утверждено) while no process of the file has a script
+      that writes a field, or a BO of visits (запись, визит, приём) has a `FULL_DATE` and no calendar.
+      Such fields in a file with NO script and NO process at all is a defect line, not a REMINDER; so is an
+      approval field on a BO whose status list holds an approval stage (согласование …) with no process — the
+      stage path is in the spec, «отмечается вручную» does not answer it. Answer each BY NAME in the report —
       «built» (the hook / process you added) or «вводится вручную, потому что …»; a task that needs no script or
       process stays without one. The prose
       checks below stay mandatory — the lint does not replace them.
       **How to run it:** the function is plain JavaScript — call `lintArchive(<the text of
-      data-*/0000001.mybpm>)` in any JavaScript engine your sandbox has and print what it returns. **No
+      data-*/0000001.mybpm>, <the whole text of this document>)` (the second argument checks every `iconName` against 0.16) in any JavaScript engine your sandbox has and print what it returns. **No
       JavaScript engine?** Port the function line by line to the language you build in and run the port on the
       built file. Skipping it is not an option, and checks of your own builder do not replace it; a lint you
       could not run is reported as «form lint: NOT RUN» with the reason — never as «проверено».
 
 ```js
-function lintArchive(jsonl) { // jsonl = the whole text of data-*/0000001.mybpm
+function lintArchive(jsonl, doc) { // jsonl = the whole text of data-*/0000001.mybpm, doc = the whole text of THIS document
 const L = jsonl.trimEnd().split("\n").map((l) => JSON.parse(l)), out = [], err = (s) => out.push(s);
 const cls = (o) => String(o["@class"]).split(".").pop(), of = (c) => L.filter((o) => cls(o) === c);
 const all = (o) => Object.entries(o ?? {}), vals = (o) => Object.values(o ?? {}), bos = of("BoStructDto");
@@ -1312,6 +1320,7 @@ for (const bo of bos) {
       const n = fs.filter(([, x]) => x.tabCodePath?.tabCode === c && x.type !== "STATIC_TEXT").length;
       if (n < 2) err(`${t}.${c}: a tab with ${n} field(s) — at least 2, else a heading (0.8a step 3)`);
     }
+    if (ty === "DROPDOWN_SINGLE" && f.tabCodePath?.tabCode && (k === "status" || low(f.label?.rus) === "статус")) err(`${t}: the status inside tab ${f.tabCodePath.tabCode} — the header row beside the title field, seen on every tab (0.8a step 3)`);
     if (ty === "FILE_UPLOAD" && /фото|снимк|снимок|photo/i.test(`${k} ${f.label?.rus}`) && f.params?.viewType !== "TILE") err(`${t}: a photo field without params.viewType TILE shows no pictures (0.19)`);
     if (cat === "BO_DICTIONARY" && (k === "code" || k === "label") && f.gridPosition && (f.gridPosition.x !== 0 || f.gridPosition.cols !== 15)) err(`${t}: a dictionary's Код / Значение — x 0, cols 15 each, one width (0.5b, 0.8)`);
     if (!isRef(f)) continue;
@@ -1337,10 +1346,21 @@ for (const m of of("MenuItemStructDto")) {
     if ((k in m) === grp) err(`${t}: ${grp ? "a GROUP line carries" : "a BO line needs"} ${k} (0.9 rule 14)`);
   if (kf && bo && !(bo.dynamicFields?.[kf]?.type === "DROPDOWN_SINGLE" && bo.kanbanCardTemplates?.[kf]))
     err(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
+  if (kf && bo?.dynamicFields?.status?.type === "DROPDOWN_SINGLE" && !of("MenuItemStructDto").some((x) => x.boCode === m.boCode && x.boPages?.kanbanFieldCode === "status")) err(`${t}: the kanban opens by ${kf} while ${bo.code} has a status — kanbanFieldCode status (0.15)`);
 }
 const by = (a, f) => a.reduce((m, x) => ((m[f(x)] ??= []).push(x), m), {});
 const menu = of("MenuItemStructDto"), icon = (ms) => Object.entries(by(ms, (m) => m.iconName ?? ""));
 for (const [ic, ms] of icon(menu.filter((m) => m.menuItemType === "GROUP"))) if (ms.length > 1) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: groups share icon ${ic} — each group by its own theme (0.5d)`);
+for (const g of menu.filter((m) => m.menuItemType === "GROUP")) for (const c of menu.filter((m) => m.parentMenuItemCode === g.menuItemCode && m.iconName === g.iconName))
+  err(`menu ${g.menuItemCode}: group icon ${g.iconName} repeats its item ${c.menuItemCode} — the group by its theme, the item by its records (0.5d)`);
+const cat = String(doc ?? "").split("\n### 0.16 Menu icons")[1]?.split("\n### ")[0];
+if (!cat) err(`iconName not checked — call lintArchive(<the archive text>, <the text of this document>) (0.16)`);
+else for (const m of menu) {
+  const [ns, ...rest] = String(m.iconName ?? "").split(":"), n = rest.join(":");
+  const known = ["bo-g-draggable", "man-with-company", "bo-d-draggable"].includes(m.iconName)
+    || (/^(phosphor|menu-item)$/.test(ns) && (cat.includes(` ${n} `) || cat.includes(` ${n}\n`) || cat.includes(`«${n}»`) || cat.includes(`: ${n} `)));
+  if (!known) err(`menu ${m.menuItemCode}: iconName "${m.iconName}" is not in 0.16 — the sidebar draws an empty place; pick one from 0.5d «Icons by meaning» (0.16)`);
+}
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
 const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
@@ -1455,18 +1475,37 @@ for (const d of bos.filter((b) => b.category === "BO_DICTIONARY" && b.code !== "
     if (f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && same >= 2) err(`${bo.code}.${f.code}: local list repeats ${same} rows of dictionary ${d.code} — FROM_BO on it (0.5)`);
   }
 }
-const sid = (c) => String(c).split("-").pop(), body = new Set();
-for (const s of of("ScriptDefStructDto")) {
+for (const s of of("ScriptDefStructDto"))
   if (vals(s.blocks).every((x) => /Block(FixEntryPoint|Exit)Struct$/.test(x["@class"] ?? x.type ?? ""))) err(`script ${s.compositeId}: only entry → exit — does nothing; give it the step's work or drop it (0.18)`);
-  else body.add(sid(s.compositeId));
+const owner = new Map(), written = new Set(); // "<BO>.<field>" some script assigns: <x>.<field>.#Значение = …
+for (const v of of("BoScriptVersionsStructDto")) for (const c of v.workScripts?.scriptDefIds ?? []) owner.set(c, v.ownerBoInfo?.code);
+for (const pv of of("BoProcessVersionsStructDto")) for (const v of [pv.workProcess, ...vals(pv.processVersions)]) for (const c of v?.scriptsDefIds ?? []) owner.set(c, bos.find((b) => b.oldId === pv.oldId)?.code);
+for (const s of of("ScriptDefStructDto")) {
+  const X = s.expressions ?? {}, B = s.blocks ?? {}, fld = (e) => /^F-(\w+)-K-/.exec(e?.actId ?? "")?.[1];
+  const boOf = (e, d = 0) => { // the BO whose records the expression yields
+    if (!e || d > 20) return;
+    if (e.exprValueType === "THIS_PROCESS") return owner.get(s.compositeId);
+    if (e.exprValueType === "VAR_REF") { const b = B[e.varBlockId]; return boOf(X[b?.srcExprId ?? b?.valueExprId], d + 1); }
+    let a = e; while (a && /^F-VALUE-/.test(a.actId ?? "")) a = X[a.leftExprId];
+    const f = fld(a), host = f && boOf(X[a.leftExprId], d + 1);
+    return bos.find((b) => b.code === host)?.dynamicFields?.[f]?.boRefStruct?.boInfo?.code;
+  };
+  for (const b of vals(B).filter((x) => /BlockAssign/.test(x["@class"] ?? ""))) {
+    let e = X[b.leftExprId]; while (e && /^F-VALUE-/.test(e.actId ?? "")) e = X[e.leftExprId];
+    if (fld(e)) written.add(`${boOf(X[e.leftExprId]) ?? "*"}.${fld(e)}`);
+  }
 }
-const hooked = new Set(of("BoScriptVersionsStructDto").filter((v) => (v.workScripts?.scriptDefIds ?? []).some((c) => body.has(sid(c)))).map((v) => v.ownerBoInfo?.code));
 const noProcess = !of("BoProcessVersionsStructDto").some((pv) => [pv.workProcess, ...vals(pv.processVersions)].some((v) => (v?.scriptsDefIds ?? []).some((c) => /BlockAssign/.test(JSON.stringify(of("ScriptDefStructDto").find((s) => s.compositeId === c)?.blocks)))));
 for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f of vals(bo.dynamicFields)) {
-  const l = f.label?.rus ?? "", t = `REMINDER ${bo.code}.${f.code} «${l}»`;
-  if (!hooked.has(bo.code) && /итого|остат|резерв|баланс|к оплате/i.test(l)) err(`${t} looks computed and ${bo.code} has no hook script — a hook (0.2c step 7), or report «вводится вручную, потому что …»`);
-  if (noProcess && /^(CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) && /согласован|утвержд/i.test(l))
-    err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
+  const l = f.label?.rus ?? "", t = `REMINDER ${bo.code}.${f.code} «${l}»`, nums = vals(bo.dynamicFields).filter((x) => x.type === "INPUT_NUMBER").map((x) => low(x.label?.rus));
+  const line = /сумм/i.test(l) && nums.some((x) => /кол|час|объ[её]м|вес/.test(x)) && nums.some((x) => /цен|тариф|ставк/.test(x)); // qty ∙ price
+  if (!written.has(`${bo.code}.${f.code}`) && !written.has(`*.${f.code}`) && f.type === "INPUT_NUMBER" && !/мин|макс|порог|лимит|норм/i.test(l) && (line || /итого|остат|резерв|баланс|к оплате/i.test(l)))
+    err(`${t} looks computed and no script writes it — a hook (0.2c step 7, §5d «A ready sum hook»), or report «вводится вручную, потому что …»`);
+  if (noProcess && /^(CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) && /согласован|утвержд/i.test(l)) {
+    const stage = vals(bo.dynamicFields).some((x) => x !== f && vals(x.fieldOptionsStruct?.options).some((o) => /согласов|утвержд/i.test(o.fieldOption?.label ?? "")));
+    if (stage) err(`${bo.code}.${f.code} «${l}»: an approval field AND an approval stage in the status list, and no process links them — the BO_PROCESS that moves the status when it is approved (0.18 «A writing Script, literally»); «отмечается вручную» does not answer a stage path`);
+    else err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
+  }
 }
 for (const bo of bos.filter((b) => b.category === "BO" && !b.isCalendarEnabled && /запис|визит|встреч|при[её]м|брон/i.test(b.name?.rus ?? "")))
   if (vals(bo.dynamicFields).some((f) => f.type === "FULL_DATE")) err(`REMINDER ${bo.code} «${bo.name.rus}»: visits with a date and time but no calendar — isCalendarEnabled + a calendar menu item (§2 «BO views»), or report why not`);
