@@ -35,7 +35,8 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    - [ ] the hard rules and the self-check, then the zip and the report — **0.9, 0.10, 0.11**.
 5. **The defects a build most often ships while the text says otherwise** — check each one in your file:
    - a `BO` `SINGLE` is **3 rows** and may share a row — never 6 rows, never alone at full width (0.5a, 0.8);
-   - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15; a build script takes the rows as lists of field codes, never one field per row (0.8);
+   - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15, and at most 2 such per form — every field alone at cols 8 is still «one per row»; a build script takes the rows as lists of field codes, never one field per row (0.8);
+   - over 12 visible fields → tabs (also on a `TAB` record), over 8 → tabs or group headings; the registry shows the name + at most 5 key values, never every field (0.8a, 0.5);
    - **every** `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning, `"[]"` for a comment (0.5);
    - every computed value / total of the spec is a hook script and every approval path a process, **built in
      the same archive** — or its own «not built» row with a reason from the closed list of 0.2b step 5, never a
@@ -59,7 +60,7 @@ table at the top of §0S, records at the top of §0X.
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
 | Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
-| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; `w: 10` and no tabs on every window | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
+| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; every field alone at `cols 8` («one per row»); `w: 10` and no tabs on every window; `tableColToShow: true` on every field | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; at most 2 lone short fields per form; over 12 visible fields → tabs, over 8 → tabs or group headings; registry ≤ 6 columns; `w` / `h` by 0.8a | 0.5, 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
@@ -484,7 +485,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "dateOnlyFuture": false,
   "dateOnlyPast": false,
   "needTrackStatus": false,
-  "tableColToShow": true,
+  "tableColToShow": false,                 ← true only on a registry column: the name + at most 5 key values (below)
   "isHistoryTracking": false,
   "isKindAddForSelect": false,
   "titleToShow": false,
@@ -543,8 +544,9 @@ refused with «Обязательные поля не заполнены», a du
 sets it automatically) — copy that if the archive should reproduce a stand-built registry.
 
 **Which fields are registry columns — the default.** `tableColToShow: true` on the fields a user scans the
-list by: the name / title / ФИО field (a string — that is fine), plus the few key values (status, date,
-amount, the main reference). Put the name field FIRST in `dynamicFields`, so it gets `tableColOrderIndex`
+list by: the name / title / ФИО field (a string — that is fine), plus **at most 5** key values (status, date,
+amount, the main reference) — **6 columns at most**; a 13-column registry cuts every header to «Мар…», «К…».
+The template above carries `false`: switch it on per field, never copy `true` onto every field. Put the name field FIRST in `dynamicFields`, so it gets `tableColOrderIndex`
 0 and `y: 0`. The counter follows the ORDER OF ENTRIES, the form follows `y` — they are independent: a
 `PROGRESS_BAR`, heading or `TAB_GROUP` on top of the form takes `y: 0` and the name field moves down, yet it
 still stands AFTER the name field in `dynamicFields` and takes the next counter value. Long texts (`TEXTAREA`), headings, files, tabs and checklists are `false`. Do NOT hide
@@ -1018,7 +1020,9 @@ loop over the fields that gives each one `x 0, cols 15` and `y += rows` builds e
 width» defect, however the rows were planned.
 
 - **A short field with no partner by meaning stands alone at `x: 0`, `cols: 8`** — never stretched to 15; the
-  right half stays empty and the row is the one exception to «cols sum to 15». The hole is safe only while no
+  right half stays empty and the row is the one exception to «cols sum to 15». It is an EXCEPTION: **at most 2
+  lone short fields per form (per tab)**. Three or more is the «one field per row» defect, cols 8 or not —
+  find their partners by meaning (контакты, суммы, даты, техданные). The hole is safe only while no
   cell of the NEXT row fits wholly into columns 8–14: such a cell floats up beside the lone field, and the rest
   of the form follows it `[C]` (§4 «The grid compacts VERTICALLY» — a cell stops at the first cell above in its
   own columns). So right below a lone field put a full-width row, or a pair split **7 + 8** (its right cell
@@ -1053,7 +1057,8 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    fields under it, up to the next heading or the end of the form / tab. The heading text names the
    SECTION, never a field label of the BO (0.9 rule 12).
 3. **Tabs** when the form has **more than 12 visible fields**, or is taller than one window (step 5:
-   more than ~23 rows). Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
+   more than ~23 rows) — **also on `instanceViewType: "TAB"`**: a page tab does not replace tabs inside the
+   form. Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
    and **balance the tabs**: the group is as tall as its TALLEST tab `[C]`, so a short tab shows an empty
    band under its fields. Keep the name field (and what a user scans first) outside the tabs, above the
    group, or on the first, default tab. Tab codes `tab_*`, group code `tabs` (0.6a).
@@ -1183,7 +1188,9 @@ the BO's category. Count it in `objectCount`.
       with `jsonl` = the text of `data-*/0000001.mybpm`. `JSON.parse` of the whole member at once MUST fail —
       that proves it is JSONL.
 - [ ] **Run the form lint below and paste its output into the report.** It prints every layout, toolbar and
-      table defect of 0.5, 0.5a and 0.8, every record window too tall or not narrower than its parent's (0.8a)
+      table defect of 0.5, 0.5a and 0.8 (a run of lone fields included), every form with no tabs or groups, every
+      registry of more than 6 columns, every record window too tall, too short for its form or not narrower
+      than its parent's (0.8a)
       and every process diagram defect of 0.18 (overlapping labels, bent arrows, long names, no run way) a
       build most often ships, one line each, and `form lint: OK` when there is
       none; fix every line it prints and run it again. The two `REMINDER` lines are not defects by themselves: each
@@ -1218,8 +1225,8 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (w.gridPosition) put(w.tabCode?.tabCode ?? "", { t: `${bo.code}.${w.code}`, g: w.gridPosition, box: true });
   for (const n of Object.values(bo.nativeFields ?? {}))
     if (n.gridPosition) put(n.tabCodePath?.tabCode ?? "", { t: `${bo.code}.${n.nativeFieldId}`, g: n.gridPosition, box: true });
-  for (const cells of forms.values()) {
-    let next = 0, edge = 15;
+  for (const [tab, cells] of forms) {
+    let next = 0, edge = 15, lone = 0;
     for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => a - b)) {
       const row = cells.filter((c) => c.g.y === y).sort((a, b) => a.g.x - b.g.x);
       if (y !== next) out.push(`${row[0].t}: y ${y}, expected ${next} (0.8)`);
@@ -1233,14 +1240,28 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       if (new Set(row.map((c) => c.g.rows)).size > 1) out.push(`${row[0].t}: row y ${y} mixes heights (0.8)`);
       if (row.length === 1 && row[0].short && row[0].g.cols === 15 && bo.category !== "BO_DICTIONARY")
         out.push(`${row[0].t}: a short field alone at full width — pair it by meaning or x 0, cols 8 (0.8)`);
+      if (row.length === 1 && row[0].short) lone++;
       next = y + Math.max(...row.map((c) => c.g.rows));
       edge = row.some((c) => c.box) ? 15 : x;
     }
+    if (lone >= 3 && bo.category !== "BO_DICTIONARY")
+      out.push(`${bo.code}${tab ? " tab " + tab : ""}: ${lone} rows hold one short field each — pair by meaning 2–3 per row, a lone field at most 2 per form (0.8)`);
   }
+  if (bo.category === "BO_DICTIONARY" || bo.category === "BO_PROCESS") continue;
+  const fs = Object.values(bo.dynamicFields ?? {}), seen = fs.filter((f) => !f.trackedFieldCode && f.type !== "STATIC_TEXT"
+    && f.type !== "TAB_GROUP" && f.tabCodePath?.tabCode !== "tab_system").length;
+  const tabs = fs.some((f) => f.type === "TAB_GROUP" && Object.keys(f.fieldTabs ?? {}).some((k) => k !== "tab_system"));
+  if (seen > 12 && !tabs) out.push(`${bo.code}: ${seen} visible fields and no tabs — tabs of ≤ 12 fields by meaning, also on instanceViewType TAB (0.8a step 3)`);
+  else if (seen > 8 && !tabs && !fs.some((f) => f.type === "STATIC_TEXT"))
+    out.push(`${bo.code}: ${seen} visible fields, no group heading and no tabs — a STATIC_TEXT heading per theme (0.8a step 2)`);
+  const cols = fs.filter((f) => f.tableColToShow === true).length;
+  if (cols > 6) out.push(`${bo.code}: ${cols} registry columns — tableColToShow: true on the name + at most 5 key values (0.5)`);
 }
-for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && b.gridLayoutPosition)) {
-  const g = bo.gridLayoutPosition;
+for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && b.gridLayoutPosition && /^BO(_PROCESS)?$/.test(b.category))) {
+  const g = bo.gridLayoutPosition, rows = Math.max(0, ...Object.values(bo.dynamicFields ?? {})
+    .filter((f) => f.gridPosition && !f.tabCodePath?.tabCode && !f.trackedFieldCode).map((f) => f.gridPosition.y + f.gridPosition.rows));
   if (g.h > 28) out.push(`${bo.code}: FORM window h ${g.h} > 28 — tabs (0.8a step 3) or instanceViewType TAB (step 8)`);
+  else if (g.h < rows + 5) out.push(`${bo.code}: FORM window h ${g.h} for ${rows} form rows scrolls — h = ${rows + 5}; over 28 → tabs or TAB (0.8a step 7)`);
   for (const f of Object.values(bo.dynamicFields ?? {}).filter((f) => f.type === "BO" && f.viewType === "TABLE")) {
     const c = bos.find((b) => b.oldId === f.oldRefBoId), back = Object.values(c?.dynamicFields ?? {})
       .some((x) => x.viewType === "TABLE" && x.oldRefBoId === bo.oldId);

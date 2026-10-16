@@ -716,7 +716,7 @@ for (const bo of bos) {
   // §0.8: rows — the cells of one row share y and rows, x runs 0, 0 + cols …, cols sum to 15; next y = y + rows
   const rowsByY = new Map<number, typeof laid>();
   for (const l of laid) rowsByY.set(l.gp.y, [...(rowsByY.get(l.gp.y) ?? []), l]);
-  let prevY: number | null = null, prevRows = 0, prevEdge = 15, prevFt = "", shared = 0, oneLine = 0;
+  let prevY: number | null = null, prevRows = 0, prevEdge = 15, prevFt = "", shared = 0, oneLine = 0, loneShort = 0;
   for (const y of [...rowsByY.keys()].sort((a, b) => a - b)) {
     const row = rowsByY.get(y)!.sort((a, b) => (a.gp.x ?? 0) - (b.gp.x ?? 0));
     const ft = row[0].ft;
@@ -750,6 +750,7 @@ for (const bo of bos) {
       const lone = cells.length === 1 && short(cells[0]) && (cells[0].gp.x ?? 0) === 0 && cells[0].gp.cols === 8;
       if (x !== 15 && !lone) add("WARN", "0.8", `${ft}: row y=${y} spans ${x} of 15 columns — the cols of a row sum to 15`);
       if (cells.length === 1 && ROWS_3.has(cells[0].f.type)) oneLine++;
+      if (cells.length === 1 && short(cells[0])) loneShort++;
     }
     prevY = y; prevRows = Math.max(...heights); prevFt = ft;
     prevEdge = row.some(l => l.box) ? 15 : Math.max(...row.map(l => (l.gp.x ?? 0) + (l.gp.cols ?? 0)));
@@ -757,6 +758,23 @@ for (const bo of bos) {
   // §0.8: short one-line fields share rows — a form of nothing but full-width fields is a defect
   if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && shared === 0 && oneLine >= 6)
     add("WARN", "0.8", `${tag}: ${oneLine} one-line fields, each alone at full width — put short fields that belong together 2–3 per row`);
+  // §0.8: a lone short field is the exception — three or more of them is a one-field-per-row form
+  if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && loneShort >= 3)
+    add("WARN", "0.8", `${tag}: ${loneShort} rows hold one short field each — pair short fields by meaning 2–3 per row; a lone field is the exception, at most 2 per form`);
+  // §0.8a steps 2–3: more than 12 visible fields need tabs, more than 8 need tabs or group headings
+  if (bo.category !== "BO_DICTIONARY" && bo.category !== "BO_COMPOSITE" && bo.category !== "BO_PROCESS") {
+    const fs = Object.values<any>(bo.dynamicFields ?? {});
+    const visible = fs.filter((f) => f && !f.trackedFieldCode && f.type !== "STATIC_TEXT" && f.type !== "TAB_GROUP" && f.tabCodePath?.tabCode !== "tab_system").length;
+    const tabs = fs.some((f) => f?.type === "TAB_GROUP" && Object.keys(f.fieldTabs ?? {}).some((t) => t !== "tab_system"));
+    if (visible > 12 && !tabs) add("WARN", "0.8a", `${tag}: ${visible} visible fields and no tabs — split by meaning into tabs of ≤ 12 fields (also on instanceViewType TAB)`);
+    else if (visible > 8 && !tabs && !fs.some((f) => f?.type === "STATIC_TEXT"))
+      add("WARN", "0.8a", `${tag}: ${visible} visible fields with no group heading and no tabs — open each theme with a STATIC_TEXT heading`);
+  }
+  // §0.5: registry columns = the name + at most 5 key values
+  if (bo.category !== "BO_COMPOSITE") {
+    const cols = Object.values<any>(bo.dynamicFields ?? {}).filter((f) => f?.tableColToShow === true).length;
+    if (cols > 6) add("WARN", "0.5", `${tag}: ${cols} registry columns — headers get cut; tableColToShow: true on the name + at most 5 key values`);
+  }
   // 0.5: tableColOrderIndex is a counter — the values form 0, 1, 2 … n-1, no duplicates, no gaps. Not checked
   // against y: a progress bar or a tab group on top of the form (y 0) may stand after the name field, and a
   // stand export lists the map in any order

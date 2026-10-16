@@ -314,10 +314,14 @@ not counting headings, the `TAB_GROUP` and the system fields.
   on its tab). Short one-line fields that belong together stand 2 per row (8 + 7) or 3 (5 + 5 + 5) — телефон +
   email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but full-width fields is a defect.
   Alone at full width: `TEXTAREA`, a `TABLE`, a heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
-  `GEO_POINT`, `PROGRESS_BAR`. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched;
+  `GEO_POINT`, `PROGRESS_BAR`. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched — an exception, at most 2 per
+  form (per tab): every field alone at `cols 8` is still the «one per row» defect;
   no cell of the row below may fit wholly into its free columns 8–14 — it would float up beside it — so under
   it goes a full-width row, a pair split 7 + 8, or nothing. Never mix heights in one row — the next row floats into the hole (§4 of
   `MYBPM-IMPORTS.md`). A `CHECKBOX` toggle sits a little higher than its row-mates' boxes — acceptable.
+- **Registry columns**: `tableColToShow: true` on the name + at most 5 key values (status, date, amount, the main
+  reference) — **6 columns at most**; every field as a column cuts each header to «Мар…». Turning `isRequired` /
+  `isUnique` on switches the column on by itself — switch it off again if it would make a seventh.
 - **Editor toolbar of a `TEXTAREA`, by meaning** `[C]`: `params.buttonTypes` (§5i «Per-type settings»); a
   comment, a note, a reason → `"[]"` — no buttons (a thin empty strip stays); a description a user formats →
   `["bold","italic","ul","ol"]`; the default ten only for rich content (a letter, an instruction).
@@ -329,7 +333,8 @@ not counting headings, the `TAB_GROUP` and the system fields.
   `[C]` (2 scrolls inside itself; heading + subheading line = 4). The heading names the SECTION, never a field
   label of the BO (`SameBoFieldsLabel`, trap 14).
 - **Tabs** (§5i «Tabs (`TAB_GROUP`) over the API») when the form has **more than 12 visible fields** or more than
-  ~23 rows: split by meaning, each tab ≤ 12 visible fields, **balance the tabs** — the group is as tall as its
+  ~23 rows — also on a record opened as a page tab (`instanceViewType: "TAB"`); over 8 visible fields at least
+  group headings: split by meaning, each tab ≤ 12 visible fields, **balance the tabs** — the group is as tall as its
   TALLEST tab `[C]`. Keep the name field above the group or on the first (default) tab. Codes `tabs`, `tab_*`
   (0U.5 rule 12). Nested tabs (a second `TAB_GROUP` on a tab) only when one tab still holds > 12 visible fields
   AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3**, nested = tallest tab + **2** («rows of a
