@@ -1446,6 +1446,8 @@ for (const pv of of("BoProcessVersionsStructDto")) {
       const t = cls(f).replace(/^Figure|Struct$/g, ""), [w, h] = SZ[t] ?? [80, 50];
       return [id, { t, x: f.x, y: f.y, b: [f.x - w / 2, f.y - h / 2, f.x + w / 2, f.y + h / 2] }];
     }));
+    for (const [fid, f] of all(F)) if (/^(Script|Switch)$/.test(f.t) && !of("ScriptDefStructDto").some((s) => String(s.compositeId).endsWith(`-${fid}`)))
+      err(`${pc}: ${f.t} ${fid} has no ScriptDefStructDto "<version>-${fid}" — on a record the figure FAILS «Скрипт не определен» (0.18)`);
     const at = (f, s) => s === "main" ? [f.t === "Enter" ? f.b[2] : f.b[0], f.y] : s === "left" ? [f.b[0], f.y]
       : s === "right" ? [f.b[2], f.y] : /^(top|up)$/.test(s) ? [f.x, f.b[1]] : /^(bottom|down)$/.test(s) ? [f.x, f.b[3]] : [f.x, f.y];
     const labs = [];
@@ -1467,6 +1469,13 @@ for (const pv of of("BoProcessVersionsStructDto")) {
     }
     if (!all(v.runWayMap).length) err(`${pc}: empty runWayMap — nothing starts the process (0.18)`);
   }
+}
+for (const bo of bos.filter((b) => b.dynamicFields?.PROCESS_STATUS)) {
+  const dv = bo.dynamicFields.PROCESS_STATUS.defaultValue;
+  if (!dv || dv === "[]") err(`${bo.code}.PROCESS_STATUS: no defaultValue (the CREATED row) — every record is refused on save (0.17)`);
+  if (!of("ExportStructInstanceDto").some((r) => (r.sources ?? []).some((x) => x.sourceType === "DEFAULT_VALUE"
+    && x.defaultValueInstanceSource?.boCode === bo.code && x.defaultValueInstanceSource?.fieldCode === "PROCESS_STATUS")))
+    err(`${bo.code}.PROCESS_STATUS: no PROCESS_STATUS row line with sources DEFAULT_VALUE {boCode: "${bo.code}", fieldCode: "PROCESS_STATUS"} — the default does not take, every record is refused on save (0.17, 0.18)`);
 }
 const fields = bos.flatMap((b) => vals(b.dynamicFields)), rows = of("ExportStructInstanceDto");
 const lab = (r) => { try { return low(JSON.parse(r.fieldMap?.label?.storedValue ?? "{}").RUS); } catch { return ""; } };
@@ -1522,6 +1531,12 @@ return out.length ? out.join("\n") : "form lint: OK";
 
 - [ ] **What the lint checks is not repeated here — its output is the proof**; the function itself is the list.
       `tools/validate-archive.bun.ts`, if present, checks the same and more.
+- [ ] **`form lint: OK` does not mean every rule of this document holds** — it sees the file, not the spec.
+      It does NOT see: (a) the coverage table — every row routed to «a hook script» or «a business process»
+      needs a script / process in THIS file that does that row's work (writes that field, moves that status);
+      a row not built is «не сделано» + its reason in the table AND in the reply, never «требует уточнения» or
+      «настроить на стенде»; (b) every check below this one. The report names each of them as done, after the
+      lint output — «lint OK» alone is not «проверено».
 - [ ] Every new code follows 0.6a by MEANING: English snake_case; objects, groups and menu items `Capitalised`,
       the rest lower case; `is_*` on a checkbox, `tabs` / `tabs_*` on a TAB_GROUP, `tab_*` on a tab.
 - [ ] Every group code is an existing group's code confirmed by the user, or a new code for a group the
