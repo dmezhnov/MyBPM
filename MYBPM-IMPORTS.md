@@ -1135,7 +1135,11 @@ the BO's category. Count it in `objectCount`.
 4. Every line carries its `"@class"` with the full package
    `kz.greetgo.mybpm.reg.structure.model.dto.<DtoName>` — except `AccessStructDto`, which lives in
    `kz.greetgo.mybpm.reg.structure.model.access` `[C]`.
-5. `dynamicFields` is an object keyed by field code, and the key equals the field's `code`.
+5. `dynamicFields` is an object keyed by field code, and the key equals the field's `code`. Every key the
+   BO template (0.4) writes as `{}` stays an OBJECT — `boTabs`, `nativeFields`, `kanbanCardTemplates`,
+   `staticValue`, the widget maps — never `[]`; only `bos`, `printForms`, `dictionaryFields` are lists. A
+   `[]` in place of `{}` makes the stand drop the whole BO with no error of its own: the analysis shows only
+   «Не найден бизнес-объект для пункта меню» on the menu items that open it `[I]`.
 6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
    only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
    `BO_COMPOSITE`, which has no form (0.17, §5b), and `tableColOrderIndex` / `removeType` on a process's
@@ -1230,6 +1234,9 @@ for (const bo of bos) {
   const b = bo.code, cat = bo.category, df = bo.dynamicFields ?? {}, fs = all(df), place = `${bo.boGroupOldId} ${bo.orderIndex}`;
   if (!CODE.test(b ?? "")) err(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
   id(b, bo.oldId);
+  for (const k of ["bos", "printForms", "dictionaryFields"]) if (!Array.isArray(bo[k])) err(`${b}.${k}: must be a list [] (0.9 rule 5)`);
+  for (const k of ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W])
+    if (!bo[k] || typeof bo[k] !== "object" || Array.isArray(bo[k])) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo[k])} — the stand drops the whole BO (0.9 rule 5)`);
   if (!groups.some((g) => g.oldId === bo.boGroupOldId)) err(`${b}: boGroupOldId names no group line (0.7)`);
   if (typeof bo.orderIndex !== "number" || order.has(place)) err(`${b}: orderIndex ${bo.orderIndex} — one number per BO in its group (0.9 rule 17)`);
   order.add(place);
@@ -1514,7 +1521,9 @@ Check the result with `unzip -l <name>.mybpm.zip`: exactly two members, both und
 
 **What the user does with it.** An import is TWO-PHASE: the upload only ANALYSES, then one deliberate
 «ПРИМЕНИТЬ» writes. Tell the user to read the analysis errors before applying — «В Составном объекте не
-достаёт БО» does not block applying — and that the import needs a description. Loading it yourself (API,
+достаёт БО» does not block applying — and that the import needs a description. «Не найден бизнес-объект
+для пункта меню» on a BO of the SAME archive means that BO line was dropped — a `[]` where the template
+has `{}` (0.9 rule 5); fix the archive, do not apply. Loading it yourself (API,
 UI, rollback) is `MYBPM-UI-API.md` §5 / R3, not this document.
 
 ---
@@ -2973,7 +2982,7 @@ shapes are 0.5b and 0.5 — copy them from there. What else holds:
 ## 5a. Panels (панели) `[C]`
 
 - `category: "BO_PANEL"`, everything else the shape of a plain BO — no panel-specific key anywhere in
-  `BoStructDto` (`dictionaryFields: []`, `nativeFields: []`, `boTabs: []`, `bos: []`).
+  `BoStructDto` (`dictionaryFields: []`, `nativeFields: {}`, `boTabs: {}`, `bos: []`).
 - **A panel's content lives in `dynamicFields` as `type: "BO"` entries** — registry widgets. Per entry:
   `oldRefBoId` (the target BO), `boRefStruct.boInfo{code,name,boCategory}`, `viewType: "TABLE"`,
   `isKindAddForSelect: true`, `isHeightDynamic: true`, `isReadonly: true`, `gridPosition.rows: 6`+.

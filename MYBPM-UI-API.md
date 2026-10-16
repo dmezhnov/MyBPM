@@ -1454,6 +1454,10 @@ that is the platform itself `[C]`. A clean archive analyses as `status:"ANALYZED
   ```
   `ownerBoInfo` = who is broken, `requiredBoInfo` = what it needs and BY WHICH CODE. A composite whose `bos[]`
   names a code the stand does not have **fails loudly at ANALYZE time**, nothing is silently merged.
+- **«Не найден бизнес-объект для пункта меню» on a BO the archive itself carries** `[I]` = the stand dropped
+  that BO line silently, its menu item has nothing to open. Cause: a BO map key written as `[]` instead of `{}`
+  (`boTabs`, `nativeFields`, `kanbanCardTemplates` …; only `bos`, `printForms`, `dictionaryFields` are lists —
+  `MYBPM-IMPORTS.md` 0.9 rule 5). Cancel the import, fix the archive, re-upload.
 - **The intra-archive reference survives the analyzer and the apply** `[C]`: the importer resolves a
   reference (by `oldId`, or a `BO_PANEL` plus the BOs it shows) to a line of the SAME archive. APPLY `[C]` too: a TABLE field
   pointing at a BO on an earlier line of its archive applied clean, the target kept its `oldId` as its id and
