@@ -38,7 +38,8 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15; a build script takes the rows as lists of field codes, never one field per row (0.8);
    - **every** `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning, `"[]"` for a comment (0.5);
    - every computed value / total of the spec is a hook script and every approval path a process, **built in
-     the same archive** — or a reason from the closed list of 0.2b step 5 (0.2c step 7, 0.18);
+     the same archive** — or its own «not built» row with a reason from the closed list of 0.2b step 5, never a
+     blanket «это пока структурная основа» (0.2b step 6, 0.2c step 7, 0.18);
    - each Route cell of the coverage table is copied literally: no «где это поддерживается форматом», no
      «настройка на стенде», no «требует серверной логики» (0.2b);
    - **run the form lint of 0.10 (a plain JavaScript function; no JavaScript engine → port it to your
@@ -283,7 +284,11 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
    import analysis and it reports what is wrong; scope is what the spec says; a computed field is a plain
    field plus a hook (0.2c step 7).
 6. **Run 0.10 and report by 0.10 «The report»** — the coverage table again, each row now marked built /
-   not built + the reason / to do after the import.
+   not built + the reason / to do after the import. **Every row routed to «a hook script in the archive» or
+   «a business process in the archive» is in the file** (a `ScriptDefStructDto` / `BO_PROCESS` line you can
+   name), or it is marked «not built» in its own row with a reason from step 5. A blanket line instead —
+   «это пока структурная основа», «скрипты и процесс не включены», «будут добавлены позже» — breaks step 3
+   and is no report.
 
 ### 0.2c Modelling patterns — how a spec becomes BOs and links
 
@@ -1174,9 +1179,9 @@ the BO's category. Count it in `objectCount`.
 - [ ] `unzip -l` shows exactly two members, both inside one `data-*/` folder.
 - [ ] `unzip -p <zip> 'data-*/metadata.mybpm'` prints `objectCount-<N>`, and
       `unzip -p <zip> 'data-*/0000001.mybpm' | wc -l` prints the same N.
-- [ ] Every line parses on its own (`unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
-      Bun.stdin.text()).trimEnd().split("\n")) JSON.parse(l)'`). `JSON.parse` of the whole member at once
-      MUST fail — that proves it is JSONL.
+- [ ] Every line parses on its own — in JavaScript `jsonl.trimEnd().split("\n").forEach((l) => JSON.parse(l))`
+      with `jsonl` = the text of `data-*/0000001.mybpm`. `JSON.parse` of the whole member at once MUST fail —
+      that proves it is JSONL.
 - [ ] **Run the form lint below and paste its output into the report.** It prints every layout, toolbar and
       table defect of 0.5, 0.5a and 0.8, every record window too tall or not narrower than its parent's (0.8a)
       and every process diagram defect of 0.18 (overlapping labels, bent arrows, long names, no run way) a
@@ -1372,10 +1377,10 @@ return out.length ? out.join("\n") : "form lint: OK";
 #### The report — what you tell the user along with the archive
 
 - **List the contents FROM THE BUILT FILE, never from your plan.** Print the payload and report exactly what
-  it holds — e.g. `unzip -p <zip> 'data-*/0000001.mybpm' | bun -e 'for (const l of (await
-  Bun.stdin.text()).trimEnd().split("\n")) { const o = JSON.parse(l); console.log(o["@class"].split(".").pop(),
-  o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? "", o.category ?? o.menuItemType ?? "") }'`
-  — groups, BOs by category, scripts by owner and hook, the process, the menu items. An object the file does
+  it holds — e.g. in JavaScript, with `jsonl` = the text of `data-*/0000001.mybpm`:
+  `jsonl.trimEnd().split("\n").map((l) => { const o = JSON.parse(l); return [o["@class"].split(".").pop(),
+  o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? "", o.category ?? o.menuItemType ?? ""]
+  .join(" "); }).join("\n")` (no JavaScript engine → the same in your language) — groups, BOs by category, scripts by owner and hook, the process, the menu items. An object the file does
   not contain is never named: «составной объект для поставщиков» with no `BO_COMPOSITE` line is a false report.
 - **Name the build salt in one line** — «Соль сборки: `k7f2`» — so a later amendment in this conversation
   mints the same ids (0.7 case 2).
@@ -1409,19 +1414,20 @@ zip -r -X <name>.mybpm.zip data-2026-09-18T10-43-21-715
 ```
 
 `metadata.mybpm` has no trailing newline — write it with `printf 'objectCount-%d' N`, not `echo`. Where
-there is no zip tool, this self-contained TypeScript (Bun or any JS runtime with `TextEncoder`; no imports)
-writes a STORED archive with UTF-8 names — replace `lines` with your objects:
+there is no zip tool, this plain JavaScript function (no imports) returns the bytes of a STORED archive with
+UTF-8 names — call it with your objects in order and save the bytes as `<name>.mybpm.zip` with whatever
+writes a file in your environment:
 
-```ts
-const lines: object[] = [/* line 1, line 2, … in order */];
-const d = "data-2026-09-18T10-43-21-715", enc = new TextEncoder();
+```js
+function zipArchive(lines, d = "data-2026-09-18T10-43-21-715") { // lines = your objects, in order
+const enc = new TextEncoder();
 const files = [
   { name: `${d}/0000001.mybpm`, data: enc.encode(lines.map(o => JSON.stringify(o)).join("\n") + "\n") },
   { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${lines.length}`) },
 ];
 const T = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
-const crc = (b: Uint8Array) => { let c = 0xffffffff; for (const x of b) c = T[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-const parts: Uint8Array[] = [], central: Uint8Array[] = [];
+const crc = (b) => { let c = 0xffffffff; for (const x of b) c = T[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const parts = [], central = [];
 let off = 0;
 for (const f of files) {
   const n = enc.encode(f.name), c = crc(f.data), L = f.data.length;
@@ -1438,10 +1444,13 @@ for (const f of files) {
 const size = central.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22));
 e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
 e.setUint32(12, size, true); e.setUint32(16, off, true);
-await Bun.write("out.mybpm.zip", new Blob([...parts, ...central, new Uint8Array(e.buffer)]));  // or fs.writeFileSync
+const all = [...parts, ...central, new Uint8Array(e.buffer)], out = new Uint8Array(off + size + 22);
+let at = 0; for (const b of all) { out.set(b, at); at += b.length; }
+return out;
+}
 ```
 
-Check the result with `unzip -l out.mybpm.zip`: exactly two members, both under `data-…/` (0.10).
+Check the result with `unzip -l <name>.mybpm.zip`: exactly two members, both under `data-…/` (0.10).
 
 
 **What the user does with it.** An import is TWO-PHASE: the upload only ANALYSES, then one deliberate
