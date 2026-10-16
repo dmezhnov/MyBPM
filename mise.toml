@@ -59,7 +59,7 @@ await $`rm -rf dist/lint-test && bun tools/make-probe-archive.bun.ts --group-cod
 const zipFile = [...new Bun.Glob("dist/lint-test/*.zip").scanSync()][0];
 const payload = unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("0000001.mybpm"))!;
 const lint = new Function(`${lintSrc}\nreturn lintArchive;`)()(new TextDecoder().decode(payload.data));
-const defects = lint.split("\n").filter((l: string) => !l.startsWith("REMINDER"));
+const defects = lint.split("\n").filter((l: string) => l !== "form lint: OK" && !l.startsWith("REMINDER"));
 if (defects.length) { console.error(`lintArchive on a generated dictionary:\n${defects.join("\n")}`); process.exit(1); }
 console.log("all tests passed");
 '''

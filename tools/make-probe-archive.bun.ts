@@ -45,7 +45,7 @@
  *     columns, H rows of 30 px (default form rows + 5); without the flag a BO / process dialog gets W 10
  *   --hide-tab tabs/tab_system                                — the hidden system tab «Системные» (0.8a step 6): an
  *     AccessStructDto, all BO actions open + VIEW «никому» on that tab; REPLACES the BO's rights — a NEW BO only
- *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3)
+ *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3, + 5 with --tab-view)
  *   --salt <s>                                                — the build salt (MYBPM-IMPORTS.md 0.7): every id seed
  *     starts with it, so a build from scratch does not revive a rolled-back BO of the same code; keep it for every
  *     later build of the same system. Without it the ids depend on the codes alone (the old behaviour)
@@ -851,8 +851,8 @@ if (isComposite) {
       });
     }
   });
-  // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 2 when it sits on a tab of another group) — one row
-  // less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it
+  // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 5 on an instanceViewType TAB page, + 2 when it sits on
+  // a tab of another group) — less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it
   // on its own tab and makes that tab taller. Then every cell below the group in its stack shifts by the change.
   const all = Object.values(dynamicFields) as any[];
   const nestedFirst = [...autoTabGroups].sort((a, b) =>
@@ -862,7 +862,7 @@ if (isComposite) {
     const onTabs = all.filter(f => f.tabCodePath?.tabGroupCode === code);
     if (!onTabs.length) continue;
     const tallest = Math.max(...onTabs.map(f => f.gridPosition.y + f.gridPosition.rows));
-    const delta = tallest + (g.tabCodePath ? 2 : 3) - g.gridPosition.rows;
+    const delta = tallest + (g.tabCodePath ? 2 : args.has("--tab-view") ? 5 : 3) - g.gridPosition.rows;
     const sameStack = (f: any) => g.tabCodePath
       ? f.tabCodePath?.tabGroupCode === g.tabCodePath.tabGroupCode && f.tabCodePath?.tabCode === g.tabCodePath.tabCode
       : !f.tabCodePath;
@@ -1181,10 +1181,10 @@ lines.push({
   instanceViewType: args.has("--tab-view") ? "TAB" : "FORM",
   // `--window W[,H]` = the record WINDOW (W of 16 screen columns, H rows of 30 px — MYBPM-IMPORTS.md 0.8a step 7);
   // H defaults to form rows + 5, the height at which the dialog does not scroll. Without the flag a BO or a
-  // process opening as a dialog gets W 10; a dictionary, a composite or a page-tab record gets none.
-  ...(flag("window", "") || (["BO", "BO_PROCESS"].includes(CATEGORY) && !args.has("--tab-view"))
+  // process opening as a dialog gets W 10, a dictionary W 8 (0.5b); a composite or a page-tab record gets none.
+  ...(flag("window", "") || (["BO", "BO_PROCESS", "BO_DICTIONARY"].includes(CATEGORY) && !args.has("--tab-view"))
     ? (([w, h]) => ({ gridLayoutPosition: { x: Math.ceil((16 - w) / 2), y: 0, w, h: h || formRows() + 5, id: "0" } }))(
-      (flag("window", "") || "10").split(",").map(Number))
+      (flag("window", "") || (CATEGORY === "BO_DICTIONARY" ? "8" : "10")).split(",").map(Number))
     : {}),
   bos: sources,
   // `--tabs` = the card's rail tabs; `--history` adds «История» — without it no isHistoryTracking field is ever logged
