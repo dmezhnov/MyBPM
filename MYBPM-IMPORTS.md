@@ -615,7 +615,7 @@ The types that need extra keys — every shape `[C]`:
 - `CO` — the same, with `"boCategory": "BO_COMPOSITE"` and the composite's id (which itself often starts
   with «@», e.g. `@feclOAWUnwXFQ8c` — parse such a spec from the right).
 - `DROPDOWN_SINGLE`, `RADIO_BUTTON_GROUP` — one extra key, `fieldOptionsStruct`, in exactly one of the
-  two shapes below — a `RADIO_BUTTON_GROUP` only the first, the local list. Copy the literal; §5 explains them.
+  two shapes below — a `RADIO_BUTTON_GROUP` only the first, the local list. Copy the literal.
 
   A LOCAL list («Задать вручную») — **`options` is an OBJECT keyed by the option's own code, never an
   ARRAY**, and every entry wraps its payload in `fieldOption`:
@@ -907,8 +907,10 @@ Rules `[C]`:
   | reports, analytics | `phosphor:chart-bar`, `phosphor:chart-pie`, `phosphor:chart-line-up`, `phosphor:trend-up` |
   | medicine, education, food, hotel | `phosphor:first-aid`, `phosphor:heartbeat`, `phosphor:pill`, `phosphor:graduation-cap`, `phosphor:student`, `phosphor:fork-knife`, `phosphor:bed` |
   | IT, equipment, quality, risks | `phosphor:desktop`, `phosphor:database`, `phosphor:shield-check`, `phosphor:star`, `phosphor:warning` |
-- **A `menuItemCode` that already exists on the stand is an EDIT of that item** — your codes must be new to
-  the stand; a re-import of your own archive updates your items in place.
+- **A `menuItemCode` that already exists on the stand is an EDIT of that item** `[C]`: the import overwrites
+  its name, order, views and filter in place, keeping its id. Your codes must be new to the stand — never
+  reuse a code seen there unless the user asked to change THAT item; a re-import of your own archive
+  updates your items instead of adding second ones.
 - Calendar, timeline and map views, menu rights, a menu-only archive: 0.15.
 
 ### 0.6a Naming convention for new codes
@@ -1800,11 +1802,9 @@ and the archive carries the file itself in a separate line, placed BEFORE the `B
 
 A kanban is TWO things, and the archive can carry BOTH:
 
-- the **card template**, which lives ON THE BO in `kanbanCardTemplates`. **Ship it, or the kanban view
-  dies with «cardTemplate is null»**.
-  It belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here.
-  **Give EVERY `DROPDOWN_SINGLE` one, even when nobody asked for a kanban** `[C]`: without it the
-  BO's MAP view and the constructor's kanban editor die the same way once a record exists (§2 «BO views»). A
+- the **card template**, ON THE BO in `kanbanCardTemplates` — one per `DROPDOWN_SINGLE`, even unasked, its
+  shape and the «cardTemplate is null» failure: 0.5c (the MAP view dies the same way, §2 «BO views»). It
+  belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here. A
   BO already broken so is repaired by re-importing its line with the template (keep the `kanbanFields` wrapper —
   without it the import is APPLIED and changes nothing); `save-kanban-card-template` does not repair it.
 - the **place that shows the board**, with its column field `[C]`. Two exist:
@@ -1821,9 +1821,6 @@ A kanban is TWO things, and the archive can carry BOTH:
   Nowhere else: the constructor offers a `BO` / `CO` reference field only Табличный / Множественный / Одиночный /
   Карточкой and a panel registry only Табличный / Множественный. The client's `viewType` enum also lists
   `KANBAN` / `CALENDAR` / `MAP` / `TIMELINE`, but no screen sets them — never ship them in a field's `viewType`.
-
-The template itself — the outer key, the card fields, `locationType` — is 0.5c.
-
 
 With the template shipped, `v2/kanban/load-kanban-template` returns a `cardTemplate` instead of NPE-ing,
 the board renders its columns, and `load-bracket-kanban-cards` returns the cards with their
@@ -1853,20 +1850,9 @@ whole board with its columns straight after ПРИМЕНИТЬ `[C]` (§5e).
 
 ### 0.15 Sidebar menu items — `MenuItemStructDto` lines `[C]`
 
-Optional lines AFTER the BO lines (step 7a). A menu item is NAVIGATION: a row in the sidebar that opens
-a BO's records (or a folder that holds such rows). Views such as a kanban are an option ON an item, not
-the reason for it. One line per menu item; a group and the items inside it are separate lines.
-**Everything is referenced BY CODE** — the parent group, the BO, a view's field — and a menu line has
-**no id at all**: the stand mints the menu item's id itself. Copy the templates literally and change
-only the values marked `←`.
-
-The `BO` item and `GROUP` templates, the kanban variant of `boPages` and the basic rules are 0.5d. The views,
-their requirements and the rest:
-
-
-**`boPages` = the set of views of that item.** Six views exist; each has an `is*Enabled` flag and an
-`*Index` = its tab position, 1-based, counted over the ENABLED views only (disabled ones carry 0). Always
-write all twelve keys. What each view needs besides its flag:
+The line, its `BO` / `GROUP` templates, `boPages` with the kanban variant and the basic rules are 0.5d. Views
+such as a kanban are an option ON an item, not the reason for it. Six views exist; what each needs besides
+its flag:
 
 | View | Keys | Needs on the BO / on the item | Status |
 |------|------|-------------------------------|--------|
@@ -1877,23 +1863,14 @@ write all twelve keys. What each view needs besides its flag:
 | map | `isMapEnabled`, `mapIndex` | the BO's `isMapEnabled`, a `GEO_POINT`, and a kanban card template for every dropdown (0.14) — nothing on the item | `[C]` |
 | grouping | `isGroupingEnabled`, `groupingIndex` | nothing works: the registry grouping view is 404 on the server (§2 «BO views») — never enable it | `[C]` dead |
 
-List, kanban, calendar, timeline and map are proven; grouping is dead.
 **Do not switch on grouping (or any view not marked `[C]` above) in an archive** — if the user asks for it, say it
-does not work and ship the rest. The kanban variant of `boPages` (kanban first tab, list second):
-
+does not work and ship the rest.
 
 More rules `[C]`:
 
-- **Icons** `[C]`: `iconName` takes ANY name of the catalogue in **0.16**, written with
-  its prefix exactly as listed there — `"phosphor:house-line"`, `"menu-item:025-building"`. Without a
-  wish from the user pick one BY MEANING for every line (0.5d «Icons by meaning»); the generic defaults
-  `bo-g-draggable` (group), `man-with-company` (BO item), `bo-d-draggable` (dictionary), no prefix, are
-  only for «no icons». **The importer does not check the
-  name**: a name that is not in 0.16 analyses clean, applies (`APPLIED`), is stored verbatim — and the
-  sidebar shows an EMPTY place where the icon should be. So every `iconName` must be copied from 0.16;
-  when the user describes an icon by meaning («домик», «деньги», «люди»), pick the closest name from
-  0.16 and SAY which one you took. Never compose a name from memory of the Phosphor icon set: the stand
-  ships only part of it (`phosphor:seal-check`, `ranking`, `toolbox`, `gavel` do not exist there).
+- **Icons**: the rules are 0.5d `iconName`. When the user describes an icon by meaning («домик», «деньги»,
+  «люди»), pick the closest name of 0.16 and SAY which one you took; the stand ships only part of the
+  Phosphor set (`phosphor:seal-check`, `ranking`, `toolbox`, `gavel` do not exist there).
 - Menu access rights travel `[C]` (§5e): `chosenAccessRight: true` plus an `accessGroup` key —
   the same shape as `AccessStructDto.boAccessStruct` (`denyAll`, per action `{denyAll, participants,
   fromFields, orgUnitIds:["G-<group id>"]}`, only `view` matters for navigation). Without `accessGroup`
@@ -1902,11 +1879,6 @@ More rules `[C]`:
   hidden. Menu rights hide a SCREEN, never records: a user with an open item but no BO `view` gets an empty
   registry, and the reverse — records stay reachable whatever the menu says — is why the BO's own rights
   (§7) are the protection.
-- **A `menuItemCode` that already exists on the stand is an EDIT of that item, not a new one** `[C]`
-  (§5e): the import overwrites its name, order, views and filter in place, keeping its id. So a menu
-  code of your own must be new to the stand — never reuse a code seen on the stand unless the user asked
-  to change THAT item. Re-importing your own regenerated archive is safe for the same reason: it updates
-  your item instead of adding a second one.
 - **A menu-only archive is legal** `[C]`: one `MenuItemStructDto` line and nothing else (no group line,
   no BO line) imports fine when its `boCode` is already on the stand — the way to add or change a sidebar
   item for an existing BO. The `boCode` is then a stand code: ask for it (0.2a).
@@ -1916,7 +1888,7 @@ More rules `[C]`:
 Every value `iconName` of a menu line (0.15) may take besides the three defaults. It is the list the
 sidebar's «Изменить иконку» picker offers — 1153 names in two namespaces — and every one of them exists
 on the stand as the file `/assets/icons/<namespace>/<name>.svg`; the sidebar
-draws the icon from that file. The archive route: 0.15 «Icons» and §5e.
+draws the icon from that file. The archive route: 0.5d `iconName` and §5e.
 
 How to write a name: `<namespace>:<name>`, e.g. `phosphor:rocket`, `menu-item:025-building`. Names in
 «» contain a SPACE, and the space is part of the name (`"menu-item:002-price tag"` — stored and drawn
@@ -2929,16 +2901,10 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 
 - Cell sizes the constructor itself assigns `[C]`: FULL_DATE / PERIOD 15×4; LINK / FILE_UPLOAD / Person
   ref 15×6; one-line inputs 3 rows; nested tables 9 rows; STATIC_TEXT 15×8; dictionary `code`/`label` 15×4.
-- **Cells that fit** `[C]`: a `BO` `SINGLE` reference is one line — 3 rows, no band under it (a chip with a
-  chosen record fits too `[I]`); a `TEXTAREA` of 4 rows shows about two lines of text, a comment wants 6.
-  Rows of 2 and 3 fields (`cols` 8 + 7, 5 + 5 + 5, same `y`, same `rows`) are drawn exactly as written,
-  no overlap; the recipe is 0.8.
-- **Heights that fit their content** `[C]` (one grid row = 30 px): a one-line input needs 3 rows (label +
-  box = 58 px; 4 leaves an empty band); a `<h3><b>…</b></h3>` heading with `hideLabel` needs 46 px = 3 rows
-  (2 rows scrolls inside the cell); a top-level `TAB_GROUP` draws a box of `rows·30 − 61` px and a tab of
-  `n` content rows needs `n·30 + 28`, so `rows` = tallest tab + 3; a `TAB_GROUP` placed on a tab of another
-  group draws its tabs vertically on the left with only 12 px of overhead, so `rows` = tallest tab + 2.
-  The group is as tall as its tallest tab — shorter tabs show an empty band. The whole recipe → 0.8a.
+- **Heights** `[C]` (one grid row = 30 px; the rows to write: 0.8, `TAB_GROUP` 0.8a step 5): a one-line input
+  is label + box = 58 px, so 4 rows leave an empty band; a `<h3><b>…</b></h3>` heading with `hideLabel` needs
+  46 px (2 rows scroll inside the cell); a `SINGLE` chip with a chosen record fits 3 rows too `[I]`. Rows of
+  2 and 3 fields are drawn exactly as written, no overlap.
 - **Widget widths** `[C]`: a text input FILLS its cell (a wide cell = a wide empty box); reference/select
   boxes shrink to fit; the «Период» box is FIXED at ~3 columns, so a 10-column cell is 2/3 empty.
   A good rhythm is 5 columns per compact field (three per row); a ~46-char checkbox label still fits
@@ -2973,11 +2939,10 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 - **Record window**: `BoStructDto.gridLayoutPosition` `{x,y,w,h,id:"0"}` is the record WINDOW on a
   16-column SCREEN grid, not the form; `null` for dictionaries. The dialog is exactly `h·30` px tall and
   `w/16` of 90 % of the browser width (`w: 10` = 1055 px on a 1876 px window); its title and button bar
-  take 99 px and the body pads 28, so a form of `R` rows fits without a scroll at **`h = R + 5`** `[C]`.
+  take 99 px and the body pads 28, so a form of `R` rows fits without a scroll at **`h = R + 5`** `[C]` (0.8a step 7).
   Without `gridLayoutPosition` the dialog opens at 90 % × 90 % of the screen `[C]`. Known values:
   `{x:1,w:15,h:21}`, `{x:1,w:15,h:18}` (top-level BOs), `{x:3,w:11,h:18}` / `{x:3,w:10,h:28}` (BOs opened
-  only from a parent's table). `h` is the form's row count + 5, not the row count itself (a 37-row form scrolls inside an 18-unit
-  window). Import applies it `[C]` (read back with `load-business-object-grid-layout-position`), and the
+  only from a parent's table). Import applies it `[C]` (read back with `load-business-object-grid-layout-position`), and the
   server stores any `h` `[C]`. The ceiling is the CLIENT's: one unit
   is 30 px and the dialog is capped at `0.9·innerHeight` (`MYBPM-UI-API.md`, «Size of the child's record
   dialog» under «A nested table … on a record card»), so `h:200` opens exactly as tall as `h:40` — about 28 units on a 965 px window. A larger `h`
@@ -2985,38 +2950,23 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
 
 ## 5. Dictionaries (справочники)
 
-- `category: BO_DICTIONARY`, `dictionaryFields: ["CODE","LABEL"]`, system fields `code` (`INPUT_TEXT`,
-  `isSystem`, `isUnique`, `isRequired`) and `label` (`INPUT_TEXT_LANG`, `isSystem`, `isRequired`). **Both are
-  mandatory on every dictionary** (0.9 rule 18) — never drop or rename them, whatever extra fields follow.
+The dictionary line, its two system fields `code` / `label` (0.9 rule 18), its row lines and both dropdown
+shapes are 0.5b and 0.5 — copy them from there. What else holds:
+
 - A dictionary MAY carry extra fields (e.g. `lower_limit`, `fixed_amount`, `rate`, `starting_price`).
-- **A hand-built dictionary archive imports cleanly** `[C]`: the three keys above
-  plus ordinary `dynamicFields` are enough, `nativeFields` stays `{}`, and the stand rebuilds exactly the
-  dictionary the constructor would (`isDictionary: true`, `code`/`label` at `y: 0` / `y: 4`). The system
-  fields carry `isSystem: true` and their `label` map holds all four languages —
-  `{rus:"Код", kaz:"Код", qaz:"Kod", eng:"Code"}` and `{rus:"Значение", kaz:"Мәні", qaz:"Mani",
-  eng:"Value"}`. `tools/make-probe-archive.bun.ts --category BO_DICTIONARY` emits it.
+- **A hand-built dictionary archive imports cleanly** `[C]`: `nativeFields` stays `{}`, and the stand rebuilds
+  exactly the dictionary the constructor would (`isDictionary: true`; the constructor itself puts
+  `code`/`label` at `y: 0` / `y: 4`). `tools/make-probe-archive.bun.ts --category BO_DICTIONARY` emits it.
 - **The caption of `label` varies per BO**: on `Parameter` it is «Значение» and holds the value (the name
   lives in a separate `name` field); on «Шаг скоринга» it is «Наименование». Never assume `label` = name —
   read `dynamicFields`. `[C]`
-- Values are `ExportStructInstanceDto` lines, `compositeId` = `<boId>-<instId>`, sources
-  `DEFAULT_VALUE{boCode, fieldCode:code}`. The `boId` inside `compositeId`/`oldRefBoId` differs from
-  `BoStructDto.oldId` in real exports — normal. An archive imports ARBITRARY dictionary rows this way `[C]`,
-  with or without `sources` — the line template and its rules are 0.5b «The values». The rows of a dictionary
-  already on the stand are filled by the records xlsx (Part III, «Код» / «Значение»).
-- **A «Выпадающий список» carries `fieldOptionsStruct`** `[C]` — both kinds round-trip through
-  an import exactly as sent. Two kinds:
-  - fed by a DICTIONARY — `{"optionSource":"FROM_BO","options":{},"dictionaryBoInfo":{"code":"Dolzh",
-    "name":"Должность","boCategory":"BO_DICTIONARY"},"dictionaryOptionSetting":{}}`. **The dictionary is
-    named by CODE, never by id** (unlike a nested object, which carries `oldRefBoId`), and the importer
-    resolves it to the stand's `refBoId`.
-    `options` stays EMPTY: the rows live in the dictionary and the form reads them at runtime.
-  - a LOCAL list («Задать вручную») — `{"optionSource":"FROM_FIELD","options":{"<код варианта>":
-    {"fieldOption":{"label":"Новый","orderIndex":0,"color":"#00d9ff","code":"Новый→код",
-    "hiddenInKanban":false},"newOptionId":"<16 chars>"}},"dictionaryOptionSetting":{}}` — an OBJECT keyed
-    by the variant's own transliterated code, `orderIndex` stepping 0, 10000, 20000…, `color` = a CSS colour name or hex, or null (§3 «Per-type settings»).
-    A `FROM_FIELD` field with `options: {}` is simply a dropdown whose list is still empty.
-    **An option's `label` is a PLAIN STRING, single-language** `[C]` — no `label: {rus, eng}` map and no
-    `labelEng` sibling — do not emit one.
+- Row lines of real exports carry `sources` `DEFAULT_VALUE{boCode, fieldCode:code}`, and the `boId` inside
+  `compositeId`/`oldRefBoId` differs from `BoStructDto.oldId` — normal. The rows of a dictionary already on
+  the stand are filled by the records xlsx (Part III, «Код» / «Значение»).
+- **Both dropdown shapes round-trip through an import exactly as sent** `[C]`. The dictionary is named by
+  CODE (unlike a nested object, which carries `oldRefBoId`) and the importer resolves it to the stand's
+  `refBoId`. A `FROM_FIELD` field with `options: {}` is simply a dropdown whose list is still empty; an
+  option's `color` = a CSS colour name or hex, or null (§3 «Per-type settings»).
   `tools/make-probe-archive.bun.ts` emits both: `--field "Должность:DROPDOWN_SINGLE@Dolzh@Должность"` /
   `--field "Статус:DROPDOWN_SINGLE#Новый|В работе|Готово"`.
 
@@ -3242,26 +3192,18 @@ that field is the only link between them. An export of one process carries 7 obj
   target, `toShow: true`. A process built without `PROCESS_STATUS` (itself forbidden by 0.9 rule 18; its `label`
   is the default registry column of a process) and with its one reference field in the export's shape comes out
   with NO registry column and a selector showing nothing `[C]`.
-- **A whole configured process travels in one archive and runs** `[C]`:
-  Enter → Form(«Заявка») → Script → Switch(ЕСЛИ «Заявка».«Одобрить») → Exit «Да» / Exit «Нет» imports
-  through the API route (`MYBPM-UI-API.md` §5) with a clean analysis and runs both branches on DEV and
-  ordinary records. By hand: the whole archive of 0.18. Optional accelerator:
-  `tools/make-probe-archive.bun.ts --process-spec <spec.json>` (a field entry needs `refBoCode` AND `show:
-  [<target field codes>]` — the generator refuses a reference without `show` and any BO without a registry
-  column, 0.9 rule 15).
+- **A whole configured process travels in one archive and runs** `[C]` both branches on DEV and ordinary
+  records — the archive of 0.18. Optional accelerator: `tools/make-probe-archive.bun.ts --process-spec
+  <spec.json>` (a field entry needs `refBoCode` AND `show: [<target field codes>]`, 0.9 rule 15).
 - **`PROCESS_STATUS` is not created by the importer** `[C]`. The constructor gives every process the
   system field `PROCESS_STATUS` («Статус процесса», `type: "BO"`, `isSystem`, `isCodeReadonly`,
   `isRequired`, `viewType: "SINGLE"`, `boRefStruct.boInfo = {code: "PROCESS_STATUS", name: "Статус
   процесса", boCategory: "BO_DICTIONARY"}`, `fieldRefs.label.toShow`, `oldRefBoId` = the stand's
   «Статус процесса» dictionary) — an archive must ship that field itself.
   The importer resolves that reference by `boInfo.code`, not by `oldRefBoId` (below).
-- **…but the PROCESS runs without it** `[C]`: imported with no `PROCESS_STATUS`
-  line, the BO comes in with no status field at all, and the process still runs on an ordinary record
-  AND on a DEV record. So the status field is what
-  the record SHOWS, not what drives the process — shipping without it costs the status, not the run.
-  It also costs the registry column: `PROCESS_STATUS` is the column a constructor-built process shows.
-  **This is a fact about the importer, not an option** — shipping a process without `PROCESS_STATUS` is
-  forbidden (0.9 rule 18).
+- **…but the PROCESS runs without it** `[C]` (ordinary and DEV records): the field is what the record SHOWS
+  and the registry column a constructor-built process has, not what drives the run. A fact about the
+  importer, not an option — shipping without it is forbidden (0.9 rule 18).
 - **…and it must carry its DEFAULT VALUE, or no record of the process can be saved** `[C]`.
   The field is required; the constructor defaults it to the dictionary row `CREATED`
   («Только что создан»). Shipped without a default, every `validate-apply-remove-draft` of a process
@@ -3561,9 +3503,8 @@ these lines (plus `CompanyMetadataStructDto`) — no group, no BO; the analysis 
 
 ## 5e. Sidebar menu items inside the archive (`MenuItemStructDto`) `[C]`
 
-The cookbook templates are 0.15. The export screen has a separate «Элементы меню» basket
-(§2 «Taking a fresh export — the minimum»). A generated archive of BO + card template + menu GROUP + menu
-BO item with a kanban imports and applies, and the board is drawn.
+The cookbook templates and rules are 0.5d and 0.15. The export screen has a separate «Элементы меню» basket
+(§2 «Taking a fresh export — the minimum»).
 
 **The line.** One `MenuItemStructDto` per item, a group and its children as separate lines. Keys, in the
 exporter's order: `menuItemCode`, `menuItemName`, `parentMenuItemCode` (absent on a root),
@@ -3587,8 +3528,7 @@ not the menu item's own, not the BO's, not the parent's.
   field) and adds `timelineFieldId: null` if the archive does not mention it.
 - `parentMenuItemCode` is resolved the same way: the child gets `parentId` = the group's new id. Whether a
   re-import with ANOTHER `parentMenuItemCode` moves an existing item is not known yet `[U]` — §18.
-- **A `GROUP` line has no `boPages`, `bracketFilter`, `boCode`, `boName`** — on the stand the group is
-  stored with `boPages: null`.
+- A `GROUP` line (no `boPages`, `bracketFilter`, `boCode`, `boName`, 0.5d) is stored with `boPages: null`.
 - `bracketFilter` = the item's record filter, `{boCode, type: "MENU_ITEM", brackets}`. **Its shape
   differs from the API's** (`MYBPM-UI-API.md` §0U R6.5, arrays): here `brackets` and the filters inside
   are MAPS keyed by 8-character ids. A non-empty filter — «only records I created»:
@@ -3630,24 +3570,18 @@ fills `menuInfo` instead of `structureInfo`:
 `bracketFilterId` and takes the line's name and order; no second item is created. The dry run reports
 `menuItemState: "UPDATE"` with `oldDisplayName` = the current name and
 `changedAspects: ["display_name","order_index","bracket_filter","bo_pages","linked_bo"]` — the last three
-listed even when they did not change, so `changedAspects` is not a real diff for them. So a code clash
-EDITS the customer's item — the reason 0.15 forbids reusing a stand menu code unasked. A **menu-only
-archive** (one line, no `BoGroupStructDto`, no `BoStructDto`) analyses and applies, the BO resolved by
-`boCode` off the stand.
+listed even when they did not change, so `changedAspects` is not a real diff for them (why a stand code is
+never reused: 0.5d).
 
 **Rollback removes menu items too** `[C]`. `load-import-rollback-preview` lists in `deleteItems` the BO
 (`category: "BUSINESS_OBJECT"`, `code: "<boCode>#BUSINESS_OBJECT"`) and every menu line
 (`category: "MENU"`, `code: "<menuItemCode>#MENU"`, `structTypes: ["MENU"]`); `rollback-import`
 answers `{"type":"ROLLED_BACK"}` and the BO and the menu items are gone.
 
-**Icons travel in the archive — any name of the picker, both namespaces** `[C]`.
-`iconName` on a GROUP or a BO item (`phosphor:rocket`, `phosphor:house-line`, `menu-item:025-building`)
-is stored exactly as shipped. Nothing validates it: a made-up name (`phosphor:no-such-icon-xyz`) passes
-the dry run clean (`load-import-errors` empty, `conflicts: {}`), is stored, and the sidebar draws NO icon
-for it. The frontend fetches `<ns>:<name>` as `/assets/icons/<ns>/<name>.svg`, so «a valid icon» =
-«that file exists»: a made-up name answers 404, while all 1153 names of the picker answer 200 (0.16).
-Both namespaces are in live use (`phosphor:house`, `menu-item:022-presentation`) — the `menu-item:` set
-is not a leftover.
+**Icons** `[C]`: `iconName` is stored exactly as shipped and never validated (0.5d) — a made-up name passes
+the dry run clean. The frontend fetches `<ns>:<name>` as `/assets/icons/<ns>/<name>.svg`, so «a valid
+icon» = «that file exists»: all 1153 names of 0.16 answer 200. Both namespaces are in live use
+(`phosphor:house`, `menu-item:022-presentation`).
 
 **Rolling back an UPDATE restores a snapshot, and the stand may pick the wrong import as «latest»** `[C]`
 — the rules: `MYBPM-UI-API.md` §5 «Rollback trap». The preview of an import that UPDATED a menu item lists
@@ -3658,10 +3592,7 @@ created them lists `deleteItems`.
 group exports `chosenAccessRight: true` + `accessGroup` (`{denyAll:true, all:{…}, view:{denyAll:true,
 orgUnitIds:["G-<id>"]}, …}` — the `AccessStructDto` action shape) and one `ExportStructInstanceDto` per
 group (`boCode:"PersonGroup"`); the import applies it (an item reset to «всем» gets the group back).
-**Calendar and timeline views travel** `[C]`: `boPages` in the export carries
-`timelineFieldCode` (the `PERIOD` field's CODE) instead of `timelineFieldId`, the import resolves it.
-
-Open `[U]`: where else a kanban can be switched on besides a menu item (0.14).
+Calendar and timeline views: the 0.15 table.
 
 ## 6. References between BOs
 
@@ -3795,9 +3726,8 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
   `v2/process-indicator/load-state {processId}` → `phases.*.errors`. After every apply check the poll's
   `hasError` and load the BO. When you delete a field from an archive, delete it from every
   `kanbanCardTemplates.*.kanbanFields` too.
-- BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — and an empty one is
-  exactly why «kanban does not work for imported BOs», and why their MAP view fails too (§2 «BO views»). Fill it
-  for every dropdown: §0.14, 0.9 rule 16, `MYBPM-UI-API.md` §7.
+- BOs created via import carry `kanbanCardTemplates:{}` unless the archive fills it — the cause of «kanban
+  does not work for imported BOs» and of a dead MAP view; fill it per dropdown (0.5c).
 
 
 ### Re-import of the same ids — matched by `oldId` / `newId` `[C]`
