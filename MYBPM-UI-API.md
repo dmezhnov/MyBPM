@@ -758,7 +758,8 @@ and dropping the rest «for scope» is a fraction reported as done.
    («пустой стенд», «новая компания»), ask one thing: «куда положить новые БО (группы — разделы конструктора): в новые
    группы по темам (назову их сам) или все в одну существующую (какую)?». When the stand is empty never ask
    the group name — name the groups yourself. **New groups go by theme**: more than ~6 BOs → 2–4 groups by
-   meaning (автосервис: «Клиенты и автомобили», «Заказы и работы», «Склад и закупки», «Справочники»), each
+   meaning (автосервис: «Клиенты и автомобили», «Заказы и работы», «Склад и закупки»; a dictionary joins the
+   theme whose BOs pick from it), each
    at least 2 BOs; fewer stay in one group named after the system. Then read
    the rest: the group's `code`, `name`, `orderIndex` by `load-bo-groups {"forEdit":true}` (R4) — copy them
    verbatim into the archive; a group whose `code` is `null` cannot be targeted by an archive — build a new
@@ -835,8 +836,8 @@ and dropping the rest «for scope» is a fraction reported as done.
   number, assign the sum to the header's field. Each step `[C]`, the whole recipe `[I]`; it recomputes when
   the HEADER is saved, not when a line is edited in its own card `[I]`.
 - **Which BO gets a menu item**: every working list (клиенты, автомобили, заказы, записи, оплаты, поставщики);
-  NOT the line BOs (edited inside the header's table) and NOT dictionaries (a root «Справочники» group, last,
-  or none).
+  NOT the line BOs (edited inside the header's table). A dictionary or catalogue BO goes into the menu group
+  of the theme whose BOs pick from it, or gets no item — never one group of all dictionaries.
 
 **What the platform cannot do** — name the row for every spec item you skip:
 
