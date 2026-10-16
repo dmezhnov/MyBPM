@@ -1566,6 +1566,10 @@ block). The page then does
 
 ## 5b. Creating a BO in the constructor — no archive at all `[C]`
 
+**Read this section only when** a BO (or a field, a setting, a script) must be created or changed WITHOUT an
+archive — in the constructor UI or through its API — and jump to the subsection §0U names (5c–5f the five
+kinds, 5g scripts, 5h–5i fields, 5j–5o BO settings). Importing an archive never needs it.
+
 A BO does **not** have to come from a `.mybpm.zip`. The constructor creates one directly, and the same
 six `/web/v2/business-objects/*` calls do it headlessly.
 
@@ -4845,6 +4849,8 @@ headings (whether that field sanitizes identically is `[U]`).
 
 ## 9. Tooling
 
+**Read this section only when** you patch an xlsx by hand or move files through Google Drive.
+
 ### xlsx with a spreadsheet library
 
 - The Excel table `displayName` must be Latin (`Table1`…) — a Cyrillic one makes Excel offer to «repair».
@@ -4900,6 +4906,8 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   MCP account is not a member of the user's shared drives.
 
 ## 10. Claude-in-Chrome traps
+
+**Read this section only when** you drive the stand through Claude-in-Chrome; the API route never needs it.
 
 - **`read_network_requests` WITHOUT `urlPattern` dumps huge `data:image/jpeg;base64` URLs (cost ~700k
   tokens once). ALWAYS pass `urlPattern: "/web/"` and a small limit.**
