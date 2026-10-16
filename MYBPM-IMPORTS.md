@@ -35,13 +35,14 @@ gets the names wrong: the importer then rejects the file or silently drops what 
    - [ ] the hard rules and the self-check, then the zip and the report — **0.9, 0.10, 0.11**.
 5. **The defects a build most often ships while the text says otherwise** — check each one in your file:
    - a `BO` `SINGLE` is **3 rows** and may share a row — never 6 rows, never alone at full width (0.5a, 0.8);
-   - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15 (0.8);
+   - short fields go 2–3 per row by meaning; a short field left alone is **`x 0, cols 8`**, never cols 15; a build script takes the rows as lists of field codes, never one field per row (0.8);
    - **every** `TEXTAREA` / `TEXTAREA_LANG` has `params.buttonTypes` chosen by meaning, `"[]"` for a comment (0.5);
    - every computed value / total of the spec is a hook script and every approval path a process, **built in
      the same archive** — or a reason from the closed list of 0.2b step 5 (0.2c step 7, 0.18);
    - each Route cell of the coverage table is copied literally: no «где это поддерживается форматом», no
      «настройка на стенде», no «требует серверной логики» (0.2b);
-   - **run the form lint of 0.10 and paste its output**; the report names the build salt and the list of checks
+   - **run the form lint of 0.10 (a plain JavaScript function; no JavaScript engine → port it to your
+     language) and paste its output** — a reply without that output is unfinished; the report names the build salt and the list of checks
      run (0.10 «The report»).
 
 What a model invents when it skips the reading, by class of mistake. Each class holds for ANY spec — the
@@ -57,7 +58,7 @@ table at the top of §0S, records at the top of §0X.
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none | 0.5, 0.5c |
 | Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file, or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
-| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width; `w: 10` and no tabs on every window | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows`; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
+| Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; `w: 10` and no tabs on every window | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; over 12 visible fields → tabs; `w` / `h` by 0.8a | 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
 
 Every artefact that is BUILT OUTSIDE the stand and then loaded into it, and the exact format of each:
@@ -1004,6 +1005,13 @@ each box stretches over 1000+ px for a 20-character value. **Full width, alone i
 `TEXTAREA_LANG`, a `BO` `TABLE`, a `STATIC_TEXT` heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
 `GEO_POINT`, `PROGRESS_BAR`.
 
+**Building the file with a script? Give it the layout as a list of ROWS, never as a list of fields.** Per
+form (and per tab) write the rows you decided by meaning — e.g. `[["phone", "email"], ["make", "model",
+"year"], ["notes"]]` — and let the script derive `x`, `cols` and `y` from them: one code → `cols 15` (a short
+field alone → `x 0, cols 8`), two → 8 + 7, three → 5 + 5 + 5, the next row's `y` = this `y` + its `rows`. A
+loop over the fields that gives each one `x 0, cols 15` and `y += rows` builds exactly the «every field full
+width» defect, however the rows were planned.
+
 - **A short field with no partner by meaning stands alone at `x: 0`, `cols: 8`** — never stretched to 15; the
   right half stays empty and the row is the one exception to «cols sum to 15». The hole is safe only while no
   cell of the NEXT row fits wholly into columns 8–14: such a cell floats up beside the lone field, and the rest
@@ -1176,10 +1184,15 @@ the BO's category. Count it in `objectCount`.
       none; fix every line it prints and run it again. The two `REMINDER` lines are not defects by themselves: each
       one asks whether the spec has a computed value or an approval path that is missing from the file. The prose
       checks below stay mandatory — the lint does not replace them.
+      **How to run it:** the function is plain JavaScript — call `lintArchive(<the text of
+      data-*/0000001.mybpm>)` in any JavaScript engine your sandbox has and print what it returns. **No
+      JavaScript engine?** Port the function line by line to the language you build in and run the port on the
+      built file. Skipping it is not an option, and checks of your own builder do not replace it; a lint you
+      could not run is reported as «form lint: NOT RUN» with the reason — never as «проверено».
 
-```bash
-unzip -p <zip> 'data-*/0000001.mybpm' | bun -e '
-const L = (await Bun.stdin.text()).trimEnd().split("\n").map((l) => JSON.parse(l)), out = [];
+```js
+function lintArchive(jsonl) { // jsonl = the whole text of data-*/0000001.mybpm
+const L = jsonl.trimEnd().split("\n").map((l) => JSON.parse(l)), out = [];
 const cls = (o) => o["@class"].split(".").pop(), bos = L.filter((o) => cls(o) === "BoStructDto");
 const R3 = new Set(["INPUT_TEXT", "INPUT_TEXT_LANG", "INPUT_PHONE", "INPUT_EMAIL", "INPUT_NUMBER", "TIME", "FULL_DATE",
   "YEAR_AND_MONTH", "YEAR", "DATE", "PERIOD", "PERIOD_TIME", "CHECKBOX", "DROPDOWN_SINGLE"]);
@@ -1267,8 +1280,8 @@ if (!L.some((o) => cls(o) === "ScriptDefStructDto"))
   out.push("REMINDER no script line: every computed value and total of the spec is a hook (0.2c step 7) or a reason from 0.2b step 5");
 if (!bos.some((b) => b.category === "BO_PROCESS"))
   out.push("REMINDER no process: an approval path of the spec is a BO_PROCESS (0.18) or a reason from 0.2b step 5");
-console.log(out.length ? out.join("\n") : "form lint: OK");
-'
+return out.length ? out.join("\n") : "form lint: OK";
+}
 ```
 
 - [ ] Every BO's `boGroupOldId` == the `oldId` of a group line of the file; new groups go by theme — a
@@ -1368,7 +1381,8 @@ console.log(out.length ? out.join("\n") : "form lint: OK");
   mints the same ids (0.7 case 2).
 - **Name each 0.10 check you ran and how** (the validator, by hand). Asserts inside your own builder are not
   0.10; «проверено» without the list of checks is not a report. **Paste the output of the 0.10 form lint**
-  as it printed — `form lint: OK`, or the `REMINDER` lines each with the coverage row that answers it.
+  as it printed — `form lint: OK`, or the `REMINDER` lines each with the coverage row that answers it. A check
+  you did not run is named as not run, never folded into «проверка архива».
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
   reason from the closed list / to do after the import.
 - **The steps after the import**: import the archive — analysis first, then apply (0.11 «What the user does with it»), load the initial records
