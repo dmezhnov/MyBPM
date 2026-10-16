@@ -27,7 +27,7 @@ gets the names wrong: the importer then rejects the file or silently drops what 
      catalogue it points at — **0.5a**, 0.2c;
    - [ ] a `BO_DICTIONARY` line per open reference list; statuses and short fixed lists as LOCAL dropdowns — **0.5b**, 0.2c;
    - [ ] one kanban card template per `DROPDOWN_SINGLE` of a BO — **0.5c**;
-   - [ ] the sidebar menu: one `GROUP` + one item per working BO, kanban on the status dropdown, every line
+   - [ ] the sidebar menu: a `GROUP` per theme + one item per user JOB (0.2c step 9), kanban on the status dropdown, every line
      with an icon BY MEANING (`phosphor:car`, `phosphor:wrench` …), never the generic default — **0.5d**, 0.2b step 4;
    - [ ] ids: what the given archive (or your own earlier archive of this chat) already holds keeps its ids and
      codes; everything new is hashed from a seed per object kind + this build's salt, distinct across the file — **0.7**;
@@ -273,7 +273,7 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 3. **Build every row routed to an archive line, a hook script or a process — in this reply, in one
    archive**, in this line order: group lines (by theme, 0.2 step 1), dictionaries, BOs (every BO `oldId` minted from its seed
    up front, so a `TABLE` can name a BO written after it, 0.2a), script lines, process lines, menu lines last. Never «the structure now, the scripts later».
-4. **The menu counts as ASKED** (0.5d). One item per working BO (0.2c step 9). Up to ~5 items → all at
+4. **The menu counts as ASKED** (0.5d). One item per user job (0.2c step 9). Up to ~5 items → all at
    the root, no group. More → one menu `GROUP` per theme (the same themes as the BO groups, 0.2 step 1),
    each holding its items — never one group holding everything. On the item of every BO with a status
    path switch the kanban on by its status dropdown; every line carries an icon by meaning (0.5d «Icons by
@@ -340,9 +340,14 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    «Person reference»): `"oldRefBoId": ""`, `boInfo {code:"Person", name:"Пользователи", boCategory:"BO"}`
    — the stand resolves it by that code, so it needs no stand id and is ALWAYS built. Or the current-user
    widget / the system «Автор» (0.12, 0.13) when the person is simply who created the record.
-9. **Which BO gets a menu item?** Every BO a user opens as a working list (клиенты, автомобили, заказы,
-   записи, оплаты, поставщики, заказы поставщикам). NOT the line BOs — they are edited inside the header's
-   table. A dictionary or a catalogue BO (прайс работ, номенклатура) gets its item in the menu group of the
+9. **Which BO gets a menu item, and how many?** One item per JOB a user does with the records — there is no
+   count per BO. A BO a user opens as a working list (клиенты, автомобили, заказы, записи, оплаты,
+   поставщики, заказы поставщикам) usually has one. NONE for the line BOs — they are edited inside the
+   header's table — and none for a service BO nobody opens by hand. SEVERAL when another view or another
+   filter serves a different job of the spec: «Мои заказы» (records I created), «Заказы в работе» (status
+   = a value), «Запись на сервис» as a calendar beside the list — each its own item with its own name, view
+   and `bracketFilter` (0.15 «One BO, several items»). Never add an item to reach a quota, never one per
+   view the BO merely supports. A dictionary or a catalogue BO (прайс работ, номенклатура) gets its item in the menu group of the
    theme whose BOs pick from it, next to them (марки авто → «Клиенты и автомобили», статьи расходов → beside
    «Оплаты»); one used by several themes goes to the theme it belongs to most, or gets no item (it stays
    reachable under «Бизнес-объекты»). **Never one group collecting all dictionaries** — group by meaning, not
@@ -418,7 +423,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "kind": "GENERAL",
   "boGroupOldId": "3H84o9iM@G4jaOL3",       ← = oldId of line 1, character for character
   "instanceViewType": "FORM",               ← FORM = a record opens as a dialog, TAB = as a page tab (0.8a decides)
-  "gridLayoutPosition": {"x": 3, "y": 0, "w": 10, "h": 26, "id": "0"},   ← the record WINDOW, sized by 0.8a; `null` for a dictionary
+  "gridLayoutPosition": {"x": 3, "y": 0, "w": 10, "h": 26, "id": "0"},   ← the record WINDOW, sized by 0.8a — a dictionary too (0.5b)
   "bos": [],
   "boTabs": {},                             ← card tabs, e.g. {"CHAT": 1, "FILES": 2} — ADDS only, never removes (§2 «BO card tabs»)
   "printForms": [],
@@ -658,7 +663,7 @@ The types that need extra keys — every shape `[C]`:
 Cell heights the constructor itself assigns: 3 rows for a one-line input, 4 for other plain fields, **6** for
 `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for
 `STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets: a heading
-and a `SINGLE` reference need 3, a `TEXTAREA` 6, a `TAB_GROUP` its tallest tab + 3 — write the heights of
+and a `SINGLE` reference need 3, a `TEXTAREA` 6, a `TAB_GROUP` its tallest tab + 3 (+ 5 on a `TAB` page) — write the heights of
 0.8 and 0.8a.
 
 > **Your first read most likely ended near here — the core is only half read.** Still ahead, and every
@@ -724,7 +729,9 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
 ### 0.5b A dictionary — `BO_DICTIONARY`
 
 A dictionary is the same two lines of 0.3 + 0.4 with `"category": "BO_DICTIONARY"`, `"gridLayoutPosition":
-null`, `"dictionaryFields": ["CODE","LABEL"]` and these two REQUIRED system fields as the first entries of
+{"x": 4, "y": 0, "w": 8, "h": 11, "id": "0"}` (the window of a row's card, sized like any form by 0.8a step 7: the
+two system fields below are 6 rows, so `h` 11 — every extra field row adds its rows; with `null` a two-field
+card opens at 90 % × 90 % of the screen `[C]`), `"dictionaryFields": ["CODE","LABEL"]` and these two REQUIRED system fields as the first entries of
 `dynamicFields` (0.9 rule 18 — the importer does not add them and a dictionary without them is broken).
 A dropdown on another BO points at it BY CODE (0.5, the `FROM_BO` shape). Its values travel as row lines —
 «The values» below.
@@ -1009,7 +1016,7 @@ below float up. Lay the form out in ROWS `[C]`:
 > a one-line `STATIC_TEXT` heading and a `BO` / `CO` `SINGLE` reference; **6** for `TEXTAREA` /
 > `TEXTAREA_LANG` (4 shows only about two lines of text), a `BO` `TABLE`, `LINK`, `FILE_UPLOAD`, `CHECKLIST`,
 > `RADIO_BUTTON_GROUP`, `PROGRESS_BAR`; **8** for `QUESTIONNAIRE` / `GEO_POINT`; a `TAB_GROUP` = its
-> tallest tab + 3 (0.8a).
+> tallest tab + 3, + 5 on `instanceViewType: "TAB"` (0.8a).
 
 **Which fields share a row — decide it by meaning, unasked.** Short one-line fields that belong together
 stand 2 per row (`cols` 8 + 7) or 3 per row (5 + 5 + 5): телефон + email, марка + модель + год, дата +
@@ -1061,7 +1068,8 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    `tableColToShow: false` (else every heading is an empty registry column) and `rows: 3` `[C]` (2 rows
    scrolls inside itself; a heading WITH a subheading line needs 4). A group = its heading and the
    fields under it, up to the next heading or the end of the form / tab. The heading text names the
-   SECTION, never a field label of the BO (0.9 rule 12).
+   SECTION, never a field label of the BO (0.9 rule 12). **One heading over the whole form (or tab) groups
+   nothing** — it only repeats the window title: two or more headings, or none.
 3. **Tabs** when the form has **more than 12 visible fields**, or is taller than one window (step 5:
    more than ~23 rows) — **also on `instanceViewType: "TAB"`**: a page tab does not replace tabs inside the
    form. Split by meaning — «Общее», «Финансы», «Документы» — each tab ≤ 12 visible fields,
@@ -1073,8 +1081,10 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    `tabCodePath`; its tabs are drawn as a vertical list on the left). Otherwise use groups (step 2).
 5. **Heights** `[C]` (one grid row = 30 px):
    - one-line input: 3 rows (label + box = 58 px; 4 rows leaves a band); heading: 3 rows (step 2);
-   - top-level `TAB_GROUP`: `rows` = (rows of its tallest tab) + **3** — the group's box is `rows·30 − 61` px
-     and a tab of `n` rows needs `n·30 + 28`; one row less scrolls inside the group;
+   - top-level `TAB_GROUP`: `rows` = (rows of its tallest tab) + **3** in a dialog (`FORM`), + **5** on a page
+     tab (`instanceViewType: "TAB"`) — a tab of `n` rows needs `n·30 + 28` px, and the group's box is
+     `rows·30 − 61` px in a dialog but `rows·30 − 111` on a page tab (+ 3 and + 4 both scroll there); one row
+     less scrolls inside the group;
    - nested `TAB_GROUP` (on a tab of another group): `rows` = (its tallest tab) + **2**;
    - «rows of a tab» = the bottom of its lowest cell (`max(y + rows)` of the fields on it).
 6. **The system tab rule.** A tab carries ONE right only — VIEW (`[C]`; edit follows from it) — and «никому»
@@ -1094,7 +1104,8 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    (form rows = `max(y + rows)` of the top-level cells, a `TAB_GROUP` counted with its own `rows`). The
    dialog is capped at 90 % of the screen height — about 28 units on a 1080p screen — so a form of more than
    ~23 rows cannot fit: cut it with tabs (step 3). Without `gridLayoutPosition` the dialog opens at
-   90 % × 90 % of the screen with a band of empty space.
+   90 % × 90 % of the screen with a band of empty space. A dictionary has a window too (0.5b): two system
+   fields → `w: 8`, `h: 11`.
    **Width**: a text input FILLS its cell (§4), so a 15-column field in a full-screen window is a
    1600 px box for a 20-character value. A form of one-line fields: `w: 10` (≈ 1050 px on a 1080p screen).
    `w: 12`–`15` only for a form that carries tables or several fields per row. Centre it:
@@ -1139,7 +1150,7 @@ the BO's category. Count it in `objectCount`.
    BO template (0.4) writes as `{}` stays an OBJECT — `boTabs`, `nativeFields`, `kanbanCardTemplates`,
    `staticValue`, the widget maps — never `[]`; only `bos`, `printForms`, `dictionaryFields` are lists. A
    `[]` in place of `{}` makes the stand drop the whole BO with no error of its own: the analysis shows only
-   «Не найден бизнес-объект для пункта меню» on the menu items that open it `[I]`.
+   «Не найден бизнес-объект для пункта меню» on the menu items that open it `[C]`.
 6. Never drop a key to disable something — write `false`. Import MERGES into what is on the stand. The
    only keys ever legitimately absent are `gridPosition` / `tableColOrderIndex` / `removeType` inside a
    `BO_COMPOSITE`, which has no form (0.17, §5b), and `tableColOrderIndex` / `removeType` on a process's
@@ -1200,8 +1211,11 @@ the BO's category. Count it in `objectCount`.
 - [ ] **Run the form lint below and paste its output into the report.** It prints every defect of the hard
       rules (0.9), the ids (0.7), the templates (0.5–0.5d), the layout (0.8, 0.8a) and the process diagram (0.18)
       that a check can see — the list is under the function — one line each, and `form lint: OK` when there is
-      none; fix every line it prints and run it again. The two `REMINDER` lines are not defects by themselves: each
-      one asks whether the spec has a computed value or an approval path that is missing from the file. The prose
+      none; fix every line it prints and run it again. A `REMINDER` line is not a defect by itself: it names ONE
+      field that looks computed (итого, остаток, резерв, баланс, к оплате) while the file has no script, or looks
+      like an approval (согласовано, утверждено) while it has no process. Answer each BY NAME in the report —
+      «built» (the hook / process you added) or «вводится вручную, потому что …»; a task that needs no script or
+      process stays without one. The prose
       checks below stay mandatory — the lint does not replace them.
       **How to run it:** the function is plain JavaScript — call `lintArchive(<the text of
       data-*/0000001.mybpm>)` in any JavaScript engine your sandbox has and print what it returns. **No
@@ -1271,7 +1285,7 @@ for (const bo of bos) {
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
     if (ty === "TAB_GROUP" && f.gridPosition) {
       const tall = Math.max(0, ...fs.filter(([, x]) => x.tabCodePath?.tabGroupCode === k && x.gridPosition).map(([, x]) => x.gridPosition.y + x.gridPosition.rows));
-      const need = tall + (f.tabCodePath?.tabCode ? 2 : 3);
+      const need = tall + (f.tabCodePath?.tabCode ? 2 : bo.instanceViewType === "TAB" ? 5 : 3);
       if (tall && f.gridPosition.rows !== need) err(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
     }
     if (!isRef(f)) continue;
@@ -1309,7 +1323,7 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (!g || f.trackedFieldCode || f.code === "PROCESS_STATUS") continue;
     if (short && g.rows !== 3) err(`${t}: rows ${g.rows}, must be 3 (0.8)`);
     if ((table || text) && g.rows < 6) err(`${t}: rows ${g.rows}, must be 6 (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short });
+    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT" });
   }
   for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
@@ -1333,6 +1347,9 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       next = y + Math.max(...row.map((c) => c.g.rows));
       edge = row.some((c) => c.box) ? 15 : x;
     }
+    const heads = cells.filter((c) => c.head);
+    if (heads.length === 1 && cells.length > 1 && heads[0].g.y === Math.min(...cells.map((c) => c.g.y)))
+      err(`${heads[0].t}: the only heading, on top of the whole ${tab ? "tab" : "form"} — groups nothing; ≥ 2 headings or none (0.8a step 2)`);
     if (lone >= 3 && bo.category !== "BO_DICTIONARY")
       err(`${bo.code}${tab ? " tab " + tab : ""}: ${lone} rows hold one short field each — 2–3 per row, a lone field at most 2 per form (0.8)`);
   }
@@ -1344,8 +1361,9 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   else if (seen > 8 && !tabs && !fs.some((f) => f.type === "STATIC_TEXT")) err(`${bo.code}: ${seen} visible fields, no heading and no tabs (0.8a step 2)`);
   if (cols > 6) err(`${bo.code}: ${cols} registry columns — the name + at most 5 (0.5)`);
 }
-for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && b.gridLayoutPosition && /^BO(_PROCESS)?$/.test(b.category))) {
+for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && /^BO(_PROCESS|_DICTIONARY)?$/.test(b.category))) {
   const g = bo.gridLayoutPosition, fs = vals(bo.dynamicFields);
+  if (!g) { err(`${bo.code}: no gridLayoutPosition — the record opens at 90 % × 90 % of the screen (0.8a step 7)`); continue; }
   const rows = Math.max(0, ...fs.filter((f) => f.gridPosition && !f.tabCodePath?.tabCode && !f.trackedFieldCode).map((f) => f.gridPosition.y + f.gridPosition.rows));
   if (g.h > 28) err(`${bo.code}: FORM window h ${g.h} > 28 — tabs or instanceViewType TAB (0.8a steps 3, 8)`);
   else if (g.h < rows + 5) err(`${bo.code}: FORM window h ${g.h} scrolls ${rows} form rows — h ${rows + 5} (0.8a step 7)`);
@@ -1387,8 +1405,13 @@ for (const pv of of("BoProcessVersionsStructDto")) {
     if (!all(v.runWayMap).length) err(`${pc}: empty runWayMap — nothing starts the process (0.18)`);
   }
 }
-if (!of("ScriptDefStructDto").length) err("REMINDER no script line: every computed value and total of the spec is a hook (0.2c step 7) or a reason from 0.2b step 5");
-if (!bos.some((b) => b.category === "BO_PROCESS")) err("REMINDER no process: an approval path of the spec is a BO_PROCESS (0.18) or a reason from 0.2b step 5");
+const noScript = !of("ScriptDefStructDto").length, noProcess = !bos.some((b) => b.category === "BO_PROCESS");
+for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f of vals(bo.dynamicFields)) {
+  const l = f.label?.rus ?? "", t = `REMINDER ${bo.code}.${f.code} «${l}»`;
+  if (noScript && /итого|остат|резерв|баланс|к оплате/i.test(l)) err(`${t} looks computed and the file has no script — a hook (0.2c step 7), or report «вводится вручную, потому что …»`);
+  if (noProcess && /^(CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) && /согласован|утвержд/i.test(l))
+    err(`${t} looks like an approval and the file has no process — a BO_PROCESS (0.18), or report «отмечается вручную, потому что …»`);
+}
 return out.length ? out.join("\n") : "form lint: OK";
 }
 ```
@@ -1434,7 +1457,7 @@ return out.length ? out.join("\n") : "form lint: OK";
 - [ ] **Omissions — a system build that fails any of these is not done** (0.2b, 0.2c):
       at least one `type: "BO"` field whenever the spec has two objects that refer to each other — no
       «клиент», «поставщик», «заказ» typed as `INPUT_TEXT`; every header has its line BO with the 0.5a pair,
-      not a `TEXTAREA` list; a `MenuItemStructDto` item per working BO, grouped by theme when there are more than ~5 (0.2b step 4); every
+      not a `TEXTAREA` list; a `MenuItemStructDto` item per user job (0.2c step 9), grouped by theme when there are more than ~5 (0.2b step 4); every
       dictionary whose values the spec names or implies has its row lines (0.5b) and is a `BO_DICTIONARY`;
       no number, sum or date typed as a dropdown; every computed value of the spec has its hook line or a
       closed-list reason; every child document (payments, records of a stage) that points at a header with a
@@ -1452,7 +1475,8 @@ return out.length ? out.join("\n") : "form lint: OK";
   mints the same ids (0.7 case 2).
 - **Name each 0.10 check you ran and how** (the validator, by hand). Asserts inside your own builder are not
   0.10; «проверено» without the list of checks is not a report. **Paste the output of the 0.10 form lint**
-  as it printed — `form lint: OK`, or the `REMINDER` lines each with the coverage row that answers it. A check
+  as it printed — `form lint: OK`, or each `REMINDER` line with its answer by field name: built, or entered by
+  hand and why. A check
   you did not run is named as not run, never folded into «проверка архива».
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
   reason from the closed list / to do after the import.
@@ -1888,6 +1912,19 @@ More rules `[C]`:
   hidden. Menu rights hide a SCREEN, never records: a user with an open item but no BO `view` gets an empty
   registry, and the reverse — records stay reachable whatever the menu says — is why the BO's own rights
   (§7) are the protection.
+- **One BO, several items** `[C]` (0.2c step 9): each item is its own line with its own `menuItemCode`,
+  `menuItemName`, `boPages` and `bracketFilter`; `boCode` is the same. Filters an archive carries `[C]`:
+  records I created (`nativeFilters` `CREATED_BY` + `isCurrentUser: true`), a checkbox value
+  (`type: "CHECKBOX"`, `value: "true"`), a text value (`INPUT_TEXT`), a dictionary dropdown value
+  (`type: "DROPDOWN_SINGLE"`, `value` = the dictionary ROW `code`, 0.5b). A local-list dropdown value and a
+  `Person` field with `isCurrentUser` are `[U]` — prefer `CREATED_BY`. The brackets shape is §5e; a status
+  filter entry:
+  ```json
+  "bracketFilter":{"boCode":"Work_order","type":"MENU_ITEM","brackets":{"aB3dE5gH":{"parentTreeIds":{},
+    "order":0,"connectionType":"AND","notType":"DEFAULT","nativeFilters":{},"dynamicFilters":{"kL7mN9pQ":{
+    "fieldCode":"status","type":"DROPDOWN_SINGLE","value":"in_work","numberFrom":0,"numberTo":0,
+    "isCurrentUser":false,"isEmptyValue":false,"boiIds":{},"fromFieldCodes":{}}}}}}
+  ```
 - **A menu-only archive is legal** `[C]`: one `MenuItemStructDto` line and nothing else (no group line,
   no BO line) imports fine when its `boCode` is already on the stand — the way to add or change a sidebar
   item for an existing BO. The `boCode` is then a stand code: ask for it (0.2a).
@@ -2946,7 +2983,8 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   Fields outside tabs coexist with a tab group in the same BO. Tab order = `fieldTabs` order; the first
   tab is the default. A tab group whose only tab is a service tab can sit UNDER the ordinary fields instead of opening the form.
 - **Record window**: `BoStructDto.gridLayoutPosition` `{x,y,w,h,id:"0"}` is the record WINDOW on a
-  16-column SCREEN grid, not the form; `null` for dictionaries. The dialog is exactly `h·30` px tall and
+  16-column SCREEN grid, not the form; a dictionary has one too — its row card is the same dialog (the two
+  system fields alone: `{x:4,w:8,h:11}`) `[C]`. The dialog is exactly `h·30` px tall and
   `w/16` of 90 % of the browser width (`w: 10` = 1055 px on a 1876 px window); its title and button bar
   take 99 px and the body pads 28, so a form of `R` rows fits without a scroll at **`h = R + 5`** `[C]` (0.8a step 7).
   Without `gridLayoutPosition` the dialog opens at 90 % × 90 % of the screen `[C]`. Known values:
@@ -3556,7 +3594,8 @@ not the menu item's own, not the BO's, not the parent's.
   TRAVELS»: `{"ajW7xfc8": {"fieldCode": "Tekst", "type": "INPUT_TEXT", "value": "фильтр", "numberFrom": 0,
   "numberTo": 0, "isCurrentUser": false, "isEmptyValue": false, "boiIds": {}, "fromFieldCodes": {}}}`); the
   BO may ship in the same archive, and `v2/menu-item/load-bracket-filter` returns the bracket ANDing its
-  filters. `fieldCode` is resolved to the field id of the (new) BO, and the map keys are free
+  filters. A `DROPDOWN_SINGLE` entry on a dictionary field takes `value` = the dictionary row's `code` and the
+  item's registry shows only those records `[C]` (example in 0.15 «One BO, several items»). `fieldCode` is resolved to the field id of the (new) BO, and the map keys are free
   8-char ids that become the ids of the bracket and of each filter as they are.
 - **A menu line may reference a BO that is not in the archive**: an export of menu items carries no BO
   line for the items' BOs. Such a line relies on the BO already being on the stand, by `boCode`.

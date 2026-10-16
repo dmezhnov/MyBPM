@@ -337,7 +337,8 @@ not counting headings, the `TAB_GROUP` and the system fields.
   group headings: split by meaning, each tab ≤ 12 visible fields, **balance the tabs** — the group is as tall as its
   TALLEST tab `[C]`. Keep the name field above the group or on the first (default) tab. Codes `tabs`, `tab_*`
   (0U.5 rule 12). Nested tabs (a second `TAB_GROUP` on a tab) only when one tab still holds > 12 visible fields
-  AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3**, nested = tallest tab + **2** («rows of a
+  AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3** (+ **5** on a page tab `instanceViewType: "TAB"`), nested =
+  tallest tab + **2** («rows of a
   tab» = `max(y + rows)` of its fields); one row less scrolls inside the group.
 - **System fields → the hidden tab «Системные»**: every field only a script, process or integration reads or
   writes goes on a tab with code `tab_system`, label «Системные», the LAST tab of the top-level `TAB_GROUP`
@@ -792,7 +793,7 @@ and dropping the rest «for scope» is a fraction reported as done.
    | structure | BOs, dictionaries AND their values, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0, dictionary values as row lines 0.5b) or the constructor | R3, or R1 / R2 |
    | a hook script | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | §5g |
    | a business process | a path someone RUNS figure by figure, with forms and branches (approval) | R2 / §5f |
-   | the menu | one item per working BO — at the root up to ~5, else one group per theme; kanban by status, an icon by meaning on every line | R6 |
+   | the menu | one item per user job (none for line BOs, several for different views or filters) — at the root up to ~5, else one group per theme; kanban by status, an icon by meaning on every line | R6 |
    | rights by role | read the stand's groups, then write the rules | R5 |
    | records | initial records of working BOs; values of a dictionary already on the stand | R7 or R9 |
    | not doable | the last table of this recipe | — |
@@ -801,7 +802,7 @@ and dropping the rest «for scope» is a fraction reported as done.
    doable (the group ids are readable here, R5; a dictionary row is an ordinary record, R9 step 3). Never
    «the structure now, the rest later».
 3. **The menu counts as ASKED** — a system the user has to dig out of «Бизнес-объекты» is not delivered. One
-   item per working BO — up to ~5 at the root, more in one menu group per theme (the themes of the BO groups),
+   item per user job — up to ~5 at the root, more in one menu group per theme (the themes of the BO groups),
    never one group holding everything; the kanban on the item of every BO with a
    status dropdown; an icon BY MEANING on every line, unasked (R6 step 3, §4 «Icons by meaning»).
 4. **A row you do not do needs a reason from this closed list — nothing else is a reason:** a stand input
@@ -927,7 +928,7 @@ and dropping the rest «for scope» is a fraction reported as done.
       as a whole is a sign the window is too low; a scrollbar INSIDE a field is a defect. Check every tab, and
       a table with its real number of rows.
 - [ ] The layout heights hold `[C]` (one grid row = 30 px): one-line input 3 rows, a `<h3>` heading 3, a
-      top-level `TAB_GROUP` = its tallest tab + 3 (nested group + 2), and the record window
+      top-level `TAB_GROUP` = its tallest tab + 3 (+ 5 on a `TAB` page; nested group + 2), and the record window
       `gridLayoutPosition.h` = form rows + 5 (the dialog is `h·30` px tall, 99 px of it title and buttons).
       Fix a scrolling tab group or window at its source: an archive-built BO in the archive
       (`MYBPM-IMPORTS.md` §0.8a), a constructor-built one by the R1 «Layout» calls (field `gridPosition` in the
@@ -1248,7 +1249,9 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
   (`bracketFilterId` is null until then) → then `v2/bracket-filter/save` body
   `{id:<filter id>, boId, brackets:[root]}`.
 - **An archive can carry the filter instead** `[C]`: a menu line's `bracketFilter.brackets` (maps keyed by
-  8-char ids, `fieldCode` instead of `fieldId`) imports whole — `MYBPM-IMPORTS.md` §5e.
+  8-char ids, `fieldCode` instead of `fieldId`) imports whole — `MYBPM-IMPORTS.md` §5e; a dictionary
+  dropdown entry there takes `value` = the row's `code`, no `businessObjectId` `[C]`. One BO may have several
+  items, one per user job (a list of all, «Мои …», «… в работе»), each with its own filter.
 - A bracket: `{id, parentId, parentTreeIds, connectionType, notType: DEFAULT|NOT, dynamicFilters,
   nativeFilters, brackets}`.
 - **Semantics** `[C]`: filters inside ONE bracket are AND-ed; a bracket's own
@@ -1454,7 +1457,7 @@ that is the platform itself `[C]`. A clean archive analyses as `status:"ANALYZED
   ```
   `ownerBoInfo` = who is broken, `requiredBoInfo` = what it needs and BY WHICH CODE. A composite whose `bos[]`
   names a code the stand does not have **fails loudly at ANALYZE time**, nothing is silently merged.
-- **«Не найден бизнес-объект для пункта меню» on a BO the archive itself carries** `[I]` = the stand dropped
+- **«Не найден бизнес-объект для пункта меню» on a BO the archive itself carries** `[C]` = the stand dropped
   that BO line silently, its menu item has nothing to open. Cause: a BO map key written as `[]` instead of `{}`
   (`boTabs`, `nativeFields`, `kanbanCardTemplates` …; only `bos`, `printForms`, `dictionaryFields` are lists —
   `MYBPM-IMPORTS.md` 0.9 rule 5). Cancel the import, fix the archive, re-upload.
