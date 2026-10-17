@@ -3545,7 +3545,9 @@ kinds of line per BO — this is the ONLY place where a Block IDE script exists 
   `testScripts`. Match a def to a hook by the part AFTER the last `-`.
 - `methodScriptIds` lists the BO's own (local) methods (`[]` when the BO has none). **Local methods DO travel** `[C]` (below «Local methods travel»).
   Whether a re-import that omits / nulls a hook UNWIRES it, or that drops a method from `methodScriptIds` removes
-  it, is not known yet `[U]` — §18; unwire or delete on the stand (`MYBPM-UI-API.md` §5g: `save-bo-scripts`, `delete-local-method`).
+  it, is not known yet `[U]` — §18. On the stand a field script is unwired by `save-bo-scripts` without it, a hook
+  cannot be unwired at all (make it «entry → `BlockExit FROM_METHOD`»: an EMPTIED hook body fails every form save),
+  and a local method belongs to every script version — delete it from each (`MYBPM-UI-API.md` §5g, traps 68a/68b) `[C]`.
 
 ### `ScriptDefStructDto` = a Part II script minus the clipboard envelope
 
@@ -6393,11 +6395,11 @@ Scripts:
     `isGroupingEnabled` / `groupingInfo` store and travel but nothing renders (§2 «BO views»).
 34. **An import of «Выставление сервисов» replaces the whole list; its rollback leaves dead rows** `[C]`
     — §2 «Exposed services».
-35. **A BO's first, implicit script version is blind when scripts are written through the API** `[C]` —
-    on a BO that never had scripts the one version `load-bo-script-versions` returns has an empty
-    `load-bo-def-list`, so every field act fails `translate-script` and the hook cannot be published. Copy the
-    version (`copy-bo-script-version`) and write into the copy (`MYBPM-UI-API.md` §5o, trap 68). A BO whose scripts
-    came in by archive is not affected.
+35. **A freshly created BO's first script version is blind for a few seconds** `[C]` — right after the BO is
+    created, the one version `load-bo-script-versions` returns has an empty `load-bo-def-list`, so every field act
+    written then fails `translate-script` and the hook cannot be published. Wait until the list fills, then write
+    (or re-translate) in that same version (`MYBPM-UI-API.md` §5o, trap 68). A BO whose scripts came in by archive
+    is not affected.
 36. **A service file answer needs a file name with a known extension** `[C]` — `x.xyz` or a bare `x`
     fails with `NoFileMimeType` inside the «Создание» script and the service answers 500; with a known extension
     the response Content-Type is taken from it, not from RESULT_CONTENT_TYPE (§2 «Exposed services»,

@@ -820,7 +820,12 @@ function formOutcome(answers: any[], fields: any[]) {
     if (!o || typeof o !== "object") return;
     if (Array.isArray(o)) return o.forEach(walk);
     if (o.commandType === "SHOW_FIELD_ERROR") { const f = fields.find((x) => x.fieldId === o.fieldId); errors.push({ field: f ? nameOf(f) : o.fieldId, error: o.errorMessage }); }
-    if (o.commandType === "SHOW_NOTIFICATION") notes.push(clean({ type: o.notificationType ?? o.type, text: o.message ?? o.text ?? o.body }));
+    if (o.commandType === "SHOW_NOTIFICATION") {
+      const b = o.notificationBody ?? {};
+      notes.push(clean({ type: b.notificationType ?? o.notificationType ?? o.type, text: b.notificationText?.text ?? o.message ?? o.text,
+        details: b.details?.map((d: any) => d.text), scriptErrorId: o.scriptErrorId ?? undefined }));
+      return;
+    }
     Object.values(o).forEach(walk);
   };
   walk(answers);
@@ -1011,6 +1016,287 @@ async function buildRows(s: Stand, bo: any, rows: Record<string, any>[], warn: (
 }
 
 const actHead = new Map<string, number>(); // importId → header rows of its file, for line numbers in a re-read
+
+// ── scripts and processes (MYBPM-UI-API.md §5f, §5g; MYBPM-IMPORTS.md Part II) ────────────────────────────
+
+const SE_ = "v2/bo-scripts-editor/", SC_ = "v2/script/", SB_ = "v2/script-browser/";
+const PE_ = "v2/bo-process-editor/", PE2_ = "v2/bo-process-editor2/", BP_ = "v2/boi-process/";
+const HOOKS: Record<string, string> = { onOpen: "onOpenFormScriptId", afterSave: "afterSaveScriptId", onClose: "onCloseScriptId", onCreate: "onInstanceCreationId" };
+
+// the enum-typed keys (UI-API §5g «The script language»): any other value bricks the BO's scripts for good (trap 49);
+// the old-panel types are not generated but are valid in a def read back
+const S_BLOCKS = new Set(["BlockNewVar", "BlockAssign", "BlockIf", "BlockForeach", "BlockExit", "BlockFixMethod", "BlockFixEntryPoint",
+  "BlockSetVar", "BlockSetField", "BlockObject", "BlockReturn", "BlockSwitchExit", "BlockFunc", "BlockFixEmpty"]);
+const S_EXPRS = new Set(["ExprValue", "ExprOp", "ExprAct", "ExprCall",
+  "ExprConst", "ExprVar", "ExprField", "ExprObject", "ExprNewBoi", "ExprBoiFind", "ExprCreateObject", "ExprFunc"]);
+const S_EXITS = new Set(["FROM_METHOD", "FROM_CIRCLE", "FROM_CIRCLE_ITER", "FROM_METHOD_BY_ARROW"]);
+const S_VALUES = new Set(["CONST", "VAR_REF", "THIS_PROCESS"]);
+const S_CONSTS = new Set(["String", "BigDecimal", "Boolean", "Date", "GeoPoint", "BoRefCode", "BoiRefCode", "SingleSelectRefCode", "Enum",
+  "JavaObjectFactories", "ScriptMethodRef", "PrintFormRef", "ReportRefCode"]);
+const S_OPS = new Set(["Concat", "Plus", "Minus", "Mul", "Div", "And", "Or", "Xor", "Not", "Less", "LessEq", "More", "MoreEq", "Eq", "NotEq", "OrEq", "AndNotEq"]);
+const ID16 = /^[A-Za-z0-9@~]{16}$/;
+const ID_ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@~";
+/** Any 16 characters of the id alphabet are taken as they are (§5g «/paste breaks parameter references»). */
+const newId = () => Array.from(randomBytes(16), (b) => ID_ABC[b % 64]).join("");
+
+/** What would brick or break a def before it is written (trap 49): errors refuse the write, warnings are reported. */
+function scriptProblems(def: any): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [], warnings: string[] = [];
+  const blocks: Record<string, any> = def?.blocks ?? {}, exprs: Record<string, any> = def?.expressions ?? {};
+  if (!def || typeof def !== "object" || typeof blocks !== "object" || typeof exprs !== "object") return { errors: ["def must be {blocks: {…}, expressions: {…}}"], warnings };
+  const uses = new Map<string, number>(), params = new Set<string>(), down: [string, string][] = [];
+  const hats = Object.entries(blocks).filter(([, b]) => b?.type === "BlockFixMethod" || b?.type === "BlockFixEntryPoint");
+  for (const [, h] of hats) for (const p of Object.keys(h.params ?? {})) params.add(p);
+  const useExpr = (where: string, id: unknown) => {
+    if (id == null) return;
+    if (typeof id !== "string" || !exprs[id]) { errors.push(`${where} → ${JSON.stringify(id)}: no such expression`); return; }
+    uses.set(id, (uses.get(id) ?? 0) + 1);
+  };
+  const useBlock = (where: string, from: string, id: unknown) => {
+    if (id == null) return;
+    if (typeof id !== "string" || !blocks[id]) errors.push(`${where} → ${JSON.stringify(id)}: no such block`);
+    else down.push([from, id]);
+  };
+  const objects = (where: string, m: any, each: (k: string, v: any) => void) => {
+    if (m == null) return;
+    if (typeof m !== "object" || Array.isArray(m)) { errors.push(`${where} must be an object keyed by id`); return; }
+    for (const [k, v] of Object.entries(m)) {
+      if (!v || typeof v !== "object") { errors.push(`${where}.${k} must be an object, not ${JSON.stringify(v)} (a wrong shape bricks the module)`); continue; }
+      each(k, v);
+    }
+  };
+  const refs = (where: string, from: string, o: any) => {
+    for (const [k, v] of Object.entries(o)) {
+      if (/(^e|E)xprId$/.test(k)) useExpr(`${where}.${k}`, v);
+      else if (/(^b|B)lockId$/.test(k) && k !== "varBlockId") useBlock(`${where}.${k}`, from, v);
+    }
+  };
+  for (const [id, b] of Object.entries(blocks)) {
+    const w = `blocks.${id}`;
+    if (!ID16.test(id)) errors.push(`${w}: an id is 16 characters of A-Z a-z 0-9 @ ~`);
+    if (!b || typeof b !== "object") { errors.push(`${w} is not an object`); continue; }
+    if ("@class" in b) errors.push(`${w}: \`@class\` is the ARCHIVE shape — the editor takes \`type\` (MYBPM-IMPORTS.md §5d vs §0S.3)`);
+    if (!S_BLOCKS.has(b.type)) errors.push(`${w}.type ${JSON.stringify(b.type)} is not a block type`);
+    if (b.exitType != null && !S_EXITS.has(b.exitType)) errors.push(`${w}.exitType ${JSON.stringify(b.exitType)} is not an exit type`);
+    refs(w, id, b);
+    objects(`${w}.branches`, b.branches, (k, br) => {
+      if (!ID16.test(k)) errors.push(`${w}.branches.${k}: a branch key is a 16-character id`);
+      refs(`${w}.branches.${k}`, id, br);
+    });
+    objects(`${w}.params`, b.params, () => {});
+  }
+  for (const [id, e] of Object.entries(exprs)) {
+    const w = `expressions.${id}`;
+    // the editor leaves a stray `expressions.undefined: {type: "Expr"}` in live defs; the stand translates them — not a fault
+    if (id === "undefined" && e?.type === "Expr" && Object.keys(e).length === 1) { warnings.push(`${w} {type: "Expr"} — a stray entry the editor leaves; harmless`); continue; }
+    if (!ID16.test(id)) errors.push(`${w}: an id is 16 characters of A-Z a-z 0-9 @ ~`);
+    if (!e || typeof e !== "object") { errors.push(`${w} is not an object`); continue; }
+    if ("@class" in e) errors.push(`${w}: \`@class\` is the ARCHIVE shape — the editor takes \`type\``);
+    if (!S_EXPRS.has(e.type)) errors.push(`${w}.type ${JSON.stringify(e.type)} is not an expression type`);
+    if (e.exprValueType != null && !S_VALUES.has(e.exprValueType)) errors.push(`${w}.exprValueType ${JSON.stringify(e.exprValueType)} is not one of CONST VAR_REF THIS_PROCESS`);
+    if (e.constType != null && !S_CONSTS.has(e.constType)) errors.push(`${w}.constType ${JSON.stringify(e.constType)} is not a value kind`);
+    if (e.opType != null && !S_OPS.has(e.opType)) errors.push(`${w}.opType ${JSON.stringify(e.opType)} is not an operation`);
+    if (e.exprValueType === "VAR_REF" && !blocks[e.varBlockId] && !params.has(e.varBlockId))
+      errors.push(`${w}.varBlockId ${JSON.stringify(e.varBlockId)}: neither a block nor a parameter of the hat`);
+    refs(w, id, e);
+    for (const [k, v] of Object.entries(e.argExprIds ?? {})) useExpr(`${w}.argExprIds.${k}`, v);
+    objects(`${w}.args`, e.args, (k, v) => useExpr(`${w}.args.${k}.exprId`, v.exprId));
+    objects(`${w}.more`, e.more, (k, v) => {
+      if (v.opType != null && !S_OPS.has(v.opType)) errors.push(`${w}.more.${k}.opType ${JSON.stringify(v.opType)} is not an operation`);
+      useExpr(`${w}.more.${k}.exprId`, v.exprId);
+    });
+  }
+  for (const [id, n] of uses) if (n > 1) errors.push(`expressions.${id} is used ${n} times — every use needs its own expression`);
+  for (const id of Object.keys(exprs)) if (!uses.has(id) && id !== "undefined") warnings.push(`expressions.${id} is used nowhere`);
+  if (Object.keys(blocks).length && hats.length !== 1)
+    errors.push(`${hats.length} hats (BlockFixEntryPoint / BlockFixMethod) — a script has exactly one`);
+  if (hats.length === 1) {
+    const seen = new Set([hats[0][0]]), todo = [hats[0][0]];
+    while (todo.length) { const at = todo.pop()!; for (const [f, t] of down) if (f === at && !seen.has(t)) { seen.add(t); todo.push(t); } }
+    for (const id of Object.keys(blocks)) if (!seen.has(id) && blocks[id]?.type !== "BlockFixEmpty") warnings.push(`blocks.${id} is not reached from the hat`);
+  }
+  return { errors, warnings };
+}
+
+/** One patch command whose `backward` puts back what `def` holds now (never the server undo — it can wipe an imported def). */
+function patchCmd(name: string, def: any, entries: [string, unknown][]) {
+  const at = (p: string) => p.split(".").reduce((o, k) => (o == null ? undefined : o[k]), def);
+  const op = (dotPath: string, value: unknown) => (value === undefined ? { type: "Unset", dotPath } : { type: "Set", dotPath, value });
+  return { name, forward: { type: "Group", list: entries.map(([p, v]) => op(p, v)) },
+    backward: { type: "Group", list: entries.map(([p]) => op(p, at(p))).reverse() } };
+}
+const undoCmd = (c: ReturnType<typeof patchCmd>) => ({ name: `revert ${c.name}`, forward: c.backward, backward: c.forward });
+
+async function translate(s: Stand, scriptModuleId: string, scriptId: string) {
+  const t = await s.call(SC_ + "translate-script", { scriptModuleId, scriptId });
+  const msgs = (t?.diagnosticMessageList ?? []).map((m: any) => [m.type, m.messageCode, m.message].filter(Boolean).join(" "));
+  return { success: !!t?.success, ...(msgs.length ? { messages: msgs.slice(0, 20) } : {}) };
+}
+
+/** Replace a script's def in ONE apply-update-cmd (old ids not in the new def are unset), translate, and put the old
+ *  def back when it does not translate (unless keep). A method keeps its BlockFixMethod hat. */
+async function writeScript(s: Stand, scriptModuleId: string, scriptId: string, def: any, o: { keep?: boolean; dryRun?: boolean } = {}) {
+  if (def?.copied) def = def.copied; // the clipboard JSON of §0S.3
+  def = { blocks: def?.blocks ?? {}, expressions: def?.expressions ?? {} };
+  const old = (await s.call(SC_ + "load-script-def", { scriptModuleId, scriptId })) ?? {};
+  const hat = Object.entries<any>(old.blocks ?? {}).find(([, b]) => b?.type === "BlockFixMethod");
+  const p = scriptProblems(def);
+  if (hat && def.blocks[hat[0]]?.type !== "BlockFixMethod")
+    p.errors.push(`a method: keep its hat blocks.${hat[0]} (BlockFixMethod «${hat[1].methodName}», its params and returnType) — scripts_read defs:true shows it`);
+  if (p.errors.length || o.dryRun) return clean({ written: false, ...p,
+    why: p.errors.length ? "refused before writing: a def like this bricks or breaks the module (trap 49)" : "dryRun: the def passes the check, nothing written" });
+  const entries: [string, unknown][] = [];
+  for (const k of ["blocks", "expressions"] as const) {
+    for (const id of Object.keys(old[k] ?? {})) if (!(id in def[k])) entries.push([`${k}.${id}`, undefined]);
+    for (const [id, v] of Object.entries(def[k])) entries.push([`${k}.${id}`, v]);
+  }
+  const cmd = patchCmd("script", old, entries);
+  await s.call(SC_ + "apply-update-cmd", { scriptModuleId, scriptId }, cmd);
+  const t = await translate(s, scriptModuleId, scriptId);
+  if (t.success || o.keep) return clean({ written: true, translate: t, warnings: p.warnings });
+  await s.call(SC_ + "apply-update-cmd", { scriptModuleId, scriptId }, undoCmd(cmd));
+  return clean({ written: false, reverted: true, translate: t, warnings: p.warnings,
+    why: "the new def did not translate — the old one is back; fix the def (keep:true stores it anyway)" });
+}
+
+/** A version by "work" | "test" | its id | its number; none given → the work one, else the test one. */
+function pickVersion(list: any[], want: string | undefined, idKey: string) {
+  const v = want === "work" ? list.find((x) => x.isWork) : want === "test" ? list.find((x) => x.isTest)
+    : want ? list.find((x) => x[idKey] === want || String(x.version) === String(want)) : list.find((x) => x.isWork) ?? list.find((x) => x.isTest);
+  if (!v) throw new Error(`no version ${want ?? "work/test"}: ${JSON.stringify(list.map((x) => ({ id: x[idKey], version: x.version, isWork: x.isWork, isTest: x.isTest })))}`);
+  return v;
+}
+const versionRows = (list: any[], idKey: string) => list.map((x) => clean({ id: x[idKey], version: x.version, work: x.isWork || undefined, test: x.isTest || undefined, comment: x.comment || undefined }));
+
+/** in-work / in-test / copy / remove / change-comment of a script or a process version — one shape for both editors. */
+async function versionAction(s: Stand, kind: "script" | "process", boId: string, a: any) {
+  const [ctl, list, idKey, noun] = kind === "script" ? [SE_, "load-bo-script-versions", "boScriptModId", "bo-script-version"]
+    : [PE2_, "load-bo-process-versions", "boProcessId", "bo-process-version"];
+  const idParam = kind === "script" ? "boScriptsId" : "boProcessId";
+  const before: any[] = (await s.call(ctl + list, { boId })) ?? [];
+  if (!a.action) return { boId, versions: versionRows(before, idKey) };
+  const v = pickVersion(before, a.version ?? (a.action === "copy" || a.action === "comment" ? undefined : "test"), idKey);
+  const method = ({ work: `in-work-${noun}`, test: `in-test-${noun}`, copy: `copy-${noun}`, remove: `remove-${noun}`, comment: `change-${noun}-comment` } as any)[a.action];
+  if (!method) throw new Error("action is one of work, test, copy, remove, comment");
+  if (a.action === "remove" && (v.isWork || v.isTest)) throw new Error(`version ${v.version} is the ${v.isWork ? "work" : "test"} one — the stand keeps it; make another one work/test first`);
+  const answer = await s.call(ctl + method, { boId, [idParam]: v[idKey], ...(a.action === "comment" ? { comment: a.comment ?? "" } : {}) });
+  const refused = Array.isArray(answer) ? answer.filter((x: any) => x?.text).map((x: any) => x.text) : [];
+  const after: any[] = (await s.call(ctl + list, { boId })) ?? [];
+  return clean({ boId, action: a.action, version: v.version, ...(refused.length ? { refused } : {}), versions: versionRows(after, idKey) });
+}
+
+/** The script versions of a BO and the one asked for. A fresh BO's load-bo-def-list is empty for a few seconds (trap 68) and
+ *  no field act translates meanwhile — wait for it (≤15 s); still empty = blind. */
+async function scriptVersion(s: Stand, boId: string, want?: string) {
+  const list: any[] = (await s.call(SE_ + "load-bo-script-versions", { boId })) ?? [];
+  const v = pickVersion(list, want, "boScriptModId");
+  const empty = async () => { const d = await s.call(SC_ + "load-bo-def-list", { scriptModuleId: v.boScriptModId, scriptId: null }).catch(() => null); return Array.isArray(d?.list) && !d.list.length; };
+  let blind = await empty();
+  for (let i = 0; blind && i < 15; i++) { await sleep(1000); blind = await empty(); }
+  return { list, v, id: v.boScriptModId as string, blind };
+}
+
+// the slot names a figure takes (§5f «Slots»); a wrong one silently means another slot or nothing
+const SCRIPT_SLOTS = ["left", "right", "top", "bottom", "topLeft", "topRight", "bottomLeft", "bottomRight"];
+function slotsOf(f: any): string[] {
+  switch (f.type) {
+    case "Enter": case "Exit": return ["main", "top", "bottom"];
+    case "Switch": return ["up", "right", "down", "left"];
+    case "Script": case "Timer": return SCRIPT_SLOTS;
+    case "Form": return [...SCRIPT_SLOTS.filter((x) => x !== "bottom"), "timerCreate", "timerOpenForm", "timerTouchDraft"];
+    case "Terminator": return ["left", "right", "top", "bottom"];
+    case "Point": return [0, 45, 90, 135, 180, 225, 270, 315].map((d) => `angle_${d}`);
+    case "SingleToParallel": return ["in", ...Array.from({ length: f.outSlotsCount ?? 2 }, (_, i) => `out${i + 1}`)];
+    case "ParallelToSingle": return ["out", ...Array.from({ length: f.inSlotsCount ?? 2 }, (_, i) => `in${i + 1}`)];
+  }
+  return [];
+}
+const FIGURES = ["Enter", "Exit", "Switch", "SingleToParallel", "ParallelToSingle", "Form", "Script", "Timer", "Point", "Terminator"];
+const OUT_SLOT: Record<string, string> = { Enter: "main", Exit: "main", Switch: "right", Point: "angle_0" };
+const IN_SLOT: Record<string, string> = { Enter: "main", Exit: "main", Switch: "left", Point: "angle_180" };
+
+/** A process version: "dev" = the editable one (load-dev-bo-process-id), else as pickVersion. */
+async function processVersion(s: Stand, boId: string, want?: string) {
+  const list: any[] = (await s.call(PE2_ + "load-bo-process-versions", { boId })) ?? [];
+  if (want === "dev") want = await s.call(PE2_ + "load-dev-bo-process-id", { boId });
+  const v = pickVersion(list, want, "boProcessId");
+  return { list, v, id: v.boProcessId as string };
+}
+
+/** The process a record runs: its version, the def and the figure labels. */
+async function boiProcess(s: Stand, boId: string, boiId: string) {
+  const r = await s.call("v2/boi-process2/load-boi-process-id", { boId, boiId, draftId: null });
+  const boProcessId: string = typeof r === "string" ? r : r?.boProcessId ?? r?.id;
+  if (!boProcessId) throw new Error(`record ${boiId} runs no process: ${JSON.stringify(r)}`);
+  return { boProcessId, def: (await s.call(PE_ + "load-bo-process-def", { boProcessId })) ?? {} };
+}
+
+function figureLabel(f: any, fields: Map<string, any>) {
+  const fld = f.fieldId ? fields.get(f.fieldId) : undefined;
+  return fld ? `${f.type} «${fld.label}»` : f.type;
+}
+
+/** The run ways of a version through the dialog's draft (dropped again), ids turned into codes. */
+async function runWays(s: Stand, bo: any, boProcessId: string) {
+  const draftId = await s.call(PE2_ + "create-draft", { boProcessId });
+  try {
+    const map = (await s.call(PE2_ + "load-draft-data", { draftId }))?.runWayMap ?? {};
+    const rows = [];
+    for (const [id, w] of Object.entries<any>(map)) {
+      const pf = (bo.formFields ?? []).find((f: any) => f.fieldId === w.processFieldId);
+      const target = pf?.refBoId ? await loadBo(s, pf.refBoId).catch(() => null) : null;
+      const code = (fid: string) => { const f = (target?.formFields ?? []).find((x: any) => x.fieldId === fid); return f ? nameOf(f) : fid; };
+      rows.push(clean({ id, runWay: w.runWay, orderIndex: w.orderIndex, processField: pf ? nameOf(pf) : w.processFieldId, target: target?.code,
+        fields: Object.keys(w.fieldIdsSet ?? {}).map(code), variants: Object.keys(w.changeVariantSet ?? {}),
+        values: w.fieldValues && Object.fromEntries(Object.entries(w.fieldValues).filter(([k]) => !w.useFieldValuesSet || k in w.useFieldValuesSet).map(([k, v]) => [code(k), v])),
+        schedule: w.schedule }));
+    }
+    return rows;
+  } finally { await s.call(PE2_ + "remove-draft", { draftId }).catch(() => {}); }
+}
+
+async function processSteps(s: Stand, boProcessId: string, boiId: string, def: any, fields: Map<string, any>) {
+  const steps: any[] = (await s.call(BP_ + "load-process-steps", { boProcessId, boiId })) ?? [];
+  const arrows = Object.entries<any>(def.arrows ?? {});
+  return { over: steps.length > 0 && !steps.some((x) => ["STAND", "GO", "WAITING"].includes(x.state)),
+    steps: steps.map((x) => {
+      const f = def.figures?.[x.figureId];
+      return clean({ figure: x.figureId, what: f ? figureLabel(f, fields) : undefined, state: x.state,
+        scriptRunSuccess: x.scriptRunSuccess === false ? false : undefined, diagnostics: x.diagnosticMessages,
+        out: arrows.filter(([, a]) => a.startFigureId === x.figureId).map(([id, a]) => `${id}${a.name ? ` «${a.name}»` : ""} → ${a.finishFigureId}`) });
+    }) };
+}
+
+/** The company-global methods module (one per company) and its methods. */
+async function globalMethods(s: Stand) {
+  const m = await s.call(SC_ + "ensure-company-global-script-module", {});
+  return { scriptModuleId: m?.scriptModuleId as string, methods: ((await s.call(SC_ + "list-company-global-methods", {})) ?? []) as { scriptId: string; methodName: string }[] };
+}
+
+/** The script a write goes to: explicit ids, a global method, a process figure, or a hook / field / local method of a BO version. */
+async function scriptTarget(s: Stand, a: any): Promise<{ scriptModuleId: string; scriptId: string; what: string }> {
+  if (a.scriptModuleId && a.scriptId) return { scriptModuleId: a.scriptModuleId, scriptId: a.scriptId, what: "script" };
+  if (a.globalMethod) {
+    const g = await globalMethods(s), m = g.methods.find((x) => x.methodName === a.globalMethod);
+    if (!m) throw new Error(`no global method «${a.globalMethod}»: ${g.methods.map((x) => x.methodName).join(", ") || "none"} — scripts_wire global:true methods:[…] creates one`);
+    return { scriptModuleId: g.scriptModuleId, scriptId: m.scriptId, what: `global method «${a.globalMethod}»` };
+  }
+  const boId = await boById(s, a);
+  if (a.figure) return { scriptModuleId: (await processVersion(s, boId, a.version ?? "dev")).id, scriptId: a.figure, what: `figure ${a.figure}` };
+  const v = await scriptVersion(s, boId, a.version ?? "test"), w = (await s.call(SE_ + "load-bo-scripts", { boId, boScriptsId: v.id })) ?? {};
+  let scriptId: string | undefined, what: string;
+  if (a.hook) {
+    if (!HOOKS[a.hook]) throw new Error(`hook is one of ${Object.keys(HOOKS).join(", ")}`);
+    scriptId = w[HOOKS[a.hook]]; what = `hook ${a.hook}`;
+  } else if (a.field) {
+    const f = fieldBy((await loadBo(s, boId)).formFields ?? [], a.field);
+    scriptId = w.fieldScripts?.[f.fieldId]?.afterChangeScriptId; what = `field ${nameOf(f)}`;
+  } else if (a.method) {
+    scriptId = ((await s.call(SE_ + "list-local-methods", { boScriptsId: v.id })) ?? []).find((m: any) => m.methodName === a.method)?.scriptId; what = `method «${a.method}»`;
+  } else throw new Error("say which script: scriptModuleId + scriptId, or boId/code with hook | field | method | figure, or globalMethod");
+  if (!scriptId) throw new Error(`${what} is not wired on version ${v.v.version} — scripts_wire first`);
+  return { scriptModuleId: v.id, scriptId, what: `${what}, version ${v.v.version}` };
+}
 
 // ── a platform discrepancy → a prefilled GitHub issue (the user submits it) ────────────────────────────────
 
@@ -1561,7 +1847,9 @@ const tools: Tool[] = [
         if (!a.id) await s.call(BOI_ + "v2/delete-boi", { draftId, boiId }, {}).catch(() => {});
         await s.call("v2/instance-form/remove-draft", { draftId }, {}).catch(() => {});
         return clean({ boId, id: a.id, saved: false, cycle: "form (scripts ran)", errors: out.errors, notifications: out.notifications,
-          why: out.errors.length ? "a field error vetoed the save (a script or a rule) — nothing was stored" : "no CLOSE_DIALOG_SAVE — e.g. an empty required field; nothing was stored" });
+          why: out.errors.length ? "a field error vetoed the save (a script or a rule) — nothing was stored"
+            : out.notifications.some((n: any) => /^script_/.test(n.text ?? "")) ? "a hook script failed (text = which hook) — nothing was stored; scripts_read shows whether it translates (an emptied body fails: write entry → exit)"
+            : "no CLOSE_DIALOG_SAVE — e.g. an empty required field; nothing was stored" });
       }
       return clean({ boId, id: boiId, created: !a.id, saved: true, cycle: "form (scripts ran)", notifications: out.notifications, record: (await recordValues(s, bo, boiId)).values });
     } },
@@ -1695,6 +1983,313 @@ const tools: Tool[] = [
         note: noIds ? "no «Внутренний айди» column (it is for administrators): records are told apart by their cells" : undefined });
     } },
 
+  // 8. scripts (§5g; the language: MYBPM-IMPORTS.md Part II)
+  { name: "scripts_read", description: "A BO's Block IDE scripts (§5g «Reading a BO's scripts headlessly»): its script versions, the wiring of the chosen one — the four hooks (onOpen, afterSave, onClose, onCreate), the field scripts keyed by field CODE, the local methods — and per script {scriptModuleId, scriptId}, whether it translates (check, default true) and with defs:true its def {blocks, expressions}. A blind version (trap 68: empty load-bo-def-list) is flagged. global:true — the company-global methods instead (no BO needed). Process figures' scripts: process_read.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      version: { type: "string", description: "work | test | a version id or number; default the work one, else the test one" },
+      defs: { type: "boolean", description: "Also each script's def (long)" }, check: { type: "boolean", description: "Default true: translate-script each one" },
+      global: { type: "boolean", description: "The company-global methods" } },
+    run: async (a) => {
+      const s = stand(a), check = a.check !== false;
+      const one = async (scriptModuleId: string, scriptId: string, extra: object) => clean({ ...extra, scriptModuleId, scriptId,
+        ...(check ? { translate: await translate(s, scriptModuleId, scriptId) } : {}),
+        ...(a.defs ? { def: await s.call(SC_ + "load-script-def", { scriptModuleId, scriptId }) } : {}) });
+      if (a.global) {
+        const g = await globalMethods(s);
+        return { scriptModuleId: g.scriptModuleId, methods: await Promise.all(g.methods.map((m) => one(g.scriptModuleId, m.scriptId, { method: m.methodName }))) };
+      }
+      const boId = await boById(s, a), bo = await loadBo(s, boId), v = await scriptVersion(s, boId, a.version);
+      const w = (await s.call(SE_ + "load-bo-scripts", { boId, boScriptsId: v.id })) ?? {};
+      const byId = new Map<string, any>((bo.formFields ?? []).map((f: any) => [f.fieldId, f]));
+      const scripts: Promise<any>[] = [];
+      for (const [hook, key] of Object.entries(HOOKS)) if (w[key]) scripts.push(one(v.id, w[key], { hook }));
+      for (const [fid, fs] of Object.entries<any>(w.fieldScripts ?? {}))
+        if (fs?.afterChangeScriptId) scripts.push(one(v.id, fs.afterChangeScriptId, { field: byId.get(fid) ? nameOf(byId.get(fid)) : fid, fieldId: fid }));
+      for (const m of (await s.call(SE_ + "list-local-methods", { boScriptsId: v.id })) ?? []) scripts.push(one(v.id, m.scriptId, { method: m.methodName }));
+      return clean({ boId, bo: bo.name, versions: versionRows(v.list, "boScriptModId"), version: { id: v.id, version: v.v.version, work: v.v.isWork, test: v.v.isTest },
+        ...(v.blind ? { blind: "load-bo-def-list is still empty after 15 s (trap 68): no field act translates — read again in a minute" } : {}),
+        methodsScriptId: w.methodsScriptId, scripts: await Promise.all(scripts),
+        runs: "a TEST version runs only on test (DEV) records; ordinary records run the work version (none → nothing runs)" });
+    } },
+  { name: "script_write", write: true, description: "Write the body of ONE script — a hook, a field script, a local or global method, a process Script / Switch figure — from a def {blocks, expressions} in the editor's shape (`type`, not the archive's `@class`; MYBPM-IMPORTS.md §0S, §12, §12a; the clipboard JSON of §0S.3 is taken too). Before writing, the def is checked against what bricks a module for good (trap 49: enum values off the table, ids not 16 characters, dangling or reused expressions, wrong object shapes, not exactly one hat) — any problem refuses the write. A method keeps its BlockFixMethod hat (scripts_read defs:true shows it). Then ONE apply-update-cmd replaces the whole def, translate-script checks it, and a def that does not translate is replaced by the old one again (keep:true stores it anyway). dryRun:true = only the check. Ask the user first.",
+    props: { scriptModuleId: { type: "string" }, scriptId: { type: "string" },
+      boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      hook: { type: "string", enum: Object.keys(HOOKS) }, field: { type: "string", description: "A field script: the field's code / label" },
+      method: { type: "string", description: "A local method by name" }, globalMethod: { type: "string", description: "A company-global method by name" },
+      figure: { type: "string", description: "A process figure id (Script / Switch)" },
+      version: { type: "string", description: "work | test | dev | a version id or number; default test (a BO's scripts), dev (a process)" },
+      def: { type: "object", description: "{blocks: {<id>: {type, …}}, expressions: {<id>: {type, …}}}" },
+      keep: { type: "boolean" }, dryRun: { type: "boolean" } },
+    required: ["def"],
+    run: async (a) => {
+      const s = stand(a), t = await scriptTarget(s, a);
+      return { ...t, ...(await writeScript(s, t.scriptModuleId, t.scriptId, a.def, { keep: a.keep, dryRun: a.dryRun })) };
+    } },
+  { name: "scripts_wire", write: true, description: "Wire scripts onto a BO (§5g «Wiring scripts onto a BO headlessly»): hooks (onOpen, afterSave, onClose, onCreate) and field scripts (by field code) get a script id each — an existing one is kept — then save-bo-scripts stores the whole wiring; unwire: a field script leaves the wiring; a hook stays wired (the stand keeps a hook id — the IDE itself keeps all four) and its body is cleared, so it runs nothing. methods create local methods; removeMethods deletes them from this version — a local method belongs to every script version, so it comes back unless allVersions:true (UI-API trap 68a). Default the TEST version: it runs only on test records — script_version work publishes it. global:true → methods / removeMethods act on the company-global methods (no BO). Bodies: script_write. Ask the user first.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      version: { type: "string", description: "work | test | a version id or number; default test" },
+      hooks: { type: "array", items: { type: "string", enum: Object.keys(HOOKS) } }, fields: { type: "array", items: { type: "string" }, description: "Field codes / labels that get an «Изменение поля» script" },
+      unwire: { type: "array", items: { type: "string" }, description: "Hook names or field codes to unwire" },
+      methods: { type: "array", items: { type: "string" }, description: "Method names to create (existing ones are kept)" },
+      removeMethods: { type: "array", items: { type: "string" } },
+      allVersions: { type: "boolean", description: "removeMethods: delete from every script version (a local method belongs to all of them), the work one included — scripts that call it break" },
+      global: { type: "boolean" } },
+    run: async (a) => {
+      const s = stand(a), notes: string[] = [];
+      const methods = async (list: () => Promise<any[]>, create: (n: string) => Promise<any>, drop: (id: string) => Promise<any>,
+        holders?: (id: string) => Promise<string[]>) => {
+        const have = new Map<string, string>(((await list()) ?? []).map((m: any) => [m.methodName, m.scriptId]));
+        for (const n of a.methods ?? []) if (!have.has(n)) have.set(n, (await create(n))?.scriptId);
+        const dropped: string[] = [];
+        for (const n of a.removeMethods ?? []) { const id = have.get(n); if (!id) notes.push(`no method «${n}»`); else { await drop(id); dropped.push(n); } }
+        if (dropped.length) {
+          await sleep(3000); // a method other versions still list comes back within ~3 s (trap 68a)
+          const now = new Set(((await list()) ?? []).map((m: any) => m.methodName));
+          for (const n of dropped) {
+            if (!now.has(n)) { have.delete(n); continue; }
+            const others = holders ? await holders(have.get(n)!) : [];
+            notes.push(`method «${n}» came back: versions ${others.join(", ") || "?"} list it too (a local method belongs to every script version of the BO, trap 68a) — ` +
+              `removeMethods with allVersions:true deletes it from all of them, the work one included`);
+          }
+        }
+        return Object.fromEntries(have);
+      };
+      if (a.global) {
+        const g = await globalMethods(s);
+        return clean({ scriptModuleId: g.scriptModuleId, methods: await methods(async () => (await globalMethods(s)).methods,
+          (methodName) => s.call(SC_ + "create-company-global-method", { methodName }), (scriptId) => s.call(SC_ + "delete-company-global-method", { scriptId })), notes });
+      }
+      const boId = await boById(s, a), bo = await loadBo(s, boId);
+      const v = await scriptVersion(s, boId, a.version ?? "test");
+      if (v.blind) throw new Error(`version ${v.v.version}: load-bo-def-list is still empty after 15 s (trap 68) — no field script would translate; try again in a minute`);
+      const cur = (await s.call(SE_ + "load-bo-scripts", { boId, boScriptsId: v.id })) ?? {};
+      const fs: Record<string, any> = { ...(cur.fieldScripts ?? {}) };
+      const hooks = Object.fromEntries(Object.values(HOOKS).map((k) => [k, cur[k] ?? null]));
+      const want: [string, (id: string) => void][] = [];
+      for (const h of a.hooks ?? []) {
+        if (!HOOKS[h]) throw new Error(`hook is one of ${Object.keys(HOOKS).join(", ")}`);
+        if (!hooks[HOOKS[h]]) want.push([h, (id) => { hooks[HOOKS[h]] = id; }]);
+      }
+      for (const c of a.fields ?? []) {
+        const f = fieldBy(bo.formFields ?? [], c);
+        if (!fs[f.fieldId]?.afterChangeScriptId) want.push([nameOf(f), (id) => { fs[f.fieldId] = { afterChangeScriptId: id }; }]);
+      }
+      const clear: string[] = [];
+      for (const u of a.unwire ?? []) {
+        if (HOOKS[u]) { if (hooks[HOOKS[u]]) clear.push(hooks[HOOKS[u]]); } // save-bo-scripts ignores a null / "" hook (§5g)
+        else delete fs[fieldBy(bo.formFields ?? [], u).fieldId];
+      }
+      // an EMPTIED hook body ({blocks:{}}) fails the save (script_after_save_error «Нет точки входа»): hat → exit instead
+      for (const scriptId of clear) {
+        const hat = newId(), exit = newId();
+        await writeScript(s, v.id, scriptId, { blocks: { [hat]: { x: 40, y: 40, downBlockId: exit, type: "BlockFixEntryPoint" },
+          [exit]: { exitType: "FROM_METHOD", type: "BlockExit" } }, expressions: {} }, { keep: true });
+      }
+      if (clear.length) notes.push(`hooks ${(a.unwire ?? []).filter((u: string) => HOOKS[u]).join(", ")}: still wired (the stand keeps hook ids), body = entry → exit — they run nothing`);
+      if (want.length) {
+        const r = await s.call(SC_ + "load-new-ids", { count: want.length });
+        const ids: string[] = Array.isArray(r) ? r : r?.ids ?? r?.list ?? [];
+        if (ids.length < want.length) throw new Error(`load-new-ids gave ${JSON.stringify(r)}`);
+        want.forEach(([, set], i) => set(ids[i]));
+      }
+      if (want.length || Object.keys(fs).length !== Object.keys(cur.fieldScripts ?? {}).length)
+        await s.call(SE_ + "save-bo-scripts", {}, { id: v.id, boId, ...hooks, fieldScripts: fs,
+          methodScriptIds: cur.methodScriptIds ?? [], methodsScriptId: cur.methodsScriptId ?? null });
+      // after the save: it replaces methodScriptIds with what it is sent
+      // a local method is listed by every script version of the BO and is gone only when each of them drops it (trap 68a)
+      const holding = async (scriptId: string) => (await Promise.all(v.list.map(async (x: any) =>
+        ((await s.call(SE_ + "list-local-methods", { boScriptsId: x.boScriptModId })) ?? []).some((m: any) => m.scriptId === scriptId) ? x : null))).filter(Boolean);
+      const ms = await methods(() => s.call(SE_ + "list-local-methods", { boScriptsId: v.id }),
+        (methodName) => s.call(SE_ + "create-local-method", { boScriptsId: v.id, methodName }),
+        async (scriptId) => {
+          const from = a.allVersions ? await holding(scriptId) : [v.v];
+          for (const x of from) await s.call(SE_ + "delete-local-method", { boScriptsId: x.boScriptModId, scriptId });
+        },
+        async (scriptId) => (await holding(scriptId)).map((x: any) => x.version + (x.isWork ? " (work)" : x.isTest ? " (test)" : "")));
+      const w = (await s.call(SE_ + "load-bo-scripts", { boId, boScriptsId: v.id })) ?? {};
+      const byId = new Map<string, any>((bo.formFields ?? []).map((f: any) => [f.fieldId, f]));
+      return clean({ boId, version: { id: v.id, version: v.v.version, work: v.v.isWork, test: v.v.isTest }, scriptModuleId: v.id,
+        hooks: Object.fromEntries(Object.entries(HOOKS).map(([h, k]) => [h, w[k] ?? null]).filter(([, id]) => id)),
+        fields: Object.fromEntries(Object.entries<any>(w.fieldScripts ?? {}).map(([fid, x]) => [byId.get(fid) ? nameOf(byId.get(fid)) : fid, x?.afterChangeScriptId])),
+        methods: ms, notes, next: "script_write writes each body (a new one is empty and does not translate until then)" });
+    } },
+  { name: "script_version", write: true, description: "A BO's script versions (§5g): no action → the list; action work (publish: ordinary records run it; the stand then makes a fresh test copy), test (make it the test version), copy, remove (not the work or test one), comment. version: work | test | id | number (default test; copy / comment default the work one). Ask the user first.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      action: { type: "string", enum: ["work", "test", "copy", "remove", "comment"] }, version: { type: "string" }, comment: { type: "string" } },
+    run: async (a) => { const s = stand(a); return versionAction(s, "script", await boById(s, a), a); } },
+
+  // 9. processes (§5f)
+  { name: "process_read", description: "A business process (a BO_PROCESS BO) as it runs (§5f): its versions; the chosen version's figures (type, x/y, a Form's / Timer's field label) and arrows (from, slot, to, slot, name) in walk order from the Enter — a figure no arrow reaches is «не подключена»; validate-def; per Script / Switch figure its exit variants and translate (check, default true), with defs:true its def; the run ways (WHEN it starts) with field codes. To explain a process walk the arrows from the Enter (MYBPM-IMPORTS.md §5c).",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      version: { type: "string", description: "work | test | dev | a version id or number; default the work one, else the test one" },
+      defs: { type: "boolean" }, check: { type: "boolean", description: "Default true" } },
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), v = await processVersion(s, boId, a.version), id = v.id;
+      const def = (await s.call(PE_ + "load-bo-process-def", { boProcessId: id })) ?? {};
+      const fields = new Map<string, any>((bo.formFields ?? []).map((f: any) => [f.fieldId, f]));
+      const figs = def.figures ?? {}, arrows = Object.entries<any>(def.arrows ?? {});
+      const enter = Object.keys(figs).find((k) => figs[k].type === "Enter");
+      const order: string[] = enter ? [enter] : [];
+      for (let i = 0; i < order.length; i++)
+        for (const [, ar] of arrows) if (ar.startFigureId === order[i] && figs[ar.finishFigureId] && !order.includes(ar.finishFigureId)) order.push(ar.finishFigureId);
+      const figures = await Promise.all([...order, ...Object.keys(figs).filter((k) => !order.includes(k))].map(async (fid) => {
+        const f = figs[fid], scripted = f.type === "Script" || f.type === "Switch";
+        return clean({ id: fid, what: figureLabel(f, fields), x: f.x, y: f.y, field: f.fieldId ? (fields.get(f.fieldId) ? nameOf(fields.get(f.fieldId)) : f.fieldId) : undefined,
+          slots: f.outSlotsCount ?? f.inSlotsCount, ...(order.includes(fid) ? {} : { reached: "не подключена — no arrow from the Enter leads here" }),
+          out: arrows.filter(([, ar]) => ar.startFigureId === fid).map(([aid, ar]) => clean({ arrow: aid, name: ar.name, slot: ar.startSlotName, to: ar.finishFigureId, toSlot: ar.finishSlotName })),
+          ...(scripted ? { exits: await s.call(SB_ + "load-exit-variants", { scriptModuleId: id, scriptId: fid }).catch((e: any) => `not read: ${e.message}`) } : {}),
+          ...(scripted && a.check !== false ? { translate: await translate(s, id, fid).catch((e: any) => ({ error: e.message })) } : {}),
+          ...(scripted && a.defs ? { def: await s.call(SC_ + "load-script-def", { scriptModuleId: id, scriptId: fid }) } : {}) });
+      }));
+      const validate = ((await s.call(PE_ + "validate-def", { boProcessId: id, boiId: null, testMode: true })) ?? []).map((e: any) => clean({ type: e.type, place: e.place, id: e.id ?? e.figureId ?? e.arrowId, message: e.message }));
+      return clean({ boId, bo: bo.name, versions: versionRows(v.list, "boProcessId"), boProcessId: id, version: v.v.version,
+        runs: v.v.isWork ? "the work version: ordinary records run it" : v.v.isTest ? "the TEST version: only test (DEV) records run it (process_version work publishes it)" : "neither work nor test: nothing runs it",
+        figures, validate: validate.length ? validate : "clean", runWays: await runWays(s, bo, id).then((r) => (r.length ? r : "none — nothing starts this process by itself (process_run_ways adds one)")).catch((e: any) => `not read: ${e.message}`) });
+    } },
+  { name: "process_edit", write: true, description: "Change a process diagram in ONE apply-update-cmd (§5f — no draft, no СОХРАНИТЬ: it is written at once) whose backward restores the old state: add figures [{key, type, x, y, field (a Form's BO-reference / a Timer's date field: code or label), slots (S2P / P2S branch count, default 2)}] (not an Enter — every process has one), arrows [{key?, from, fromSlot?, to, toSlot?, name?}] (from / to = a new figure's key or an existing figure id; slots default right → left, Enter / Exit main, Switch right / left; S2P out1… / P2S in1… must be named; a Switch's outgoing arrows need names), change [{id, x?, y?, field?, name?, fromSlot?, toSlot?}] (a figure or an arrow), remove [ids] (a figure takes its arrows). Slot names off the §5f table are refused. Every NEW Script gets a minimal body (exit) and every new Switch exits by its first outgoing arrow so none runs «Скрипт не определён»; real bodies: script_write figure:<id>. Then validate-def. Default the dev (editable) version. Ask the user first.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      version: { type: "string", description: "dev (default) | work | test | a version id or number" },
+      figures: { type: "array", items: { type: "object", required: ["key", "type", "x", "y"], properties: { key: { type: "string" }, type: { type: "string", enum: FIGURES.filter((f) => f !== "Enter") },
+        x: { type: "number" }, y: { type: "number" }, field: { type: "string" }, slots: { type: "number" } } } },
+      arrows: { type: "array", items: { type: "object", required: ["from", "to"], properties: { key: { type: "string" }, from: { type: "string" }, fromSlot: { type: "string" },
+        to: { type: "string" }, toSlot: { type: "string" }, name: { type: "string" } } } },
+      change: { type: "array", items: { type: "object", required: ["id"] } }, remove: { type: "array", items: { type: "string" } } },
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), v = await processVersion(s, boId, a.version ?? "dev"), id = v.id;
+      const old = (await s.call(PE_ + "load-bo-process-def", { boProcessId: id })) ?? {};
+      const figs: Record<string, any> = JSON.parse(JSON.stringify(old.figures ?? {})), arrs: Record<string, any> = JSON.parse(JSON.stringify(old.arrows ?? {}));
+      const addF: any[] = a.figures ?? [], addA: any[] = a.arrows ?? [], entries: [string, unknown][] = [], keys: Record<string, string> = {};
+      const fieldId = (c: string | undefined) => (c ? fieldBy(bo.formFields ?? [], c).fieldId : null);
+      const ids: string[] = addF.length + addA.length ? await s.call(PE_ + "load-new-ids", { count: addF.length + addA.length }) : [];
+      for (const f of addF) {
+        if (!FIGURES.includes(f.type) || f.type === "Enter") throw new Error(`figure ${f.key}: type is one of ${FIGURES.filter((x) => x !== "Enter").join(", ")}`);
+        const fid = (keys[f.key] = ids.shift()!), val: any = { x: f.x, y: f.y, type: f.type };
+        // born shapes the editor writes (§5f; tools/process-builder.ts)
+        if (f.type === "Form") Object.assign(val, { fieldId: fieldId(f.field), createTimer: null, openFormTimer: null, touchDraftTimer: null });
+        if (f.type === "Timer") val.fieldId = fieldId(f.field);
+        if (f.type === "Script") val.script = null;
+        if (f.type === "Terminator") val.fieldId = "";
+        if (f.type === "SingleToParallel") val.outSlotsCount = f.slots ?? 2;
+        if (f.type === "ParallelToSingle") val.inSlotsCount = f.slots ?? 2;
+        figs[fid] = val; entries.push([`figures.${fid}`, val]);
+      }
+      const fig = (k: string) => { const fid = keys[k] ?? k; if (!figs[fid]) throw new Error(`no figure «${k}» (a new figure's key or an existing figure id)`); return fid; };
+      const slot = (fid: string, given: string | undefined, dflt: Record<string, string>, side: string) => {
+        const f = figs[fid], sl = given ?? dflt[f.type] ?? (["SingleToParallel", "ParallelToSingle"].includes(f.type) ? undefined : side);
+        if (!sl) throw new Error(`a ${f.type} needs its slot named: ${slotsOf(f).join(", ")}`);
+        if (!slotsOf(f).includes(sl)) throw new Error(`a ${f.type} has no slot «${sl}» (it would silently mean another one or nothing): ${slotsOf(f).join(", ")}`);
+        return sl;
+      };
+      for (const ar of addA) {
+        const aid = ids.shift()!, from = fig(ar.from), to = fig(ar.to);
+        if (ar.key) keys[ar.key] = aid;
+        const val: any = { startFigureId: from, startSlotName: slot(from, ar.fromSlot, OUT_SLOT, "right"), finishFigureId: to, finishSlotName: slot(to, ar.toSlot, IN_SLOT, "left") };
+        if (ar.name) val.name = ar.name;
+        arrs[aid] = val; entries.push([`arrows.${aid}`, val]);
+      }
+      for (const c of a.change ?? []) {
+        if (figs[c.id]) {
+          for (const k of ["x", "y"]) if (c[k] != null) { figs[c.id][k] = c[k]; entries.push([`figures.${c.id}.${k}`, c[k]]); }
+          if (c.field !== undefined) { figs[c.id].fieldId = fieldId(c.field); entries.push([`figures.${c.id}.fieldId`, figs[c.id].fieldId]); }
+        } else if (arrs[c.id]) {
+          if (c.name !== undefined) { arrs[c.id].name = c.name || undefined; entries.push([`arrows.${c.id}.name`, c.name || undefined]); }
+          if (c.fromSlot) entries.push([`arrows.${c.id}.startSlotName`, slot(arrs[c.id].startFigureId, c.fromSlot, OUT_SLOT, "right")]);
+          if (c.toSlot) entries.push([`arrows.${c.id}.finishSlotName`, slot(arrs[c.id].finishFigureId, c.toSlot, IN_SLOT, "left")]);
+        } else throw new Error(`change: no figure or arrow ${c.id}`);
+      }
+      for (const r of a.remove ?? []) {
+        if (figs[r]?.type === "Enter") throw new Error("the Enter stays — every process has exactly one");
+        if (figs[r]) {
+          for (const [aid, ar] of Object.entries<any>(arrs)) if (ar.startFigureId === r || ar.finishFigureId === r) { delete arrs[aid]; entries.push([`arrows.${aid}`, undefined]); }
+          delete figs[r]; entries.push([`figures.${r}`, undefined]);
+        } else if (arrs[r]) { delete arrs[r]; entries.push([`arrows.${r}`, undefined]); }
+        else throw new Error(`remove: no figure or arrow ${r}`);
+      }
+      if (!entries.length) throw new Error("nothing to change: pass figures, arrows, change or remove");
+      await s.call(PE_ + "apply-update-cmd", { boProcessId: id }, patchCmd("process_edit", old, entries));
+      // a new Script / Switch with no body runs «Скрипт не определён»: a minimal one, the real body by script_write
+      const bodies: Record<string, unknown> = {};
+      for (const f of addF.filter((x) => x.type === "Script" || x.type === "Switch")) {
+        const fid = keys[f.key], out = Object.keys(arrs).find((aid) => arrs[aid].startFigureId === fid);
+        if (f.type === "Switch" && !out) { bodies[f.key] = "no body: the Switch has no outgoing arrow yet"; continue; }
+        const hat = newId(), exit = newId();
+        const r = await writeScript(s, id, fid, { blocks: { [hat]: { x: 40, y: 40, downBlockId: exit, type: "BlockFixEntryPoint" },
+          [exit]: f.type === "Script" ? { exitType: "FROM_METHOD", type: "BlockExit" } : { exitType: "FROM_METHOD_BY_ARROW", targetArrowId: out, type: "BlockExit" } },
+          expressions: {} }, { keep: true });
+        bodies[f.key] = f.type === "Script" ? r.translate ?? r : { exitsBy: out, ...(r.translate ?? r) };
+      }
+      const validate = ((await s.call(PE_ + "validate-def", { boProcessId: id, boiId: null, testMode: true })) ?? []).map((e: any) => clean({ type: e.type, place: e.place, message: e.message }));
+      return clean({ boId, boProcessId: id, version: v.v.version, ids: keys, bodies, validate: validate.length ? validate : "clean",
+        ...(v.v.isWork ? { warning: "this is the WORK version — ordinary records run the change at once" } : {}) });
+    } },
+  { name: "process_version", write: true, description: "A process's versions (§5f «Versions»): no action → the list; action work (publish: ordinary records start running it — a constructor-made process has only a test version, which runs only for test records), test, copy (same figure ids), remove (not the work or test one), comment. version: work | test | id | number (default test; copy / comment default the work one). Ask the user first.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      action: { type: "string", enum: ["work", "test", "copy", "remove", "comment"] }, version: { type: "string" }, comment: { type: "string" } },
+    run: async (a) => { const s = stand(a); return versionAction(s, "process", await boById(s, a), a); } },
+  { name: "process_run_ways", write: true, description: "WHEN a process starts (§5f «Run ways», the dialog's draft): set [{id? (an existing run way to change), runWay ON_INSTANCE_CREATE | ON_FIELD_CHANGE | SCHEDULED | ON_MIGRATION_END, processField (the process BO's BO-reference field, SINGLE / FIELDS; not for SCHEDULED), fields (ON_FIELD_CHANGE: the TARGET BO's field codes), values ({targetFieldCode: value} — start only when changed TO it), variants (default [ON_MANUAL_SAVE]; ON_UPLOAD_XLSX: an xlsx-created record starts it too), orderIndex, schedule {repeatType, repeatUntilType, startTime, …}}], remove [ids]. Applied as one draft (dropped on any error); the default «run on a record of this BO when it is created» stays. Works on the work version too (only the UI refuses). Default the work version, else the test one. Ask the user first.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, version: { type: "string" },
+      set: { type: "array", items: { type: "object", required: ["runWay"] } }, remove: { type: "array", items: { type: "string" } } },
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), v = await processVersion(s, boId, a.version), id = v.id;
+      const draftId = await s.call(PE2_ + "create-draft", { boProcessId: id });
+      try {
+        const map = (await s.call(PE2_ + "load-draft-data", { draftId }))?.runWayMap ?? {};
+        const sets: any[] = a.set ?? [], fresh: string[] = sets.some((w) => !w.id) ? await s.call(PE_ + "load-new-ids", { count: sets.length }) : [];
+        let order = Math.max(0, ...Object.values<any>(map).map((w) => w.orderIndex ?? 0));
+        const ops: { dotPath: string; value?: unknown }[][] = [];
+        for (const w of sets) {
+          if (w.id && !map[w.id]) throw new Error(`no run way ${w.id}: ${Object.keys(map).join(", ") || "none"}`);
+          const rid = w.id ?? fresh.shift()!, p = (k: string) => `runWayMap.${rid}.${k}`, list: { dotPath: string; value?: unknown }[] = [];
+          list.push({ dotPath: p("runWay"), value: w.runWay }, { dotPath: p("orderIndex"), value: w.orderIndex ?? map[rid]?.orderIndex ?? ++order },
+            { dotPath: p("changeVariantSet"), value: Object.fromEntries((w.variants ?? ["ON_MANUAL_SAVE"]).map((x: string) => [x, 1])) });
+          if (w.runWay !== "SCHEDULED") {
+            const pf = fieldBy((bo.formFields ?? []).filter((f: any) => f.type === "BO" || f.type === "CO"), w.processField ?? "");
+            const target = await loadBo(s, pf.refBoId), tid = (c: string) => fieldBy(target.formFields ?? [], c).fieldId;
+            list.push({ dotPath: p("processFieldId"), value: pf.fieldId });
+            if (w.fields) list.push({ dotPath: p("fieldIdsSet"), value: Object.fromEntries(w.fields.map((c: string) => [tid(c), 1])) });
+            if (w.values) {
+              const vals = Object.entries<any>(w.values).map(([c, x]) => [tid(c), x]);
+              list.push({ dotPath: p("useFieldValuesSet"), value: Object.fromEntries(vals.map(([k]) => [k, 1])) }, { dotPath: p("fieldValues"), value: Object.fromEntries(vals) });
+            }
+          }
+          ops.push(list);
+          // a schedule goes one key per update, as the dialog sends it
+          for (const [k, x] of Object.entries(w.schedule ?? {})) ops.push([{ dotPath: p(`schedule.${k}`), value: x }]);
+        }
+        for (const r of a.remove ?? []) { if (!map[r]) throw new Error(`no run way ${r}`); ops.push([{ dotPath: `runWayMap.${r}` }]); }
+        if (!ops.length) throw new Error("nothing to change: pass set or remove (process_read shows the run ways)");
+        for (const o of ops) await s.call(PE2_ + "update-draft", { draftId }, o);
+        await s.call(PE2_ + "apply-draft", { draftId });
+      } catch (e) { await s.call(PE2_ + "remove-draft", { draftId }).catch(() => {}); throw e; }
+      return { boId, boProcessId: id, version: v.v.version, runWays: await runWays(s, bo, id) };
+    } },
+  { name: "process_steps", description: "Where a process record is (§5f run-time controller): the version it runs and every step — figure, what it is, state PASSED | STAND (waiting: a Form, a Timer) | GO (running) | WAITING (a Timer past due) | FAILED, a script failure, diagnostics, its outgoing arrows; over = none is STAND / GO / WAITING. A Form waits for a CHANGED save of its record; a field filled after the Form was entered leaves it stuck (§5f).",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The process BO code instead of boId" }, boiId: { type: "string", description: "The process record" } },
+    required: ["boiId"],
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), p = await boiProcess(s, boId, a.boiId);
+      return { boId, boiId: a.boiId, boProcessId: p.boProcessId, ...(await processSteps(s, p.boProcessId, a.boiId, p.def, new Map((bo.formFields ?? []).map((f: any) => [f.fieldId, f])))) };
+    } },
+  { name: "process_push", write: true, description: "Move a stuck process record on (§5f): action forward = «Продолжить принудительно» along an OUTGOING arrow of the standing step (arrowId; the arrow into it does nothing); retry = «Попробовать еще раз» on a Script / Switch / Form step with diagnostics (figureId). Then the steps, re-read until they change (≤10 s). Ask the user first.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The process BO code instead of boId" }, boiId: { type: "string" },
+      action: { type: "string", enum: ["forward", "retry"] }, arrowId: { type: "string" }, figureId: { type: "string" } },
+    required: ["boiId", "action"],
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), p = await boiProcess(s, boId, a.boiId);
+      const fields = new Map<string, any>((bo.formFields ?? []).map((f: any) => [f.fieldId, f]));
+      const before = await processSteps(s, p.boProcessId, a.boiId, p.def, fields);
+      if (a.action === "forward") {
+        if (!a.arrowId || !p.def.arrows?.[a.arrowId]) throw new Error("forward needs arrowId: an outgoing arrow of the standing step (process_steps lists them)");
+        await s.call(BP_ + "push-step-forcibly", { boProcessId: p.boProcessId, boiId: a.boiId, arrowId: a.arrowId });
+      } else if (a.action === "retry") {
+        if (!a.figureId) throw new Error("retry needs figureId");
+        await s.call(BP_ + "push-step-retry", { boProcessId: p.boProcessId, boiId: a.boiId, figureId: a.figureId });
+      } else throw new Error("action is forward or retry");
+      let after = before;
+      for (let i = 0; i < 20 && JSON.stringify(after) === JSON.stringify(before); i++) { await sleep(500); after = await processSteps(s, p.boProcessId, a.boiId, p.def, fields); }
+      return { boId, boiId: a.boiId, boProcessId: p.boProcessId, changed: JSON.stringify(after) !== JSON.stringify(before), ...after };
+    } },
+
   // the platform behaves unlike the documents → a GitHub issue the user submits
   { name: "platform_report", description: "The stand behaved unlike MYBPM-IMPORTS.md / MYBPM-UI-API.md say, on the LATEST plugin → a prefilled GitHub issue for the user to submit under their own account (nothing is sent by this tool). Refuses on an outdated copy (update first — the fact may be fixed) and when the text names the user's stands, logins, people or companies: de-identify to placeholders (`<stand>`, `<company-a>`, …) and keep record data out. Search existing issues first (`search` url). One fact per issue. Show the user the text and give them the url; open:true only when they ask.",
     props: { title: { type: "string", description: "One line: what differs" },
@@ -1749,7 +2344,7 @@ const tools: Tool[] = [
       const s = stand(a);
       return trim(a.get ? await s.get(a.path) : await s.call(a.path, a.params, a.body), a.maxChars);
     } },
-  { name: "stand_call", write: true, description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (scripts, processes, rights, menu — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
+  { name: "stand_call", write: true, description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (rights, menu, company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } }, required: ["path"],
     run: async (a) => {
       if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session token — refused");
@@ -1816,7 +2411,7 @@ const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the
   "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " +
   "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " +
   "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " +
-  "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, record_save, record_delete, xlsx_import with confirm, notifications_clear, stand_call) change the stand: get the user's OK first. " +
+  "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " +
   "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " +
