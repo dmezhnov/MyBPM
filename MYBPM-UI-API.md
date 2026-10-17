@@ -987,8 +987,9 @@ written.** This document stays the spec either way: what a tool cannot do is pla
     «+ Add» → **Manage marketplaces** shows `MyBPM · Synced · Synced commit: <sha>`, and its switch «Sync
     automatically — Re-syncs on GitHub changes», on by default, does not move it to a newer release [C]; the
     periodic 20-min sync is a quick one that leaves user-installed plugins as they are [C]. A user on an old
-    version (the version is on the plugin's page: `from MyBPM · <version>`): Customize → Plugins → **Mybpm** →
-    ⋯ → **Check for updates** → the «Update» button beside it → the page shows the new version and Desktop
+    version (the version is on the plugin's page: `from MyBPM · <version>`): Customize → Plugins → **Yours** →
+    **Mybpm** in the plugin list → ⋯ → **Check for updates** → the «Update» button beside ⋯ becomes active →
+    press it → the page shows the new version and Desktop
     replaces its local copy at once, no restart [C]: the skills are new in the next chat [I]. The server process
     Desktop already started keeps running the old code [C] — restart Desktop (it starts the server anew) for
     the tools [I]. The same through «+ Add» → Manage marketplaces → ⋯ on MyBPM → Check for updates moves the
