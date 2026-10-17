@@ -11,6 +11,26 @@ folder). It is ~60k tokens: **never read it whole.** Locate the heading you need
 that line to the next heading of the same level — with a shell, `grep -n '^#### R3 ' MYBPM-UI-API.md` gives the line;
 without one, search the file for the heading text.
 
+## Is this copy the latest? — once per conversation, first
+
+This copy of the skill is version **1.5.9**. Before the first answer of a conversation:
+
+- the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
+  release, and its first answer (and every `stand_whoami`) carries a «NOTE for Claude» when a newer one is
+  out — pass it to the user in one line with the update steps it names.
+- not connected, and you can fetch a URL (a web fetch tool, or a shell with network) → read
+  `https://raw.githubusercontent.com/dmezhnov/MyBPM/main/.claude-plugin/plugin.json`; its `version` higher
+  than this copy's → tell the user in one line before the task, with the update steps of their install below.
+- the URL out of reach → go on silently. Never hold the task back for this check.
+
+Update steps by how it was installed (unsure → give the user the first two):
+
+- Claude Desktop / claude.ai, plugin from the marketplace: Customize → Plugins → «+ Add» → Manage marketplaces →
+  ⋯ on MyBPM → Check for updates, then restart Desktop (it does not update by itself).
+- Claude Code: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart.
+- installed with Upload plugin: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` again.
+- this skill uploaded alone: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.zip` again.
+
 ## Start here
 
 **Open the document before your first reply** — even the questions you must ask the user are listed
