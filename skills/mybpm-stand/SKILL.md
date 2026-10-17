@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.15**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.16**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for Claude» when a newer one is
@@ -72,6 +72,7 @@ said which → ask, then pass `stand` (name or host) on every call),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
 (`archive_put`). BOs and composites in the constructor: `bo_create`, `bo_fields_save`, `bo_code_set`, `bo_delete`, `co_build`.
 Records: `records_find`, `record_read`, `record_save` (hooks run unless `scripts: false`), `record_delete`.
+Records xlsx: `xlsx_template`, `xlsx_import` (the act first, nothing written until `confirm`; no hook runs), `xlsx_export`.
 For the rest the tools do not cover, `stand_call` sends any method in the envelope of the recipe.
 
 ## The stand does otherwise than the document says

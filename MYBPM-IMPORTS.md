@@ -6616,7 +6616,8 @@ needs.
   `kz.greetgo.mybpm.reg.boi_transfer.model.import1.excel.ExcelSheetBridge`). A plain sheet with neither
   fails with `kD4QsxZrAY` «Система не может отделить строки заголовка от строк данных».
 - **A TABLE nested object = the parent repeated on several rows**, one row per child. Writing the
-  parent's scalars on EVERY row is safe.
+  parent's scalars on EVERY row is safe. An export writes it the same way — scalars and SINGLE blocks on
+  every row, no merges in the data rows; tell its records apart by «Внутренний айди» or the unique field.
 - Values: checkboxes `Да`/`Нет`; date-time `25.10.2025 10:33`; dates `dd.mm.yyyy`; periods
   `dd.mm.yyyy - dd.mm.yyyy`; dictionary registry columns «Значение», «Код».
 - Not known yet `[U]` — §20: the cell format of `TIME`, `YEAR`, `YEAR_AND_MONTH`, `PERIOD_TIME`, `CO`, `CHECKLIST`,
@@ -6625,6 +6626,7 @@ needs.
   columns until §20 answers them; set those values on the stand instead (the card, or the record API).
 - Styles in stand files: nested sheet `s="7"`, last column `s="8"`; flat sheet `s="3"`, last `s="4"`; data
   rows carry thin left/bottom borders. The xlsx also carries an Excel table part `xl/tables/table1.xml`.
+  Styles do not matter to the import: data rows with no `s` attribute import alike.
 
 ### 19.2 Columns missing from / leaking into an export
 
@@ -6771,7 +6773,9 @@ needs.
 ### 19.7 Importer internals
 
 Two phases: `uploadSheet` builds an "act" with a new/updated/error summary, and a separate `applyAct`
-creates the instances through kafka in `parallel()` (read off a decompiled older build — v4.24 may differ). A hint about mechanisms only: in v4.24 a
+creates the instances through kafka in `parallel()` (read off a decompiled older build — v4.24 may differ).
+The act counts ROWS, not records `[C]`: a new record on two rows (a TABLE block with two links) is 2 new
+rows, and one record is created with both links. A hint about mechanisms only: in v4.24 a
 BO-ref cell neither creates the referenced record (`NoUniqueFieldValue`, 19.3) nor updates it (19.6).
 
 ### 19.8 Techniques that work `[C]`
