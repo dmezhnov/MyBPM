@@ -13,15 +13,20 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.10**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.11**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_whoami`) carries a «NOTE for Claude» when a newer one is
-  out — pass it to the user in one line with the update steps it names.
+  out — pass it on with the update steps it names.
 - not connected, and you can fetch a URL (a web fetch tool, or a shell with network) → read
   `https://raw.githubusercontent.com/dmezhnov/MyBPM/main/.claude-plugin/plugin.json`; its `version` higher
-  than this copy's → tell the user in one line before the task, with the update steps of their install below.
+  than this copy's → tell the user before the task, with the update steps of their install below.
 - the URL out of reach → go on silently. Never hold the task back for this check.
+
+Show it as a warning block at the very top of your reply, in the user's language, then the answer:
+
+    > ⚠️ **A new version of the MyBPM plugin is out: <new>** (you have <old>).
+    > To update: <the steps of their install>.
 
 Update steps by how it was installed (unsure → give the user the first two):
 

@@ -1080,9 +1080,12 @@ async function releaseNote(t) {
   releaseTold = true;
   if (!latest || !newer(latest, version))
     return;
-  return `NOTE for Claude: the mybpm plugin ${latest} is out, this copy is ${version}. Tell the user so in one line before the answer, ` + `with how to update this install — ${updateHow()}. Then go on with the task on this copy.`;
+  return `NOTE for Claude: the mybpm plugin ${latest} is out, this copy is ${version}. Open your reply with this warning block, in the user's language, ` + `then the answer (go on with the task on this copy):
+
+> ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
+> To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "stand_list names them and the default one, `stand` on any tool picks another by name or host, and a new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Start with stand_whoami. " + "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: tell the user in one line with the update steps it names, then go on.";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "stand_list names them and the default one, `stand` on any tool picks another by name or host, and a new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Start with stand_whoami. " + "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on.";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }
