@@ -1010,8 +1010,9 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   several, one of them the default. `stand_list` names them (name, host, login, who, company, the default);
   every tool takes `stand` — an account's name or its host — and goes to the default without it; `stand_use`
   changes the default. **A new account, a rename, another login, a re-login go through `stand_accounts`:** it
-  opens a local page of the server in the user's browser (and returns its URL to give them as a link) where
-  they type the stand, the login and the password; the password goes from that page to the stand, the server
+  returns the URL of a local page of the server — give it to the user as a link; the page opens in their
+  browser only with `open: true`, which you pass only when the user asked to open it or to add / re-log an
+  account, never because a question found no account — where they type the stand, the login and the password; the password goes from that page to the stand, the server
   keeps only the session token (`~/.config/mybpm/tokens/<host>/<login>.token`, the same file
   `mise run stand-login <host> <login>` writes) — no password is stored. Then wait for the user and call
   `stand_list`. `stand_remove` ✎ ends the session on the stand and deletes the token. **An expired session**
@@ -1035,7 +1036,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | Tool | What it does | Recipe / route |
 |---|---|---|
 | `stand_list` | the accounts the server holds, the default one; `check` asks each stand whether its session is alive | — |
-| `stand_accounts` | opens the accounts page in the user's browser: add, edit, log in again, remove, the default | — |
+| `stand_accounts` | the accounts page URL (`open: true` opens it — only on the user's ask): add, edit, log in again, remove, the default | — |
 | `stand_use` | makes an account the default | — |
 | `stand_remove` ✎ | ends an account's session on the stand, deletes its token | `GET v2/auth/logout` |
 | `stand_whoami` | fio, e-mail, companyCode, companyId, personId, the Person BO id | §0U.1 item 2; `GET v2/auth/load-auth-info`, `load-bo-id-by-kind {kind: PERSON}` |

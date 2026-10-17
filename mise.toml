@@ -172,7 +172,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["stand_read", { path: "import-structure/cancel-import" }, (r) => /not a read method/.test(r)],
   ["stand_call", { path: "v2/auth/v3/login" }, (r) => /refused/.test(r)],
   // accounts: the page logs in (pseudo-tool http = the page's own form), the first env account stays the default
-  ["stand_accounts", { open: false }, (r) => r.opened === false && /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}\/$/.test(r.url)],
+  ["stand_accounts", {}, (r) => r.opened === false && /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}\/$/.test(r.url)],
   ["http", page({ ...u2, password: "wrong" }), (r) => /не принял логин или пароль/.test(r.error)],
   ["http", page({ ...u2, password: "secret", name: "Второй" }), (r) => r.email === "u2@mock" && r.default === false],
   ["stand_list", {}, (r) => r.accounts.length === 2 && r.accounts.find((a: any) => a.default).login === "admin@mock"],
