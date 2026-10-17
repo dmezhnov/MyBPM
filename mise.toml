@@ -126,6 +126,8 @@ await $`mise run mcp-build`.quiet();
 if (Bun.env.CI && (await $`git status --porcelain -- mcp/`.text()).trim()) {
   console.error("mcp/mybpm-stand.cjs is stale against mcp/mybpm-stand.ts — run mise run mcp-build and commit"); process.exit(1);
 }
+// a bundle that names the build folder would look for its lint and version on the build machine
+if ((await Bun.file("mcp/mybpm-stand.cjs").text()).includes(process.cwd())) { console.error("mcp/mybpm-stand.cjs holds the build path — use HERE, not __dirname"); process.exit(1); }
 const lines = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data);
 const port = 18000 + Math.floor(Math.random() * 1000);
 await $`rm -rf dist/mcp-test && mkdir -p dist/mcp-test/home`.quiet();
