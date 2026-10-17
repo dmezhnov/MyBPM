@@ -974,6 +974,24 @@ machine, talks to the stand itself and makes exactly the calls of the recipes it
 connected (`stand_whoami`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
 written.** This document stays the spec either way: what a tool cannot do is plain HTTP by §0U.4.
 
+- **Not connected (no `stand_*` tool among yours) and the task touches a stand → say so in your first reply
+  and give the user the install steps for their app; do not work around it silently.** You cannot install it
+  yourself: every install is the app's own dialog the user confirms, and in a claude.ai or Claude Desktop chat
+  your code runs in a cloud sandbox, not on their machine. Give the step for the app you run in:
+  - **Claude Desktop, a Chat tab:** download
+    `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`, open the file, «Install» in
+    the dialog Desktop shows, then a new chat [I]. The plugin (below) brings the skills to the Chat tab, not its
+    MCP server — the Chat tab needs the `.mcpb` [I].
+  - **Claude Desktop, Cowork:** Customize → Plugins → Add marketplace `dmezhnov/MyBPM` → install `mybpm`: the
+    skills and the server in one step [I].
+  - **Claude Code:** `claude plugin marketplace add dmezhnov/MyBPM`, `claude plugin install mybpm@mybpm`, then
+    restart Claude Code — tools appear only in a session started after the install [C].
+  - **claude.ai in a browser or the mobile app:** a local server cannot run there [I] — the Desktop app or
+    Claude Code is the way to the tools.
+
+  Until the user installs it, the recipes as written work wherever your code reaches the stand; a cloud
+  sandbox usually does not reach a customer stand — then the install is the way, say so.
+
 - **Accounts stay with the server, never in the chat.** An account = a login on a stand host; the server keeps
   several, one of them the default. `stand_list` names them (name, host, login, who, company, the default);
   every tool takes `stand` — an account's name or its host — and goes to the default without it; `stand_use`
