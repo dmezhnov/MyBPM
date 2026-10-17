@@ -969,7 +969,7 @@ something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybp
 ### 0U.8 The mybpm-stand MCP server — the recipes as tools
 
 The plugin this document ships with carries a local MCP server, **`mybpm-stand`**: started by Claude Code from
-the plugin, installed in Claude Desktop from `mybpm-stand.mcpb` (a release asset). It runs on the user's
+the plugin, by Claude Desktop from the plugin on the user's account. It runs on the user's
 machine, talks to the stand itself and makes exactly the calls of the recipes it names below. **Its tools
 connected (`stand_whoami`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
 written.** This document stays the spec either way: what a tool cannot do is plain HTTP by §0U.4.
@@ -978,15 +978,16 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   and give the user the install steps for their app; do not work around it silently.** You cannot install it
   yourself: every install is the app's own dialog the user confirms, and in a claude.ai or Claude Desktop chat
   your code runs in a cloud sandbox, not on their machine. Give the step for the app you run in:
-  - **The plugin `mybpm`** (both skills + the server) goes on the user's claude.ai account and then serves the
-    Chat tab and Cowork of Claude Desktop, and claude.ai [I]: Customize → Plugins → Add → **Add marketplace**
-    `dmezhnov/MyBPM` → install `mybpm` — it follows the releases [I]; or **Upload plugin** with
-    `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — that version stays until the
-    user uploads a newer one [I]. In Cowork this alone brings the tools [I].
-  - **Claude Desktop, a Chat tab:** Chat loads a plugin's skills and skips its local server [I], so the tools
-    there need the extension as well: download
-    `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`, open the file, «Install» in
-    the dialog Desktop shows, then a new chat [I].
+  - **Claude Desktop (Chat tab, Cowork):** the plugin `mybpm` (both skills + the server) goes on the user's
+    claude.ai account: download `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip`,
+    then Customize → Plugins → «+ Add» → **Upload plugin** → that file → «Continue» in the dialog «This plugin
+    includes local MCP servers» [C]. It shows under Plugins → Yours, Desktop starts the server itself and the
+    Chat tab gets the tools in a new chat [C]; Cowork the same [I]. The uploaded version stays until the user
+    uploads a newer one [I]. **Add marketplace** `dmezhnov/MyBPM` in that menu does NOT put the plugin on the
+    account — it writes the machine's Claude Code plugin registry («already added» when Claude Code has it) [C].
+    Fallback without the plugin, the tools alone: `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`,
+    open the file, «Install», then a new chat [I]; an extension left disabled shows «—» under Customize →
+    Connectors [C].
   - **Claude Code** (the terminal, an IDE, the Code tab of Claude Desktop) reads plugins from the machine, not
     from the account [C]: `claude plugin marketplace add dmezhnov/MyBPM`, `claude plugin install mybpm@mybpm`,
     then restart Claude Code — tools appear only in a session started after the install [C].
