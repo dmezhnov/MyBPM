@@ -1,6 +1,6 @@
 /**
  * The accounts page of the mybpm-stand MCP server (tool stand_accounts): served on 127.0.0.1 under a secret path,
- * it lists the stand accounts and adds, edits, removes them and marks the default. The password typed here goes
+ * it lists the stand accounts and adds, edits and removes them (all equal, none is the default). The password typed here goes
  * to the server and on to the stand — never through the model. Plain HTML + JS, no external resources.
  */
 export const PAGE_HTML = `<!doctype html>
@@ -53,11 +53,10 @@ async function load() {
   if (!rows.length) { const tr = el("tr"), td = el("td", "Учёток пока нет — добавьте первую."); td.colSpan = 4; tr.append(td); tb.append(tr); }
   for (const a of rows) {
     const tr = el("tr"), name = el("td"), where = el("td"), who = el("td"), act = el("td");
-    name.append(el("span", a.name || "—")); if (a.default) name.append(el("div", "★ по умолчанию", "star"));
+    name.append(el("span", a.name || "—"));
     where.append(el("div", a.stand), el("small", a.login));
     who.append(el("div", a.fio || ""), el("small", a.companyCode || "")); const st = el("div"); who.append(st);
     const b = (t, f, cls) => { const x = el("button", t, cls); x.type = "button"; x.onclick = f; act.append(x); };
-    if (!a.default) b("По умолчанию", async () => { await api("default", { key: a.key }); load(); });
     b("Проверить", async () => { say(st, "…"); const r = await api("check", { key: a.key });
       say(st, r.alive ? "сессия жива" : "сессия истекла — «Изменить» и войти заново", r.alive ? "ok" : "bad"); });
     if (a.via === "token file") {

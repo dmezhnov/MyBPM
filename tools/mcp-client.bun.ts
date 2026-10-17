@@ -5,7 +5,7 @@
  * stand, and the quick way to try a tool on a real stand without a chat.
  *
  *   bun tools/mcp-client.bun.ts list
- *   bun tools/mcp-client.bun.ts call stand_whoami '{}' [bo_groups '{}' …]
+ *   bun tools/mcp-client.bun.ts call stand_list '{}' [bo_groups '{}' …]
  *   bun tools/mcp-client.bun.ts call … --runtime bun --quiet       (default runtime node; --quiet prints only errors)
  *   bun tools/mcp-client.bun.ts call … --server dist/x/server/mybpm-stand.cjs   (another copy of the server, e.g. unpacked .mcpb)
  *   bun tools/mcp-client.bun.ts call … --json                      (one JSON array [{tool, isError, result}] instead)
