@@ -68,6 +68,28 @@ await Bun.write("dist/mcp/mybpm-stand.mcpb", zip(entries));
 console.log("dist/mcp/mybpm-stand.mcpb");
 '''
 
+[tasks.plugin-zip]
+description = "Pack the whole plugin for Customize → Plugins → Add → Upload plugin (claude.ai, Claude Desktop) into dist/plugin/mybpm-plugin.zip: one top folder mybpm/ with .claude-plugin/plugin.json, both skills (each with its document beside SKILL.md, the lint script) and mcp/mybpm-stand.cjs"
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+import { zip } from "./tools/zip.ts";
+await $`mise run skills-check`.quiet();
+await $`mise run skills-gen`.quiet();
+await $`mise run mcp-build`.quiet();
+// plugin.json only: marketplace.json describes the repository, not the plugin
+const files = [[".claude-plugin/plugin.json", ".claude-plugin/plugin.json"], ["mcp/mybpm-stand.cjs", "mcp/mybpm-stand.cjs"]];
+for (const [name, doc] of [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]]) {
+  for (const p of [...new Bun.Glob("**/*").scanSync(`skills/${name}`)].sort()) files.push([`skills/${name}/${p}`, `skills/${name}/${p}`]);
+  files.push([`skills/${name}/${doc}`, doc]);
+}
+const entries = [];
+for (const [inZip, src] of files) entries.push({ name: `mybpm/${inZip}`, data: await Bun.file(src).bytes() });
+await $`rm -rf dist/plugin`;
+await Bun.write("dist/plugin/mybpm-plugin.zip", zip(entries));
+console.log("dist/plugin/mybpm-plugin.zip");
+'''
+
 [tasks.skills-zip]
 description = "Pack each skill (every file under skills/<name>/, scripts regenerated) with its document into dist/skills/<name>.zip for upload to claude.ai"
 shell = "bun -e"
@@ -184,6 +206,18 @@ await $`rm -rf dist/mcp-test/mcpb && mkdir -p dist/mcp-test/mcpb && unzip -q dis
 const packed = await $`bun tools/mcp-client.bun.ts call archive_lint ${JSON.stringify({ path: zipFile })} --server dist/mcp-test/mcpb/server/mybpm-stand.cjs --json`.env(env).nothrow().quiet();
 const lintRow = JSON.parse(packed.stdout.toString() || "[]")[0];
 if (lintRow?.result?.lint !== "form lint: OK") { console.error(`.mcpb server: archive_lint answered ${JSON.stringify(lintRow)}\n${packed.stderr}`); process.exit(1); }
+// the uploadable plugin zip: one top folder, a valid manifest, each skill with its document, and its server finds the lint
+await $`mise run plugin-zip`.quiet();
+await $`rm -rf dist/mcp-test/plugin && mkdir -p dist/mcp-test/plugin && unzip -q dist/plugin/mybpm-plugin.zip -d dist/mcp-test/plugin`.quiet();
+for (const want of ["mybpm/.claude-plugin/plugin.json", "mybpm/mcp/mybpm-stand.cjs", "mybpm/skills/mybpm-imports/SKILL.md", "mybpm/skills/mybpm-imports/MYBPM-IMPORTS.md",
+  "mybpm/skills/mybpm-imports/scripts/lint-archive.cjs", "mybpm/skills/mybpm-stand/SKILL.md", "mybpm/skills/mybpm-stand/MYBPM-UI-API.md"]) {
+  if (!(await Bun.file(`dist/mcp-test/plugin/${want}`).exists())) { console.error(`dist/plugin/mybpm-plugin.zip: no ${want}`); process.exit(1); }
+}
+if ((await $`ls -A dist/mcp-test/plugin`.text()).trim() !== "mybpm") { console.error("dist/plugin/mybpm-plugin.zip: more than one top-level entry"); process.exit(1); }
+if ((await $`which claude`.nothrow().quiet()).exitCode === 0) await $`claude plugin validate dist/mcp-test/plugin/mybpm`.quiet();
+const fromZip = await $`bun tools/mcp-client.bun.ts call archive_lint ${JSON.stringify({ path: zipFile })} --server dist/mcp-test/plugin/mybpm/mcp/mybpm-stand.cjs --json`.env(env).nothrow().quiet();
+const zipRow = JSON.parse(fromZip.stdout.toString() || "[]")[0];
+if (zipRow?.result?.lint !== "form lint: OK") { console.error(`plugin zip server: archive_lint answered ${JSON.stringify(zipRow)}\n${fromZip.stderr}`); process.exit(1); }
 console.log("all tests passed");
 '''
 
