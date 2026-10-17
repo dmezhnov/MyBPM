@@ -592,6 +592,10 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
 4. `save-access-group` — `P {}`, `B {"businessObjectId":…,"accessGroup":<the whole object>}`.
 5. Follow it the way the UI does: `save-business-object-portion` with
    `jsonPart = "{\"businessObject\":{\"id\":\"<boId>\",\"nameMap\":{},\"recordNameMap\":{},\"chosenAccessRight\":true}}"`.
+   **A BO's lock only turns ON** `[C]`: the same portion with `false` is ignored and no other call turns it off
+   (the UI never sends `false`) — after a reset to «все» the BO keeps the lock; it marks the BO, the actions decide.
+   **A read right after a save may still answer the old rights** `[C]` — read again after a second or two before
+   calling a save lost.
 6. Field-level and tab-level rights are the same shape on
    `load-field-access-group` / `save-field-access-group` — `{businessObjectId, fieldId, accessGroup}` (only
    `view` and `edit` matter) — and `load-field-tab-access-group` / `save-field-tab-access-group`
@@ -1062,16 +1066,22 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `bo_delete`, `co_build`, `rights_save`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback`, `bo_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
   `TAB_GROUP` `tabs` for the tabbed fields, the first field the registry column, the record window, then every
-  code by its setter (rule 4 + 12) and a read-back. Tab codes stay derived from the labels and the «Системные»
-  tab is not closed — §5k and R5 step 6 by hand. Option codes (`options[].code`, `bo_fields_save` edit
+  code by its setter (rule 4 + 12) and a read-back; a BO code the rename race overwrote (trap 24) is set again.
+  Tab codes stay derived from the labels (§5k by hand); a «Системные» tab is closed with VIEW «никому» (R5 step 6). Option codes (`options[].code`, `bo_fields_save` edit
   `optionCodes`) are set by a later EDIT of `options` and read back, because the stand regenerates them after
   the add (§5h «Единичный выбор»). `co_build` runs the R2a draft cycle and removes the draft on any failure, so
   nothing half-built stays.
+- **The rights tools make R5 whole.** `rights_read` / `rights_save` take one target — a BO, a field, a tab, a
+  menu item (by id, code or name) — and read every action as `"all"`, `"nobody"` or its subjects (groups,
+  persons, author, participants, Person fields). `rights_save` sets the actions you pass to EXACTLY the subjects
+  given: groups and users go in through `orgUnitToAdd` / `orgUnitToDelete` (trap 3), the null author block is
+  built (trap 2), users are found by e-mail, name or id, «выборочно» follows, the rights are read back with a
+  retry and compared (`mismatch`). A BO's lock stays on once set (R5 step 5).
 - **The record tools make §6a / §6b whole.** `record_save` takes values by field code, fieldId or label in
   plain form (text, number, `true`/`false`, an ISO date, the option label or code, a record id or an array of
   them, `{RUS, KAZ, ENG}` …) and converts each by the §6b value table. `scripts: true` (the default) = the
@@ -1132,7 +1142,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `bo_groups` | every BO group with its BOs | R4; `load-bo-groups {forEdit}`, `load-bo-records-by-group-id` |
 | `bo_find` | a BO by `code` (`exists: false` when absent) or by a piece of its name | R4; `load-bo-id-by-code` |
 | `bo_read` | one BO: header + a row per field (type, tab, grid, ref, required, column); `raw` = the DTO | R4; `load-business-object-by-id` |
-| `persons_find` | users by a piece of name or e-mail: the ids a Person field or a rights subject takes | `v2/org-unit/load-filtered-persons-v2` |
+| `persons_find` | users by a piece of name or e-mail (the stand's search does not match an e-mail `[C]` — with «@» the tool reads the whole list): the ids a Person field or a rights subject takes | `v2/org-unit/load-filtered-persons-v2` |
 | `archive_put` | builds a `.mybpm.zip` on the user's machine from JSONL parts, lints it | `MYBPM-IMPORTS.md` §0.1, §0.10 |
 | `archive_lint` | the form lint of `MYBPM-IMPORTS.md` §0.10 + what the archive holds | — |
 | `import_analyze` | lint, upload, insert, analyze — nothing written, the import stays ANALYZED | R3 steps 1–4 |
@@ -1147,6 +1157,8 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
 | `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs); with `confirm` the delete | «Delete a BO» in §5b |
 | `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
+| `rights_read` | who may do what on a BO, a field, a tab or a menu item; `subjects` = groups, users, Person fields | R5; `load-access-group`, `load-field-access-group`, `load-field-tab-access-group`, `v2/menu-item/load-access-group` |
+| `rights_save` ✎ | the actions passed → exactly these subjects (or all / nobody), «выборочно» follows, read back | R5 steps 1–6, R6 rights |
 | `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
 | `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
 | `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
@@ -1167,7 +1179,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
-| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R5, R6, R9 kanban settings, R10, scripts, processes) | §0U.4 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R6 menu items, R9 kanban settings, R10, scripts, processes) | §0U.4 |
 
 ✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
 the model.
@@ -1254,8 +1266,58 @@ popup **sends nothing when unchanged**.
 
 Simplification the user accepts: when a field's view/edit equals the BO's, just say «Всем».
 
-Creating / editing users, groups and departments and their membership, and the head / employees / department
-flags of «Из поля»: not known yet `[U]` — §12.
+**Users, groups and departments are ordinary BOs with ordinary records** `[C]`: «Пользователи» (`Person`, the
+company's `personBoId`; a user's record id IS their `personId`), «Рабочая группа» (`PersonGroup`,
+`personGroupBoId`; members = its table «Пользователи», head = «Руководитель») and «Подразделения» /
+«Департамент» (`Department`, `departmentBoId`) are created, changed and deleted like any record (R9, §6, xlsx R7). One exception — **a new
+«Пользователи» record sends an invitation** `[C]`: creating it in the UI e-mails a link to the address in its
+Email field; the person opens it, sets a password and can log in from then on. A record created over the API by
+the §6b form cycle (`record_save` with scripts) sends it too `[C]` — the answer carries the notification
+`person_invitation_is_send`; the §6a draft cycle and an xlsx: `[U]` — §12. So never create a user with a real person's address as
+test data. **A structure archive never creates a group or department** `[C]`: one it names that the stand lacks
+stops the apply until mapped onto an existing unit, and the import renames that unit to the archive's name (§5
+«Conflicts»).
+
+The built-in BOs are told apart by the BO `kind` (`PERSON`, `PERSON_GROUP`, `DEPARTMENT`, `COMPANY`), never by name:
+the name is the company's own («Подразделения» in one company, «Департамент» in another) `[C]`. Their built-in fields
+are `isSystem` and carry a field `kind` of their own (a company's added fields have `kind: GENERAL`) `[C]`:
+
+| BO | field code — kind (type) |
+|---|---|
+| `Person` | `surname` PERSON_SURNAME, `name` PERSON_NAME, `phone` PERSON_PHONE, `email` PERSON_EMAIL (required, unique), `phoneVerified` / `is_external` (CHECKBOX), `department` PERSON_DEPARTMENT (BO SINGLE → Department), `position` PERSON_POSITION (dropdown), `status` PERSON_STATUS (option ids `ACTIVE` / `INACTIVE` / `FIRED`), `accessLevel` PERSON_ACCESS_LEVEL — the role, option ids `ACCESS_ALLOWED` «Пользователь», `ACCESS_ALLOWED_CONTROL_BO` «Администратор объектов», `ACCESS_ALLOWED_CONTROL_PERSON` «Администратор пользователей», `ADMIN` «Суперадмин»; `personGroup` PERSON_PERSON_GROUP (BO TABLE → PersonGroup), `person_avatar` (FILE_UPLOAD), `adGuid` / `ad_employee_id` (AD sync), `is_lang` PERSON_IS_LANG (option ids `RUS` `ENG` `KAZ` `QAZ`) |
+| `PersonGroup` | `name` PERSON_GROUP_NAME, `header` PERSON_GROUP_HEADER (BO SINGLE → Person), `users` PERSON_GROUP_PERSON (BO TABLE → Person) |
+| `Department` | `name` DEPARTMENT_NAME, `header` DEPARTMENT_HEADER (BO SINGLE → Person), `parent` DEPARTMENT_PARENT (BO SINGLE → Department), `person` DEPARTMENT_PERSON (BO TABLE → Person) |
+| `Company` | `code` COMPANY_CODE (required, unique), `name` COMPANY_NAME (required, unique), `company_email` COMPANY_EMAIL «Почта админа» (required, unique), `company_user_role` COMPANY_USER_ROLE (option ids `ADMIN` «Администратор» — the default — / `ACCESS_ALLOWED` «Пользователь»), `company_enabled` COMPANY_ENABLED «Активный» (option ids `true` / `false`, default `true`), `link` «Ссылка» (BO SINGLE → `Company` itself, kind GENERAL) |
+
+A company may hang hooks on these BOs like on any other (`hasScript`), so a test record of them runs the company's
+own scripts.
+
+**A fourth built-in BO — «Аккаунт» (code `Company`, BO kind `COMPANY`)** `[C]`: the list of the COMPANIES (tenants)
+of one domain — a stand may hold several, each a record of it, and **a record's id IS that company's `companyId`**
+(the one `stand_list` / the session gives). Only the special account with the login `root` sees and edits this BO;
+for an ordinary admin of a company it does not exist at all — not in the BO groups, and `load-bo-id-by-code`
+`Company` answers «not found» — although its own rights (R5 `load-access-group`) say VIEW «всем»: it is hidden by
+the login, not by the rights model. `root` sees it in the group «Системные» next to the other built-in BOs. Its
+Email field (`company_email`, kind `COMPANY_EMAIL`) carries the «Выслать приглашение» link to that company's admin
+(below). A change on a record of it changes a live tenant — never touch an existing company's record as a test.
+
+**A new «Аккаунт» record creates a company and invites its admin** `[C]`: `root` saves it through the §6b form cycle
+(`record_save` on `Company`: `code`, `name`, `company_email`, `company_user_role`, `company_enabled`) — the answer
+carries the notification `company_invitation_is_send`, and the address in `company_email` gets «MyBPM - приглашение
+на регистрацию»: the login (= that address) and a link `https://<stand>/set-new-admin?invitationId=<id>` where the
+admin enters a surname, a name and a password `[C]`. The new tenant starts with one BO group «Общее» (code `General`, kind `DEFAULT`) holding only «Пользователи»,
+«Департамент» and «Рабочая группа», and one user — the admin, named by what they entered on that page `[C]`. Its users, BOs and menu are reached by logging in as that
+admin `[C]`; the admin does not see «Аккаунт».
+
+**«Выслать приглашение»** sends the invitation again. It is NOT a `BUTTON` widget: it is part of the Email field
+itself (field kind `PERSON_EMAIL`, the `dff-input-email` component), drawn only on an existing record's card
+(never in the create dialog) and only for a user with the right `SEND_invitation` `[C]`. The call:
+`POST /web/v2/invitation/send-to-person` P `{personId:<the record id>}` `[I]`. The rest of `v2/invitation` `[I]`:
+`check-person {invitationId}` and `v2/complete-person` (the invited person sets the password),
+`send-to-person-password` / `v2/send-to-person-password {email, clientType}` (password reset),
+`send-to-admin {companyId}` — the same link on a company card's Email of kind `COMPANY_EMAIL`.
+
+The head / employees / department flags of «Из поля»: not known yet `[U]` — §12.
 
 ### API — `POST /web/v2/business-objects/<method>`
 
@@ -1305,9 +1367,13 @@ flags of «Из поля»: not known yet `[U]` — §12.
 - `load-org-field-record-list` params `{businessObjectId}` → the Person fields usable in rights
   `[{id,name,kind}]`. Some reference fields are not offered (a «Сотрудник» field may come back `[]`).
 - `load-org-unit-record-list` params `{filter:"", skipFirstCount:0}` → groups (and users). **Group ids in
-  the API have no `G-` prefix**; the archive's `orgUnitIds` use `G-<id>`.
+  the API have no `G-` prefix**; the archive's `orgUnitIds` use `G-<id>`. A group's id is its `PersonGroup`
+  record id `[C]`.
 - Field rights: `load-field-access-group` params `{businessObjectId, fieldId}`;
   `save-field-access-group` body `{businessObjectId, fieldId, accessGroup}` — only `view` + `edit` matter.
+  The UI follows it with `save-bo-field-chosen-access-right` — **PARAMS** `{boId, fieldId, chosenAccessRight}`
+  (`true` while any action is not «все», `false` turns the field's lock off) `[C]`; a flag written right after
+  the rights can be overtaken by a late earlier write — read the field's `chosenAccessRight` back `[C]`.
 - Tab rights: `load-field-tab-access-group` params `{businessObjectId, fieldId:<TAB_GROUP field id>, tabId}`;
   `save-field-tab-access-group` body `{businessObjectId, fieldId, tabId, accessGroup}`. An unknown/unset
   `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто» answer is real.
@@ -1643,8 +1709,17 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - Enums in chunk `5675`: import status `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
   INTERNAL_ERROR|CANCELED`; apply result `APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|HANDLING_ERROR`; struct
   types `STRUCTURE|ACCESS_RIGHTS|SCRIPTS|GLOBAL_METHODS|MENU|REPORTS|SETTINGS` (our archive → `STRUCTURE`).
-- The UI also calls `/v2/struct/conflict/{load-conflicts,load-select-instance-table,resolve-conflicts}`;
-  a clean archive returns `conflicts:{}` and they are never needed `[C]`.
+- **Conflicts** (`/v2/struct/conflict/*`): a clean archive returns `conflicts:{}` `[C]`. The one kind is
+  `SELECT_INSTANCE` — an org unit of the archive (`ExportStructInstanceDto` of a group named in its rights) whose
+  id the stand does not know: `{selectInstance:{boId, exportedOrgUnitType, exportedOrgUnitName,
+  exportedOrgUnitId, selectFromIds}, isResolved, sourceMap}` `[C]`. `apply-import` refuses while one is open
+  («Conflicts have to be resolved before applying») `[C]`; the UI opens its conflict dialog right after the
+  analysis, and cancelling it closes the import. Candidates: `load-select-instance-table` B `{importId,
+  conflictId, searchValue:"", paging:{limit:20, offset:0}}` → the unit BO's registry rows (`records[].instanceId`)
+  `[C]`. Resolve: `resolve-conflicts` P `{importId}` B `[{conflictId, selectInstance:{selectedBoiId}}]` →
+  `isResolved:true` `[C]`. There is NO «create» choice — the import never creates a group; and **the apply
+  writes the archive's name onto the chosen group** (also onto a group whose id matches) `[C]`
+  (`MYBPM-IMPORTS.md` §8).
 - The BO-side `/web/v2/business-objects/import-structure` (`postFileJson`, param `startTestProcess:false`)
   is a DIFFERENT, single-call endpoint of the BO controller — not used here, untried `[U]`.
 - **The import log** (the «Импорт» tab's table): `/import-structure/load-import-file-records` with `B {paging:
@@ -5622,8 +5697,8 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   standing in a Form; a Form timer (`createTimer` 1 min, watch `load-process-steps`).
 - Renaming a company-global method: `Set blocks.<hat>.methodName`, then `translate-script` its callers.
 - Rights: the head / employees / department flags of «Из поля» (second non-admin login, one flag at a time,
-  `totalHits`); users / groups / departments create, edit and membership (sniff the «Пользователи» / «Рабочая
-  группа» screens); switching tenant as a multi-company user (look for a company-selector call).
+  `totalHits`); whether a «Пользователи» record created by the §6a draft cycle or by an xlsx sends the invitation (a probe
+  user only with the user's OK and an address they own — it mails a real person); switching tenant as a multi-company user (look for a company-selector call).
 - Menu items: the calls behind rename, reorder, «Изменить код», move into another group and
   «Отображать в моб. приложении» / `needCountMenuItem` (click each kebab action with the network log on);
   where a menu item's views (timeline, list) are switched in the UI.

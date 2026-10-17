@@ -259,7 +259,7 @@ build it; 0.2a applies only when a **stand id or a stand code** is what is missi
 and a process have rules of their own — 0.17.
 
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
-reserved codes (§6, import dies with «Несоответствие типов объектов»), and an `AccessStructDto` is never
+reserved codes (§6, import dies with «Несоответствие типов объектов»); never use `Company` either — it is the «Аккаунт» BO, invisible to every login but `root`, and whether a BO of that code clashes is `[U]`, and an `AccessStructDto` is never
 shipped unless the user asked for one (0.9 rule 10 — it REPLACES the rights set on the stand). The user
 reads ids and codes off the stand (`MYBPM-UI-API.md` R4); an id may start with `~` or contain `@` — copy it
 as is.
@@ -397,7 +397,7 @@ your own.
 | E-mail / push notifications from a script | the script palette has the actions (§12a «Built-in objects», `alert`); their delivery was never checked `[U]` | build them only if asked and say they are `[U]` |
 | A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5c) | not built — say so; a hook on save or a manually started process is the working route |
 | A guard: forbid a save or a status change until a condition («без согласования нельзя начать работы») | no hook that refuses a save or rolls a status back is known `[U]` (§5d) | a path someone RUNS step by step → a business process with an approval branch (0.18); a value that must be there → «Обязательное» (`isRequired`, 0.5); otherwise not built — say so |
-| Users, departments, groups | org structure is stand data; `Person` / `Department` / `PersonGroup` are reserved codes (0.2a) | created on the stand |
+| Users, departments, groups, companies | they are RECORDS of the built-in BOs `Person` / `Department` / `PersonGroup` / `Company` (reserved codes, 0.2a; `Company` only for the `root` login), not structure; an archive carries an org unit only as an `ExportStructInstanceDto` next to the rights or settings that name it; it never CREATES a unit — an unknown one must be mapped onto an existing unit before the apply, and the import writes the archive's name onto that unit (§8) `[C]` | records: an xlsx of records (Part III; group membership from the group side) or the stand by hand; a new user e-mails an invitation (§3) |
 | A field on a built-in BO (`Person`) | untested `[U]` (§6 «Built-in BOs») | the constructor, by hand |
 | Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1) |
 
@@ -3116,7 +3116,21 @@ order, a shared order, and a flag on a `TAB_GROUP`.
   «История изменений» BO. Reason/comment fields are data and stay.
 - **Пользователь (Person)** is built in; its unique field is **Email**; it has no built-in patronymic field
   (ФИО = `surname` + `name`) — a company may add one to it, as any other field. «Подразделения» (Department) and «Рабочая группа» (PersonGroup) are built
-  in too.
+  in too. All three are ordinary BOs with ordinary records `[C]` — users, groups (members = the group's table
+  «Пользователи») and departments are records (an xlsx of records, Part III). **A new «Пользователи» record e-mails an invitation** to its Email `[C]` (created in the UI or over
+  the API with scripts; an xlsx `[U]`): the person sets a password from the link and can log in — never put a real person's address
+  into test users. Their built-in fields `[C]`: Person `surname` `name` `phone` `email` `department` (→ Department)
+  `position` `status` (option ids `ACTIVE` / `INACTIVE` / `FIRED`) `accessLevel` (the role: `ACCESS_ALLOWED`
+  «Пользователь», `ACCESS_ALLOWED_CONTROL_BO` «Администратор объектов», `ACCESS_ALLOWED_CONTROL_PERSON` «Администратор
+  пользователей», `ADMIN` «Суперадмин») `personGroup` (→ PersonGroup, TABLE) `is_lang` (`RUS` `ENG` `KAZ` `QAZ`);
+  PersonGroup `name` `header` (→ Person) `users` (→ Person, TABLE); Department `name` `header` `parent` (→ Department)
+  `person` (→ Person, TABLE). Tell them by code, not by name — the name is the company's own («Подразделения» /
+  «Департамент»). A fourth built-in BO, «Аккаунт» (code `Company`), lists the companies (tenants) of the domain — a
+  record's id is the company's `companyId`; fields `code` `name` `company_email` (the admin's mail)
+  `company_user_role` (`ADMIN` / `ACCESS_ALLOWED`) `company_enabled` (`true` / `false`) `link`. Only the special
+  login `root` sees and edits it; for any other account it does not exist, even by code `[C]`. A new record of it
+  creates a company and e-mails its admin (`company_email`) an invitation link where they enter a surname, a name and a password `[C]`. Details:
+  `MYBPM-UI-API.md` §3.
 
 ## 4. Form layout (`gridPosition`)
 
@@ -4001,14 +4015,23 @@ The API and UI side of rights → `MYBPM-UI-API.md`.
 - **Import APPLIES `AccessStructDto`, group ids included** `[C]`: rights
   reset on the stand come back from an export taken with «Права доступа» — every group on its action.
   `denyAll`, `author`, `fromFields`, field rules and tab rules arrive too. The import does NOT
-  clear `orgUnitIds`; ids are `G-<group id>` of the TARGET stand, so an archive built on another stand grants
-  nothing to groups.
+  clear `orgUnitIds`; ids are `G-<group id>` of the TARGET stand: an archive built on another stand names groups the
+  target does not know, and each must be mapped onto an existing group before the apply (below).
 - **An archive WITHOUT `AccessStructDto` leaves the stand's rights untouched** `[C]`. So a structure-only archive is the safe way to
   update a BO whose rights were set by hand; an archive WITH the DTO replaces them.
 - An export with rights also carries one `ExportStructInstanceDto` per group it mentions
   (`boCode:"PersonGroup"`, `kind:"PERSON_GROUP"`, `fieldMap.name.storedValue` = the group name,
-  `sources[].accessRightsInstanceSource`) — the group RECORD, not only its id `[C]`. Whether the import
-  creates a missing group from it on another stand is `[U]` — §18.
+  `sources[].accessRightsInstanceSource`) — the group RECORD, not only its id `[C]`: `compositeId` =
+  `<personGroupBoId>-<group record id>`, and the `G-<id>` of `orgUnitIds` is that same record id.
+- **The import never creates a group (or department) from such a line** `[C]`. A line whose id the target
+  does not know makes the analysis report a `SELECT_INSTANCE` conflict (`exportedOrgUnitName`, `selectFromIds`
+  = the candidates), and the apply is refused («Conflicts have to be resolved before applying») until the
+  conflict is mapped onto an EXISTING group (the UI's conflict dialog, `MYBPM-UI-API.md` §5). So create the
+  groups on the target first (records of `PersonGroup`, §3), then import and map each conflict.
+- **Trap: the import writes the archive's group name onto the stand's group** `[C]` — onto the group the
+  line's id matches (no conflict), and onto the group a conflict was mapped to. An old export re-imported
+  reverts a group renamed since; an archive from another stand renames the groups it is mapped onto. Set
+  `fieldMap.name.storedValue` to the TARGET group's current name before importing.
 - Getting group ids for an archive: set probe rights on one BO with a DIFFERENT group per action
   (view/edit/delete/archive/export), export the structure, map ids by action; or call
   `load-org-unit-record-list`. Archive ids are `G-<id>`, API ids have no prefix.
@@ -6326,7 +6349,8 @@ Archive:
    by `code`, never by name (§0.3, §8). Rollback does not undo the rename.
 7. `removeType: STRIKETHROUGH` is on every field and means nothing.
 8. `oldRefBoId` never equals the target's `oldId` — not a bug.
-9. Built-in codes `Person` / `Department` / `PersonGroup` are reserved; a clash fails the whole import.
+9. Built-in codes `Person` / `Department` / `PersonGroup` are reserved; a clash fails the whole import (`Company` — the
+   «Аккаунт» BO, invisible to every login but `root` — never use it either; whether it clashes is `[U]`).
 10. The form grid compacts vertically — holes are eaten and rows drift.
 11. A STATIC_TEXT section heading must not repeat a field name (breaks Excel import).
 12. `required + readonly` together makes a record unsavable.
@@ -6459,8 +6483,6 @@ here; the rules themselves are §0X.4.
 - `[U]` Whether a re-import with another `parentMenuItemCode` moves an existing menu item, and what
   `needHideInMobApp` / `needCountMenuItem` `true` do — check: re-import so, read `v2/menu-item/load-nav-items`
   and the sidebar on the web and mobile clients.
-- `[U]` Whether a `PersonGroup` / `Department` `ExportStructInstanceDto` line whose `ID` is unknown to the stand
-  CREATES the unit — check: ship one with a new `ID` and name, read the org-unit list.
 - `[U]` Rights flags head / employees / department / parent-child department (§7) — check: a second non-admin
   login, one flag at a time, count the records it sees.
 - `[U]` Settings kinds `TELEPHONY`, `IN_MIGRATION`, `OUT_MIGRATION`, `APPEARANCE` (§2) — check: needs a stand with

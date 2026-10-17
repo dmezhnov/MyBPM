@@ -575,7 +575,6 @@ async function addFields(s: Stand, boId: string, specs: FieldSpec[], window?: bo
   const y0 = bottomOf(bo.formFields ?? []);
   const topPack = own ? { cells: [], bottom: 0 } : pack(top, y0, notes, "form");
   const tabIds = tabLabels.length ? await freshIds(s, tabLabels.length) : [];
-  if (tabLabels.includes("Системные")) notes.push("tab «Системные»: close it with VIEW «никому» (R5 step 6) — not done by this tool");
 
   const optIds = await freshIds(s, specs.reduce((n, f) => n + (["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? f.options?.length ?? 0 : 0), 0));
   let column = (bo.formFields ?? []).filter((f: any) => f.tableColToShow).length;
@@ -1351,6 +1350,193 @@ async function boById(s: Stand, a: { boId?: string; code?: string }): Promise<st
   return s.call("v2/business-objects/load-bo-id-by-code", { boCode: a.code });
 }
 
+// ── rights (UI-API R5) ──
+const MENU_ = "v2/menu-item/";
+const BO_ACTIONS = ["all", "view", "edit", "create", "delete", "archive", "export", "duplicate", "add"];
+/** The author block the server leaves null on an untouched BO (trap 2). */
+const authorsBlock = () => ({ accessForContent: false, accessForHead: false, accessForAuthor: false, accessForEmployees: false,
+  accessForDepartment: false, accessForParentDepartment: false, accessForChildDepartment: false, fieldIds: [] as string[] });
+
+/** Every menu item, walking GROUP items down (load-nav-items per level). */
+async function menuTree(s: Stand, parentId: string | null = null, depth = 0): Promise<any[]> {
+  const out: any[] = [];
+  for (const it of (await s.call(MENU_ + "load-nav-items", { parentId })) ?? []) {
+    out.push({ ...it, depth });
+    if (it.type === "GROUP" && depth < 5) out.push(...(await menuTree(s, it.id, depth + 1)));
+  }
+  return out;
+}
+
+type RightsAt = { what: string; boId?: string; fields: any[]; actions: string[]; load: () => Promise<any>;
+  save: (group: any) => Promise<unknown>; flag?: (on: boolean) => unknown; flagNow?: () => Promise<boolean> };
+
+/** Where the rights live: a menu item, a tab, a field, or the BO itself. */
+async function rightsAt(s: Stand, a: any): Promise<RightsAt> {
+  if (a.menuItemId || a.menu) {
+    let id = a.menuItemId;
+    if (!id) {
+      const all = await menuTree(s);
+      const hit = all.filter((m) => m.code === a.menu || m.id === a.menu || m.displayName === a.menu);
+      if (hit.length !== 1) throw new Error(`${hit.length ? "several" : "no"} menu items «${a.menu}» — pass menuItemId: ${all.map((m) => `${m.displayName} (${m.code ?? m.id})`).join(", ")}`);
+      id = hit[0].id;
+    }
+    return { what: `menu item ${id}`, fields: [], actions: ["view"],
+      load: () => s.call(MENU_ + "load-access-group", { menuItemId: id }),
+      save: (g) => s.call(MENU_ + "save-access-group", { menuItemId: id }, g),
+      flag: (on) => s.call(MENU_ + "save-menu-item-chosen-access-right", { menuItemId: id, chosenAccessRight: on }) };
+  }
+  const boId = await boById(s, a), bo = await loadBo(s, boId), fields = bo.formFields ?? [];
+  if (a.tab) {
+    const tabs = fields.filter((f: any) => f.type === "TAB_GROUP").flatMap((g: any) => (g.tabs ?? []).map((t: any) => ({ g, t })));
+    const hit = tabs.filter(({ t }: any) => t.id === a.tab || t.code === a.tab || t.label === a.tab);
+    if (hit.length !== 1) throw new Error(`${hit.length ? "several" : "no"} tabs «${a.tab}» — pass the tab id: ${tabs.map(({ t }: any) => `${t.label} (${t.id})`).join(", ")}`);
+    const fieldId = hit[0].g.fieldId, tabId = hit[0].t.id, key = { businessObjectId: boId, fieldId, tabId };
+    return { what: `tab «${hit[0].t.label}» of ${bo.code ?? boId}`, boId, fields, actions: ["view"],
+      load: () => s.call(BO_ + "load-field-tab-access-group", key),
+      save: (g) => s.call(BO_ + "save-field-tab-access-group", {}, { ...key, accessGroup: g }),
+      flag: (on) => s.call(BO_ + "save-bo-field-tab-chosen-access-right", { boId, fieldId, tabId, chosenAccessRight: on }),
+      flagNow: async () => !!(await loadBo(s, boId)).formFields?.find((x: any) => x.fieldId === fieldId)?.tabs?.find((x: any) => x.id === tabId)?.chosenAccessRight };
+  }
+  if (a.field) {
+    const f = fieldBy(fields, a.field), key = { businessObjectId: boId, fieldId: f.fieldId };
+    return { what: `field «${nameOf(f)}» of ${bo.code ?? boId}`, boId, fields, actions: ["view", "edit"],
+      load: () => s.call(BO_ + "load-field-access-group", key),
+      save: (g) => s.call(BO_ + "save-field-access-group", {}, { ...key, accessGroup: g }),
+      flag: (on) => s.call(BO_ + "save-bo-field-chosen-access-right", { boId, fieldId: f.fieldId, chosenAccessRight: on }),
+      flagNow: async () => !!(await loadBo(s, boId)).formFields?.find((x: any) => x.fieldId === f.fieldId)?.chosenAccessRight };
+  }
+  return { what: `BO ${bo.code ?? boId}`, boId, fields, actions: BO_ACTIONS,
+    load: () => s.call(BO_ + "load-access-group", { businessObjectId: boId }),
+    save: (g) => s.call(BO_ + "save-access-group", {}, { businessObjectId: boId, accessGroup: g }),
+    // the UI only ever turns a BO's lock ON (portion save); a portion with false is ignored, and no other call exists
+    flag: (on) => on ? savePortion(s, { businessObject: { id: boId, nameMap: {}, recordNameMap: {}, chosenAccessRight: true } }) : "keep" };
+}
+
+/** Close every tab labelled «Системные» or coded tab_system with VIEW «никому» (IMPORTS 0.8a); notes on what happened. */
+async function closeSystemTabs(s: Stand, boId: string): Promise<string[]> {
+  const tabs = ((await loadBo(s, boId)).formFields ?? []).filter((f: any) => f.type === "TAB_GROUP")
+    .flatMap((g: any) => g.tabs ?? []).filter((t: any) => t.label === "Системные" || t.code === "tab_system");
+  const notes: string[] = [];
+  for (const t of tabs) {
+    try {
+      const r: any = await rightsSave(s, await rightsAt(s, { boId, tab: t.id }), { view: "nobody" });
+      notes.push(r.mismatch.length ? `tab «${t.label}»: VIEW «никому» did not hold — rights_save it: ${JSON.stringify(r.mismatch)}` : `tab «${t.label}» closed: VIEW «никому» (an admin still sees it)`);
+    } catch (e: any) { notes.push(`tab «${t.label}» NOT closed (${e.message}) — rights_save tab + {view: "nobody"}`); }
+  }
+  return notes;
+}
+
+/** One action as the user reads it: "all", "nobody" or its subjects. */
+function rightsOf(x: any, fields: any[]) {
+  if (!x) return undefined;
+  if (x.accessForAll) return "all";
+  const units = x.orgUnitRecordList ?? [], af = x.authorsField ?? {};
+  const code = (id: string) => { const f = fields.find((y) => y.fieldId === id); return f ? nameOf(f) : id; };
+  const out = clean({
+    groups: units.filter((u: any) => u.type === "GROUP").map((u: any) => u.name),
+    persons: units.filter((u: any) => u.type === "PERSON").map((u: any) => u.name),
+    author: af.accessForAuthor || undefined, participants: x.participants || undefined,
+    fromFields: Object.entries(x.fromFields ?? {}).filter(([, v]: any) => v?.accessForContent).map(([k]) => code(k)),
+    other: Object.entries(af).filter(([k, v]) => v === true && k !== "accessForAuthor").map(([k]) => k.replace(/^accessFor/, "")),
+  });
+  return Object.keys(out).length ? out : "nobody";
+}
+
+/** Org units (groups and users) matching a name, all pages. */
+async function orgUnits(s: Stand, filter: string) {
+  const out: any[] = [];
+  for (let page = 0; page < 50; page++) {
+    const got = (await s.call(BO_ + "load-org-unit-record-list", { filter, skipFirstCount: out.length })) ?? [];
+    out.push(...got.filter((u: any) => !out.some((o) => o.id === u.id && o.type === u.type)));
+    if (!got.length || got.length < 20) break;
+  }
+  return out;
+}
+
+/** A group (name | id) or a user (e-mail | name | id) → the full org-unit record rights take. */
+async function orgUnit(s: Stand, type: "GROUP" | "PERSON", key: string) {
+  let name = key;
+  if (type === "PERSON" && key.includes("@")) {
+    // the person search does not match e-mails: read the whole list and pick by e-mail
+    const found = ((await s.call("v2/org-unit/load-filtered-persons-v2", { filter: "", chosenPersonIds: [] }, { limit: 1000, offset: 0 })) ?? [])
+      .flatMap((g: any) => g.persons ?? []).find((p: any) => p.email?.toLowerCase() === key.toLowerCase());
+    if (!found) throw new Error(`no user with e-mail «${key}» (persons_find)`);
+    name = found.name; key = found.id;
+  }
+  const lc = (v: string) => v?.trim().toLowerCase();
+  const byId = (us: any[]) => us.find((u) => u.type === type && (u.id === key || u.id === key.replace(/^G-/, "")));
+  const named = (us: any[]) => us.filter((u) => u.type === type && lc(u.name) === lc(name));
+  let units = await orgUnits(s, name), hit = byId(units);
+  if (!hit) { const n = named(units); if (n.length > 1) throw new Error(`several ${type === "GROUP" ? "groups" : "users"} «${key}» — pass the id: ${n.map((u) => u.id).join(", ")}`); hit = n[0]; }
+  if (!hit && units.length === 0) { units = await orgUnits(s, ""); hit = byId(units); }
+  if (!hit) throw new Error(`no ${type === "GROUP" ? "group" : "user"} «${key}»${units.length ? `; close: ${units.filter((u) => u.type === type).slice(0, 10).map((u) => u.name).join(", ")}` : ""}`);
+  return hit;
+}
+
+/** The action after a spec: "all" | "nobody" | {groups, persons, author, participants, fromFields} — EXACTLY these subjects. */
+async function rightsApply(s: Stand, cur: any, spec: any, at: RightsAt) {
+  const g = structuredClone(cur ?? {}), units = g.orgUnitRecordList ?? [];
+  const off = (b: any) => { for (const k of Object.keys(b ?? {})) if (k.startsWith("accessFor")) b[k] = false; };
+  if (spec === "all") {
+    Object.assign(g, { accessForAll: true, participants: false, orgUnitToAdd: [], orgUnitToDelete: units });
+    off(g.authorsField);
+    for (const v of Object.values(g.fromFields ?? {}) as any[]) v.accessForContent = false;
+    return g;
+  }
+  const want = spec === "nobody" ? {} : spec;
+  if (typeof want !== "object") throw new Error(`a right is "all", "nobody" or {groups, persons, author, participants, fromFields} — got ${JSON.stringify(spec)}`);
+  const wanted = [...await Promise.all((want.groups ?? []).map((k: string) => orgUnit(s, "GROUP", k))),
+    ...await Promise.all((want.persons ?? []).map((k: string) => orgUnit(s, "PERSON", k)))];
+  Object.assign(g, { accessForAll: false, participants: !!want.participants,
+    orgUnitToAdd: wanted.filter((w) => !units.some((u: any) => u.id === w.id)),
+    orgUnitToDelete: units.filter((u: any) => !wanted.some((w) => w.id === u.id)) });
+  g.authorsField ??= authorsBlock();
+  off(g.authorsField);
+  g.authorsField.accessForAuthor = !!want.author;
+  if (want.fromFields?.length && !at.boId) throw new Error("fromFields applies to a BO, a field or a tab — not to a menu item");
+  const ff = new Set<string>((want.fromFields ?? []).map((k: string) => fieldBy(at.fields, k).fieldId));
+  g.fromFields ??= {};
+  for (const [k, v] of Object.entries(g.fromFields) as [string, any][]) v.accessForContent = ff.has(k);
+  for (const k of ff) g.fromFields[k] ??= { ...authorsBlock(), accessForAuthor: true, accessForContent: true };
+  return g;
+}
+
+/** A spec normalised the way rightsOf reads it back — for the comparison after the save. */
+async function rightsWant(s: Stand, spec: any, fields: any[]) {
+  if (spec === "all" || spec === "nobody") return spec;
+  const names = async (type: "GROUP" | "PERSON", keys: string[] = []) => (await Promise.all(keys.map((k) => orgUnit(s, type, k)))).map((u) => u.name).sort();
+  const out = clean({ groups: await names("GROUP", spec.groups), persons: await names("PERSON", spec.persons), author: spec.author || undefined,
+    participants: spec.participants || undefined, fromFields: (spec.fromFields ?? []).map((k: string) => nameOf(fieldBy(fields, k))).sort() });
+  return Object.keys(out).length ? out : "nobody";
+}
+const rightsKey = (r: any) => JSON.stringify(typeof r === "string" ? r : { ...r, groups: r.groups?.slice().sort(), persons: r.persons?.slice().sort(), fromFields: r.fromFields?.slice().sort() });
+
+/** Save the actions of `set` on a target, flip «выборочно» (chosenAccessRight) to match, re-read and compare. */
+async function rightsSave(s: Stand, at: RightsAt, set: Record<string, any>, dryRun = false) {
+  const bad = Object.keys(set).filter((k) => !at.actions.includes(k));
+  if (bad.length) throw new Error(`${at.what} has no action ${bad.join(", ")} — it takes ${at.actions.join(", ")}`);
+  const cur = await at.load(), next = structuredClone(cur);
+  for (const [k, spec] of Object.entries(set)) next[k] = await rightsApply(s, cur[k], spec, at);
+  if (dryRun) return { what: at.what, dryRun: true, body: Object.fromEntries(Object.keys(set).map((k) => [k, next[k]])) };
+  await at.save(next);
+  const want = Object.fromEntries(await Promise.all(Object.entries(set).map(async ([k, spec]) => [k, await rightsWant(s, spec, at.fields)])));
+  // a read right after the save may still answer the old rights: read again for a few seconds
+  let after: any, mismatch: any[] = [];
+  for (let i = 0; i < 4; i++) {
+    if (i) await sleep(1500);
+    after = await at.load();
+    mismatch = Object.keys(set).map((k) => ({ action: k, want: want[k], got: rightsOf(after[k], at.fields) })).filter((m) => rightsKey(m.want) !== rightsKey(m.got));
+    if (!mismatch.length) break;
+  }
+  const on = at.actions.some((k) => after[k] && !after[k].accessForAll);
+  const kept = at.flag ? (await at.flag(on)) === "keep" : false;
+  // a flag written right after the rights may be overtaken by a late earlier write: check it and write again
+  for (let i = 0; at.flag && at.flagNow && i < 3 && (await at.flagNow()) !== on; i++) { await sleep(1500); await at.flag(on); }
+  return { what: at.what, chosenAccessRight: at.flag ? on || (kept ? "stays on" : false) : undefined,
+    note: kept ? "every action is «all» again, but a BO's «выборочно» lock cannot be turned off through the API (the UI never does it either) — it only marks the BO [I]" : undefined,
+    rights: Object.fromEntries(at.actions.map((k) => [k, rightsOf(after[k], at.fields)])), mismatch };
+}
+
 const tools: Tool[] = [
   // 1. connection
   { name: "stand_list", description: "Every stand account this server keeps — all equal, none is the default — each asked live: name, stand host, login, alive (the session works) or the error, who it logs in as (fio, email) and which company (tenant) it selects (companyCode, companyId, personId, the company's Person BO id personBoId). Start here; several accounts and the user has not said which → ask them, then pass `stand` on every call. Never shows a token.",
@@ -1423,12 +1609,14 @@ const tools: Tool[] = [
           tabId: f.tabId, grid: f.gridPosition && [f.gridPosition.x, f.gridPosition.y, f.gridPosition.cols, f.gridPosition.rows].join("/"),
           refBoId: f.refBoId, required: f.isRequired || undefined, column: f.tableColToShow ? f.tableColOrderIndex ?? true : undefined })) });
     } },
-  { name: "persons_find", description: "Users of the company by a piece of name or e-mail (v2/org-unit/load-filtered-persons-v2): id, name, email, groups. The id is what a Person field or a rights subject takes.",
+  { name: "persons_find", description: "Users of the company by a piece of name or e-mail (v2/org-unit/load-filtered-persons-v2; the stand's search does not match e-mails, so a filter with «@» reads the whole list and matches the e-mail here): id, name, email, groups. The id is what a Person field or a rights subject takes.",
     props: { filter: { type: "string" }, limit: { type: "number" } }, required: ["filter"],
     run: async (a) => {
       const s = stand(a);
-      const groups = (await s.call("v2/org-unit/load-filtered-persons-v2", { filter: a.filter, chosenPersonIds: [] }, { limit: a.limit ?? 20, offset: 0 })) ?? [];
-      return groups.flatMap((g: any) => (g.persons ?? []).map((p: any) => ({ id: p.id, name: p.name, email: p.email, groups: p.parentGroupNames || undefined })));
+      const mail = String(a.filter).includes("@"), lc = String(a.filter).toLowerCase();
+      const groups = (await s.call("v2/org-unit/load-filtered-persons-v2", { filter: mail ? "" : a.filter, chosenPersonIds: [] }, { limit: mail ? 1000 : a.limit ?? 20, offset: 0 })) ?? [];
+      return groups.flatMap((g: any) => g.persons ?? []).filter((p: any) => !mail || p.email?.toLowerCase().includes(lc)).slice(0, a.limit ?? 20)
+        .map((p: any) => ({ id: p.id, name: p.name, email: p.email, groups: p.parentGroupNames || undefined }));
     } },
 
   // 3. the archive
@@ -1572,11 +1760,17 @@ const tools: Tool[] = [
         await sleep(3000);
         if (a.code) await s.call(BO_ + "save-business-object-code", { businessObjectId: id, businessObjectCode: a.code });
         const done = a.fields?.length ? await addFields(s, id, a.fields, a.window) : { added: [], window: undefined, notes: [] as string[] };
-        const bo = await loadBo(s, id);
+        let bo = await loadBo(s, id);
+        if (a.code && bo.code !== a.code) {
+          await s.call(BO_ + "save-business-object-code", { businessObjectId: id, businessObjectCode: a.code });
+          await sleep(1000); bo = await loadBo(s, id);
+          done.notes.push(bo.code === a.code ? `the code was overwritten after the first set (trap 24) — set again: ${a.code}` : `the code is «${bo.code}», not «${a.code}» even after a second set — bo_code_set it`);
+        }
+        done.notes.push(...await closeSystemTabs(s, id));
         if (!a.code && /_[A-Za-z0-9]{16}$/.test(bo.code ?? "")) done.notes.push(`the code «${bo.code}» carries the rename-race uniquifier (trap 24) — bo_code_set it`);
         return clean({ id, name: bo.name, code: bo.code, boCategory: bo.boCategory, group: g.name,
           url: `${s.c.origin}/business-objects/editing/${id}/object-editing`, window: done.window, notes: done.notes, fields: fieldRows(bo),
-          next: "compare fields with what you asked; codes of tabs and rights are not set by this tool (R5, §5k)" });
+          next: "compare fields with what you asked; codes of tabs are not set by this tool (§5k); rights → rights_save" });
       } catch (e: any) {
         throw new Error(`${e.message} — the BO ${id} («${created.name}») EXISTS on the stand: finish it with bo_fields_save, or bo_delete it`);
       }
@@ -2321,6 +2515,37 @@ const tools: Tool[] = [
         tell: `Look at \`search\` first (an existing issue → add to it instead). Then give the user \`url\`: it opens a filled issue form on GitHub, they read it and press «Submit new issue» under their own account.${cut ? " The text was too long for a link and was cut — give the user the full text to paste." : ""}` };
     } },
 
+  // 13a. access rights (R5)
+  { name: "rights_read", description: "Who may do what (R5): the rights of a BO (actions all, view, edit, create, delete, archive, export, duplicate, add), of one field (view, edit), of one tab (view) or of a menu item (view). Each action reads \"all\" (everyone), \"nobody\" or its subjects: groups, persons (names), author («Автор (инициатор)» — the records a user created), participants («Участники»), fromFields (Person fields whose person sees the record), other (untested author flags: Head, Employees, Department…). An admin always sees everything whatever this says. `subjects: true` adds what may be granted: groups and users of the company, the BO's Person fields.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
+      field: { type: "string", description: "A field (code, fieldId or label) — its rights instead of the BO's" },
+      tab: { type: "string", description: "A tab (id, code or label) of any TAB_GROUP of the BO — its rights" },
+      menuItemId: { type: "string", description: "A menu item — its rights (no BO needed)" }, menu: { type: "string", description: "A menu item by code or name" },
+      subjects: { type: "boolean" } },
+    run: async (a) => {
+      const s = stand(a), at = await rightsAt(s, a), g = (await at.load()) ?? {};
+      const out: any = { what: at.what, rights: Object.fromEntries(at.actions.map((k) => [k, rightsOf(g[k], at.fields)])) };
+      if (a.subjects) {
+        const units = await orgUnits(s, "");
+        out.groups = units.filter((u) => u.type === "GROUP").map((u) => ({ id: u.id, name: u.name }));
+        out.persons = units.filter((u) => u.type === "PERSON").map((u) => ({ id: u.id, name: u.name }));
+        if (at.boId) out.personFields = ((await s.call(BO_ + "load-org-field-record-list", { businessObjectId: at.boId })) ?? [])
+          .map((f: any) => ({ id: f.id, name: f.name, code: at.fields.find((x) => x.fieldId === f.id)?.code ?? undefined, kind: f.kind }));
+      }
+      return clean(out);
+    } },
+  { name: "rights_save", write: true, description: "Set who may do what (R5) on a BO, a field, a tab or a menu item — target as in rights_read. `set` = {<action>: spec}; only the actions you pass change. Spec: \"all\" (everyone), \"nobody\" (an admin still sees everything), or {groups: [name|id], persons: [e-mail|name|id], author: true, participants: true, fromFields: [Person field code]} — the action's subjects become EXACTLY these (anything else is removed). Groups go in through orgUnitToAdd/orgUnitToDelete (trap 3), the null author block is built (trap 2), then «выборочно» (chosenAccessRight) is switched on while any action is not \"all\" and off otherwise (a BO's lock only turns on); read back and compared → `mismatch` rows. Hidden is not secret: the API still returns a hidden field or tab to a script. A system tab is closed with tab + {view: \"nobody\"}. Ask the user first; `dryRun: true` shows the bodies only.",
+    props: { boId: { type: "string" }, code: { type: "string" }, field: { type: "string" }, tab: { type: "string" },
+      menuItemId: { type: "string" }, menu: { type: "string" },
+      set: { type: "object", description: "{view: \"all\" | \"nobody\" | {groups, persons, author, participants, fromFields}, edit: …}" },
+      dryRun: { type: "boolean" } },
+    required: ["set"],
+    run: async (a) => {
+      const s = stand(a);
+      if (!a.set || typeof a.set !== "object" || !Object.keys(a.set).length) throw new Error("pass `set`: {<action>: \"all\" | \"nobody\" | {groups, persons, author, participants, fromFields}}");
+      return clean(await rightsSave(s, await rightsAt(s, a), a.set, a.dryRun));
+    } },
+
   // 14. notifications
   { name: "notifications_read", description: "The bell (header «События»): counters and the latest entries with ids. `newThisSession` marks what appeared after this server first looked — the ones your work raised (every import leaves «Анализ импорта завершен»).",
     props: { limit: { type: "number" } },
@@ -2411,7 +2636,7 @@ const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the
   "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " +
   "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " +
   "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " +
-  "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " +
+  "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " +
   "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " +
