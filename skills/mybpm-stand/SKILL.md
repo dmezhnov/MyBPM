@@ -50,9 +50,10 @@ that the ✎ tools write and need the user's OK, and how an archive built in a c
 **Not connected (no `stand_*` tool among yours) and the task touches a stand → tell the user in your first
 reply and give them the install steps — you cannot install it yourself** (the app's own Install dialog, which
 the user confirms; in a Desktop or claude.ai chat your code runs in a cloud sandbox). The steps per app are the
-first bullet of `### 0U.8 The mybpm-stand MCP server`: Claude Desktop (Chat, Cowork) — download
-`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip`, Customize → Plugins → «+ Add» →
-Upload plugin → that file → Continue, then a new chat (Add marketplace there does not put it on the account);
+first bullet of `### 0U.8 The mybpm-stand MCP server`: Claude Desktop (Chat, Cowork) — Customize → Plugins →
+«+ Add» → Add marketplace `dmezhnov/MyBPM` (adds only the catalogue), then Plugins → Discover → «+» on Mybpm →
+Continue, then a new chat (or Upload plugin with
+`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — a fixed version);
 Claude Code (also the Desktop Code tab) — `claude plugin marketplace add dmezhnov/MyBPM`,
 `claude plugin install mybpm@mybpm`, restart. Meanwhile the recipes of the document as written, where your code
 reaches the stand.
