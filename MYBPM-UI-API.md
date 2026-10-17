@@ -1051,14 +1051,27 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
-  `import_rollback` and `bo_delete` without `confirm: true` only return the preview.
+  `bo_delete`, `co_build`, `record_save`, `record_delete`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `import_rollback`, `bo_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
   `TAB_GROUP` `tabs` for the tabbed fields, the first field the registry column, the record window, then every
   code by its setter (rule 4 + 12) and a read-back. Tab codes stay derived from the labels and the «Системные»
-  tab is not closed — §5k and R5 step 6 by hand. `co_build` runs the R2a draft cycle and removes the draft on
-  any failure, so nothing half-built stays.
+  tab is not closed — §5k and R5 step 6 by hand. Option codes (`options[].code`, `bo_fields_save` edit
+  `optionCodes`) are set by a later EDIT of `options` and read back, because the stand regenerates them after
+  the add (§5h «Единичный выбор»). `co_build` runs the R2a draft cycle and removes the draft on any failure, so
+  nothing half-built stays.
+- **The record tools make §6a / §6b whole.** `record_save` takes values by field code, fieldId or label in
+  plain form (text, number, `true`/`false`, an ISO date, the option label or code, a record id or an array of
+  them, `{RUS, KAZ, ENG}` …) and converts each by the §6b value table. `scripts: true` (the default) = the
+  §6b form cycle — the BO's hooks run as in the UI dialog, the record counts as saved only on
+  `CLOSE_DIALOG_SAVE`, otherwise the field errors come back and nothing is kept; `scripts: false` = the §6a
+  draft cycle (no hook, no field rules, no counter number, no `DROPDOWN_SINGLE`). A kanban card move (R9
+  step 4) is a `record_save` of its status field. «Data too large» (trap 73) is retried for a minute; a save
+  whose apply never got an answer returns `saved: "unknown"` and is NOT deleted — `record_read` it later
+  (§5b «Data too large»). `records_find` gives the registry COLUMNS only (trap 47), `where` matches a code
+  exactly over up to 2000 records; `record_read` gives every field, tabs included, and the `BO` / `CO` values
+  through a bare draft (§6a «Reading an existing record»). `record_delete` is soft: state `REMOVED`.
 - **The stand contradicts a document → `platform_report`** (the rule at the top of this document): it returns
   the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
   stands, logins, people or companies. Ask the user before giving them the link to submit.
@@ -1095,10 +1108,14 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
 | `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs); with `confirm` the delete | «Delete a BO» in §5b |
 | `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
+| `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
+| `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
+| `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
+| `record_delete` ✎ | the preview (each record's values); with `confirm` the soft delete | `delete-bo-instance` (trap 46) |
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
-| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R5–R7, R9, R10, scripts, processes) | §0U.4 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R5–R7, the xlsx of records, R9 kanban settings, R10, scripts, processes) | §0U.4 |
 
 ✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
 the model.
@@ -1824,7 +1841,7 @@ unless marked — re-read the BO (`load-business-object-by-id`) after each write
 | Change a field code | gear → tab 2 «Инфо» → pencil → dialog «Изменение кода» (not for natives, not when `isCodeReadonly`) | `field/refresh-code` — the same analyse / apply cycle as the BO code (§5j «Changing the code») |
 | Move / resize a field | drag / resize on the grid; a move resets `needFreezeWhenScroll` to false | portion save, `editedFields [{fieldId, gridPosition, needFreezeWhenScroll:false}]` `[C]` (R1) |
 | Default value | the field body editor of its type (CHECKBOX: the checkbox in the header; `*_LANG`: one input per language tab) | `defaultValue` / `defaultValueMap` on the field DTO + `editedFields`; a dropdown / radio stores the chosen option id |
-| List options (`DROPDOWN_SINGLE` with a local list, `RADIO_BUTTON_GROUP`) | the field body: chip selector / item list — add, rename per language, delete, code | `options[]` `{id, label, labelMap, orderIndex, code, color}` on the field DTO; a deleted one also goes into `deletedFieldOptionIds`; an option code is checked by `verify-business-field-code` |
+| List options (`DROPDOWN_SINGLE` with a local list, `RADIO_BUTTON_GROUP`) | the field body: chip selector / item list — add, rename per language, delete, code | `options[]` `{id, label, labelMap, orderIndex, code, color}` on the field DTO; a deleted one also goes into `deletedFieldOptionIds`; an option code is checked by `verify-business-field-code` and set by an EDIT of `options` after the add (§5h «Единичный выбор») |
 | Progress steps (`PROGRESS_BAR`) | gear → tab 1 «Отображение» → «Добавить шаги», label (+ globe), «Изменить код», delete, «Сохранить» | `progressSteps[]` `{id, orderIndex, label, code, labelMap}` (`[C]`, §5i), deleted ones in `deletedFieldProgressStepIds`; a step code: `verify-progress-step-code` then `save-progress-step-code` |
 | Questionnaire rows / columns | the field body `app-questionnaire`: add column / add row, label per language, code, delete; single / multiple in gear → «Отображение» | `questionnaires[]` `{id, label, labelMap, orderIndex, isColumn, code}`, deleted ones in `deletedFieldQuestionnaireIds`; `questionnaireIsMultiple` |
 | `STATIC_TEXT` body | the field body: a summernote editor with language tabs; the type has NO gear | `staticValueMap` via `editedFields` `[C]` (§5b «The same thing through the API») |
@@ -3395,8 +3412,10 @@ appears when the referenced BO has a field pointing back).
   `instance-field-form/load-field-data` (a draft of the record) — `storedValue` = `"[\"<boiId>\", …]"` `[C]`.
 - **«Data too large» (`EsDataTooLargeException`) comes and goes** `[C]`: `validate-apply-remove-draft` and even
   `create-draft` may fail with it and go through a minute later, and a record whose save «failed» may
-  already BE saved (with its back link). It is the search-index memory breaker of the stand,
-  not the payload — retry, then check what was stored before retrying a create.
+  already BE saved (with its back link) — a NEW record whose form save failed this way was stored, so
+  `delete-boi` after such a failure deletes a kept record. A repeated apply answering `NoBoInstanceDraft`
+  after such a failure = the first apply went through. It is a transient memory limit of the stand,
+  not the payload — retry, then check what was stored before retrying a create or cancelling.
 - In the export (`MYBPM-IMPORTS.md` §3 «Reference fields») `linkedFieldId` becomes
   `boRefStruct.linkedFieldCode` and `copyFromFieldId` becomes `copyFromFieldCode` — both by CODE — and
   `linkedCoSettings` becomes a map `{"<source BO code>": {linkedFieldCode, removeType}}`. All three import
@@ -3539,7 +3558,11 @@ cycle (§6b) and the card.
   `generate-business-form-field {boId, fieldType:"RADIO_BUTTON_GROUP"}` set `optionSource:"FROM_FIELD"`,
   `refBoId:null`, `options:[{instanceId:null, id, label, labelMap, color, code:null, orderIndex, hiddenInKanban:false}]`
   (ids from `v2/id-loader/load-portion`) and, for an option chosen in advance, `defaultValue: "<option id>"` —
-  all stored on ADD; option codes come back generated from the labels (`Da`, `Net`, `Mozhet_byt`).
+  all stored on ADD; option codes come back generated from the labels (`Da`, `Net`, `Mozhet_byt`) `[C]`. **Set
+  the codes by a later EDIT of `options`** (the same option ids, `code` changed; `editedFields: ["options"]`)
+  and read them back: the stand regenerates the codes a moment after the add, so an EDIT in the very next
+  portion save may be overwritten — repeat it after a second until the read-back holds `[C]`. The constructor
+  UI sets an option code the same way — a normal portion EDIT of `options`, no setter of its own `[C]`.
 - **The gear** of a radio group has only the common block: «Необходимо заполнить», «Только для чтения», «Не
   сохранять значение», «Убрать заголовок», «Фиксировать при скроллинге» — no source switch (dictionary) and no
   «Уникальное». The options are edited in the field body (add / rename / delete / code / tick = default).
@@ -4567,6 +4590,12 @@ The value DTO (the client's class `M`, built by `M.of(draftId, boId, boiId, isDe
   `["<source BO id>-<boiId>", …]` (§6b table); both stored this way, and no script runs. **Not for
   removing from an M:N field** (two `TABLE` fields linked to each other): the removed record's whole back
   field is emptied, its other links included (§5h «Reference fields») `[C]`.
+- **Reading an existing record** without a hook `[C]`: a bare `create-draft` (step 1), then
+  `v2/instance-field-form/load-field-data` P `{boId, boiId, draftId}` → every field's `storedValue` of the
+  record, `BO` and `CO` ids included (`"[\"<boiId>\", …]"`), which `v2/load-boi-values` answers `""`;
+  `remove-draft` P `{draftId}` → `null` drops it (a later read of it: `NoBoInstanceDraftWithId`). No script runs
+  — unlike the form cycle's «open EXISTING», which fires «Открытие». A `DATE` read this way may differ by hours
+  from the same record's `load-boi-values` value `[I]` — compare dates by `load-boi-values`.
 - **A `DATE` value** is the ISO instant as a JSON string (`value: "\"2026-09-30T22:00:00.000Z\""`), and
   **`value: null` or `""` clears it** `[C]` — the only way to empty a date without the card, since no xlsx cell does
   (`MYBPM-IMPORTS.md` §19.6).
