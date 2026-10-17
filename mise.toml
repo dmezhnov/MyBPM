@@ -111,7 +111,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the records (both save cycles, a veto, the ES breaker, find, read, delete) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -228,6 +228,33 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["record_delete", { code: "mcp_probe_records", ids: ["@records_find.records.0.id"] }, (r) => r.records[0].values.title === "Первая" && !r.deleted],
   ["record_delete", { code: "mcp_probe_records", ids: ["@records_find.records.0.id"], confirm: true }, (r) => r.deleted[0].state === "REMOVED" && !r.warning],
   ["records_find", { code: "mcp_probe_records" }, (r) => r.total === 1],
+  // records through xlsx: a BO with a unique code, a dropdown, a checkbox, a date and a TABLE block of clients; the template,
+  // a plain block value with no key refused, an act (2 new, 1 failing) cancelled, again and applied, the export, an update by path
+  ["bo_find", { code: "mcp_probe_customer" }, (r) => r.exists === true],
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe xlsx", code: "mcp_probe_xlsx", window: false, fields: [
+    { label: "Код", type: "INPUT_TEXT", code: "code", unique: true }, { label: "Статус", type: "DROPDOWN_SINGLE", code: "status", options: ["Новый", "В работе"] },
+    { label: "Готово", type: "CHECKBOX", code: "done" }, { label: "Срок", type: "DATE", code: "due" },
+    { label: "Клиенты", type: "BO", code: "clients", refBoId: "@bo_find.id" }] }, (r) => r.code === "mcp_probe_xlsx"],
+  ["xlsx_template", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx" },
+    (r) => r.headerRows === 2 && r.columns.length === 5 && r.columns[4].field === "clients" && r.columns[4].sub === "Наименование" && r.key[0] === "code"],
+  ["xlsx_import", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx", rows: [{ code: "X-1", clients: ["ES breaker client"] }] }, (r) => /is a key of/.test(r)],
+  ["xlsx_import", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx", rows: [
+    { code: "X-1", status: "Новый", done: true, due: "2026-10-05", clients: [{ "Наименование": "ES breaker client" }] }, { code: "X-2", status: "В работе" }, { code: "X-3", status: "Плохой" }] },
+    (r) => r.rows === 3 && r.newRows === 2 && r.errorRows === 1 && r.failing[0].line === 5 && /`Плохой`/.test(r.failing[0].error)
+      && r.warnings.some((w: string) => /Плохой/.test(w)) && /import\.xlsx$/.test(r.file) && /NOTHING/.test(r.next)],
+  ["xlsx_import", { importId: "@xlsx_import.importId", cancel: true }, (r) => r.canceled === true],
+  ["xlsx_export", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx" }, (r) => r.total === 0],
+  ["xlsx_import", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx", rows: [
+    { code: "X-1", status: "Новый", done: true, due: "2026-10-05", clients: [{ "Наименование": "ES breaker client" }] }, { code: "X-2", status: "В работе" }] },
+    (r) => r.newRows === 2 && r.errorRows === 0],
+  ["xlsx_import", { importId: "@xlsx_import.importId", confirm: true }, (r) => r.applied === true && r.newRows === 2],
+  ["xlsx_export", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx" }, (r) => { const x = r.records.find((y: any) => y.values.code === "X-1")?.values;
+    return r.total === 2 && x?.status === "Новый" && x.done === "Да" && x.due === "05.10.2026" && x.clients?.[0]?.["Наименование"] === "ES breaker client"
+      && r.columns.includes("Клиенты › Наименование") && r.columns.includes("Внутренний айди"); }],
+  ["xlsx_import", { code: "mcp_probe_xlsx", path: "@xlsx_export.file" }, (r) => r.newRows === 0 && r.updatedRows === 2 && r.errorRows === 0],
+  ["xlsx_import", { importId: "@xlsx_import.importId", cancel: true }, (r) => r.canceled === true],
+  ["xlsx_export", { code: "mcp_probe_xlsx", search: "x-2", out: "dist/mcp-test/xlsx" }, (r) => r.total === 1 && r.records[0].values.status === "В работе"],
+  ["bo_delete", { code: "mcp_probe_xlsx", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_records", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_co", confirm: true }, (r) => r.boCategory === "BO_COMPOSITE" && r.deleted === true],
   ["bo_delete", { code: "mcp_probe_customer" }, (r) => r.fields === 7 && r.deleted === undefined && Array.isArray(r.usage.scripts) && Array.isArray(r.usage.refBos)],
@@ -256,7 +283,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
