@@ -1,0 +1,56 @@
+name: Platform discrepancy
+description: The stand behaved unlike MYBPM-IMPORTS.md or MYBPM-UI-API.md say (on the latest plugin). De-identified — no hosts, companies, people or record data.
+title: "[discrepancy] "
+labels: ["platform-discrepancy"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One fact per issue. Use placeholders (`<stand>`, `<company-a>`, `<user>`) instead of real hosts, companies, logins and people; keep record data out.
+        Search the [existing reports](https://github.com/dmezhnov/MyBPM/issues?q=is%3Aissue+label%3Aplatform-discrepancy) first.
+  - type: dropdown
+    id: document
+    attributes:
+      label: Document
+      options: ["MYBPM-IMPORTS.md", "MYBPM-UI-API.md"]
+    validations:
+      required: true
+  - type: input
+    id: heading
+    attributes:
+      label: Heading
+      description: The heading (§, item, trap number) the fact is under
+    validations:
+      required: true
+  - type: dropdown
+    id: mark
+    attributes:
+      label: Mark
+      description: The mark the document gives the fact
+      options: ["[C]", "[I]", "[U]", "none"]
+  - type: textarea
+    id: doc_says
+    attributes:
+      label: What the document says
+      description: Quote it
+    validations:
+      required: true
+  - type: textarea
+    id: stand_did
+    attributes:
+      label: What the stand did instead
+      description: The exact answer or error text, de-identified
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal repro
+      description: The API calls (path, params, body) or UI steps that show it, de-identified
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+    validations:
+      required: true

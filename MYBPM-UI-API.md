@@ -38,6 +38,18 @@ answers a code that may look nothing like its name. Do not take that code for a 
 
 **Status markers**: `[C]` confirmed on a stand, `[I]` inferred, `[U]` unverified.
 
+**The stand does something else than this document says → report it.** Only on the latest release (the
+plugin version — the SKILL.md beside this file names it, so does the MCP server — equals `version` of `.claude-plugin/plugin.json` on `main` of `dmezhnov/MyBPM`;
+an older copy → update and re-check first, the fact may be fixed). Search the open reports first
+(`https://github.com/dmezhnov/MyBPM/issues?q=is:issue+label:platform-discrepancy`) — a known one gets a comment,
+not a twin. One fact per issue, de-identified: placeholders (`<stand>`, `<company-a>`, `<user>`) for every host,
+company, login and person, no record data. Show the user the text and get their OK — the repository is public.
+The issue form takes its fields from the URL: `https://github.com/dmezhnov/MyBPM/issues/new?template=platform-discrepancy.yml`
+`&title=…&document=MYBPM-UI-API.md&heading=…&mark=[C]|[I]|[U]|none&doc_says=…&stand_did=…&repro=…&version=…`
+(URL-encoded, under ~7 500 characters); the user opens it and presses «Submit new issue» under their own GitHub
+account. The `mybpm-stand` MCP server's `platform_report` builds that URL and refuses a text that names the
+user's own stands or accounts.
+
 ---
 
 ## 0U. COOKBOOK — drive a running stand from this section alone
@@ -881,7 +893,10 @@ and dropping the rest «for scope» is a fraction reported as done.
    `load-business-object-by-id`, never from a guess. **Then rename every NEW code to the naming convention**
    (rule 12) with the dedicated setter — `save-business-object-code` for a BO (§5j),
    `save-business-field-code` for a field (PARAMS `{businessObjectId, businessFieldId, businessFieldCode}`) —
-   before any script, kanban template or menu item refers to it.
+   before any script, kanban template or menu item refers to it. **A setter called right after the portion save
+   that added the field may not see it yet** `[C]`: `NoBoFieldWithId … «Данное поле не сохранено в бизнес-объекте»`
+   for about a second, then the same call passes — retry it every 0.5 s on exactly that error (the widget code
+   and url setters the same `[I]`).
 5. **`create-bo` writes immediately.** So does `apply-update-cmd`, so does every `v2/co/add-*`. There is
    no dialog to cancel; the only undo is deletion.
 6. **One structure import per company at a time**, and only `apply-import` writes — everything before it
@@ -1035,9 +1050,18 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   missing right comes back as the stand's own `SecurityError`. With the server connected, never ask for a
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
-- **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `notifications_clear`, `stand_call`
-  change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
-  `import_rollback` without `confirm: true` only returns the preview.
+- **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
+  `bo_delete`, `co_build`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `import_rollback` and `bo_delete` without `confirm: true` only return the preview.
+- **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
+  ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
+  `TAB_GROUP` `tabs` for the tabbed fields, the first field the registry column, the record window, then every
+  code by its setter (rule 4 + 12) and a read-back. Tab codes stay derived from the labels and the «Системные»
+  tab is not closed — §5k and R5 step 6 by hand. `co_build` runs the R2a draft cycle and removes the draft on
+  any failure, so nothing half-built stays.
+- **The stand contradicts a document → `platform_report`** (the rule at the top of this document): it returns
+  the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
+  stands, logins, people or companies. Ask the user before giving them the link to submit.
 - **An archive built where the stand is unreachable goes in through `archive_put`.** In a claude.ai or Claude
   Desktop chat your code runs in a cloud sandbox: the server cannot read a file there. Do not zip it there —
   send the JSONL lines of `0000001.mybpm` (`MYBPM-IMPORTS.md` §0.1) to `archive_put` in parts of up to
@@ -1066,9 +1090,15 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `import_rollback` ✎ | the rollback preview; with `confirm` the rollback | §5 «Rollback trap» |
 | `import_log` | the import log and the open import | `load-import-file-records`, `load-import-state` |
 | `structure_export` | exactly these BOs into the export basket, the file to the user's disk, the user's basket put back | R4a, R8 |
+| `bo_create` ✎ | a BO / dictionary / panel / process BO with its fields laid out, coded, window set, read back | R1 steps 1–8 + «Layout», rule 4 + 12 |
+| `bo_fields_save` ✎ | add, edit (any field key), delete fields of an existing BO in one save | R1 step 7, §5h |
+| `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
+| `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs); with `confirm` the delete | «Delete a BO» in §5b |
+| `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
+| `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
-| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R1, R2, R5–R7, R9, R10) | §0U.4 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R5–R7, R9, R10, scripts, processes) | §0U.4 |
 
 ✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
 the model.
@@ -1808,7 +1838,7 @@ unless marked — re-read the BO (`load-business-object-by-id`) after each write
 | Print forms | rail → «Печатные формы» → panel: list + a draft dialog (add / edit) | §5i «Print forms» `[C]` |
 | Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
 | BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
-| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` (+ `load-bo-usage`) for the dialog, then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
+| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog, then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
 | BO groups | group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» | the group lifecycle calls of §5 «Verifying an import» `[C]`; a non-empty group's delete: §12 |
 | Composite attributes | «Связи» view of the composite | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
 
