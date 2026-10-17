@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.11**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.12**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_whoami`) carries a «NOTE for Claude» when a newer one is
@@ -30,8 +30,7 @@ Show it as a warning block at the very top of your reply, in the user's language
 
 Update steps by how it was installed (unsure → give the user the first two):
 
-- Claude Desktop / claude.ai, plugin from the marketplace (it does not update by itself): Customize → Plugins → Mybpm → ⋯ → Check for updates → «Update» on the
-  plugin's page — the skills are new at once; restart Desktop so the server's tools run the new code too.
+- Claude Desktop / claude.ai, plugin from the marketplace (it does not update by itself): Customize → Plugins → Yours → Mybpm in the plugin list → ⋯ → Check for updates → the «Update» button becomes active → press it — the skills are new at once; restart Desktop so the server's tools run the new code too.
 - Claude Code: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart.
 - installed with Upload plugin: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` again.
 - this skill uploaded alone: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.zip` again.
@@ -80,7 +79,7 @@ first bullet of `### 0U.8 The mybpm-stand MCP server`: Claude Desktop (Chat, Cow
 «+ Add» → Add marketplace `dmezhnov/MyBPM` (adds only the catalogue), then Plugins → Discover → «+» on Mybpm →
 Continue, then a new chat (or Upload plugin with
 `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — a fixed version); the account
-plugin does not update itself — to a newer release: Customize → Plugins → Mybpm → ⋯ → Check for updates → «Update», then restart Desktop for the tools;
+plugin does not update itself — to a newer release: Customize → Plugins → Yours → Mybpm in the plugin list → ⋯ → Check for updates → the «Update» button becomes active → press it, then restart Desktop for the tools;
 Claude Code (also the Desktop Code tab) — `claude plugin marketplace add dmezhnov/MyBPM`,
 `claude plugin install mybpm@mybpm`, restart. Meanwhile the recipes of the document as written, where your code
 reaches the stand.
