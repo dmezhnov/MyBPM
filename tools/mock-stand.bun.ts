@@ -410,6 +410,153 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/user-notification/delete-notification": bell = bell.filter((n) => n.id !== params.notificationId); return null;
     case "v2/user-notification/delete-notifications": bell = []; return null;
   }
+  return scriptsAndProcesses(route, params, body);
+}
+
+// ── scripts (§5g) and processes (§5f): versions, wiring, defs by module/script, a process diagram, run ways, steps ──
+type SVer = { boScriptModId: string; version: string; isWork: boolean; isTest: boolean; comment: string | null; w: Record<string, any> };
+type PVer = { boProcessId: string; version: string; isWork: boolean; isTest: boolean; comment: string | null; def: any; runWayMap: Record<string, any> };
+const sVers = new Map<string, SVer[]>(), pVers = new Map<string, PVer[]>(), defs = new Map<string, any>(), written = new Set<string>();
+const localMethods = new Map<string, { scriptId: string; methodName: string }[]>(); // per BO: every version lists them (trap 68a)
+let globals: { scriptId: string; methodName: string }[] = [];
+const rwDrafts = new Map<string, { boProcessId: string; runWayMap: Record<string, any> }>(), forced = new Map<string, Set<string>>();
+const HOOK_KEYS = ["onOpenFormScriptId", "afterSaveScriptId", "onCloseScriptId", "onInstanceCreationId"];
+const dk = (m: string, s: string) => `${m}/${s}`;
+const setPath = (o: any, path: string, v: unknown) => {
+  const ks = path.split("."), last = ks.pop()!;
+  const at = ks.reduce((x, k) => (x[k] ??= {}), o);
+  if (v === undefined) delete at[last]; else at[last] = structuredClone(v);
+};
+const applyCmd = (o: any, cmd: any) => { for (const op of cmd.forward?.list ?? []) setPath(o, op.dotPath, op.type === "Unset" ? undefined : op.value); };
+const sVersOf = (boId: string) => {
+  if (!sVers.has(boId)) sVers.set(boId, [{ boScriptModId: nextId("SMOD"), version: "1", isWork: false, isTest: true, comment: null,
+    w: { ...Object.fromEntries(HOOK_KEYS.map((k) => [k, null])), fieldScripts: {} } }]);
+  return sVers.get(boId)!;
+};
+const pVersOf = (boId: string) => {
+  if (!pVers.has(boId)) pVers.set(boId, [{ boProcessId: nextId("PVER"), version: "1", isWork: false, isTest: true, comment: null,
+    def: { figures: { [nextId("ENTER")]: { x: 100, y: 100, type: "Enter" } }, arrows: {} }, runWayMap: {} }]);
+  return pVers.get(boId)!;
+};
+const pVerById = (id: string) => [...pVers.values()].flat().find((v) => v.boProcessId === id);
+const ownerOf = (modId: string) => [...sVers.entries()].find(([, l]) => l.some((v) => v.boScriptModId === modId));
+const diag = (code: string, message: string) => ({ success: false, diagnosticMessageList: [{ type: "ERROR", messageCode: code, message }] });
+function translateDef(m: string, s: string) {
+  const d = defs.get(dk(m, s)), blocks = d?.blocks ?? {};
+  if (!Object.keys(blocks).length) return written.has(dk(m, s)) ? diag("noEntryPoint", "Нет точки входа") : diag("", "Не определён скрипт");
+  const hat = Object.values<any>(blocks).find((b) => b.type === "BlockFixEntryPoint" || b.type === "BlockFixMethod");
+  if (!hat) return diag("noEntryPoint", "Нет точки входа");
+  if (!hat.downBlockId || !blocks[hat.downBlockId]) return diag("block_noDownBlock", "Нет блока ниже");
+  return { success: true, diagnosticMessageList: [] };
+}
+function copyVersion<T extends { version: string; isWork: boolean; isTest: boolean; comment: string | null }>(list: T[], v: T, idKey: string, prefix: string): T {
+  const c: any = { ...structuredClone(v), [idKey]: nextId(prefix), version: String(Math.max(...list.map((x) => +x.version)) + 1), isWork: false, isTest: false };
+  for (const [k, d] of [...defs]) if (k.startsWith((v as any)[idKey] + "/")) defs.set(dk(c[idKey], k.split("/")[1]), structuredClone(d)); // same script ids
+  list.push(c);
+  return c;
+}
+function versionOp<T extends { version: string; isWork: boolean; isTest: boolean; comment: string | null }>(list: T[], op: string, id: string, idKey: string, prefix: string, comment?: string) {
+  const v = list.find((x: any) => x[idKey] === id)!;
+  if (op === "copy") copyVersion(list, v, idKey, prefix);
+  if (op === "remove") list.splice(list.indexOf(v), 1);
+  if (op === "comment") v.comment = comment ?? null;
+  if (op === "test") { list.forEach((x) => (x.isTest = false)); v.isTest = true; }
+  if (op === "work") { // the test one keeps only work and a new test copy appears
+    const wasTest = v.isTest;
+    list.forEach((x) => (x.isWork = false)); v.isWork = true;
+    if (wasTest) { v.isTest = false; copyVersion(list, v, idKey, prefix).isTest = true; }
+  }
+  return "";
+}
+function steps(boProcessId: string, boiId: string) {
+  const def = pVerById(boProcessId)?.def ?? { figures: {}, arrows: {} }, out: any[] = [], seen = new Set<string>();
+  let at = Object.keys(def.figures).find((k) => def.figures[k].type === "Enter");
+  while (at && !seen.has(at)) {
+    seen.add(at);
+    const fig = def.figures[at], outs = Object.entries<any>(def.arrows).filter(([, a]) => a.startFigureId === at);
+    const push = outs.find(([id]) => forced.get(boiId)?.has(id));
+    if ((fig.type === "Form" || fig.type === "Timer") && !push) { out.push({ figureId: at, state: "STAND" }); break; }
+    out.push({ figureId: at, state: "PASSED" });
+    if (fig.type === "Exit") break;
+    const exitArrow = Object.values<any>(defs.get(dk(boProcessId, at))?.blocks ?? {}).find((b) => b.targetArrowId)?.targetArrowId;
+    at = (push ?? outs.find(([id]) => id === exitArrow) ?? outs[0])?.[1].finishFigureId;
+  }
+  return out;
+}
+function scriptsAndProcesses(route: string, params: any, body: any): any {
+  const ids = (n: number) => Array.from({ length: n }, () => nextId("NID"));
+  switch (route) {
+    case "v2/bo-scripts-editor/load-bo-script-versions": return sVersOf(params.boId).map(({ w, ...v }) => v);
+    case "v2/bo-scripts-editor/load-bo-scripts": {
+      const v = sVersOf(params.boId).find((x) => x.boScriptModId === params.boScriptsId)!;
+      return { id: v.boScriptModId, boId: params.boId, ...structuredClone(v.w), methodScriptIds: (localMethods.get(params.boId) ?? []).map((m) => m.scriptId), methodsScriptId: null };
+    }
+    case "v2/bo-scripts-editor/save-bo-scripts": { // a null / "" hook is ignored (§5g): it keeps its id
+      const v = sVersOf(body.boId).find((x) => x.boScriptModId === body.id)!;
+      for (const k of HOOK_KEYS) if (body[k]) v.w[k] = body[k];
+      v.w.fieldScripts = structuredClone(body.fieldScripts ?? {});
+      return null;
+    }
+    case "v2/bo-scripts-editor/list-local-methods": return localMethods.get(ownerOf(params.boScriptsId)![0]) ?? [];
+    case "v2/bo-scripts-editor/create-local-method": {
+      const boId = ownerOf(params.boScriptsId)![0], m = { scriptId: nextId("LM"), methodName: params.methodName };
+      localMethods.set(boId, [...(localMethods.get(boId) ?? []), m]);
+      for (const v of sVersOf(boId)) defs.set(dk(v.boScriptModId, m.scriptId), { blocks: { [nextId("HAT")]: { type: "BlockFixMethod", methodName: m.methodName, params: {} } }, expressions: {} });
+      return m;
+    }
+    case "v2/bo-scripts-editor/delete-local-method": {
+      const boId = ownerOf(params.boScriptsId)![0];
+      localMethods.set(boId, (localMethods.get(boId) ?? []).filter((m) => m.scriptId !== params.scriptId));
+      return null;
+    }
+    case "v2/script/load-bo-def-list": return { list: [{ boId: "ANY" }] };
+    case "v2/script/load-new-ids": case "v2/bo-process-editor/load-new-ids": return ids(params.count);
+    case "v2/script/load-script-def": return structuredClone(defs.get(dk(params.scriptModuleId, params.scriptId)) ?? { blocks: {}, expressions: {} });
+    case "v2/script/apply-update-cmd": {
+      const k = dk(params.scriptModuleId, params.scriptId), d = defs.get(k) ?? { blocks: {}, expressions: {} };
+      applyCmd(d, body); defs.set(k, d); written.add(k);
+      return null;
+    }
+    case "v2/script/translate-script": return translateDef(params.scriptModuleId, params.scriptId);
+    case "v2/script/ensure-company-global-script-module": return { scriptModuleId: "GLOBALMOD0000001", scriptId: null };
+    case "v2/script/list-company-global-methods": return globals;
+    case "v2/script/create-company-global-method": {
+      const m = { scriptId: nextId("GM"), methodName: params.methodName };
+      globals.push(m);
+      defs.set(dk("GLOBALMOD0000001", m.scriptId), { blocks: { [nextId("HAT")]: { type: "BlockFixMethod", methodName: m.methodName, params: {} } }, expressions: {} });
+      return { scriptModuleId: "GLOBALMOD0000001", scriptId: m.scriptId };
+    }
+    case "v2/script/delete-company-global-method": globals = globals.filter((m) => m.scriptId !== params.scriptId); return null;
+    case "v2/script-browser/load-exit-variants": {
+      const def = pVerById(params.scriptModuleId)?.def;
+      return Object.entries<any>(def?.arrows ?? {}).filter(([, a]) => a.startFigureId === params.scriptId).map(([id]) => ({ id, displayName: id.slice(0, 6) }));
+    }
+    case "v2/bo-process-editor2/load-bo-process-versions": return pVersOf(params.boId).map(({ def, runWayMap, ...v }) => v);
+    case "v2/bo-process-editor2/load-dev-bo-process-id": return pVersOf(params.boId).find((v) => v.isTest)!.boProcessId;
+    case "v2/bo-process-editor/load-bo-process-def": return structuredClone(pVerById(params.boProcessId)!.def);
+    case "v2/bo-process-editor/apply-update-cmd": applyCmd(pVerById(params.boProcessId)!.def, body); return null;
+    case "v2/bo-process-editor/validate-def": {
+      const def = pVerById(params.boProcessId)!.def, figs = Object.entries<any>(def.figures), arrs = Object.values<any>(def.arrows), errs: any[] = [];
+      if (!figs.some(([, f]) => f.type === "Exit")) errs.push({ type: "ERROR", place: "COMMON", message: "Нет точка окончания" });
+      for (const [id, f] of figs) if (f.type !== "Exit" && !arrs.some((a) => a.startFigureId === id)) errs.push({ type: "ERROR", place: "FIGURE", id, message: "Из фигуры должен быть выход" });
+      return errs;
+    }
+    case "v2/bo-process-editor2/create-draft": { const id = nextId("RWD"); rwDrafts.set(id, { boProcessId: params.boProcessId, runWayMap: structuredClone(pVerById(params.boProcessId)!.runWayMap) }); return id; }
+    case "v2/bo-process-editor2/load-draft-data": return { runWayMap: rwDrafts.get(params.draftId)!.runWayMap };
+    case "v2/bo-process-editor2/update-draft": { const d = rwDrafts.get(params.draftId)!; for (const o of body) setPath(d, o.dotPath, o.value); return [{ type: "SET_SAVE_BUTTON_VISIBILITY" }]; }
+    case "v2/bo-process-editor2/apply-draft": { const d = rwDrafts.get(params.draftId)!; pVerById(d.boProcessId)!.runWayMap = d.runWayMap; rwDrafts.delete(params.draftId); return null; }
+    case "v2/bo-process-editor2/remove-draft": rwDrafts.delete(params.draftId); return "";
+    case "v2/boi-process2/load-boi-process-id": return pVersOf(params.boId).find((v) => v.isTest)!.boProcessId;
+    case "v2/boi-process/load-process-steps": return steps(params.boProcessId, params.boiId);
+    case "v2/boi-process/push-step-forcibly": forced.set(params.boiId, new Set([...(forced.get(params.boiId) ?? []), params.arrowId])); return null;
+    case "v2/boi-process/push-step-retry": return null;
+  }
+  const m = route.match(/^v2\/bo-(scripts|process)-editor2?\/(in-work|in-test|copy|remove|change)-bo-(script|process)-version(-comment)?$/);
+  if (m) {
+    const op = ({ "in-work": "work", "in-test": "test", copy: "copy", remove: "remove", change: "comment" } as any)[m[2]];
+    return m[1] === "scripts" ? versionOp(sVersOf(params.boId), op, params.boScriptsId, "boScriptModId", "SMOD", params.comment)
+      : versionOp(pVersOf(params.boId), op, params.boProcessId, "boProcessId", "PVER", params.comment);
+  }
   return undefined;
 }
 

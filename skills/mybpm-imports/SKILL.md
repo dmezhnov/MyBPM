@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.16**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.17**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for Claude» when a newer one is
@@ -86,7 +86,8 @@ the user's disk is not (a claude.ai or Claude Desktop chat): **do not zip the ar
 the server cannot read it there. Send the JSONL lines of `0000001.mybpm` (`### 0.1 The artefact`) to
 `archive_put` in parts of up to ~100 KB (`part: 1, 2 …`, `last: true` on the final one): the server zips
 them on the user's machine and runs this same lint; then `import_analyze` with the same `name`. With a
-local disk (Claude Code) write the zip as usual and pass its `path`. Delivering it is the mybpm-stand
+local disk (Claude Code) write the zip as usual and pass its `path`. A Block IDE script goes onto a stand by
+`script_write` (a hook, field script, method or process figure), a process diagram by `process_edit`. Delivering it is the mybpm-stand
 skill — not connected and the user wants the archive on a stand: its skill says how the user installs the
 server.
 

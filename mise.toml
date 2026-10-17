@@ -254,6 +254,63 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["xlsx_import", { code: "mcp_probe_xlsx", path: "@xlsx_export.file" }, (r) => r.newRows === 0 && r.updatedRows === 2 && r.errorRows === 0],
   ["xlsx_import", { importId: "@xlsx_import.importId", cancel: true }, (r) => r.canceled === true],
   ["xlsx_export", { code: "mcp_probe_xlsx", search: "x-2", out: "dist/mcp-test/xlsx" }, (r) => r.total === 1 && r.records[0].values.status === "В работе"],
+  // scripts: wire a hook, a field script and a local method on the test version; bodies written, reverted, dry-run, a method
+  // without its hat refused; unwire (the hook stays, body = entry → exit); versions; a global method
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe scripts", code: "mcp_probe_scripts", window: false, fields: [
+    { label: "Название", type: "INPUT_TEXT", code: "title" }, { label: "Сумма", type: "INPUT_TEXT", code: "amount" }] }, (r) => r.code === "mcp_probe_scripts"],
+  ["scripts_wire", { code: "mcp_probe_scripts", hooks: ["afterSave"], fields: ["amount"], methods: ["m1"] },
+    (r) => r.version.test && r.hooks.afterSave && r.fields.amount && r.methods.m1 && /script_write/.test(r.next)],
+  ["scripts_read", { code: "mcp_probe_scripts" }, (r) => r.scripts.length === 3 && r.scripts.find((x: any) => x.hook === "afterSave")?.translate.success === false
+    && r.scripts.some((x: any) => x.field === "amount") && r.scripts.some((x: any) => x.method === "m1") && !r.blind],
+  ["script_write", { code: "mcp_probe_scripts", hook: "afterSave", def: { blocks: {
+    AAAAAAAAAAAAAAA1: { x: 40, y: 40, downBlockId: "AAAAAAAAAAAAAAA2", type: "BlockFixEntryPoint" }, AAAAAAAAAAAAAAA2: { exitType: "FROM_METHOD", type: "BlockExit" } }, expressions: {} } },
+    (r) => r.written === true && r.translate.success === true && /hook afterSave/.test(r.what)],
+  ["script_write", { code: "mcp_probe_scripts", hook: "afterSave", def: { blocks: { AAAAAAAAAAAAAAA3: { x: 40, y: 40, type: "BlockFixEntryPoint" } }, expressions: {} } },
+    (r) => r.written === false && r.reverted === true && /did not translate/.test(r.why)],
+  ["scripts_read", { code: "mcp_probe_scripts" }, (r) => r.scripts.find((x: any) => x.hook === "afterSave")?.translate.success === true],
+  ["script_write", { code: "mcp_probe_scripts", field: "amount", dryRun: true, def: { blocks: { BAD: { type: "BlockNope" } }, expressions: {} } },
+    (r) => r.written === false && r.errors.some((e: string) => /16 characters/.test(e)) && r.errors.some((e: string) => /not a block type/.test(e)) && /refused/.test(r.why)],
+  ["script_write", { code: "mcp_probe_scripts", method: "m1", def: { blocks: {
+    AAAAAAAAAAAAAAA4: { x: 40, y: 40, downBlockId: "AAAAAAAAAAAAAAA5", type: "BlockFixEntryPoint" }, AAAAAAAAAAAAAAA5: { exitType: "FROM_METHOD", type: "BlockExit" } }, expressions: {} } },
+    (r) => r.written === false && r.errors.some((e: string) => /keep its hat/.test(e))],
+  ["scripts_wire", { code: "mcp_probe_scripts", unwire: ["afterSave", "amount"], removeMethods: ["m1"] },
+    (r) => r.hooks.afterSave && !r.fields.amount && !r.methods.m1 && r.notes.some((n: string) => /entry → exit/.test(n))],
+  ["scripts_read", { code: "mcp_probe_scripts" }, (r) => r.scripts.length === 1 && r.scripts[0].hook === "afterSave" && r.scripts[0].translate.success === true],
+  ["script_version", { code: "mcp_probe_scripts" }, (r) => r.versions.length === 1 && r.versions[0].test],
+  ["script_version", { code: "mcp_probe_scripts", action: "copy", version: "test" }, (r) => r.versions.length === 2],
+  ["script_version", { code: "mcp_probe_scripts", action: "comment", version: "2", comment: "копия" }, (r) => r.versions[1].comment === "копия"],
+  ["script_version", { code: "mcp_probe_scripts", action: "remove", version: "2" }, (r) => r.versions.length === 1],
+  ["script_version", { code: "mcp_probe_scripts", action: "work" }, (r) => r.versions.length === 2 && r.versions[0].work && !r.versions[0].test && r.versions[1].test],
+  ["script_version", { code: "mcp_probe_scripts", action: "remove", version: "work" }, (r) => /stand keeps it/.test(r)],
+  ["scripts_wire", { global: true, methods: ["g1"] }, (r) => r.scriptModuleId && r.methods.g1],
+  ["scripts_read", { global: true }, (r) => r.methods.length === 1 && r.methods[0].method === "g1"],
+  ["script_write", { globalMethod: "g1", dryRun: true, def: { blocks: {}, expressions: {} } }, (r) => r.written === false && r.errors.some((e: string) => /keep its hat/.test(e))],
+  ["scripts_wire", { global: true, removeMethods: ["g1"] }, (r) => !r.methods.g1 && !r.notes],
+  // a process on mcp_probe_scripts: a fresh one is an Enter alone; Script → Form → Switch → 2 Exits; a run way; versions;
+  // a test record stands at the Form, pushed forward it runs out
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe process", code: "mcp_probe_process", kind: "BO_PROCESS", window: false, fields: [
+    { label: "Заявка", type: "BO", code: "zayavka", refBoId: "@bo_create.id" }] }, (r) => r.code === "mcp_probe_process"],
+  ["process_read", { code: "mcp_probe_process" }, (r) => r.figures.length === 1 && r.figures[0].what === "Enter" && r.versions[0].test
+    && r.validate.some((e: any) => /окончания/.test(e.message)) && /^none/.test(r.runWays) && /TEST/.test(r.runs)],
+  ["process_edit", { code: "mcp_probe_process", figures: [{ key: "s", type: "Script", x: 300, y: 100 }, { key: "f", type: "Form", x: 500, y: 100, field: "zayavka" },
+    { key: "w", type: "Switch", x: 700, y: 100 }, { key: "e1", type: "Exit", x: 900, y: 40 }, { key: "e2", type: "Exit", x: 900, y: 200 }],
+    arrows: [{ from: "@process_read.figures.0.id", to: "s" }, { from: "s", to: "f" }, { key: "fw", from: "f", to: "w" },
+      { key: "yes", from: "w", to: "e1", name: "Да" }, { from: "w", fromSlot: "down", to: "e2", name: "Нет" }] },
+    (r) => r.validate === "clean" && r.bodies.s.success === true && r.bodies.w.exitsBy === r.ids.yes && r.ids.fw],
+  ["process_edit", { code: "mcp_probe_process", arrows: [{ from: "w", fromSlot: "middle", to: "e2" }] }, (r) => /no figure «w»/.test(r)],
+  ["process_edit", { code: "mcp_probe_process", arrows: [{ from: "@process_edit.ids.w", fromSlot: "middle", to: "@process_edit.ids.e2" }] }, (r) => /no slot «middle»/.test(r)],
+  ["process_run_ways", { code: "mcp_probe_process", set: [{ runWay: "ON_INSTANCE_CREATE", processField: "zayavka" }] },
+    (r) => r.runWays.length === 1 && r.runWays[0].runWay === "ON_INSTANCE_CREATE" && r.runWays[0].processField === "zayavka" && r.runWays[0].target === "mcp_probe_scripts"],
+  ["process_read", { code: "mcp_probe_process" }, (r) => r.figures.length === 6 && r.figures.every((f: any) => !f.reached) && r.validate === "clean" && r.runWays.length === 1],
+  ["process_version", { code: "mcp_probe_process", action: "copy", version: "test" }, (r) => r.versions.length === 2],
+  ["process_version", { code: "mcp_probe_process", action: "remove", version: "2" }, (r) => r.versions.length === 1],
+  ["record_save", { code: "mcp_probe_scripts", values: { title: "Процесс" }, scripts: false }, (r) => r.saved === true],
+  ["process_steps", { code: "mcp_probe_process", boiId: "@record_save.id" }, (r) => !r.over && r.steps.at(-1).state === "STAND" && /Form «Заявка»/.test(r.steps.at(-1).what)],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "forward" }, (r) => /forward needs arrowId/.test(r)],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "forward", arrowId: "@process_edit.ids.fw" },
+    (r) => r.changed && r.over && r.steps.at(-1).state === "PASSED" && r.steps.length === 5],
+  ["bo_delete", { code: "mcp_probe_process", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xlsx", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_records", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_co", confirm: true }, (r) => r.boCategory === "BO_COMPOSITE" && r.deleted === true],
@@ -283,7 +340,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not

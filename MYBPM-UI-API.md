@@ -1062,7 +1062,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `bo_delete`, `co_build`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback`, `bo_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
@@ -1092,6 +1092,25 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   adds, `isReadonly` written). Nothing is written until `importId` + `confirm: true`; `cancel: true` drops the act.
   An xlsx import runs none of the BO's scripts (trap 51) — `record_save` does. `xlsx_export` saves the file and
   reads it back as records keyed by field code, a TABLE block folded into a list by the id column.
+- **The script tools make §5g whole.** `scripts_read` gives a BO's script versions, the wiring of one (the four
+  hooks, the field scripts by field CODE, the local methods) and per script whether it translates (`defs: true` —
+  the def); `global: true` — the company-global methods. `script_write` writes ONE body (a hook, a field script, a
+  local or global method, a process figure) in one `apply-update-cmd` after a guard that refuses what would brick
+  the module (trap 49: an unknown type, a dangling or reused id, a method without its hat); a def that does not
+  translate is put back by its own backward command (never the server `undo`) unless `keep`; `dryRun` only
+  checks. `scripts_wire` wires hooks, field scripts and local / global methods and returns their ids; it waits out
+  a blind first version (trap 68), unwires a field by leaving it out, and «unwires» a hook by the body «entry →
+  exit» (trap 68b); a removed local method is removed from every version (trap 68a). `script_version`: list, work,
+  test, copy, remove (not the work / test one), comment.
+- **The process tools make §5f whole.** `process_read` gives the versions and one version's figures and named
+  arrows in walk order from the Enter (an unreached figure is «не подключена»), validate-def, each Script /
+  Switch's exits and translate, the run ways with field codes. `process_edit` adds, changes and removes figures
+  and arrows in ONE `apply-update-cmd` with a backward (no draft, written at once), refuses slot names off the
+  §5f table, gives every new Script a body «entry → exit» and every new Switch an exit by its first outgoing arrow,
+  then validate-def. `process_version` as `script_version` (work on the test version makes a new test one).
+  `process_run_ways` sets / removes run ways in one draft. `process_steps` shows where a record is (STAND / GO /
+  WAITING / FAILED per figure); `process_push` ✎ moves a stuck one on (forward along an outgoing arrow, retry a
+  failed step).
 - **The stand contradicts a document → `platform_report`** (the rule at the top of this document): it returns
   the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
   stands, logins, people or companies. Ask the user before giving them the link to submit.
@@ -1135,6 +1154,16 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `xlsx_template` | the BO's xlsx template on the user's disk; what each column is; the key field | R7 step 1 |
 | `xlsx_import` ✎ | `path` or `rows` → the act (counts, failing rows, warnings); with `importId` + `confirm` the apply, `cancel` drops it | R7 steps 2–5 |
 | `xlsx_export` | the records to an xlsx on the user's disk, read back by field code | R7 step 6 |
+| `scripts_read` | a BO's script versions, the wiring (hooks, field scripts by code, local methods), translate per script, defs; or the global methods | §5g «Reading a BO's scripts headlessly» |
+| `script_write` ✎ | ONE script body after a guard, one `apply-update-cmd`, translate, put back if it fails | §5g writing, trap 49 |
+| `scripts_wire` ✎ | wire / unwire hooks and field scripts, create / remove local and global methods | §5g «Wiring scripts onto a BO headlessly», traps 68/68a/68b |
+| `script_version` ✎ | a BO's script versions: list, work, test, copy, remove, comment | §5g, `bo-scripts-editor` |
+| `process_read` | a process: versions, figures and arrows in walk order, validate, exits, translate, run ways | §5f |
+| `process_edit` ✎ | add / change / remove figures and arrows in one command, minimal bodies, validate | §5f diagram |
+| `process_version` ✎ | a process's versions: list, work, test, copy, remove, comment | §5f «Versions» |
+| `process_run_ways` ✎ | WHEN the process starts: set / remove run ways in one draft | §5f «Run ways» |
+| `process_steps` | where a process record is: each step's figure and state | §5f run-time controller |
+| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step | §5f run-time controller |
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
@@ -2103,7 +2132,9 @@ editor route, TWO controllers and a versioned diagram.
   version, a copy of that one with the SAME figure ids, `isWork:false, isTest:false`;
   `in-test-bo-process-version` makes it THE test version — the old `isWork+isTest` one keeps only
   `isWork` — and `load-dev-bo-process-id` now returns it (the editable, DEV-record version).
-  `in-work-bo-process-version` is the same for «в работу». What each exports and imports
+  `in-work-bo-process-version` is the same for «в работу»; on a version that is the test one it keeps only
+  `isWork` and the stand at once creates a new test version (a copy, the next free number) `[C]` — as with scripts.
+  A copy carries the run ways too `[C]`. What each exports and imports
   as: `MYBPM-IMPORTS.md` §5c (work → `workProcess`, test → `processVersions.<id>`, the rest not exported).
   **A process made in the constructor has only a TEST version, and a test version runs — by hand and by its
   run ways — only for test (DEV) records** `[C]`: publish it with `in-work-bo-process-version` (UI «в работу»)
@@ -2605,7 +2636,10 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   (one `apply-update-cmd` P `{scriptModuleId: boScriptsId, scriptId}`, `Set blocks.<hat>` with
   `params`/`returnType`/`downBlockId` + the body). `list-local-methods {boScriptsId}` →
   `[{scriptId, methodName}]`; `delete-local-method {boScriptsId, scriptId}` → empty body, the id leaves
-  `methodScriptIds`. A call site's `args` are keyed by the callee's param id — reuse the param id of the
+  `methodScriptIds`. **A local method belongs to EVERY script version of the BO** `[C]` (trap 68a): one created on
+  the test version is listed by the work version too, and `delete-local-method` on one version is undone within
+  seconds while another version still lists it — delete it from every version (`list-local-methods` of each) to
+  remove it. A call site's `args` are keyed by the callee's param id — reuse the param id of the
   method you shadow and the same call works against either.
 - **Calling a global method** `[C]`: a BO script calls it like a local one — `ExprCall {funcName:
   "<name>", useArgNames:false, args: {<the global method's param id>: {name, order, exprId}}}`; nothing
@@ -3040,19 +3074,27 @@ The IDE's own sequence; it works alone, also on a BO that has NO scripts:
 1. `v2/bo-scripts-editor/load-bo-script-versions` P `{boId}` → a BO that never had scripts still has one
    version, `isTest:true`, `isWork:false` — take its `boScriptModId`. (A BO without scripts is absent from
    `script-browser/load-tree`; find its id with `load-bo-id-by-code` P `{boCode}`, §R4.)
-   **That implicit first version is blind** `[C]` (trap 68): its `load-bo-def-list {scriptModuleId}` is
-   `list: []`, so every field act fails `translate-script` with `exprAct__noDefinitionForActId` and
-   `in-work-bo-script-version` refuses it. First `copy-bo-script-version` P `{boId, boScriptsId}`, re-read
-   `load-bo-script-versions` and wire / write into the COPY (for a test version after promoting: copy again +
-   `in-test-bo-script-version`). A BO whose scripts came in by archive is not affected.
+   **Right after the BO is created that first version is blind** `[C]` (trap 68): its `load-bo-def-list
+   {scriptModuleId, scriptId:null}` is `list: []` for a few seconds, and meanwhile every field act fails
+   `translate-script` with `exprAct__noDefinitionForActId`. Poll it until the list is non-empty, then wire and
+   write into that version — it translates and `in-work-bo-script-version` accepts it. If it stays empty,
+   `copy-bo-script-version` P `{boId, boScriptsId}` and work in the copy `[I]`.
 2. `v2/script/load-new-ids` P `{count: N}` → N fresh script ids (one per hook / field script).
 3. `v2/bo-scripts-editor/save-bo-scripts`, **everything in the BODY half**:
    `{id: <boScriptModId>, boId, onOpenFormScriptId, afterSaveScriptId, onCloseScriptId,
    onInstanceCreationId, fieldScripts: {<fieldID>: {afterChangeScriptId}}, methodScriptIds: []}` → empty
-   200. Keyed by field ID here (the archive keys by CODE). Send the whole record — it replaces the wiring. **To unwire a hook**, send the record with that
-   hook's id `null` (or a field left out of `fieldScripts`) `[I]` — re-read `load-bo-scripts` to confirm.
+   200. Keyed by field ID here (the archive keys by CODE). Send the whole record — it replaces the wiring.
+   **A field script is unwired by leaving its field out of `fieldScripts`** `[C]`. **A hook cannot be unwired**
+   `[C]`: a hook sent as `null` or `""` is ignored and keeps its id (the IDE itself fills all four). To make a
+   hook do nothing, write it the body «entry → `BlockExit FROM_METHOD`» (trap 68b).
 4. Each script is now empty (`load-script-def` → `{blocks:{}, expressions:{}}`): write its body with
    `paste` + `apply-update-cmd` (above), hat and exit included, then `translate-script`.
+   **A hook whose body was written and then emptied fails every form save** `[C]` (trap 68b): `translate-script`
+   says `noEntryPoint`, and the save answers `SHOW_NOTIFICATION` with `notificationBody.notificationText.text`
+   `script_after_save_error` (details `script_after_save_cause`) and no `CLOSE_DIALOG_SAVE` — nothing is stored. A
+   wired hook never written («Не определён скрипт») blocks nothing. A hat with no block below fails translate
+   (`block_noDownBlock`), so the neutral body is the hat + `BlockExit FROM_METHOD`. Per-version: a body written in
+   one script version leaves the other versions' bodies as they were `[C]`.
 5. **A TEST version runs only on test records** (`boiState: DEV`, the registry tab «Тестовые»); ordinary
    records keep running the work version (none → nothing runs). **And on a DEV record the script sees only
    DEV records in its `BO`/`CO` fields** `[C]` — links to ordinary records read as an empty collection, so test
@@ -4539,14 +4581,23 @@ every row is recreated with a new id, codes are resolved to field ids. Rollback 
 headers are then dead (the service runs and answers 200 with an EMPTY body). Repair after a rollback: re-send
 `save-field-values` + `save-header-values` with ids for every row. Trap 67.
 
-**Script versions trap — the first, implicit version of a BO that never had scripts cannot see any BO**
+**Script versions trap — right after a BO is created its first, implicit script version cannot see any BO**
 `[C]`: on a constructor-made BO, `load-bo-script-versions` returns one version (`isTest:true`);
-wire and fill a hook there and `translate-script` reports `exprAct__noDefinitionForActId` for every
+wire and fill a hook there in the first seconds and `translate-script` reports `exprAct__noDefinitionForActId` for every
 `F-VALUE-K-DYN-R-D-S-boi_fields` hop (the field hop's type is NULL), and the TEST service URL fails with
 «Ошибка компиляции скрипта на создание инстанции для режима ТЕСТ». `v2/script/load-bo-def-list
-{scriptModuleId}` is the tell: `list: []` for that module, every BO of the company for any other. `in-work-bo-script-version` refuses it
-(`script_on_instance_creation_cause`). **Fix: `copy-bo-script-version P {boId, boScriptsId}`** — the copy sees
-every BO, translates `success:true`; then `in-work-bo-script-version` on the copy and, for a working TEST version, copy again + `in-test-bo-script-version`. Trap 68.
+{scriptModuleId}` is the tell: `list: []` for that module, every BO of the company for any other; while it is
+empty `in-work-bo-script-version` refuses it (`script_on_instance_creation_cause`). **Fix: wait** — within seconds
+the list fills and the same version translates and publishes `[C]`; re-run `translate-script` on what was
+written meanwhile. If it stays empty: `copy-bo-script-version P {boId, boScriptsId}` and work in the copy `[I]`. Trap 68.
+
+**Trap 68a — a local method is BO-wide, not per version** `[C]`: every script version lists it, and
+`delete-local-method` on one version comes back within seconds while another version still has it; delete it
+from each version (§5g «Local methods without the IDE»).
+
+**Trap 68b — an emptied hook body blocks the save** `[C]`: a hook written once and then cleared to
+`{blocks:{}}` fails every form save (`script_after_save_error`, nothing stored); a hook cannot be unwired, so
+neutralise it with the body «entry → `BlockExit FROM_METHOD`» (§5g «Wiring scripts onto a BO headlessly», step 4).
 
 **A whole-stand outage can follow a TEST call** `[I]`: the first GET to `service_test` right after a new TEST
 version is published may create its record (no result written) and then leave every URL of the stand, the API
