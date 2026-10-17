@@ -45,7 +45,7 @@ console.log("mcp/mybpm-stand.cjs");
 '''
 
 [tasks.mcp-pack]
-description = "Pack the mybpm-stand MCP server as a Claude Desktop extension dist/mcp/mybpm-stand.mcpb: manifest.json (version of plugin.json; stand, login and password asked by the Desktop settings dialog, the password stored as a secret), server/mybpm-stand.cjs, the skill lint and MYBPM-IMPORTS.md it reads"
+description = "Pack the mybpm-stand MCP server as a Claude Desktop extension dist/mcp/mybpm-stand.mcpb: manifest.json (version of plugin.json; no settings — stand accounts are added on the server's own accounts page, tool stand_accounts), server/mybpm-stand.cjs, the skill lint and MYBPM-IMPORTS.md it reads"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -57,13 +57,7 @@ const manifest = {
   manifest_version: "0.3", name: "mybpm-stand", display_name: "MyBPM stand", version: plugin.version,
   description: "Drive a running MyBPM stand: who am I, BO structure, import a .mybpm.zip (lint, analyze, apply, rollback), export structure, the bell, any API method.",
   author: plugin.author, repository: { type: "git", url: plugin.repository },
-  server: { type: "node", entry_point: "server/mybpm-stand.cjs", mcp_config: { command: "node", args: ["${__dirname}/server/mybpm-stand.cjs"],
-    env: { MYBPM_STAND: "${user_config.stand}", MYBPM_LOGIN: "${user_config.login}", MYBPM_PASSWORD: "${user_config.password}" } } },
-  user_config: {
-    stand: { type: "string", title: "Stand", description: "Host of the MyBPM stand, e.g. mybpm.example.com", required: true },
-    login: { type: "string", title: "Login", description: "Your login (e-mail) on that stand", required: true },
-    password: { type: "string", title: "Password", description: "Stays on this computer; the model never sees it", sensitive: true, required: true },
-  },
+  server: { type: "node", entry_point: "server/mybpm-stand.cjs", mcp_config: { command: "node", args: ["${__dirname}/server/mybpm-stand.cjs"] } },
   compatibility: { platforms: ["darwin", "win32", "linux"], runtimes: { node: ">=18" } },
 };
 const files = [["server/mybpm-stand.cjs", "mcp/mybpm-stand.cjs"], ["skills/mybpm-imports/scripts/lint-archive.cjs", "skills/mybpm-imports/scripts/lint-archive.cjs"], ["MYBPM-IMPORTS.md", "MYBPM-IMPORTS.md"]];
@@ -95,7 +89,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle against the mock stand under node and bun"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle and the accounts (page login, wrong password, default, rename, remove) against the mock stand under node and bun"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -128,12 +122,17 @@ if (Bun.env.CI && (await $`git status --porcelain -- mcp/`.text()).trim()) {
 }
 // a bundle that names the build folder would look for its lint and version on the build machine
 if ((await Bun.file("mcp/mybpm-stand.cjs").text()).includes(process.cwd())) { console.error("mcp/mybpm-stand.cjs holds the build path — use HERE, not __dirname"); process.exit(1); }
+// the accounts page's script lives in a TS template literal, where an escape like \/ silently changes the served JS
+const { PAGE_HTML } = await import("./mcp/accounts-page.ts");
+try { new Function(PAGE_HTML.match(/<script>([\s\S]*)<\/script>/)![1]); } catch (e) { console.error(`mcp/accounts-page.ts: the page script does not parse — ${e}`); process.exit(1); }
 const lines = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data);
 const port = 18000 + Math.floor(Math.random() * 1000);
 await $`rm -rf dist/mcp-test && mkdir -p dist/mcp-test/home`.quiet();
 const mock = Bun.spawn(["bun", "tools/mock-stand.bun.ts", "dist/mcp-test/requests.jsonl"], { env: { ...Bun.env, PORT: String(port), MOCK_MCP: "1" }, stdout: "ignore" });
 await Bun.sleep(500);
-const env = { ...Bun.env, HOME: `${process.cwd()}/dist/mcp-test/home`, MYBPM_STAND: `http://127.0.0.1:${port}`, MYBPM_TOKEN: "mock-token" };
+const env = { ...Bun.env, HOME: `${process.cwd()}/dist/mcp-test/home`, MYBPM_STAND: `http://127.0.0.1:${port}`, MYBPM_TOKEN: "mock-token", MYBPM_LOGIN: "admin@mock" };
+const page = (body: unknown) => ({ url: "@stand_accounts.url", path: "api/save", body });
+const u2 = { stand: env.MYBPM_STAND, login: "u2@mock" };
 const steps: [string, unknown, (r: any) => boolean][] = [
   ["stand_whoami", {}, (r) => r.companyCode === "MOCK" && r.personBoId === "PERSONBO00000001"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
@@ -150,6 +149,18 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.count.notifications === 1],
   ["stand_read", { path: "import-structure/cancel-import" }, (r) => /not a read method/.test(r)],
   ["stand_call", { path: "v2/auth/v3/login" }, (r) => /refused/.test(r)],
+  // accounts: the page logs in (pseudo-tool http = the page's own form), the first env account stays the default
+  ["stand_accounts", { open: false }, (r) => r.opened === false && /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}\/$/.test(r.url)],
+  ["http", page({ ...u2, password: "wrong" }), (r) => /не принял логин или пароль/.test(r.error)],
+  ["http", page({ ...u2, password: "secret", name: "Второй" }), (r) => r.email === "u2@mock" && r.default === false],
+  ["stand_list", {}, (r) => r.accounts.length === 2 && r.accounts.find((a: any) => a.default).login === "admin@mock"],
+  ["stand_whoami", { stand: "Второй" }, (r) => r.email === "u2@mock"],
+  ["stand_use", { stand: "Второй" }, (r) => /Второй/.test(r.default)],
+  ["stand_whoami", {}, (r) => r.email === "u2@mock"],
+  ["http", page({ ...u2, was: "@http.key", name: "Третий" }), (r) => r.name === "Третий" && r.default === true],
+  ["stand_remove", { stand: "Третий" }, (r) => /Третий/.test(r.removed)],
+  ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].default],
+  ["stand_whoami", {}, (r) => r.email === "admin@mock"],
 ];
 let bad = 0;
 try {
@@ -160,7 +171,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method/.test(got.result) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     if (report.length !== steps.length) { bad++; console.error(`mcp (${rt}): ${report.length}/${steps.length} steps answered\n${r.stderr}`); }

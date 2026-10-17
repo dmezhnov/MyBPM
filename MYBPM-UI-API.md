@@ -71,7 +71,8 @@ Ask the user for these, one request at a time, and wait for the answer:
    to talk about it and to know which sidebar you are looking at. **Never assume a screen or a BO group
    exists because another company on the same host has it.**
 3. **Authentication**, one of the two routes below. With the `mybpm-stand` MCP server connected there is
-   nothing to ask: it holds the credentials (§0U.8) — confirm stand and company with `stand_whoami`.
+   nothing to ask: it holds the accounts (§0U.8) — confirm stand and company with `stand_whoami`; an account
+   it does not hold yet is added by the user on its accounts page (`stand_accounts`), never through the chat.
 
 #### Route A — log in headlessly (username + password)
 
@@ -973,14 +974,21 @@ machine, talks to the stand itself and makes exactly the calls of the recipes it
 connected (`stand_whoami`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
 written.** This document stays the spec either way: what a tool cannot do is plain HTTP by §0U.4.
 
-- **Credentials stay with the server, never in the chat.** Claude Code: the token files of the repository's
-  `mise run stand-login <host> <login>` (`~/.config/mybpm/tokens/<host>/<login>.token`) or `MYBPM_STAND` +
-  `MYBPM_TOKEN`; Claude Desktop: stand, login and password in the extension settings (the password stored
-  as a secret, the server logs in itself and again when the token expires). With the server connected, do
-  not ask for a password or a token (§0U.1 item 3 is answered); `stand_list` names what it holds. Item 2
-  still holds: **`stand_whoami` first** — it names the company the credentials select.
+- **Accounts stay with the server, never in the chat.** An account = a login on a stand host; the server keeps
+  several, one of them the default. `stand_list` names them (name, host, login, who, company, the default);
+  every tool takes `stand` — an account's name or its host — and goes to the default without it; `stand_use`
+  changes the default. **A new account, a rename, another login, a re-login go through `stand_accounts`:** it
+  opens a local page of the server in the user's browser (and returns its URL to give them as a link) where
+  they type the stand, the login and the password; the password goes from that page to the stand, the server
+  keeps only the session token (`~/.config/mybpm/tokens/<host>/<login>.token`, the same file
+  `mise run stand-login <host> <login>` writes) — no password is stored. Then wait for the user and call
+  `stand_list`. `stand_remove` ✎ ends the session on the stand and deletes the token. **An expired session**
+  surfaces as an error naming the account: send the user to `stand_accounts` («Изменить», log in again) — a
+  missing right comes back as the stand's own `SecurityError`. With the server connected, never ask for a
+  password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_whoami` first** — it names
+  the company the account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `notifications_clear`, `stand_call`
-  change the stand — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback` without `confirm: true` only returns the preview.
 - **An archive built where the stand is unreachable goes in through `archive_put`.** In a claude.ai or Claude
   Desktop chat your code runs in a cloud sandbox: the server cannot read a file there. Do not zip it there —
@@ -994,7 +1002,10 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 
 | Tool | What it does | Recipe / route |
 |---|---|---|
-| `stand_list` | stands and logins the server holds, the default one | — |
+| `stand_list` | the accounts the server holds, the default one; `check` asks each stand whether its session is alive | — |
+| `stand_accounts` | opens the accounts page in the user's browser: add, edit, log in again, remove, the default | — |
+| `stand_use` | makes an account the default | — |
+| `stand_remove` ✎ | ends an account's session on the stand, deletes its token | `GET v2/auth/logout` |
 | `stand_whoami` | fio, e-mail, companyCode, companyId, personId, the Person BO id | §0U.1 item 2; `GET v2/auth/load-auth-info`, `load-bo-id-by-kind {kind: PERSON}` |
 | `bo_groups` | every BO group with its BOs | R4; `load-bo-groups {forEdit}`, `load-bo-records-by-group-id` |
 | `bo_find` | a BO by `code` (`exists: false` when absent) or by a piece of its name | R4; `load-bo-id-by-code` |

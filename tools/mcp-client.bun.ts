@@ -14,6 +14,10 @@
  *   call import_analyze '{"name":"crm"}' import_apply '{"importId":"@import_analyze.importId","description":"…"}'
  *   notifications_clear '{"ids":["@notifications_read.items.0.id"]}'
  *
+ * The pseudo-tool `http` posts JSON to the server's accounts page, as the page's own form does — how a test logs
+ * in without a browser: http '{"url":"@stand_accounts.url","path":"api/save","body":{"stand":"…","login":"…","password":"…"}}'
+ * (a `#add…` prefill on the url is dropped; an HTTP error status counts as isError; the answer is the result `http`).
+ *
  * The server takes its stand and credentials from the environment (MYBPM_STAND, MYBPM_TOKEN …, see the
  * server's header) or the token files of `mise run stand-login`. Exit 1 when any call answers isError.
  */
@@ -73,9 +77,18 @@ if (mode === "list") {
   for (const t of result.tools) console.log(`${t.annotations?.destructiveHint ? "✎" : " "} ${t.name.padEnd(20)} ${t.description.slice(0, 110)}`);
 } else {
   for (let i = 0; i < pairs.length; i += 2) {
-    const r = await rpc("tools/call", { name: pairs[i], arguments: resolveRefs(JSON.parse(pairs[i + 1] ?? "{}")) });
-    const text = r.error ? JSON.stringify(r.error) : r.result.content.map((c: any) => c.text).join("\n");
-    const isError = !!(r.error || r.result.isError);
+    const args = resolveRefs(JSON.parse(pairs[i + 1] ?? "{}"));
+    let text: string, isError: boolean;
+    if (pairs[i] === "http") {
+      const r = await fetch(String(args.url).replace(/#.*$/, "") + args.path,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args.body ?? {}) });
+      text = await r.text();
+      isError = !r.ok;
+    } else {
+      const r = await rpc("tools/call", { name: pairs[i], arguments: args });
+      text = r.error ? JSON.stringify(r.error) : r.result.content.map((c: any) => c.text).join("\n");
+      isError = !!(r.error || r.result.isError);
+    }
     let result: any = text;
     try { result = JSON.parse(text); } catch {}
     if (!isError) results[pairs[i]] = result;

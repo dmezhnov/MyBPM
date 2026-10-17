@@ -8,25 +8,33 @@
  * Node built-ins (`node:fs`, `node:child_process`, `node:zlib` …) instead of Bun's API: the bundle runs under
  * plain Node in Claude Desktop, where Bun does not exist.
  *
- * Credentials, first match wins (per stand host):
- *   MYBPM_STAND + MYBPM_TOKEN                      — a token as is (tests, a one-off)
- *   ~/.config/mybpm/tokens/<host>/<login>.token    — what `mise run stand-login <host> <login>` saves
- *   MYBPM_STAND + MYBPM_LOGIN + MYBPM_PASSWORD     — the server logs in itself (the .mcpb settings dialog)
- * The password is never a tool argument: the model never sees it.
+ * Accounts — a login on a stand host; several may be kept, one is the default:
+ *   ~/.config/mybpm/tokens/<host>/<login>.token  — the session token: added on the accounts page (stand_accounts)
+ *                                                  or by `mise run stand-login <host> <login>`
+ *   ~/.config/mybpm/accounts.json                — per account its name, the stand's origin, who logged in;
+ *                                                  and which account is the default
+ *   MYBPM_STAND + MYBPM_TOKEN (+ MYBPM_LOGIN)     — one more account from the environment (tests, a one-off)
+ * No password is stored: the accounts page sends it to the stand and keeps the token; an expired token is renewed
+ * by logging in on that page again. Neither a password nor a token is ever a tool argument or a tool result.
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync, appendFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, rmdirSync, writeFileSync, appendFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { inflateRawSync } from "node:zlib";
 import { zip } from "../tools/zip.ts";
+import { PAGE_HTML } from "./accounts-page.ts";
 
-// ── stands and tokens ────────────────────────────────────────────────────────────────────────────────────
+// ── accounts ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // The folder of the running file. Not `__dirname`: `bun build` replaces it by the build machine's absolute path.
 const HERE = dirname(realpathSync(process.argv[1]));
-const TOKENS = join(homedir(), ".config", "mybpm", "tokens");
+const CONFIG = join(homedir(), ".config", "mybpm");
+const TOKENS = join(CONFIG, "tokens");
+const BOOK = join(CONFIG, "accounts.json");
 const CACHE = join(homedir(), ".cache", "mybpm");
 const env = process.env;
 
@@ -36,52 +44,79 @@ function origin(stand: string): string {
   return /^https?:\/\//.test(s) ? s : `https://${s}`;
 }
 const hostKey = (stand: string) => origin(stand).replace(/^https?:\/\//, "");
+/** The folder of a host's tokens: the `:` of a port is not allowed in a Windows file name. */
+const hostDir = (o: string) => hostKey(o).replace(/:/g, "_");
 
-type Cred = { origin: string; login: string; token?: string; password?: string; source: string };
+type Meta = { origin?: string; name?: string; fio?: string; email?: string; companyCode?: string; savedAt?: string };
+type Book = { default?: string; accounts: Record<string, Meta> }; // key = `<hostDir>/<login>`
+type Cred = { key: string; origin: string; login: string; name?: string; token?: string; file?: string; meta: Meta };
 
-function savedTokens(): Cred[] {
-  if (!existsSync(TOKENS)) return [];
-  const out: Cred[] = [];
-  for (const host of readdirSync(TOKENS))
-    for (const f of readdirSync(join(TOKENS, host)))
-      if (f.endsWith(".token"))
-        out.push({ origin: origin(host), login: f.slice(0, -6), source: join(TOKENS, host, f) });
-  return out;
+function readBook(): Book {
+  try { const b = JSON.parse(readFileSync(BOOK, "utf8")); return { default: b.default, accounts: b.accounts ?? {} }; }
+  catch { return { accounts: {} }; }
+}
+function writeBook(b: Book) {
+  mkdirSync(CONFIG, { recursive: true });
+  writeFileSync(BOOK, JSON.stringify(b, null, 1) + "\n", { mode: 0o600 });
 }
 
-function knownStands(): Cred[] {
-  const out: Cred[] = [];
-  if (env.MYBPM_STAND && env.MYBPM_TOKEN)
-    out.push({ origin: origin(env.MYBPM_STAND), login: env.MYBPM_LOGIN ?? "", token: env.MYBPM_TOKEN, source: "MYBPM_TOKEN" });
-  out.push(...savedTokens());
-  if (env.MYBPM_STAND && env.MYBPM_LOGIN && env.MYBPM_PASSWORD)
-    out.push({ origin: origin(env.MYBPM_STAND), login: env.MYBPM_LOGIN, password: env.MYBPM_PASSWORD, source: "MYBPM_PASSWORD" });
-  return out;
-}
-
-/** Which stand a call goes to: the one named, else MYBPM_STAND, else the only one known. */
-function pickStand(stand?: string, login?: string): Cred {
-  const all = knownStands();
-  const want = stand ?? env.MYBPM_STAND;
-  let hits = want ? all.filter((c) => hostKey(c.origin) === hostKey(want)) : all;
-  if (login) hits = hits.filter((c) => c.login === login);
-  if (hits.length) {
-    // one host may have several logins: without `login` take the env one, else refuse to guess
-    const logins = [...new Set(hits.map((c) => c.login))];
-    if (logins.length > 1 && !login) {
-      const byEnv = hits.filter((c) => c.login === env.MYBPM_LOGIN);
-      if (byEnv.length) return byEnv[0];
-      throw new Error(`several logins on ${hostKey(hits[0].origin)}: ${logins.join(", ")} — pass \`login\``);
-    }
-    return hits[0];
+function accounts(): Cred[] {
+  const book = readBook(), out: Cred[] = [];
+  if (env.MYBPM_STAND && env.MYBPM_TOKEN) {
+    const o = origin(env.MYBPM_STAND), login = env.MYBPM_LOGIN ?? "";
+    out.push({ key: `${hostDir(o)}/${login}`, origin: o, login, token: env.MYBPM_TOKEN, meta: {} });
   }
-  if (!all.length)
-    throw new Error("no stand credentials: run `mise run stand-login <host> <login>` (Claude Code), or fill the stand, login and password in the extension settings (Claude Desktop)");
-  if (!want) throw new Error(`several stands known — pass \`stand\`: ${[...new Set(all.map((c) => hostKey(c.origin)))].join(", ")}`);
-  throw new Error(`no credentials for ${hostKey(want)}${login ? ` / ${login}` : ""}: run \`mise run stand-login ${hostKey(want)} <login>\``);
+  if (existsSync(TOKENS))
+    for (const dir of readdirSync(TOKENS)) {
+      let files: string[] = [];
+      try { files = readdirSync(join(TOKENS, dir)); } catch { continue; }
+      for (const f of files) {
+        const key = `${dir}/${f.slice(0, -6)}`;
+        if (!f.endsWith(".token") || out.some((c) => c.key === key)) continue;
+        const meta = book.accounts[key] ?? {};
+        out.push({ key, origin: meta.origin ?? origin(dir), login: f.slice(0, -6), name: meta.name, file: join(TOKENS, dir, f), meta });
+      }
+    }
+  return out;
 }
 
-const live = new Map<string, string>(); // origin|login → token in use
+const label = (c: Cred) => `${c.name ? `«${c.name}» ` : ""}${hostKey(c.origin)} / ${c.login || "?"}`;
+const listed = (cs: Cred[]) => cs.map(label).join("; ");
+const NO_ACCOUNTS = "no stand accounts yet — call stand_accounts: it opens a page in the user's browser where they log in " +
+  "(the password goes to that page, never to the chat)";
+
+/** The default account: the one marked on the accounts page, else MYBPM_STAND's, else the only one. */
+function defaultAccount(all: Cred[]): Cred | undefined {
+  const d = readBook().default;
+  return all.find((c) => c.key === d)
+    ?? (env.MYBPM_STAND ? all.find((c) => hostKey(c.origin) === hostKey(env.MYBPM_STAND!)) : undefined)
+    ?? (all.length === 1 ? all[0] : undefined);
+}
+
+/** Which account a call goes to: `stand` is an account name or a host; nothing named = the default. */
+function pickStand(stand?: string, login?: string): Cred {
+  const all = accounts();
+  if (!all.length) throw new Error(NO_ACCOUNTS);
+  if (!stand && !login) {
+    const d = defaultAccount(all);
+    if (d) return d;
+    throw new Error(`several accounts, none is the default — pass \`stand\` (a name or a host) or set one with stand_use: ${listed(all)}`);
+  }
+  const want = stand?.trim().toLowerCase();
+  let hits = !want ? all : all.filter((c) => c.name?.trim().toLowerCase() === want);
+  if (want && !hits.length) hits = all.filter((c) => hostKey(c.origin).toLowerCase() === hostKey(want));
+  if (login) hits = hits.filter((c) => c.login.toLowerCase() === login.trim().toLowerCase());
+  if (hits.length === 1) return hits[0];
+  if (hits.length > 1) {
+    const d = defaultAccount(all);
+    if (d && hits.includes(d)) return d;
+    throw new Error(`several accounts match — pass \`login\`: ${listed(hits)}`);
+  }
+  throw new Error(`no account ${[stand, login].filter(Boolean).join(" / ")} — known: ${listed(all)}. ` +
+    "A new one is added with stand_accounts (the user logs in on a local page).");
+}
+
+const tokenOf = (c: Cred) => (c.token ?? readFileSync(c.file!, "utf8")).trim().replace(/^"|"$/g, "");
 
 class StandError extends Error {
   constructor(public errorType: string, message: string) { super(`${errorType}: ${message}`); }
@@ -89,11 +124,11 @@ class StandError extends Error {
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
-async function passwordLogin(c: Cred): Promise<string> {
-  const r = await fetch(`${c.origin}/web/v2/auth/v3/login`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+async function passwordLogin(o: string, login: string, password: string): Promise<string> {
+  const r = await fetch(`${o}/web/v2/auth/v3/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(30000),
     body: JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: null, body_o1nhHUG480: {
-      "dXNlcm5hbWU=": b64(c.login), "cGFzc3dvcmQ=": b64(c.password!), timeOffsetZoneInMinutes: -300,
+      "dXNlcm5hbWU=": b64(login), "cGFzc3dvcmQ=": b64(password), timeOffsetZoneInMinutes: -300,
       timezoneRegion: "Asia/Almaty", clientType: "WEB", userAgent: "mybpm-stand MCP", pushToken: null, clientVersion: "" } }),
   });
   const body = await r.json().catch(() => null);
@@ -101,20 +136,145 @@ async function passwordLogin(c: Cred): Promise<string> {
   return body;
 }
 
-async function tokenOf(c: Cred, fresh = false): Promise<string> {
-  const key = `${c.origin}|${c.login}`;
-  if (!fresh && live.has(key)) return live.get(key)!;
-  let t = c.token ?? (c.source.endsWith(".token") ? readFileSync(c.source, "utf8").trim() : undefined);
-  if (fresh || !t) {
-    if (!c.password) {
-      const fallback = knownStands().find((k) => k.origin === c.origin && k.login === c.login && k.password);
-      if (!fallback) throw new Error(`the session on ${hostKey(c.origin)} expired — log in again: \`mise run stand-login ${hostKey(c.origin)} ${c.login}\``);
-      c = fallback;
-    }
-    t = await passwordLogin(c);
+async function authInfo(o: string, token: string): Promise<any> {
+  const r = await fetch(`${o}/web/v2/auth/load-auth-info`, { headers: { token }, signal: AbortSignal.timeout(15000) });
+  const j = await r.json().catch(() => null);
+  if (!j || typeof j !== "object" || "errorType" in j || !j.email) throw new StandError(j?.errorType ?? `HTTP ${r.status}`, j?.message ?? "no session");
+  return j;
+}
+
+const tokenFile = (key: string) => join(TOKENS, `${key}.token`);
+
+/** Add an account or change one (`was` = its key): with a password logs in and keeps the new token. */
+async function saveAccount(a: { was?: string; stand?: string; login?: string; password?: string; name?: string }) {
+  const stand = a.stand?.trim() ?? "", login = a.login?.trim() ?? "";
+  if (!stand || !login) throw new Error("стенд и логин обязательны");
+  if (/[\\/]/.test(login)) throw new Error("логин не может содержать / или \\");
+  const o = origin(stand), key = `${hostDir(o)}/${login}`, name = a.name?.trim() || undefined, book = readBook();
+  if (name && Object.entries(book.accounts).some(([k, m]) => k !== key && k !== a.was && m.name?.toLowerCase() === name.toLowerCase()))
+    throw new Error(`название «${name}» уже занято`);
+  let meta: Meta = { ...(book.accounts[a.was ?? key] ?? book.accounts[key] ?? {}), origin: o, name };
+  if (a.password) {
+    const token = await passwordLogin(o, login, a.password).catch((e) => {
+      throw e instanceof StandError && e.errorType === "SecurityError" ? new Error(`стенд не принял логин или пароль (${e.message})`) : e;
+    });
+    const me = await authInfo(o, token).catch(() => ({}));
+    mkdirSync(join(TOKENS, hostDir(o)), { recursive: true });
+    writeFileSync(tokenFile(key), token, { mode: 0o600 });
+    meta = { ...meta, fio: me.fio, email: me.email, companyCode: me.companyCode, savedAt: new Date().toISOString() };
+  } else if (!existsSync(tokenFile(key))) throw new Error("нужен пароль: такой учётки ещё нет, или изменены стенд или логин");
+  const before = accounts();
+  book.accounts[key] = meta;
+  if (a.was && a.was !== key) {
+    const old = before.find((c) => c.key === a.was);
+    if (old?.file) dropFiles(old);
+    delete book.accounts[a.was];
+    if (book.default === a.was) book.default = key;
   }
-  live.set(key, t.replace(/^"|"$/g, ""));
-  return live.get(key)!;
+  // the first account becomes the default; adding a second keeps the one that worked so far
+  const others = before.filter((c) => c.key !== key && c.key !== a.was);
+  if (!book.default) book.default = others.length === 1 ? others[0].key : key;
+  writeBook(book);
+  return { key, name, stand: hostKey(o), login, fio: meta.fio, email: meta.email, companyCode: meta.companyCode, default: book.default === key };
+}
+
+function dropFiles(c: Cred) {
+  rmSync(c.file!, { force: true });
+  try { rmdirSync(dirname(c.file!)); } catch {} // only when empty
+}
+
+async function removeAccount(c: Cred) {
+  if (!c.file) throw new Error(`${label(c)} comes from MYBPM_STAND / MYBPM_TOKEN of the server's environment — remove it there`);
+  // end the session on the stand too (GET v2/auth/logout); an unreachable stand does not block the removal
+  await fetch(`${c.origin}/web/v2/auth/logout`, { headers: { token: tokenOf(c) }, signal: AbortSignal.timeout(5000) }).catch(() => {});
+  dropFiles(c);
+  const book = readBook();
+  delete book.accounts[c.key];
+  if (book.default === c.key) delete book.default;
+  writeBook(book);
+  return { removed: label(c) };
+}
+
+function useAccount(c: Cred) {
+  const book = readBook();
+  book.default = c.key;
+  writeBook(book);
+  return { default: label(c) };
+}
+
+async function checkAccount(c: Cred) {
+  try {
+    const me = await authInfo(c.origin, tokenOf(c));
+    if (c.file) {
+      const book = readBook();
+      book.accounts[c.key] = { ...(book.accounts[c.key] ?? { origin: c.origin }), fio: me.fio, email: me.email, companyCode: me.companyCode };
+      writeBook(book);
+    }
+    return { alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode };
+  } catch (e: any) { return { alive: false, error: e.message }; }
+}
+
+function accountRows() {
+  const all = accounts(), d = defaultAccount(all);
+  return all.map((c) => ({ key: c.key, name: c.name ?? null, stand: hostKey(c.origin), origin: c.origin, login: c.login,
+    fio: c.meta.fio ?? null, companyCode: c.meta.companyCode ?? null, savedAt: c.meta.savedAt ?? null,
+    default: c === d, via: c.file ? "token file" : "MYBPM_TOKEN" }));
+}
+
+const byKey = (key: string) => {
+  const c = accounts().find((x) => x.key === key);
+  if (!c) throw new Error("нет такой учётки — обновите страницу");
+  return c;
+};
+
+// ── the accounts page: a local form, so a password goes from the user's browser to this server, never via the model
+
+let pageUrl: string | undefined;
+
+function accountsPage(): Promise<string> {
+  if (pageUrl) return Promise.resolve(pageUrl);
+  // the secret in the path keeps other local processes and web pages (a cross-origin POST) out
+  const secret = randomBytes(16).toString("hex");
+  return new Promise((ok, fail) => {
+    const srv = createServer(async (req, res) => {
+      const reply = (code: number, body: unknown, type = "application/json") => {
+        res.writeHead(code, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer" });
+        res.end(typeof body === "string" ? body : JSON.stringify(body));
+      };
+      const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+      if (!path.startsWith(`/${secret}/`)) return reply(404, "not found", "text/plain");
+      const route = path.slice(secret.length + 2);
+      try {
+        if (req.method === "GET" && route === "") return reply(200, PAGE_HTML, "text/html");
+        if (req.method !== "POST" || !String(req.headers["content-type"]).startsWith("application/json")) return reply(405, { error: "POST JSON only" });
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        const a = raw ? JSON.parse(raw) : {};
+        switch (route) {
+          case "api/list": return reply(200, accountRows());
+          case "api/save": return reply(200, await saveAccount(a));
+          case "api/remove": return reply(200, await removeAccount(byKey(a.key)));
+          case "api/default": return reply(200, useAccount(byKey(a.key)));
+          case "api/check": return reply(200, await checkAccount(byKey(a.key)));
+        }
+        return reply(404, { error: "no such route" });
+      } catch (e: any) { return reply(400, { error: e.message }); }
+    });
+    srv.on("error", fail);
+    srv.listen(0, "127.0.0.1", () => {
+      srv.unref();
+      ok((pageUrl = `http://127.0.0.1:${(srv.address() as any).port}/${secret}/`));
+    });
+  });
+}
+
+function openBrowser(url: string): boolean {
+  const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
+    : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : ["xdg-open", [url]];
+  try {
+    spawn(cmd as string, args as string[], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
+    return true;
+  } catch { return false; }
 }
 
 // ── the transport (MYBPM-UI-API.md 0U.2) ─────────────────────────────────────────────────────────────────
@@ -137,11 +297,12 @@ function stand(args: { stand?: string; login?: string }): Stand {
   const url = (p: string) => `${c.origin}/web/${p.replace(/^\/?(web\/)?/, "")}`;
   const envelope = (params: unknown, body: unknown) =>
     JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params ?? {}, body_o1nhHUG480: body ?? {} });
-  // one retry with a fresh login when the token is stale and a password is known
+  // a SecurityError is either a missing right or a dead session: the session is asked to tell them apart
   async function send(make: (token: string) => Promise<Response>): Promise<Response> {
-    let r = await make(await tokenOf(c));
-    const peek = await r.clone().text();
-    if (/"errorType"\s*:\s*"SecurityError"/.test(peek)) r = await make(await tokenOf(c, true));
+    const r = await make(tokenOf(c));
+    if (/"errorType"\s*:\s*"SecurityError"/.test(await r.clone().text()) && !(await checkAccount(c)).alive)
+      throw new Error(`the session of ${label(c)} has expired — call stand_accounts and let the user log in again ` +
+        "(«Изменить» on that account); the password goes to that page, not to the chat");
     return r;
   }
   const text = async (r: Response) => {
@@ -267,19 +428,19 @@ async function logRow(s: Stand, importId: string) {
 
 // ── notifications ────────────────────────────────────────────────────────────────────────────────────────
 
-const seenAtStart = new Map<string, Set<string>>(); // origin → notification ids present before this session's first stand call
-const OFFLINE = new Set(["stand_list", "archive_put", "archive_lint"]);
+const seenAtStart = new Map<string, Set<string>>(); // account key → notification ids present before this session's first stand call
+const OFFLINE = new Set(["stand_list", "stand_accounts", "stand_use", "stand_remove", "archive_put", "archive_lint"]);
 
 /** Before the first stand call of a session, note which notifications already exist — what appears later is ours. */
 async function baseline(t: Tool, args: any) {
   if (OFFLINE.has(t.name)) return;
-  try { const s = stand(args); if (!seenAtStart.has(s.c.origin)) await notifications(s, 100); } catch {}
+  try { const s = stand(args); if (!seenAtStart.has(s.c.key)) await notifications(s, 100); } catch {}
 }
 
 async function notifications(s: Stand, limit: number) {
   const rows = (await s.call("v2/user-notification/load-notifications", {}, { paging: { offset: 0, limit } })) ?? [];
-  if (!seenAtStart.has(s.c.origin)) seenAtStart.set(s.c.origin, new Set(rows.map((r: any) => r.row?.id)));
-  const before = seenAtStart.get(s.c.origin)!;
+  if (!seenAtStart.has(s.c.key)) seenAtStart.set(s.c.key, new Set(rows.map((r: any) => r.row?.id)));
+  const before = seenAtStart.get(s.c.key)!;
   return rows.map((r: any) => ({ id: r.row?.id, header: r.row?.header, body: cut(r.row?.body, 200), happenedAt: r.row?.happenedAt, newThisSession: !before.has(r.row?.id) }));
 }
 
@@ -289,8 +450,8 @@ type Tool = { name: string; description: string; props?: Record<string, any>; re
   write?: boolean; run: (a: any) => Promise<unknown> };
 
 const STAND_ARGS = {
-  stand: { type: "string", description: "Stand host, e.g. `<stand>`. Omit when only one stand is configured (stand_list)." },
-  login: { type: "string", description: "Login on that stand, when several are saved." },
+  stand: { type: "string", description: "The account: its name or the stand host (stand_list). Omit for the default account." },
+  login: { type: "string", description: "Login on that stand, when it has several accounts." },
 };
 const AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)/;
 const READ_METHOD = /^(load|count|verify|get|find|search)-/;
@@ -303,20 +464,38 @@ async function boById(s: Stand, a: { boId?: string; code?: string }): Promise<st
 
 const tools: Tool[] = [
   // 1. connection
-  { name: "stand_list", description: "Stands and logins this server has credentials for (saved tokens, the extension settings), and which one is the default. Never shows a token.",
-    run: async () => {
-      const all = knownStands();
-      return { default: env.MYBPM_STAND ? hostKey(env.MYBPM_STAND) : all.length === 1 ? hostKey(all[0].origin) : null,
-        stands: all.map((c) => ({ stand: hostKey(c.origin), login: c.login, via: c.source.endsWith(".token") ? "token file" : c.source })),
-        howToAdd: "Claude Code: `mise run stand-login <host> <login>` in the MyBPM repository (the password goes to a hidden prompt). Claude Desktop: the extension settings." };
+  { name: "stand_list", description: "The stand accounts this server keeps (name, stand host, login, who logged in, company) and which one is the default — the account every tool uses when `stand` is not passed. `check: true` also asks each stand whether its session is alive. Never shows a token.",
+    props: { check: { type: "boolean", description: "Ask every stand whether the session is still alive (one call per account)." } },
+    run: async (a) => {
+      const rows = accountRows();
+      if (a.check) await Promise.all(rows.map(async (r) => Object.assign(r, await checkAccount(byKey(r.key)))));
+      return { accounts: rows.map(({ origin: _, ...r }) => r),
+        manage: rows.length ? "stand_use sets the default, stand_remove removes one; adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser)"
+          : NO_ACCOUNTS };
     } },
+  { name: "stand_accounts", description: "Open the accounts page in the user's browser — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), removes one or marks the default. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL — give it to the user as a link in case the browser did not open; then wait for them, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
+    props: { name: { type: "string", description: "A name to prefill, e.g. «Тестовый core2»." },
+      open: { type: "boolean", description: "false = only return the URL, do not open the browser." } },
+    run: async (a) => {
+      const url = await accountsPage();
+      const pre = new URLSearchParams(Object.entries({ stand: a.stand, login: a.login, name: a.name }).filter(([, v]) => v) as [string, string][]);
+      const link = url + (pre.toString() ? `#add&${pre}` : "");
+      return { url: link, opened: a.open === false ? false : openBrowser(link),
+        tell: "The page opens in the user's browser (or give them the url). They log in there; the password never comes to the chat. When they say it is done, call stand_list." };
+    } },
+  { name: "stand_use", description: "Make an account the default: every tool called without `stand` goes to it. Local, the stand is not touched.",
+    required: ["stand"],
+    run: async (a) => useAccount(pickStand(a.stand, a.login)) },
+  { name: "stand_remove", write: true, description: "Remove a stand account from this computer: ends its session on the stand (logout) and deletes the saved token. Ask the user first.",
+    required: ["stand"],
+    run: async (a) => removeAccount(pickStand(a.stand, a.login)) },
   { name: "stand_whoami", description: "Who the token logs in as and which company (tenant) it selects: fio, email, companyCode, companyId, personId, and the company's Person BO id (personBoId). Run it first to confirm you are on the intended account — one host serves several companies.",
     props: { functions: { type: "boolean", description: "Also list the user's functionCodes (long)." } },
     run: async (a) => {
       const s = stand(a);
       const me = await s.get("v2/auth/load-auth-info");
       const personBoId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" }).catch(() => null);
-      return { stand: hostKey(s.c.origin), fio: me?.fio, email: me?.email, companyCode: me?.companyCode, companyId: me?.companyId,
+      return { account: label(s.c), stand: hostKey(s.c.origin), fio: me?.fio, email: me?.email, companyCode: me?.companyCode, companyId: me?.companyId,
         personId: me?.personId, personBoId, language: me?.language, ...(a.functions ? { functionCodes: me?.functionCodes } : { functionCodes: me?.functionCodes?.length }) };
     } },
 
@@ -538,7 +717,9 @@ const version = (() => {
 })();
 
 const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " +
-  "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Start with stand_whoami. " +
+  "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " +
+  "stand_list names them and the default one, `stand` on any tool picks another by name or host, and a new account or a " +
+  "re-login goes through stand_accounts (a local page in the user's browser — never ask for a password in the chat). Start with stand_whoami. " +
   "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear).";
@@ -555,7 +736,7 @@ async function handle(msg: any): Promise<any> {
     case "ping": return {};
     case "tools/list":
       return { tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: schema(t),
-        annotations: { readOnlyHint: !t.write && !["archive_put", "import_analyze", "structure_export"].includes(t.name), destructiveHint: !!t.write, openWorldHint: true } })) };
+        annotations: { readOnlyHint: !t.write && !["stand_accounts", "stand_use", "archive_put", "import_analyze", "structure_export"].includes(t.name), destructiveHint: !!t.write, openWorldHint: true } })) };
     case "tools/call": {
       const t = tools.find((x) => x.name === msg.params?.name);
       if (!t) throw Object.assign(new Error(`unknown tool ${msg.params?.name}`), { code: -32602 });

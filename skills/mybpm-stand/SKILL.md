@@ -41,7 +41,9 @@ every time. `### 0U.7 Where the rest is` maps the numbered sections behind the c
 This plugin also starts an MCP server, `mybpm-stand` (in Claude Desktop: the `mybpm-stand.mcpb` extension).
 **Its tools connected (`stand_whoami`, `import_analyze` …) → use them instead of hand-made calls** for
 what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
-it holds the credentials (do not ask for a password or a token — `stand_whoami` confirms stand and company),
+it holds the stand accounts (do not ask for a password or a token — `stand_whoami` confirms stand and company;
+a new account or an expired session → `stand_accounts`, a page where the user logs in; `stand` on any tool picks
+an account by name or host),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
 (`archive_put`). Not connected → the recipes of the document as written; for the rest the tools do not
 cover, `stand_call` sends any method in the envelope of the recipe.
@@ -49,7 +51,7 @@ cover, `stand_call` sends any method in the envelope of the recipe.
 ## Rules that hold for every task
 
 1. **Ask for the stand URL, the company and the credentials — never assume them** (MCP connected: it holds
-   them — confirm with `stand_whoami` instead). The document uses
+   them — confirm with `stand_whoami` instead; a stand it has no account for → `stand_accounts`). The document uses
    placeholders (`<stand>`, `<company-a>` …); ids and codes in its examples belong to other stands.
 2. **HTTP 200 proves nothing.** Detect errors by `errorType` in the body, and read every write back.
 3. **Writes are immediate and have no undo but deletion** (`create-bo`, `apply-import`, `v2/co/add-*`).
