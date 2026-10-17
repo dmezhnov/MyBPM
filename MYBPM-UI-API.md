@@ -988,8 +988,9 @@ written.** This document stays the spec either way: what a tool cannot do is pla
     automatically — Re-syncs on GitHub changes», on by default, does not move it to a newer release [C]; the
     plugin's own ⋯ under Yours holds only «Remove». A user on an old version (the version is on the plugin's
     page: `from MyBPM · <version>`): «+ Add» → Manage marketplaces → ⋯ on MyBPM → **Check for updates** → the
-    commit and the plugin version move to the latest `main` at once [C]; Desktop downloads the new copy on its
-    next plugin sync (every 20 min) or at its restart [I], then a new chat. A second Add marketplace of the same repository answers «This marketplace
+    commit and the plugin version move to the latest `main` at once [C]. Desktop keeps its local copy until a
+    full plugin sync — its periodic 20-min sync is a quick one that leaves user-installed plugins as they are
+    [C]; restart Desktop — it downloads the new copy at start [C] — then a new chat. A second Add marketplace of the same repository answers «This marketplace
     is already added» — go to Discover. The Code tab's own Add marketplace is a different thing: it writes the
     machine's Claude Code registry, not the account [C]. Without the marketplace: «+ Add» → **Upload plugin** →
     `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` → «Continue» — same result
