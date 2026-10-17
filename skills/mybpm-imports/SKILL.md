@@ -40,7 +40,20 @@ the cookbook sends you there or the case is exotic.
 2. **Status markers matter.** `[C]` is confirmed on a stand, `[I]` inferred, `[U]` unverified — do not
    build on `[U]` without telling the user.
 3. **Run the cookbook's self-check before you hand anything over**: `### 0.10`, `### 0S.11`, `### 0X.5`.
+   For an archive, the form lint of 0.10 ships ready to run with this skill — see «The form lint» below.
 4. When something behaves impossibly, read the trap lists: `## 8. What import does`, `## 17. Traps and defects`.
+
+## The form lint (ships with this skill)
+
+`scripts/lint-archive.cjs` in this skill's folder IS the `lintArchive` function of `### 0.10` with a
+command line around it — do not copy the function out of the document, run the file:
+
+    node scripts/lint-archive.cjs <file.mybpm.zip>        # or: bun scripts/lint-archive.cjs …
+
+It finds `MYBPM-IMPORTS.md` itself (pass its path as a second argument if it does not), prints the lint
+output and exits 1 while a defect line is left. Paste that output into the report and follow 0.10 for it:
+fix every defect line and rerun, answer every `REMINDER` by name, and still walk the prose checks of 0.10.
+No Node or Bun in your sandbox → «How to run it» in `### 0.10` (any JavaScript engine, or a port).
 
 ## Tools (only when the repository is at hand)
 
