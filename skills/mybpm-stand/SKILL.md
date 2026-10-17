@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.13**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.14**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for Claude» when a newer one is
@@ -70,7 +70,16 @@ a new account or an expired session → `stand_accounts`, give the user the link
 only when they ask; all accounts are equal — several and the user has not
 said which → ask, then pass `stand` (name or host) on every call),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
-(`archive_put`). For the rest the tools do not cover, `stand_call` sends any method in the envelope of the recipe.
+(`archive_put`). BOs and composites in the constructor: `bo_create`, `bo_fields_save`, `bo_code_set`, `bo_delete`, `co_build`.
+For the rest the tools do not cover, `stand_call` sends any method in the envelope of the recipe.
+
+## The stand does otherwise than the document says
+
+On the latest release only (the version check above shows no newer one): search the open reports, then — with
+the user's OK, the repository is public — prepare ONE de-identified GitHub issue per fact (placeholders for every host,
+company, login and person, no record data). The rule and the prefilled issue URL are in the paragraph
+«The stand does something else than this document says» at the top of `MYBPM-UI-API.md`; the MCP server connected →
+`platform_report` builds the URL and the user presses «Submit new issue».
 
 **Not connected (no `stand_*` tool among yours) and the task touches a stand → tell the user in your first
 reply and give them the install steps — you cannot install it yourself** (the app's own Install dialog, which

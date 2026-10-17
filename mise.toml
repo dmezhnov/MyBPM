@@ -55,7 +55,7 @@ await $`mise run skills-gen`.quiet();
 const plugin = await Bun.file(".claude-plugin/plugin.json").json();
 const manifest = {
   manifest_version: "0.3", name: "mybpm-stand", display_name: "MyBPM stand", version: plugin.version,
-  description: "Drive a running MyBPM stand: who am I, BO structure, import a .mybpm.zip (lint, analyze, apply, rollback), export structure, the bell, any API method.",
+  description: "Drive a running MyBPM stand: accounts, BO structure, build BOs and composites in the constructor, import a .mybpm.zip (lint, analyze, apply, rollback), export structure, the bell, any API method; report a discrepancy with the docs as a GitHub issue.",
   author: plugin.author, repository: { type: "git", url: plugin.repository },
   server: { type: "node", entry_point: "server/mybpm-stand.cjs", mcp_config: { command: "node", args: ["${__dirname}/server/mybpm-stand.cjs"] } },
   compatibility: { platforms: ["darwin", "win32", "linux"], runtimes: { node: ">=18" } },
@@ -178,6 +178,35 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.count.notifications === 1],
   ["stand_read", { path: "import-structure/cancel-import" }, (r) => /not a read method/.test(r)],
   ["stand_call", { path: "v2/auth/v3/login" }, (r) => /refused/.test(r)],
+  // the constructor: a BO with a pair row, a dropdown and two fields on a tab; edit + delete + add; codes; a composite; the delete
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe client", code: "mcp_probe_client", fields: [
+    { label: "Наименование", type: "INPUT_TEXT", code: "name", required: true }, { label: "Телефон", type: "INPUT_TEXT", code: "phone", cols: 8 },
+    { label: "E-mail", type: "INPUT_TEXT", code: "email", cols: 7 }, { label: "Статус", type: "DROPDOWN_SINGLE", code: "status", options: ["Новый", "В работе"] },
+    { label: "Заметки", type: "TEXTAREA", code: "notes", tab: "Детали" }, { label: "Открыть", type: "BUTTON", code: "btn_open", url: "https://example.com", tab: "Детали" }] },
+    (r) => r.code === "mcp_probe_client" && r.name === "MCP probe client" && r.fields.length === 7 && r.window.w === 12 && r.window.h === 26
+      && r.fields[0].column === 0 && r.fields[0].required && r.fields[1].grid === "0/3/8/3" && r.fields[2].grid === "8/3/7/3"
+      && r.fields[4].type === "TAB_GROUP" && r.fields[4].code === "tabs" && r.fields[4].grid === "0/9/15/12"
+      && r.fields[5].tabId && r.fields[5].grid === "0/0/15/6" && r.fields[6].code === "btn_open" && r.fields[6].grid === "0/6/15/3"],
+  ["bo_fields_save", { code: "mcp_probe_client", edit: [{ fieldId: "@bo_create.fields.1.fieldId", label: "Мобильный" }], delete: ["@bo_create.fields.3.fieldId"],
+    add: [{ label: "Комментарий", type: "INPUT_TEXT", code: "comment" }], window: false },
+    (r) => r.fields.length === 7 && r.fields[1].label === "Мобильный" && !r.fields.some((f: any) => f.code === "status")
+      && r.fields[6].code === "comment" && r.fields[6].grid === "0/21/15/3"],
+  ["bo_code_set", { code: "mcp_probe_client", newCode: "mcp_probe_customer" }, (r) => r.was === "mcp_probe_client" && r.code === "mcp_probe_customer"],
+  ["bo_code_set", { code: "mcp_probe_customer", fieldId: "@bo_create.fields.0.fieldId", newCode: "title" }, (r) => r.was === "name" && r.code === "title"],
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe dup", code: "mcp_probe_customer" }, (r) => /taken/.test(r)],
+  ["co_build", { group: "Бизнес-объект", name: "MCP probe composite", code: "mcp_probe_co", attrs: [
+    { links: [{ bo: "MCP probe client", field: "Наименование" }] },
+    { label: "Контакт", code: "contact", links: [{ bo: "@bo_create.id", field: "Мобильный" }, { bo: "@bo_create.id", field: "E-mail" }] }] },
+    (r) => r.code === "mcp_probe_co" && r.simple.length === 1 && r.simple[0].label === "Наименование" && r.composite.length === 1
+      && r.composite[0].label === "Контакт" && r.composite[0].code === "contact" && r.composite[0].links === 2 && r.sources.length === 1],
+  ["co_build", { coId: "@co_build.coId", attrs: [{ links: [{ bo: "@bo_create.id", field: "Нет такого" }] }] }, (r) => /not a field.*draft was removed/.test(r)],
+  ["stand_read", { path: "v2/co/load-mock-open-drafts" }, (r) => r === 0],
+  ["bo_delete", { code: "mcp_probe_co", confirm: true }, (r) => r.boCategory === "BO_COMPOSITE" && r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_customer" }, (r) => r.fields === 7 && r.deleted === undefined && Array.isArray(r.usage.scripts) && Array.isArray(r.usage.refBos)],
+  ["bo_delete", { code: "mcp_probe_customer", confirm: true }, (r) => r.deleted === true],
+  ["bo_find", { code: "mcp_probe_customer" }, (r) => r.exists === false],
+  ["platform_report", { title: "t", document: "MYBPM-UI-API.md", heading: "R1", docSays: "x", standDid: "on admin@mock it failed" }, (r) => /names the user.*admin@mock/.test(r)],
+  ["platform_report", { title: "t", document: "MYBPM-UI-API.md", heading: "R1", docSays: "x", standDid: "y" }, (r) => /update the plugin/.test(r)],
   // accounts: the page logs in (pseudo-tool http = the page's own form); with two accounts none is the default
   ["stand_accounts", {}, (r) => r.opened === false && /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}\/$/.test(r.url)],
   ["http", page({ ...u2, password: "wrong" }), (r) => /не принял логин или пароль/.test(r.error)],
@@ -199,13 +228,22 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
     const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /^> ⚠️ \*\*A new version of the MyBPM plugin is out: 99\.0\.0\*\*/m.test(n)) === (i === 0 || steps[i][0] === "stand_list"));
     if (noted.includes(false)) { bad++; console.error(`mcp (${rt}): the release note sits on the wrong steps: ${noted.map((ok: boolean, i: number) => ok ? "" : i + 1).filter(Boolean)}`); }
     if (report.length !== steps.length) { bad++; console.error(`mcp (${rt}): ${report.length}/${steps.length} steps answered\n${r.stderr}`); }
+    // on the latest copy (no release check) the report is a prefilled issue form of the repository
+    const rep = await $`bun tools/mcp-client.bun.ts call platform_report ${JSON.stringify({ title: "Поле не сохраняется", document: "MYBPM-UI-API.md", heading: "R1 step 7", mark: "[C]", docSays: "x", standDid: "y" })} --runtime ${rt} --json`
+      .env({ ...env, MYBPM_LATEST_URL: "" }).nothrow().quiet();
+    const issue = JSON.parse(rep.stdout.toString() || "[]")[0]?.result;
+    const q = issue?.url && new URL(issue.url).searchParams;
+    if (!q || !issue.url.startsWith("https://github.com/dmezhnov/MyBPM/issues/new?") || q.get("template") !== "platform-discrepancy.yml"
+      || q.get("title") !== "Поле не сохраняется" || q.get("mark") !== "[C]" || !q.get("version") || issue.opened !== false || !/label%3Aplatform-discrepancy/.test(issue.search)) {
+      bad++; console.error(`mcp (${rt}) platform_report: ${JSON.stringify(issue)?.slice(0, 400)}\n${rep.stderr}`);
+    }
   }
 } finally { mock.kill(); }
 if (bad) process.exit(1);

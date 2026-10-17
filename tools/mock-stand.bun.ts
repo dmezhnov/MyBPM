@@ -11,6 +11,9 @@
 // (upload → insert → analyze → apply → rollback, cancel), the structure export, the bell, the accounts. The BOs of an
 // uploaded archive appear on apply and disappear on rollback, so bo_find shows what the stand would. A login with the
 // password «secret» answers the token `mock-token-<login>`, and that token's session is <login>; any other token is admin@mock.
+// The constructor is stateful too: create-bo, the portion save (only addedFieldIds / editedFields / deletedFieldIds change
+// the stored fields — a change made only inside formFields is dropped, as on a stand, trap 53), field / widget / BO codes,
+// a soft delete, and the composite draft cycle (`v2/co/load-mock-open-drafts` counts the drafts left open).
 //
 // A mock MyBPM stand: records every request and answers canned DTOs, so two independent clients can be
 // driven over the same recipe and their request streams diffed.
@@ -31,12 +34,20 @@ function answer(path: string, params: any, body: any): any {
 }
 
 // ── the MCP server's routes: a stateful import, export and bell ──────────────────────────────────────────
-type Bo = { id: string; code: string; name: string; boCategory: string };
-const bos = new Map<string, Bo>(); // code → BO present on the stand
+type Bo = { id: string; code: string; name: string; boCategory: string; fields?: any[]; deleted?: boolean; co?: Co; window?: unknown };
+type CoField = { coFieldId: string; label: string; code: string; links: { boId: string; fieldId: string }[] };
+type Co = { sources: string[]; fields: CoField[] };
+const bos = new Map<string, Bo>(); // id → BO present on the stand
+const live = () => [...bos.values()].filter((b) => !b.deleted);
+const byCode = (code: string) => live().find((b) => b.code === code);
+const parts = new Map<string, string>(); // portion-save accumulator id → the JSON so far
+const drafts = new Map<string, { coId: string } & Co>();
+const copyCo = (c: Co): Co => JSON.parse(JSON.stringify(c));
 const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null }>();
 let bell: { id: string; header: string; body: string; happenedAt: number }[] = [{ id: "NOTE_OLD_0000001", header: "Старое", body: "не наше", happenedAt: 1 }];
 let seq = 0;
 const nextId = (p: string) => `${p}${String(++seq).padStart(16 - p.length, "0")}`;
+const raced = new Set<string>();
 const fail = (message: string) => ({ errorType: "RuntimeException", message });
 const openImport = () => [...imports.entries()].find(([, i]) => i.status === "ANALYZED");
 const logRow = (id: string) => { const i = imports.get(id)!; return { id, fileName: i.fileName, description: i.description, status: i.status,
@@ -62,11 +73,77 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return { fio: email === "admin@mock" ? "Mock Admin" : `Mock ${email}`, email, companyCode: "MOCK", companyId: "COMPANY000000001", personId: "PERSON0000000001", language: "RUS", functionCodes: ["A", "B"] };
     }
     case "v2/business-objects/load-bo-id-by-kind": return "PERSONBO00000001";
-    case "v2/business-objects/load-bo-id-by-code": return bos.get(params.boCode)?.id ?? fail(`lKzjTR9WcU :: No bo with code = \`${params.boCode}\``);
-    case "v2/business-objects/load-bo-records-by-group-id": return [...bos.values()].map(({ id, name, boCategory }) => ({ id, name, boCategory }));
+    case "v2/business-objects/load-bo-id-by-code": return byCode(params.boCode)?.id ?? fail(`lKzjTR9WcU :: No bo with code = \`${params.boCode}\``);
+    case "v2/business-objects/load-bo-records-by-group-id": return live().map(({ id, name, boCategory }) => ({ id, name, boCategory }));
     case "v2/business-objects/load-business-object-by-id": {
-      const bo = [...bos.values()].find((b) => b.id === params.businessObjectId);
-      return bo && { ...bo, kind: "GENERAL", isDictionary: bo.boCategory === "BO_DICTIONARY", formFields: [] };
+      const bo = bos.get(params.businessObjectId);
+      if (!bo || bo.deleted) return fail("Cgf5V16VU4 :: данный бизнес-объект не существует");
+      return { id: bo.id, code: bo.code, name: bo.name, boCategory: bo.boCategory, kind: "GENERAL", isDictionary: bo.boCategory === "BO_DICTIONARY",
+        formFields: structuredClone(bo.fields ?? []) };
+    }
+    case "v2/business-objects/verify-business-object-code": return !!params.businessObjectCode && !byCode(params.businessObjectCode);
+    case "v2/business-objects/create-bo": {
+      const n = bos.size + 1, bo: Bo = { id: nextId("BO"), code: `Biznes_obekt_${n}`, name: `Бизнес объект №${n}`, boCategory: body.boCategory, fields: [],
+        ...(body.boCategory === "BO_COMPOSITE" ? { co: { sources: [], fields: [] } } : {}) };
+      bos.set(bo.id, bo);
+      return { id: bo.id, name: bo.name, nameReadonly: false, viewState: "ACTIVE", orderIndex: 10, boCategory: bo.boCategory };
+    }
+    case "v2/business-objects/save-business-object-portion": {
+      const acc = body.id ?? nextId("ACC"), json = (parts.get(acc) ?? "") + body.jsonPart;
+      if (!body.isLast) { parts.set(acc, json); return acc; }
+      parts.delete(acc);
+      const p = JSON.parse(json), bo = bos.get(p.businessObject?.id);
+      if (!bo) return fail("UndeclaredThrowableException");
+      if (p.businessObject.nameMap?.RUS) bo.name = p.businessObject.nameMap.RUS;
+      if (p.businessObject.formFields) {
+        const drop = new Set(p.deletedFieldIds ?? []), add = new Set(p.addedFieldIds ?? []);
+        bo.fields = [...(bo.fields ?? []).filter((x) => !drop.has(x.fieldId)), ...p.businessObject.formFields.filter((x: any) => add.has(x.fieldId))];
+        for (const e of p.editedFields ?? []) Object.assign(bo.fields.find((x) => x.fieldId === e.fieldId) ?? {}, e);
+      }
+      return acc;
+    }
+    case "v2/business-objects/generate-business-form-field":
+      return { fieldId: nextId("FLD"), label: null, labelMap: null, code: null, type: params.fieldType, gridPosition: { x: 0, y: 0, cols: 15, rows: 4 } };
+    case "v2/business-objects/generate-business-form-widget": return { fieldId: nextId("WGT"), label: null, code: null, widgetType: params.widgetType };
+    case "v2/business-objects/generate-business-form-field-by-native": return { fieldId: nextId("NAT"), label: null, nativeFieldType: params.nativeType };
+    case "v2/id-loader/load-portion": return Array.from({ length: 10 }, () => nextId("ID"));
+    case "v2/business-objects/save-business-field-code": case "v2/button/save-button-code": case "v2/button/save-button-url": {
+      const f = bos.get(params.businessObjectId ?? params.boId)?.fields?.find((x) => x.fieldId === (params.businessFieldId ?? params.buttonId));
+      if (!f) return fail("no such field");
+      // the stand: a setter right after the portion save that added the field does not see it yet — once per field here
+      if (!raced.has(f.fieldId)) { raced.add(f.fieldId); return { errorType: "NoBoFieldWithId", message: "pYLrEBOVuV :: Данное поле не сохранено в бизнес-объекте" }; }
+      if (route.endsWith("-url")) f.url = params.url; else f.code = params.businessFieldCode ?? params.code;
+      return "";
+    }
+    case "v2/business-objects/save-business-object-code": bos.get(params.businessObjectId)!.code = params.businessObjectCode; return "";
+    case "v2/business-objects/save-business-object-grid-layout-position": bos.get(body.boId)!.window = body.gridLayoutPosition; return "";
+    case "v2/delete-script-usage/analyze-bo": return { analyzeId: nextId("ANL") };
+    case "v2/delete-script-usage/is-analyze-done": return { done: true, errorMessage: null, hits: [] };
+    case "v2/business-objects/load-bo-usage": return { menuItemNames: [], refBoNames: [] };
+    case "v2/business-objects/delete-business-object": bos.get(params.businessObjectId)!.deleted = true; return "";
+    case "v2/co/generate-draft": { const id = nextId("DRAFT"); drafts.set(id, { coId: params.coId, ...copyCo(bos.get(params.coId)!.co!) }); return id; }
+    case "v2/co/remove-draft": drafts.delete(params.draftId); return null;
+    case "v2/co/apply-and-remove-draft": { const d = drafts.get(params.draftId)!; bos.get(d.coId)!.co = copyCo(d); drafts.delete(params.draftId); return null; }
+    case "v2/co/load-mock-open-drafts": return drafts.size;
+    case "v2/co/add-bo-to-co": drafts.get(params.draftId)!.sources.push(params.boId); return null;
+    case "v2/co/load-bo-records-for-co": return drafts.get(params.draftId)!.sources.map((id) => ({ id, name: bos.get(id)?.name }));
+    case "v2/co/load-bo-fields-for-co": return (bos.get(params.boId)?.fields ?? []).map((x) => ({ fieldId: x.fieldId, label: x.label, code: x.code, type: x.type }));
+    case "v2/co/load-co-fields-simple": case "v2/co/load-co-fields-composite":
+      return drafts.get(params.draftId)!.fields.filter((x) => (x.links.length > 1) === route.endsWith("composite"));
+    case "v2/co/add-co-field-to-simple": {
+      const d = drafts.get(params.draftId)!;
+      for (const l of body) {
+        const src = bos.get(l.boId)?.fields?.find((x) => x.fieldId === l.fieldId);
+        if (!src || d.fields.some((x) => x.links.some((y) => y.fieldId === l.fieldId))) return fail("bad link");
+        d.fields.push({ coFieldId: nextId("COF"), label: src.label, code: `co_${src.code}`, links: [l] });
+      }
+      return null;
+    }
+    case "v2/co/add-co-field-to-composite": drafts.get(params.draftId)!.fields.find((x) => x.coFieldId === params.coFieldId)!.links.push(...body); return null;
+    case "v2/co/change-co-field-label": case "v2/co/change-co-field-code": {
+      const x = drafts.get(params.draftId)!.fields.find((y) => y.coFieldId === params.coFieldId)!;
+      if (params.label !== undefined) x.label = params.label; else x.code = params.code;
+      return null;
     }
     case "v2/org-unit/load-filtered-persons-v2": return [{ name: "Все", persons: [{ id: "PERSON0000000001", name: "Mock Admin", email: "admin@mock", parentGroupNames: "" }] }];
     case "v2/process-indicator/pre-create-process": return nextId("PROC");
@@ -92,7 +169,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "import-structure/save-import-description": imports.get(params.importId)!.description = params.value; return null;
     case "import-structure/apply-import": {
       const i = imports.get(params.importId)!;
-      for (const b of i.bos) bos.set(b.code, b);
+      for (const b of i.bos) bos.set(b.id, b);
       i.status = "APPLIED";
       return { type: "APPLIED" };
     }
@@ -105,7 +182,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     }
     case "import-structure/rollback-import": {
       const i = imports.get(params.importId)!;
-      for (const b of i.bos) bos.delete(b.code);
+      for (const b of i.bos) bos.delete(b.id);
       i.status = "ROLLED_BACK";
       return { type: "ROLLED_BACK" };
     }
@@ -125,7 +202,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
 /** The export: one BO line per BO in the stand, as the stand's own zip of 0000001.mybpm + metadata.mybpm. */
 function exportZip(): Uint8Array {
   const enc = new TextEncoder();
-  const lines = [...bos.values()].map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
+  const lines = live().map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
     code: b.code, category: b.boCategory, name: { rus: b.name }, dynamicFields: {} }));
   return zip([{ name: "data-mock/0000001.mybpm", data: enc.encode(lines.join("\n") + "\n") },
     { name: "data-mock/metadata.mybpm", data: enc.encode(`objectCount-${lines.length}`) }]);
