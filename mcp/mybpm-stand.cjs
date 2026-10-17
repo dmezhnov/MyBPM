@@ -138,11 +138,10 @@ async function load() {
   if (!rows.length) { const tr = el("tr"), td = el("td", "Учёток пока нет — добавьте первую."); td.colSpan = 4; tr.append(td); tb.append(tr); }
   for (const a of rows) {
     const tr = el("tr"), name = el("td"), where = el("td"), who = el("td"), act = el("td");
-    name.append(el("span", a.name || "—")); if (a.default) name.append(el("div", "★ по умолчанию", "star"));
+    name.append(el("span", a.name || "—"));
     where.append(el("div", a.stand), el("small", a.login));
     who.append(el("div", a.fio || ""), el("small", a.companyCode || "")); const st = el("div"); who.append(st);
     const b = (t, f, cls) => { const x = el("button", t, cls); x.type = "button"; x.onclick = f; act.append(x); };
-    if (!a.default) b("По умолчанию", async () => { await api("default", { key: a.key }); load(); });
     b("Проверить", async () => { say(st, "…"); const r = await api("check", { key: a.key });
       say(st, r.alive ? "сессия жива" : "сессия истекла — «Изменить» и войти заново", r.alive ? "ok" : "bad"); });
     if (a.via === "token file") {
@@ -188,7 +187,7 @@ var hostDir = (o) => hostKey(o).replace(/:/g, "_");
 function readBook() {
   try {
     const b = JSON.parse(import_node_fs.readFileSync(BOOK, "utf8"));
-    return { default: b.default, accounts: b.accounts ?? {} };
+    return { accounts: b.accounts ?? {} };
   } catch {
     return { accounts: {} };
   }
@@ -225,19 +224,14 @@ function accounts() {
 var label = (c) => `${c.name ? `«${c.name}» ` : ""}${hostKey(c.origin)} / ${c.login || "?"}`;
 var listed = (cs) => cs.map(label).join("; ");
 var NO_ACCOUNTS = "no stand accounts yet — call stand_accounts and give the user its link to a local page where they log in " + "(the password goes to that page, never to the chat); do not open their browser unasked";
-function defaultAccount(all) {
-  const d = readBook().default;
-  return all.find((c) => c.key === d) ?? (env.MYBPM_STAND ? all.find((c) => hostKey(c.origin) === hostKey(env.MYBPM_STAND)) : undefined) ?? (all.length === 1 ? all[0] : undefined);
-}
 function pickStand(stand, login) {
   const all = accounts();
   if (!all.length)
     throw new Error(NO_ACCOUNTS);
   if (!stand && !login) {
-    const d = defaultAccount(all);
-    if (d)
-      return d;
-    throw new Error(`several accounts, none is the default — pass \`stand\` (a name or a host) or set one with stand_use: ${listed(all)}`);
+    if (all.length === 1)
+      return all[0];
+    throw new Error(`several accounts — ask the user which one to work with (unless they said it in this conversation) and pass \`stand\` on every call: ${listed(all)}`);
   }
   const want = stand?.trim().toLowerCase();
   let hits = !want ? all : all.filter((c) => c.name?.trim().toLowerCase() === want);
@@ -247,12 +241,8 @@ function pickStand(stand, login) {
     hits = hits.filter((c) => c.login.toLowerCase() === login.trim().toLowerCase());
   if (hits.length === 1)
     return hits[0];
-  if (hits.length > 1) {
-    const d = defaultAccount(all);
-    if (d && hits.includes(d))
-      return d;
+  if (hits.length > 1)
     throw new Error(`several accounts match — pass \`login\`: ${listed(hits)}`);
-  }
   throw new Error(`no account ${[stand, login].filter(Boolean).join(" / ")} — known: ${listed(all)}. ` + "A new one is added with stand_accounts (the user logs in on a local page).");
 }
 var tokenOf = (c) => (c.token ?? import_node_fs.readFileSync(c.file, "utf8")).trim().replace(/^"|"$/g, "");
@@ -321,14 +311,9 @@ async function saveAccount(a) {
     if (old?.file)
       dropFiles(old);
     delete book.accounts[a.was];
-    if (book.default === a.was)
-      book.default = key;
   }
-  const others = before.filter((c) => c.key !== key && c.key !== a.was);
-  if (!book.default)
-    book.default = others.length === 1 ? others[0].key : key;
   writeBook(book);
-  return { key, name, stand: hostKey(o), login, fio: meta.fio, email: meta.email, companyCode: meta.companyCode, default: book.default === key };
+  return { key, name, stand: hostKey(o), login, fio: meta.fio, email: meta.email, companyCode: meta.companyCode };
 }
 function dropFiles(c) {
   import_node_fs.rmSync(c.file, { force: true });
@@ -343,18 +328,10 @@ async function removeAccount(c) {
   dropFiles(c);
   const book = readBook();
   delete book.accounts[c.key];
-  if (book.default === c.key)
-    delete book.default;
   writeBook(book);
   return { removed: label(c) };
 }
-function useAccount(c) {
-  const book = readBook();
-  book.default = c.key;
-  writeBook(book);
-  return { default: label(c) };
-}
-async function checkAccount(c) {
+async function checkAccount(c, details = false) {
   try {
     const me = await authInfo(c.origin, tokenOf(c));
     if (c.file) {
@@ -362,14 +339,15 @@ async function checkAccount(c) {
       book.accounts[c.key] = { ...book.accounts[c.key] ?? { origin: c.origin }, fio: me.fio, email: me.email, companyCode: me.companyCode };
       writeBook(book);
     }
+    if (details)
+      return { alive: true, me };
     return { alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode };
   } catch (e) {
     return { alive: false, error: e.message };
   }
 }
 function accountRows() {
-  const all = accounts(), d = defaultAccount(all);
-  return all.map((c) => ({
+  return accounts().map((c) => ({
     key: c.key,
     name: c.name ?? null,
     stand: hostKey(c.origin),
@@ -378,7 +356,6 @@ function accountRows() {
     fio: c.meta.fio ?? null,
     companyCode: c.meta.companyCode ?? null,
     savedAt: c.meta.savedAt ?? null,
-    default: c === d,
     via: c.file ? "token file" : "MYBPM_TOKEN"
   }));
 }
@@ -419,8 +396,6 @@ function accountsPage() {
             return reply(200, await saveAccount(a));
           case "api/remove":
             return reply(200, await removeAccount(byKey(a.key)));
-          case "api/default":
-            return reply(200, useAccount(byKey(a.key)));
           case "api/check":
             return reply(200, await checkAccount(byKey(a.key)));
         }
@@ -456,8 +431,8 @@ function parse(text) {
     throw new StandError(out.errorType ?? out.className, String(out.message ?? "").slice(0, 600));
   return out;
 }
-function stand(args) {
-  const c = pickStand(args.stand, args.login);
+var stand = (args) => standOf(pickStand(args.stand, args.login));
+function standOf(c) {
   const url = (p) => `${c.origin}/web/${p.replace(/^\/?(web\/)?/, "")}`;
   const envelope = (params, body) => JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params ?? {}, body_o1nhHUG480: body ?? {} });
   async function send(make) {
@@ -576,7 +551,7 @@ async function logRow(s, importId) {
   return (rows ?? []).find((r) => r.id === importId);
 }
 var seenAtStart = new Map;
-var OFFLINE = new Set(["stand_list", "stand_accounts", "stand_use", "stand_remove", "archive_put", "archive_lint"]);
+var OFFLINE = new Set(["stand_list", "stand_accounts", "stand_remove", "archive_put", "archive_lint"]);
 async function baseline(t, args) {
   if (OFFLINE.has(t.name))
     return;
@@ -594,7 +569,7 @@ async function notifications(s, limit) {
   return rows.map((r) => ({ id: r.row?.id, header: r.row?.header, body: cut(r.row?.body, 200), happenedAt: r.row?.happenedAt, newThisSession: !before.has(r.row?.id) }));
 }
 var STAND_ARGS = {
-  stand: { type: "string", description: "The account: its name or the stand host (stand_list). Omit for the default account." },
+  stand: { type: "string", description: "The account: its name or the stand host (stand_list). Required when several accounts are kept — ask the user which one; may be omitted only when there is one account." },
   login: { type: "string", description: "Login on that stand, when it has several accounts." }
 };
 var AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)/;
@@ -609,21 +584,45 @@ async function boById(s, a) {
 var tools = [
   {
     name: "stand_list",
-    description: "The stand accounts this server keeps (name, stand host, login, who logged in, company) and which one is the default — the account every tool uses when `stand` is not passed. `check: true` also asks each stand whether its session is alive. Never shows a token.",
-    props: { check: { type: "boolean", description: "Ask every stand whether the session is still alive (one call per account)." } },
+    description: "Every stand account this server keeps — all equal, none is the default — each asked live: name, stand host, login, alive (the session works) or the error, who it logs in as (fio, email) and which company (tenant) it selects (companyCode, companyId, personId, the company's Person BO id personBoId). Start here; several accounts and the user has not said which → ask them, then pass `stand` on every call. Never shows a token.",
+    props: { functions: { type: "boolean", description: "Also list each user's functionCodes (long)." } },
     run: async (a) => {
-      const rows = accountRows();
-      if (a.check)
-        await Promise.all(rows.map(async (r) => Object.assign(r, await checkAccount(byKey(r.key)))));
+      const rows = await Promise.all(accounts().map(async (c) => {
+        const base = { name: c.name ?? null, stand: hostKey(c.origin), login: c.login, via: c.file ? "token file" : "MYBPM_TOKEN" };
+        const r = await checkAccount(c, true);
+        if (!r.alive)
+          return {
+            ...base,
+            alive: false,
+            error: r.error,
+            fio: c.meta.fio ?? null,
+            companyCode: c.meta.companyCode ?? null,
+            fix: "the session expired or the stand is unreachable — stand_accounts, the user logs in again on the page"
+          };
+        const me = r.me, s = standOf(c);
+        const personBoId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" }).catch(() => null);
+        return {
+          ...base,
+          alive: true,
+          fio: me.fio,
+          email: me.email,
+          companyCode: me.companyCode,
+          companyId: me.companyId,
+          personId: me.personId,
+          personBoId,
+          language: me.language,
+          ...a.functions ? { functionCodes: me.functionCodes } : {}
+        };
+      }));
       return {
-        accounts: rows.map(({ origin: _, ...r }) => r),
-        manage: rows.length ? "stand_use sets the default, stand_remove removes one; adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser)" : NO_ACCOUNTS
+        accounts: rows,
+        manage: rows.length ? "adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser); stand_remove removes one" : NO_ACCOUNTS
       };
     }
   },
   {
     name: "stand_accounts",
-    description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), removes one or marks the default. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
+    description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), or removes one. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
     props: {
       name: { type: "string", description: "A name to prefill, e.g. «Тестовый core2»." },
       open: { type: "boolean", description: "true = also open the page in the user's browser; only when the user asked for it. Default false: the URL only." }
@@ -640,39 +639,11 @@ var tools = [
     }
   },
   {
-    name: "stand_use",
-    description: "Make an account the default: every tool called without `stand` goes to it. Local, the stand is not touched.",
-    required: ["stand"],
-    run: async (a) => useAccount(pickStand(a.stand, a.login))
-  },
-  {
     name: "stand_remove",
     write: true,
     description: "Remove a stand account from this computer: ends its session on the stand (logout) and deletes the saved token. Ask the user first.",
     required: ["stand"],
     run: async (a) => removeAccount(pickStand(a.stand, a.login))
-  },
-  {
-    name: "stand_whoami",
-    description: "Who the token logs in as and which company (tenant) it selects: fio, email, companyCode, companyId, personId, and the company's Person BO id (personBoId). Run it first to confirm you are on the intended account — one host serves several companies.",
-    props: { functions: { type: "boolean", description: "Also list the user's functionCodes (long)." } },
-    run: async (a) => {
-      const s = stand(a);
-      const me = await s.get("v2/auth/load-auth-info");
-      const personBoId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" }).catch(() => null);
-      return {
-        account: label(s.c),
-        stand: hostKey(s.c.origin),
-        fio: me?.fio,
-        email: me?.email,
-        companyCode: me?.companyCode,
-        companyId: me?.companyId,
-        personId: me?.personId,
-        personBoId,
-        language: me?.language,
-        ...a.functions ? { functionCodes: me?.functionCodes } : { functionCodes: me?.functionCodes?.length }
-      };
-    }
   },
   {
     name: "bo_groups",
@@ -1073,7 +1044,7 @@ function updateHow() {
 }
 var releaseTold = false;
 async function releaseNote(t) {
-  if (releaseTold && t.name !== "stand_whoami")
+  if (releaseTold && t.name !== "stand_list")
     return;
   if (!releaseTold)
     await Promise.race([latestCheck, new Promise((r) => setTimeout(r, Math.max(0, 1500 - (Date.now() - started))))]);
@@ -1085,7 +1056,7 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "stand_list names them and the default one, `stand` on any tool picks another by name or host, and a new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Start with stand_whoami. " + "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on.";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on.";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }
@@ -1105,7 +1076,7 @@ async function handle(msg) {
         name: t.name,
         description: t.description,
         inputSchema: schema(t),
-        annotations: { readOnlyHint: !t.write && !["stand_accounts", "stand_use", "archive_put", "import_analyze", "structure_export"].includes(t.name), destructiveHint: !!t.write, openWorldHint: true }
+        annotations: { readOnlyHint: !t.write && !["stand_accounts", "archive_put", "import_analyze", "structure_export"].includes(t.name), destructiveHint: !!t.write, openWorldHint: true }
       })) };
     case "tools/call": {
       const t = tools.find((x) => x.name === msg.params?.name);

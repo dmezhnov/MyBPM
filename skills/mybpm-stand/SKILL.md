@@ -13,10 +13,10 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.12**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.13**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
-  release, and its first answer (and every `stand_whoami`) carries a «NOTE for Claude» when a newer one is
+  release, and its first answer (and every `stand_list`) carries a «NOTE for Claude» when a newer one is
   out — pass it on with the update steps it names.
 - not connected, and you can fetch a URL (a web fetch tool, or a shell with network) → read
   `https://raw.githubusercontent.com/dmezhnov/MyBPM/main/.claude-plugin/plugin.json`; its `version` higher
@@ -63,12 +63,12 @@ every time. `### 0U.7 Where the rest is` maps the numbered sections behind the c
 ## The mybpm-stand MCP server
 
 This plugin also starts an MCP server, `mybpm-stand` (Claude Code and Claude Desktop start it from the plugin).
-**Its tools connected (`stand_whoami`, `import_analyze` …) → use them instead of hand-made calls** for
+**Its tools connected (`stand_list`, `import_analyze` …) → use them instead of hand-made calls** for
 what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
-it holds the stand accounts (do not ask for a password or a token — `stand_whoami` confirms stand and company;
+it holds the stand accounts (do not ask for a password or a token — `stand_list` names every account with its stand and company;
 a new account or an expired session → `stand_accounts`, give the user the link to the page where they log in — open their browser
-only when they ask; `stand` on any tool picks
-an account by name or host),
+only when they ask; all accounts are equal — several and the user has not
+said which → ask, then pass `stand` (name or host) on every call),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
 (`archive_put`). For the rest the tools do not cover, `stand_call` sends any method in the envelope of the recipe.
 
@@ -87,7 +87,7 @@ reaches the stand.
 ## Rules that hold for every task
 
 1. **Ask for the stand URL, the company and the credentials — never assume them** (MCP connected: it holds
-   them — confirm with `stand_whoami` instead; a stand it has no account for → `stand_accounts`). The document uses
+   them — confirm with `stand_list` instead, and ask which account when it holds several; a stand it has no account for → `stand_accounts`). The document uses
    placeholders (`<stand>`, `<company-a>` …); ids and codes in its examples belong to other stands.
 2. **HTTP 200 proves nothing.** Detect errors by `errorType` in the body, and read every write back.
 3. **Writes are immediate and have no undo but deletion** (`create-bo`, `apply-import`, `v2/co/add-*`).

@@ -111,7 +111,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle and the accounts (page login, wrong password, default, rename, remove) against the mock stand under node and bun"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -163,7 +163,7 @@ const env = { ...Bun.env, HOME: `${process.cwd()}/dist/mcp-test/home`, MYBPM_STA
 const page = (body: unknown) => ({ url: "@stand_accounts.url", path: "api/save", body });
 const u2 = { stand: env.MYBPM_STAND, login: "u2@mock" };
 const steps: [string, unknown, (r: any) => boolean][] = [
-  ["stand_whoami", {}, (r) => r.companyCode === "MOCK" && r.personBoId === "PERSONBO00000001"],
+  ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].alive && r.accounts[0].companyCode === "MOCK" && r.accounts[0].personBoId === "PERSONBO00000001"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
   ["archive_put", { name: "lint", part: 1, lines }, (r) => r.linesSoFar > 0],
   ["archive_put", { name: "lint", part: 2, lines: "", last: true }, (r) => r.lint === "form lint: OK" && r.bos[0].code === "Lint_dict"],
@@ -178,18 +178,17 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.count.notifications === 1],
   ["stand_read", { path: "import-structure/cancel-import" }, (r) => /not a read method/.test(r)],
   ["stand_call", { path: "v2/auth/v3/login" }, (r) => /refused/.test(r)],
-  // accounts: the page logs in (pseudo-tool http = the page's own form), the first env account stays the default
+  // accounts: the page logs in (pseudo-tool http = the page's own form); with two accounts none is the default
   ["stand_accounts", {}, (r) => r.opened === false && /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}\/$/.test(r.url)],
   ["http", page({ ...u2, password: "wrong" }), (r) => /не принял логин или пароль/.test(r.error)],
-  ["http", page({ ...u2, password: "secret", name: "Второй" }), (r) => r.email === "u2@mock" && r.default === false],
-  ["stand_list", {}, (r) => r.accounts.length === 2 && r.accounts.find((a: any) => a.default).login === "admin@mock"],
-  ["stand_whoami", { stand: "Второй" }, (r) => r.email === "u2@mock"],
-  ["stand_use", { stand: "Второй" }, (r) => /Второй/.test(r.default)],
-  ["stand_whoami", {}, (r) => r.email === "u2@mock"],
-  ["http", page({ ...u2, was: "@http.key", name: "Третий" }), (r) => r.name === "Третий" && r.default === true],
+  ["http", page({ ...u2, password: "secret", name: "Второй" }), (r) => r.email === "u2@mock" && !("default" in r)],
+  ["stand_list", {}, (r) => r.accounts.length === 2 && r.accounts.every((a: any) => a.alive && !("default" in a)) && r.accounts.some((a: any) => a.email === "u2@mock")],
+  ["bo_find", { code: "Lint_dict" }, (r) => /several accounts/.test(r)],
+  ["bo_find", { code: "Lint_dict", stand: "Второй" }, (r) => r.exists === false],
+  ["http", page({ ...u2, was: "@http.key", name: "Третий" }), (r) => r.name === "Третий"],
   ["stand_remove", { stand: "Третий" }, (r) => /Третий/.test(r.removed)],
-  ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].default],
-  ["stand_whoami", {}, (r) => r.email === "admin@mock"],
+  ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].email === "admin@mock"],
+  ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
 ];
 let bad = 0;
 try {
@@ -200,11 +199,11 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
-    // the mock says 99.0.0 is out: the first answer and every stand_whoami carry the note, the others do not
-    const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /^> ⚠️ \*\*A new version of the MyBPM plugin is out: 99\.0\.0\*\*/m.test(n)) === (i === 0 || steps[i][0] === "stand_whoami"));
+    // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
+    const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /^> ⚠️ \*\*A new version of the MyBPM plugin is out: 99\.0\.0\*\*/m.test(n)) === (i === 0 || steps[i][0] === "stand_list"));
     if (noted.includes(false)) { bad++; console.error(`mcp (${rt}): the release note sits on the wrong steps: ${noted.map((ok: boolean, i: number) => ok ? "" : i + 1).filter(Boolean)}`); }
     if (report.length !== steps.length) { bad++; console.error(`mcp (${rt}): ${report.length}/${steps.length} steps answered\n${r.stderr}`); }
   }

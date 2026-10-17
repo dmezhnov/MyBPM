@@ -71,7 +71,7 @@ Ask the user for these, one request at a time, and wait for the answer:
    to talk about it and to know which sidebar you are looking at. **Never assume a screen or a BO group
    exists because another company on the same host has it.**
 3. **Authentication**, one of the two routes below. With the `mybpm-stand` MCP server connected there is
-   nothing to ask: it holds the accounts (§0U.8) — confirm stand and company with `stand_whoami`; an account
+   nothing to ask: it holds the accounts (§0U.8) — `stand_list` names each account with its stand and company; an account
    it does not hold yet is added by the user on its accounts page (`stand_accounts`), never through the chat.
 
 #### Route A — log in headlessly (username + password)
@@ -442,6 +442,7 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. MCP
 (steps 1–4), `import_apply` (5–7), `import_rollback` (§0U.8). The controller prefix is
 **`import-structure`**, not `v2/…`: `POST <stand>/web/import-structure/<method>`.
 **Only one import may be open on a company at a time.**
+**Any user of the company may run it** `[C]`: the API checks no rights — only the UI hides the import page from a non-admin.
 
 1. `POST /web/import-structure/import-file` — **multipart**, the zip under the field name `file` → `"<importId>"` (bare string).
    **The filename must end in `.mybpm.zip` or `.mybpm`** — any other name is rejected with «Расширение файла
@@ -971,7 +972,7 @@ something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybp
 The plugin this document ships with carries a local MCP server, **`mybpm-stand`**: started by Claude Code from
 the plugin, by Claude Desktop from the plugin on the user's account. It runs on the user's
 machine, talks to the stand itself and makes exactly the calls of the recipes it names below. **Its tools
-connected (`stand_whoami`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
+connected (`stand_list`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
 written.** This document stays the spec either way: what a tool cannot do is plain HTTP by §0U.4.
 
 - **Not connected (no `stand_*` tool among yours) and the task touches a stand → say so in your first reply
@@ -1011,16 +1012,19 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 
 - **A newer release: the server says so.** At start it reads `version` of `.claude-plugin/plugin.json` on
   `main` of `dmezhnov/MyBPM` (`main` moves only on a green release); newer than its own → its first answer and
-  every `stand_whoami` end with an extra text «NOTE for Claude: the mybpm plugin <new> is out, this copy is
+  every `stand_list` end with an extra text «NOTE for Claude: the mybpm plugin <new> is out, this copy is
   <old> …» naming the update steps of the way it was installed (Desktop account plugin, Upload plugin, `.mcpb`,
   Claude Code) and the warning block to open the reply with — `> ⚠️ **A new version of the MyBPM plugin is out:
   <new>** (you have <old>).` + `> To update: …`, in the user's language [C]. Show it, then go on with the task; GitHub out of reach →
   no note, nothing else changes [C].
 
 - **Accounts stay with the server, never in the chat.** An account = a login on a stand host; the server keeps
-  several, one of them the default. `stand_list` names them (name, host, login, who, company, the default);
-  every tool takes `stand` — an account's name or its host — and goes to the default without it; `stand_use`
-  changes the default. **A new account, a rename, another login, a re-login go through `stand_accounts`:** it
+  several, **all equal — none is the default**. `stand_list` asks each one live: name, host, login, `alive` or
+  the error, fio, e-mail, companyCode, companyId, personId, the Person BO id (`functions: true` adds the
+  functionCodes). Every tool takes `stand` — an account's name or its host; one account → it goes there
+  without it; several → a call without `stand` is refused: **ask the user which account** (unless they said it
+  in this conversation) and pass `stand` on every call; before a ✎ write name account, stand and company in
+  the question. **A new account, a rename, another login, a re-login go through `stand_accounts`:** it
   returns the URL of a local page of the server — give it to the user as a link; the page opens in their
   browser only with `open: true`, which you pass only when the user asked to open it or to add / re-log an
   account, never because a question found no account — where they type the stand, the login and the password; the password goes from that page to the stand, the server
@@ -1029,8 +1033,8 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   `stand_list`. `stand_remove` ✎ ends the session on the stand and deletes the token. **An expired session**
   surfaces as an error naming the account: send the user to `stand_accounts` («Изменить», log in again) — a
   missing right comes back as the stand's own `SecurityError`. With the server connected, never ask for a
-  password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_whoami` first** — it names
-  the company the account selects.
+  password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
+  the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `notifications_clear`, `stand_call`
   change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback` without `confirm: true` only returns the preview.
@@ -1046,11 +1050,9 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 
 | Tool | What it does | Recipe / route |
 |---|---|---|
-| `stand_list` | the accounts the server holds, the default one; `check` asks each stand whether its session is alive | — |
-| `stand_accounts` | the accounts page URL (`open: true` opens it — only on the user's ask): add, edit, log in again, remove, the default | — |
-| `stand_use` | makes an account the default | — |
+| `stand_list` | every account, each asked live: alive, fio, e-mail, companyCode, companyId, personId, the Person BO id | §0U.1 item 2; `GET v2/auth/load-auth-info`, `load-bo-id-by-kind {kind: PERSON}` |
+| `stand_accounts` | the accounts page URL (`open: true` opens it — only on the user's ask): add, edit, log in again, remove | — |
 | `stand_remove` ✎ | ends an account's session on the stand, deletes its token | `GET v2/auth/logout` |
-| `stand_whoami` | fio, e-mail, companyCode, companyId, personId, the Person BO id | §0U.1 item 2; `GET v2/auth/load-auth-info`, `load-bo-id-by-kind {kind: PERSON}` |
 | `bo_groups` | every BO group with its BOs | R4; `load-bo-groups {forEdit}`, `load-bo-records-by-group-id` |
 | `bo_find` | a BO by `code` (`exists: false` when absent) or by a piece of its name | R4; `load-bo-id-by-code` |
 | `bo_read` | one BO: header + a row per field (type, tab, grid, ref, required, column); `raw` = the DTO | R4; `load-business-object-by-id` |
