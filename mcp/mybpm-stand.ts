@@ -751,8 +751,8 @@ async function releaseNote(t: Tool): Promise<string | undefined> {
   if (!releaseTold) await Promise.race([latestCheck, new Promise((r) => setTimeout(r, Math.max(0, 1500 - (Date.now() - started))))]);
   releaseTold = true;
   if (!latest || !newer(latest, version)) return;
-  return `NOTE for Claude: the mybpm plugin ${latest} is out, this copy is ${version}. Tell the user so in one line before the answer, ` +
-    `with how to update this install — ${updateHow()}. Then go on with the task on this copy.`;
+  return `NOTE for Claude: the mybpm plugin ${latest} is out, this copy is ${version}. Open your reply with this warning block, in the user's language, ` +
+    `then the answer (go on with the task on this copy):\n\n> ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).\n> To update: ${updateHow()}.`;
 }
 
 const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " +
@@ -762,7 +762,7 @@ const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the
   "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " +
-  "A result that ends with «NOTE for Claude» about a newer release: tell the user in one line with the update steps it names, then go on.";
+  "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on.";
 
 function schema(t: Tool) {
   return { type: "object", properties: { ...(t.props ?? {}), ...STAND_ARGS }, ...(t.required ? { required: t.required } : {}) };

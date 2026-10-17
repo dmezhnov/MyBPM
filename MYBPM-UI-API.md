@@ -1012,7 +1012,8 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   `main` of `dmezhnov/MyBPM` (`main` moves only on a green release); newer than its own → its first answer and
   every `stand_whoami` end with an extra text «NOTE for Claude: the mybpm plugin <new> is out, this copy is
   <old> …» naming the update steps of the way it was installed (Desktop account plugin, Upload plugin, `.mcpb`,
-  Claude Code) [C]. Tell the user in one line with those steps, then go on with the task; GitHub out of reach →
+  Claude Code) and the warning block to open the reply with — `> ⚠️ **A new version of the MyBPM plugin is out:
+  <new>** (you have <old>).` + `> To update: …`, in the user's language [C]. Show it, then go on with the task; GitHub out of reach →
   no note, nothing else changes [C].
 
 - **Accounts stay with the server, never in the chat.** An account = a login on a stand host; the server keeps
