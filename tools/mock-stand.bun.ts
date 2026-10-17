@@ -8,8 +8,9 @@
 // The Bun tool hardcodes `https://`, so test it through a copy with the scheme rewritten to `http://`.
 //
 // `mise test` drives `mcp/mybpm-stand.cjs` against it (MYBPM_STAND=http://127.0.0.1:$PORT): the import cycle
-// (upload → insert → analyze → apply → rollback, cancel), the structure export, the bell. The BOs of an
-// uploaded archive appear on apply and disappear on rollback, so bo_find shows what the stand would.
+// (upload → insert → analyze → apply → rollback, cancel), the structure export, the bell, the accounts. The BOs of an
+// uploaded archive appear on apply and disappear on rollback, so bo_find shows what the stand would. A login with the
+// password «secret» answers the token `mock-token-<login>`, and that token's session is <login>; any other token is admin@mock.
 //
 // A mock MyBPM stand: records every request and answers canned DTOs, so two independent clients can be
 // driven over the same recipe and their request streams diffed.
@@ -48,10 +49,18 @@ function bosOf(file: Uint8Array): Bo[] {
     .map((o) => ({ id: nextId("BO"), code: o.code, name: o.name?.rus ?? o.code, boCategory: o.category }));
 }
 
-function mcp(path: string, params: any, body: any, file?: Uint8Array): any {
+const unb64 = (s: unknown) => Buffer.from(String(s ?? ""), "base64").toString("utf8");
+
+function mcp(path: string, params: any, body: any, token: string, file?: Uint8Array): any {
   const route = path.replace(/^\/web\//, "");
   switch (route) {
-    case "v2/auth/load-auth-info": return { fio: "Mock Admin", email: "admin@mock", companyCode: "MOCK", companyId: "COMPANY000000001", personId: "PERSON0000000001", language: "RUS", functionCodes: ["A", "B"] };
+    case "v2/auth/v3/login": return unb64(body["cGFzc3dvcmQ="]) === "secret" ? `mock-token-${unb64(body["dXNlcm5hbWU="])}`
+      : { errorType: "SecurityError", message: "wrong login or password" };
+    case "v2/auth/logout": return null;
+    case "v2/auth/load-auth-info": {
+      const email = token.startsWith("mock-token-") ? token.slice("mock-token-".length) : "admin@mock";
+      return { fio: email === "admin@mock" ? "Mock Admin" : `Mock ${email}`, email, companyCode: "MOCK", companyId: "COMPANY000000001", personId: "PERSON0000000001", language: "RUS", functionCodes: ["A", "B"] };
+    }
     case "v2/business-objects/load-bo-id-by-kind": return "PERSONBO00000001";
     case "v2/business-objects/load-bo-id-by-code": return bos.get(params.boCode)?.id ?? fail(`lKzjTR9WcU :: No bo with code = \`${params.boCode}\``);
     case "v2/business-objects/load-bo-records-by-group-id": return [...bos.values()].map(({ id, name, boCategory }) => ({ id, name, boCategory }));
@@ -136,7 +145,7 @@ Bun.serve({
     await Bun.write(out, log.map(l => JSON.stringify(l)).join("\n") + "\n");
     if (url.pathname === "/web/struct/export-company-structure")
       return new Response(exportZip(), { headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="MyBPM-export-MOCK.mybpm.zip"' } });
-    const special = Bun.env.MOCK_MCP ? mcp(url.pathname, params, body, file) : undefined;
+    const special = Bun.env.MOCK_MCP ? mcp(url.pathname, params, body, req.headers.get("token") ?? "", file) : undefined;
     return new Response(JSON.stringify(special !== undefined ? special : answer(url.pathname, params, body)), { headers: { "Content-Type": "application/json" } });
   },
 });
