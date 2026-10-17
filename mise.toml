@@ -204,7 +204,7 @@ try {
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_whoami carry the note, the others do not
-    const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /99\.0\.0 is out/.test(n)) === (i === 0 || steps[i][0] === "stand_whoami"));
+    const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /^> ⚠️ \*\*A new version of the MyBPM plugin is out: 99\.0\.0\*\*/m.test(n)) === (i === 0 || steps[i][0] === "stand_whoami"));
     if (noted.includes(false)) { bad++; console.error(`mcp (${rt}): the release note sits on the wrong steps: ${noted.map((ok: boolean, i: number) => ok ? "" : i + 1).filter(Boolean)}`); }
     if (report.length !== steps.length) { bad++; console.error(`mcp (${rt}): ${report.length}/${steps.length} steps answered\n${r.stderr}`); }
   }
