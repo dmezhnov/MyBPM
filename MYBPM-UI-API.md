@@ -979,13 +979,15 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   yourself: every install is the app's own dialog the user confirms, and in a claude.ai or Claude Desktop chat
   your code runs in a cloud sandbox, not on their machine. Give the step for the app you run in:
   - **Claude Desktop (Chat tab, Cowork):** the plugin `mybpm` (both skills + the server) goes on the user's
-    claude.ai account: download `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip`,
-    then Customize → Plugins → «+ Add» → **Upload plugin** → that file → «Continue» in the dialog «This plugin
-    includes local MCP servers» [C]. It shows under Plugins → Yours, Desktop starts the server itself and the
-    Chat tab gets the tools in a new chat [C]; Cowork the same [I]. The uploaded version stays until the user
-    uploads a newer one [I]. **Add marketplace** `dmezhnov/MyBPM` in that menu does NOT put the plugin on the
-    account — it writes the machine's Claude Code plugin registry («already added» when Claude Code has it) [C].
-    Fallback without the plugin, the tools alone: `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`,
+    claude.ai account, in two steps [C]: Customize → Plugins → «+ Add» → **Add marketplace** → `dmezhnov/MyBPM`
+    → «Sync» — this adds only the catalogue, nothing is installed yet; then Plugins → **Discover** → «+» on
+    **Mybpm** → «Continue» in the dialog «This plugin includes local MCP servers». It shows under Plugins →
+    Yours, Desktop starts the server itself and the Chat tab gets the tools in a new chat [C]; Cowork the same
+    [I]; it follows the releases [I]. A second Add marketplace of the same repository answers «This marketplace
+    is already added» — go to Discover. The Code tab's own Add marketplace is a different thing: it writes the
+    machine's Claude Code registry, not the account [C]. Without the marketplace: «+ Add» → **Upload plugin** →
+    `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` → «Continue» — same result
+    [C], but that version stays until the user uploads a newer one [I]; never both at once. Fallback without the plugin, the tools alone: `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`,
     open the file, «Install», then a new chat [I]; an extension left disabled shows «—» under Customize →
     Connectors [C].
   - **Claude Code** (the terminal, an IDE, the Code tab of Claude Desktop) reads plugins from the machine, not
