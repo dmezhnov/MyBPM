@@ -53,7 +53,8 @@ the user confirms; in a Desktop or claude.ai chat your code runs in a cloud sand
 first bullet of `### 0U.8 The mybpm-stand MCP server`: Claude Desktop (Chat, Cowork) — Customize → Plugins →
 «+ Add» → Add marketplace `dmezhnov/MyBPM` (adds only the catalogue), then Plugins → Discover → «+» on Mybpm →
 Continue, then a new chat (or Upload plugin with
-`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — a fixed version);
+`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — a fixed version); the account
+plugin does not update itself — to a newer release: «+ Add» → Manage marketplaces → ⋯ on MyBPM → Check for updates;
 Claude Code (also the Desktop Code tab) — `claude plugin marketplace add dmezhnov/MyBPM`,
 `claude plugin install mybpm@mybpm`, restart. Meanwhile the recipes of the document as written, where your code
 reaches the stand.
