@@ -63,7 +63,7 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
-                  gh release create "${{ steps.version.outputs.tag }}" dist/skills/*.zip \
+                  gh release create "${{ steps.version.outputs.tag }}" dist/skills/*.zip dist/mcp/*.mcpb \
                     --repo "$GITHUB_REPOSITORY" \
                     --title "MyBPM skills ${{ steps.version.outputs.version }}" \
-                    --notes "Skill zips for upload to claude.ai (Settings → Capabilities → Skills): each holds SKILL.md and its platform document."
+                    --notes "Skill zips for upload to claude.ai (Settings → Capabilities → Skills): each holds SKILL.md and its platform document. mybpm-stand.mcpb: the stand MCP server for Claude Desktop (double-click to install; stand, login and password are asked in its settings)."
