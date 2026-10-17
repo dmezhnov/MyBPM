@@ -63,7 +63,7 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
-                  gh release create "${{ steps.version.outputs.tag }}" dist/skills/*.zip dist/mcp/*.mcpb \
+                  gh release create "${{ steps.version.outputs.tag }}" dist/plugin/*.zip dist/skills/*.zip dist/mcp/*.mcpb \
                     --repo "$GITHUB_REPOSITORY" \
                     --title "MyBPM skills ${{ steps.version.outputs.version }}" \
-                    --notes "Skill zips for upload to claude.ai (Settings → Capabilities → Skills): each holds SKILL.md and its platform document. mybpm-stand.mcpb: the stand MCP server for Claude Desktop (double-click to install; stand, login and password are asked in its settings)."
+                    --notes "mybpm-plugin.zip: the whole plugin for Customize → Plugins → Add → Upload plugin (both skills and the stand MCP server; Add marketplace dmezhnov/MyBPM installs the same and keeps it updated). Skill zips: one skill each with its platform document, for Customize → Skills. mybpm-stand.mcpb: the stand MCP server for the Chat tab of Claude Desktop (open the file, Install; stand accounts are added on its own page, tool stand_accounts)."

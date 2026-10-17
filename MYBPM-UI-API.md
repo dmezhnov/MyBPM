@@ -978,14 +978,18 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   and give the user the install steps for their app; do not work around it silently.** You cannot install it
   yourself: every install is the app's own dialog the user confirms, and in a claude.ai or Claude Desktop chat
   your code runs in a cloud sandbox, not on their machine. Give the step for the app you run in:
-  - **Claude Desktop, a Chat tab:** download
+  - **The plugin `mybpm`** (both skills + the server) goes on the user's claude.ai account and then serves the
+    Chat tab and Cowork of Claude Desktop, and claude.ai [I]: Customize → Plugins → Add → **Add marketplace**
+    `dmezhnov/MyBPM` → install `mybpm` — it follows the releases [I]; or **Upload plugin** with
+    `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — that version stays until the
+    user uploads a newer one [I]. In Cowork this alone brings the tools [I].
+  - **Claude Desktop, a Chat tab:** Chat loads a plugin's skills and skips its local server [I], so the tools
+    there need the extension as well: download
     `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`, open the file, «Install» in
-    the dialog Desktop shows, then a new chat [I]. The plugin (below) brings the skills to the Chat tab, not its
-    MCP server — the Chat tab needs the `.mcpb` [I].
-  - **Claude Desktop, Cowork:** Customize → Plugins → Add marketplace `dmezhnov/MyBPM` → install `mybpm`: the
-    skills and the server in one step [I].
-  - **Claude Code:** `claude plugin marketplace add dmezhnov/MyBPM`, `claude plugin install mybpm@mybpm`, then
-    restart Claude Code — tools appear only in a session started after the install [C].
+    the dialog Desktop shows, then a new chat [I].
+  - **Claude Code** (the terminal, an IDE, the Code tab of Claude Desktop) reads plugins from the machine, not
+    from the account [C]: `claude plugin marketplace add dmezhnov/MyBPM`, `claude plugin install mybpm@mybpm`,
+    then restart Claude Code — tools appear only in a session started after the install [C].
   - **claude.ai in a browser or the mobile app:** a local server cannot run there [I] — the Desktop app or
     Claude Code is the way to the tools.
 
