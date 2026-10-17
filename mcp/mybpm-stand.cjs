@@ -828,6 +828,30 @@ async function addFields(s, boId, specs, window) {
     if (spec.url && spec.type === "IFRAME")
       await settled(() => s.call("v2/iframe/save-iframe-url", { boId, iframeId: dto.fieldId, url: spec.url }));
   }
+  const wantCodes = (spec) => (spec.options ?? []).map((o) => typeof o === "string" ? null : o.code ?? null);
+  const coded = later.filter(({ spec }) => ["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(spec.type) && wantCodes(spec).some(Boolean));
+  const byOrder = (f) => [...f?.options ?? []].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  for (let i = 0;coded.length; i++) {
+    const cur = await loadBo(s, boId), edits = [], off = [];
+    for (const { spec, dto } of coded) {
+      const f = (cur.formFields ?? []).find((x) => x.fieldId === dto.fieldId), opts = byOrder(f), codes = wantCodes(spec);
+      const wrong = codes.map((c, j) => c && opts[j]?.code !== c ? `${c} → ${opts[j]?.code}` : null).filter(Boolean);
+      if (!f || !wrong.length)
+        continue;
+      off.push(`«${spec.label ?? spec.type}»: ${wrong.join(", ")}`);
+      f.options = opts.map((o, j) => codes[j] ? { ...o, code: codes[j] } : o);
+      edits.push({ fieldId: f.fieldId, options: f.options });
+    }
+    if (!edits.length)
+      break;
+    if (i >= 4) {
+      notes.push(`option codes not kept (set them in the field body of the constructor): ${off.join("; ")}`);
+      break;
+    }
+    if (i)
+      await sleep(1000);
+    await savePortion(s, { businessObject: cur, editedFields: edits, addedFieldIds: [], deletedFieldIds: [] });
+  }
   if (uncoded.length)
     notes.push(`no \`code\` given — the server's transliteration stays (0U.5 rule 12 wants English snake_case): ${uncoded.join(", ")}`);
   if (tabLabels.length)
@@ -855,6 +879,143 @@ var fieldRows = (bo) => (bo.formFields ?? []).map((f) => clean({
   required: f.isRequired || undefined,
   column: f.tableColToShow ? f.tableColOrderIndex ?? true : undefined
 }));
+var BOI_ = "v2/business-object-instance/";
+var DATES = ["DATE", "FULL_DATE", "TIME", "YEAR", "YEAR_AND_MONTH"];
+var LANGS = ["INPUT_TEXT_LANG", "TEXTAREA_LANG", "STATIC_TEXT"];
+var NOT_VALUES = ["TAB_GROUP", "PARTICIPANTS"];
+var ES_ERR = /EsDataTooLarge|Data too large/i;
+var ES_WAIT = Number(process.env.MYBPM_ES_WAIT_MS ?? 60000);
+var ES_PAUSE = Math.min(3000, ES_WAIT / 20);
+var APPLY = /apply-remove-draft|apply-and-remove-draft/;
+var esRetry = (s) => ({ ...s, call: async (p, params, body) => {
+  for (const t0 = Date.now();; ) {
+    try {
+      return await s.call(p, params, body);
+    } catch (e) {
+      if (APPLY.test(p) || !ES_ERR.test(e.message) || Date.now() - t0 > ES_WAIT)
+        throw e;
+      await sleep(ES_PAUSE);
+    }
+  }
+} });
+async function applyDraft(s, p, params) {
+  for (let t0 = Date.now(), broke = false;; ) {
+    try {
+      return await s.call(p, params, {});
+    } catch (e) {
+      if (broke && /NoBoInstanceDraft/.test(e.message))
+        return { appliedEarlier: true };
+      if (!ES_ERR.test(e.message) || Date.now() - t0 > ES_WAIT)
+        throw e;
+      broke = true;
+      await sleep(ES_PAUSE);
+    }
+  }
+}
+var valueFields = (bo) => (bo.formFields ?? []).filter((f) => f.type && !f.widgetType && !f.nativeFieldType && !NOT_VALUES.includes(f.type));
+var nameOf = (f) => f.code || f.label || f.fieldId;
+function fieldBy(fields, key) {
+  const f = fields.find((x) => x.code === key) ?? fields.find((x) => x.fieldId === key);
+  if (f)
+    return f;
+  const byLabel = fields.filter((x) => x.label === key);
+  if (byLabel.length === 1)
+    return byLabel[0];
+  throw new Error(`no field «${key}»${byLabel.length ? " — several fields carry this label, pass the code" : ""}: ${fields.map(nameOf).join(", ")}`);
+}
+var iso = (v) => {
+  const d = new Date(v);
+  if (isNaN(d.getTime()))
+    throw new Error(`«${v}» is not a date — pass an ISO date or instant (2026-10-17, 2026-10-17T09:30:00Z)`);
+  return d.toISOString();
+};
+function toStored(f, v) {
+  const t = f.type, json = (x) => typeof x === "string" ? x : JSON.stringify(x);
+  if (v === null || v === undefined)
+    return DATES.includes(t) ? null : t === "BO" || t === "CO" || t === "FILE_UPLOAD" ? "[]" : "";
+  if (DATES.includes(t))
+    return JSON.stringify(iso(v));
+  if (t === "PERIOD" || t === "PERIOD_TIME") {
+    const start = v.startDate ?? v.start ?? v[0], end = v.endDate ?? v.end ?? v[1];
+    return JSON.stringify({ startDate: iso(start), endDate: iso(end) });
+  }
+  if (t === "CHECKBOX")
+    return String(v === true || /^(true|да|yes|1)$/i.test(String(v)));
+  if (t === "DROPDOWN_SINGLE" || t === "RADIO_BUTTON_GROUP") {
+    if (f.optionSource === "FROM_BO")
+      return String(v);
+    const opts = f.options ?? [], s = String(v).trim().toLowerCase();
+    const o = opts.find((x) => x.id === v) ?? opts.find((x) => x.code && x.code.toLowerCase() === s) ?? opts.find((x) => String(x.label).toLowerCase() === s);
+    if (!o)
+      throw new Error(`«${v}» is not an option of «${nameOf(f)}»: ${opts.map((x) => x.label + (x.code ? ` (${x.code})` : "")).join(", ")}`);
+    return o.id;
+  }
+  if (t === "BO" || t === "CO" || t === "FILE_UPLOAD")
+    return JSON.stringify(Array.isArray(v) ? v : [v]);
+  if (LANGS.includes(t))
+    return JSON.stringify(typeof v === "string" ? { RUS: v } : v);
+  if (t === "CHECKLIST")
+    return JSON.stringify((Array.isArray(v) ? v : [v]).map((x) => typeof x === "string" ? { label: x, checked: false } : x));
+  if (["GEO_POINT", "QUESTIONNAIRE", "PROGRESS_BAR"].includes(t))
+    return json(v);
+  return String(v);
+}
+async function recordValues(s, bo, boiId) {
+  const tabs = (bo.formFields ?? []).filter((f) => f.type === "TAB_GROUP").flatMap((g) => (g.tabs ?? []).map((t) => t.id));
+  const got = new Map;
+  let state;
+  for (const tabId of [null, ...tabs]) {
+    const r = await s.call(BOI_ + "v2/load-boi-values", {}, { businessObjectId: bo.id, boInstanceId: boiId, draftId: null, tabId });
+    state ??= r?.state;
+    for (const v of r?.fields ?? [])
+      if (!got.has(v.fieldId))
+        got.set(v.fieldId, v);
+  }
+  const refs = valueFields(bo).filter((f) => f.type === "BO" || f.type === "CO");
+  if (refs.length) {
+    const draftId = await s.call(BOI_ + "create-draft", {}, {});
+    try {
+      const data = await s.call("v2/instance-field-form/load-field-data", { boId: bo.id, boiId, draftId }) ?? [];
+      for (const f of refs) {
+        const d = data.find((x) => x.fieldId === f.fieldId);
+        if (d)
+          got.set(f.fieldId, { ...got.get(f.fieldId), value: d.storedValue, displayValue: undefined });
+      }
+    } finally {
+      await s.call(BOI_ + "remove-draft", { draftId }, {}).catch(() => {});
+    }
+  }
+  const values = {};
+  for (const f of valueFields(bo)) {
+    const v = got.get(f.fieldId);
+    if (!v)
+      continue;
+    const empty = v.value === "" || v.value === "[]" || v.value === null;
+    if (empty && (v.displayValue ?? "") === "")
+      continue;
+    values[nameOf(f)] = v.displayValue === undefined || v.displayValue === v.value || v.displayValue === "" ? v.value : { value: v.value, display: v.displayValue };
+  }
+  return { state, values };
+}
+function formOutcome(answers, fields) {
+  const all = JSON.stringify(answers);
+  const errors = [], notes = [];
+  const walk = (o) => {
+    if (!o || typeof o !== "object")
+      return;
+    if (Array.isArray(o))
+      return o.forEach(walk);
+    if (o.commandType === "SHOW_FIELD_ERROR") {
+      const f = fields.find((x) => x.fieldId === o.fieldId);
+      errors.push({ field: f ? nameOf(f) : o.fieldId, error: o.errorMessage });
+    }
+    if (o.commandType === "SHOW_NOTIFICATION")
+      notes.push(clean({ type: o.notificationType ?? o.type, text: o.message ?? o.text ?? o.body }));
+    Object.values(o).forEach(walk);
+  };
+  walk(answers);
+  return { saved: all.includes("CLOSE_DIALOG_SAVE"), errors, notifications: notes };
+}
 var ISSUES = "https://github.com/dmezhnov/MyBPM/issues";
 function leaks(text) {
   const words = new Set;
@@ -1344,6 +1505,7 @@ var tools = [
         cols: { type: "number" },
         rows: { type: "number" },
         html: { type: "string", description: "STATIC_TEXT: the new HTML" },
+        optionCodes: { type: "object", description: 'DROPDOWN_SINGLE / RADIO_BUTTON_GROUP: {"<option label or current code>": "new_code"}' },
         set: { type: "object", description: 'Any other key of the field DTO (a move to another tab: {"tabId": …})' }
       } } },
       delete: { type: "array", items: { type: "string" }, description: "fieldIds" },
@@ -1400,6 +1562,16 @@ var tools = [
           }
           if (e.html !== undefined)
             set("staticValueMap", { ...f.staticValueMap ?? ru(null), RUS: e.html });
+          if (e.optionCodes) {
+            const opts = f.options ?? [];
+            for (const k of Object.keys(e.optionCodes))
+              if (!opts.some((o) => o.label === k || o.code === k))
+                throw new Error(`«${k}» is not an option of ${f.label ?? f.fieldId}: ${opts.map((o) => `${o.label} (${o.code})`).join(", ")}`);
+            set("options", opts.map((o) => {
+              const c = e.optionCodes[o.label] ?? e.optionCodes[o.code];
+              return c ? { ...o, code: c } : o;
+            }));
+          }
           for (const [k, v] of Object.entries(e.set ?? {}))
             set(k, v);
           edits.push(edit);
@@ -1596,6 +1768,190 @@ var tools = [
     }
   },
   {
+    name: "records_find",
+    description: "Records of a BO from its registry (load-bo-instance-bracket-table, explicit CREATED_AT DESC ordering against the ES sort defect §7): id, state and the REGISTRY COLUMNS only (trap 47 — record_read gives every field). `search` = the registry's full-text box; `where` = {field code / label: value} matched exactly (value or shown text, case-insensitive) over up to 2000 records — the way to find a record by its code. A registry with no columns answers AccessDenied (trap 48).",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      search: { type: "string" },
+      where: { type: "object", description: "{fieldCodeOrLabel: value}, all must match; the fields must be registry columns" },
+      state: { type: "string", enum: ["ALL", "ARCHIVED", "REMOVED", "DEV"], description: "Default ALL (the working records)" },
+      limit: { type: "number", description: "Default 20, at most 200" },
+      offset: { type: "number" }
+    },
+    run: async (a) => {
+      const s = esRetry(stand(a)), boId = await boById(s, a);
+      const page = (offset, limit) => s.call(BOI_ + "load-bo-instance-bracket-table", {}, {
+        boId,
+        dynamicFilters: [],
+        nativeFilters: [],
+        search: a.search ?? "",
+        paging: { offset, limit },
+        ordering: { archetype: "NATIVE", fieldId: "CREATED_AT", state: "DESC" },
+        state: a.state ?? "ALL",
+        brackets: []
+      });
+      const limit = Math.min(200, a.limit ?? 20);
+      const row = (heads, r) => ({
+        id: r.instanceId,
+        ...r.state && r.state !== "ALL" ? { state: r.state } : {},
+        values: Object.fromEntries((r.values ?? []).map((v) => [
+          v.fieldCode || heads.find((h) => h.fieldId === v.fieldId)?.name || v.fieldId,
+          v.displayValue === undefined || v.displayValue === v.value ? v.value : v.displayValue
+        ]))
+      });
+      if (!a.where) {
+        const t = await page(a.offset ?? 0, limit);
+        return { columns: (t?.heads ?? []).map((h) => h.name), total: t?.totalHits, hasNext: t?.hasNext, records: (t?.records ?? []).map((r) => row(t.heads ?? [], r)) };
+      }
+      const want = Object.entries(a.where).map(([k, v]) => [k, String(v).trim().toLowerCase()]);
+      const hits = [];
+      let scanned = 0, total, columns = [];
+      for (let offset = 0;offset < 2000 && hits.length < limit; offset += 100) {
+        const t = await page(offset, 100), heads = t?.heads ?? [];
+        total = t?.totalHits;
+        columns = heads.map((h) => h.name);
+        for (const [k] of want)
+          if (!heads.some((h) => h.name === k) && !(t?.records ?? []).some((r) => r.values?.some((v) => v.fieldCode === k)) && (t?.records ?? []).length)
+            throw new Error(`«${k}» is not a registry column of this BO (trap 47): ${columns.join(", ")} — match on a column, or turn it on with bo_fields_save edit column:true`);
+        for (const r of t?.records ?? []) {
+          const ok = want.every(([k, w]) => (r.values ?? []).some((v) => (v.fieldCode === k || heads.find((h) => h.fieldId === v.fieldId)?.name === k) && [v.value, v.displayValue].some((x) => String(x ?? "").trim().toLowerCase() === w)));
+          if (ok)
+            hits.push(row(heads, r));
+        }
+        scanned += (t?.records ?? []).length;
+        if (!t?.hasNext)
+          break;
+      }
+      return { columns, total, scanned, records: hits.slice(0, limit) };
+    }
+  },
+  {
+    name: "record_read",
+    description: "One record, every field: values keyed by field code (label when it has none) — the raw stored value, or {value, display} when the shown text differs (a dropdown's option code / label, a reference's id / name). Reads each tab of the form too. BO / CO fields come from a bare draft (§6a, no hook runs) dropped right after: their stored id arrays.",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, id: { type: "string", description: "The record id (records_find)" } },
+    required: ["id"],
+    run: async (a) => {
+      const s = esRetry(stand(a)), boId = await boById(s, a), bo = await loadBo(s, boId);
+      const r = await recordValues(s, bo, a.id);
+      return { boId, id: a.id, state: r.state, values: r.values };
+    }
+  },
+  {
+    name: "record_save",
+    write: true,
+    description: "Create a record (no `id`) or change one (`id`), values by field code / fieldId / label in PLAIN form — the tool converts each to what the type stores (§6b table): text and numbers as is, CHECKBOX true/false, DATE… an ISO date, PERIOD {start, end}, DROPDOWN / RADIO the option label or code (a dictionary dropdown: the dictionary record's CODE), BO a record id or an array of them, CO \"<source BO id>-<record id>\" items, *_LANG a string (→ RUS) or {RUS, KAZ, ENG}, CHECKLIST [{label, checked}], FILE_UPLOAD file ids; null clears. scripts:true (default) = the FORM cycle — the BO's hooks run as in the UI dialog, saved only when the answer carries CLOSE_DIALOG_SAVE, else nothing is kept and the field errors come back; scripts:false = the draft cycle (§6a): no hook, no field rules (textCase, maxLength), no counter number, no DROPDOWN_SINGLE. A kanban card move = a save of its status field. Ask the user first.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      id: { type: "string", description: "The record to change; omit = a new one" },
+      values: { type: "object", description: "{fieldCodeOrLabel: plain value}" },
+      scripts: { type: "boolean", description: "Default true: run the BO's hooks (form cycle). false: store without hooks or rules (draft cycle)" },
+      dev: { type: "boolean", description: "A TEST record (boiState DEV, the BO's TEST script version); new records only" }
+    },
+    required: ["values"],
+    run: async (a) => {
+      const s = esRetry(stand(a)), boId = await boById(s, a), bo = await loadBo(s, boId), fields = valueFields(bo);
+      const vals = Object.entries(a.values ?? {}).map(([k, v]) => {
+        const f = fieldBy(fields, k);
+        return { f, fieldId: f.fieldId, value: toStored(f, v) };
+      });
+      if (!vals.length)
+        throw new Error("pass `values`");
+      const scripts = a.scripts !== false;
+      if (!scripts) {
+        const dd = vals.filter((v) => v.f.type === "DROPDOWN_SINGLE");
+        if (dd.length)
+          throw new Error(`the draft cycle does not store a DROPDOWN_SINGLE (§6a): ${dd.map((v) => nameOf(v.f)).join(", ")} — use scripts:true`);
+        const draftId = await s.call(BOI_ + "create-draft", {}, {});
+        const boiId = a.id ?? await s.call(BOI_ + "v2/create-boi", { draftId, boId }, {});
+        await s.call(BOI_ + "v2/save-boi-value", {}, {
+          draftId,
+          boId,
+          boInstanceId: boiId,
+          newIsDev: !!a.dev,
+          setNewIsDev: !!a.dev && !a.id,
+          values: vals.map((v) => ({ fieldId: v.fieldId, value: v.value, saveType: null }))
+        });
+        await applyDraft(s, BOI_ + "apply-and-remove-draft", { draftId, boProcessId: null, isAutoSave: false });
+        return { boId, id: boiId, created: !a.id, saved: true, cycle: "draft (no scripts)", record: (await recordValues(s, bo, boiId)).values };
+      }
+      let draftId, boiId;
+      if (a.id) {
+        boiId = a.id;
+        draftId = await s.call("v2/instance-form-create-draft/create-draft", { boId, boiId, draftId: null }, {});
+      } else
+        ({ draftId, boiId } = await s.call("v2/instance-form-create-draft/create-draft-with-boi", { boId, boiState: a.dev ? "DEV" : "ALL", isReadMode: false }, {}));
+      const answers = [];
+      let out;
+      try {
+        for (const v of vals)
+          answers.push(await s.call("v2/instance-field-form/save-field-value", {}, { draftId, boId, boInstanceId: boiId, values: [{ fieldId: v.fieldId, value: v.value }] }));
+        const applied = await applyDraft(s, "v2/instance-form/validate-apply-remove-draft", { draftId });
+        if (applied?.appliedEarlier)
+          return {
+            boId,
+            id: boiId,
+            created: !a.id,
+            saved: true,
+            cycle: "form (scripts ran)",
+            note: "the apply answer was lost to an ES error (trap 73) — the values below are what the stand stored",
+            record: (await recordValues(s, bo, boiId)).values
+          };
+        answers.push(applied);
+        out = formOutcome(answers, fields);
+      } catch (e) {
+        if (!ES_ERR.test(e.message))
+          out = { saved: false, errors: [{ field: null, error: e.message }], notifications: [] };
+        else {
+          await s.call("v2/instance-form/remove-draft", { draftId }, {}).catch(() => {});
+          return {
+            boId,
+            id: boiId,
+            saved: "unknown",
+            cycle: "form (scripts ran)",
+            error: e.message,
+            next: `the stand kept answering «Data too large» (trap 73); in a minute record_read id ${boiId} — values there = stored, an error = nothing was kept${a.id ? "" : "; a stored but unwanted record goes with record_delete"}`
+          };
+        }
+      }
+      if (!out.saved) {
+        if (!a.id)
+          await s.call(BOI_ + "v2/delete-boi", { draftId, boiId }, {}).catch(() => {});
+        await s.call("v2/instance-form/remove-draft", { draftId }, {}).catch(() => {});
+        return clean({
+          boId,
+          id: a.id,
+          saved: false,
+          cycle: "form (scripts ran)",
+          errors: out.errors,
+          notifications: out.notifications,
+          why: out.errors.length ? "a field error vetoed the save (a script or a rule) — nothing was stored" : "no CLOSE_DIALOG_SAVE — e.g. an empty required field; nothing was stored"
+        });
+      }
+      return clean({ boId, id: boiId, created: !a.id, saved: true, cycle: "form (scripts ran)", notifications: out.notifications, record: (await recordValues(s, bo, boiId)).values });
+    }
+  },
+  {
+    name: "record_delete",
+    write: true,
+    description: "Delete records of a BO (delete-bo-instance, ids in the PARAMS — trap 46). Without `confirm` only the preview: each record's values. With `confirm: true` — after the user agreed — deletes, then re-reads. The delete is SOFT: the record goes to state REMOVED, references to it stay stored and show it struck through or hidden (§5h «Reference fields»).",
+    props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, ids: { type: "array", items: { type: "string" } }, confirm: { type: "boolean" } },
+    required: ["ids"],
+    run: async (a) => {
+      const s = esRetry(stand(a)), boId = await boById(s, a), bo = await loadBo(s, boId), ids = a.ids ?? [];
+      if (!ids.length)
+        throw new Error("pass `ids`");
+      const before = await Promise.all(ids.map(async (id) => ({ id, ...await recordValues(s, bo, id) })));
+      if (!a.confirm)
+        return { boId, bo: bo.name, records: before, next: "show the user what goes; record_delete confirm:true deletes" };
+      const answer = await s.call(BOI_ + "delete-bo-instance", { businessObjectId: boId, boInstanceIds: ids }, {});
+      const after = await Promise.all(ids.map(async (id) => ({ id, state: (await recordValues(s, bo, id).catch(() => ({ state: "gone" }))).state })));
+      const left = after.filter((r) => r.state !== "REMOVED" && r.state !== "gone");
+      return clean({ boId, answer, deleted: after, ...left.length ? { warning: `still not REMOVED: ${left.map((r) => r.id).join(", ")}` } : {} });
+    }
+  },
+  {
     name: "platform_report",
     description: "The stand behaved unlike MYBPM-IMPORTS.md / MYBPM-UI-API.md say, on the LATEST plugin → a prefilled GitHub issue for the user to submit under their own account (nothing is sent by this tool). Refuses on an outdated copy (update first — the fact may be fixed) and when the text names the user's stands, logins, people or companies: de-identify to placeholders (`<stand>`, `<company-a>`, …) and keep record data out. Search existing issues first (`search` url). One fact per issue. Show the user the text and give them the url; open:true only when they ask.",
     props: {
@@ -1696,7 +2052,7 @@ var tools = [
   {
     name: "stand_call",
     write: true,
-    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (scripts, processes, rights, menu, records, kanban — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
+    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (scripts, processes, rights, menu, xlsx records — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } },
     required: ["path"],
     run: async (a) => {
@@ -1759,7 +2115,7 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, record_save, record_delete, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }
