@@ -53,7 +53,8 @@ Two rules that apply to every recipe:
 - **Everything here is plain HTTP; tools are optional.** Every step below is executable with `curl` or
   `fetch` and nothing else. The `tools/*.bun.ts` scripts named next to a recipe come from the repository this
   document belongs to and are NOT shipped with it. **If they are available, prefer them** — they make exactly
-  these calls and check the answers; if not, follow the text — the result is the same.
+  these calls and check the answers; if not, follow the text — the result is the same. The same holds for
+  the **`mybpm-stand` MCP server**: its tools connected → §0U.8 says which recipe each one makes.
 - **Never infer the result of a call — read it back.** Every recipe ends with a verification step that
   says which call to make and which field to compare. The stand answers HTTP 200 to a great many things
   it did not do (§0U.2).
@@ -69,7 +70,8 @@ Ask the user for these, one request at a time, and wait for the answer:
    The tenant is selected by the credentials/token, not by a header or a parameter, but you need its name
    to talk about it and to know which sidebar you are looking at. **Never assume a screen or a BO group
    exists because another company on the same host has it.**
-3. **Authentication**, one of the two routes below.
+3. **Authentication**, one of the two routes below. With the `mybpm-stand` MCP server connected there is
+   nothing to ask: it holds the credentials (§0U.8) — confirm stand and company with `stand_whoami`.
 
 #### Route A — log in headlessly (username + password)
 
@@ -435,7 +437,8 @@ Everything is written into a draft as you go; the bottom bar of the editor only 
 
 #### R3 — Import a structure archive (`.mybpm.zip`)
 
-How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. The controller prefix is
+How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. MCP connected → `import_analyze`
+(steps 1–4), `import_apply` (5–7), `import_rollback` (§0U.8). The controller prefix is
 **`import-structure`**, not `v2/…`: `POST <stand>/web/import-structure/<method>`.
 **Only one import may be open on a company at a time.**
 
@@ -508,7 +511,7 @@ over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do no
 
 The reverse of an import, and the only way to read the real serialization of something built by hand
 (`kanbanCardTemplates`, `MenuItemStructDto`). Controller **`struct`** — a
-basket the stand keeps per user, then one download. **The controller is `/web/struct/<method>`, NOT under
+basket the stand keeps per user, then one download (MCP connected → `structure_export`, §0U.8). **The controller is `/web/struct/<method>`, NOT under
 `/web/v2`** (trap 41) — a `v2/struct/…` call answers 404 and an in-page helper that parses the body silently
 takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 
@@ -724,6 +727,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    every record the file creates `[C]` (§5f «Run ways»).
 
 #### R8 — Export the structure of a company
+
+MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you name and puts the user's basket back.
 
 1. Pick what to export. The export basket is **server-side, persisted state** — it still holds whatever
    was selected in some earlier session. In the UI:
@@ -958,7 +963,58 @@ export, §5b–5f one section per object kind, §5g the script API, §5h field s
 type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
-something behaves impossibly** · §12 what is still unknown.
+something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybpm-stand` MCP server.
+
+### 0U.8 The mybpm-stand MCP server — the recipes as tools
+
+The plugin this document ships with carries a local MCP server, **`mybpm-stand`**: started by Claude Code from
+the plugin, installed in Claude Desktop from `mybpm-stand.mcpb` (a release asset). It runs on the user's
+machine, talks to the stand itself and makes exactly the calls of the recipes it names below. **Its tools
+connected (`stand_whoami`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
+written.** This document stays the spec either way: what a tool cannot do is plain HTTP by §0U.4.
+
+- **Credentials stay with the server, never in the chat.** Claude Code: the token files of the repository's
+  `mise run stand-login <host> <login>` (`~/.config/mybpm/tokens/<host>/<login>.token`) or `MYBPM_STAND` +
+  `MYBPM_TOKEN`; Claude Desktop: stand, login and password in the extension settings (the password stored
+  as a secret, the server logs in itself and again when the token expires). With the server connected, do
+  not ask for a password or a token (§0U.1 item 3 is answered); `stand_list` names what it holds. Item 2
+  still holds: **`stand_whoami` first** — it names the company the credentials select.
+- **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `notifications_clear`, `stand_call`
+  change the stand — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `import_rollback` without `confirm: true` only returns the preview.
+- **An archive built where the stand is unreachable goes in through `archive_put`.** In a claude.ai or Claude
+  Desktop chat your code runs in a cloud sandbox: the server cannot read a file there. Do not zip it there —
+  send the JSONL lines of `0000001.mybpm` (`MYBPM-IMPORTS.md` §0.1) to `archive_put` in parts of up to
+  ~100 KB (`part: 1, 2 …`, `last: true` on the final one); the server zips them on the user's machine and
+  lints them. Code on the user's machine (Claude Code) → `import_analyze {path}` straight away.
+- **`import_analyze` lints first** — the form lint of `MYBPM-IMPORTS.md` §0.10 — and does not upload while a
+  defect line is left; the lint does not replace the rest of the self-check there.
+- **Finish with the bell:** `notifications_read` flags `newThisSession` what appeared after the server's
+  first stand call — the entries your work raised (every analysis leaves one); `notifications_clear` those ids.
+
+| Tool | What it does | Recipe / route |
+|---|---|---|
+| `stand_list` | stands and logins the server holds, the default one | — |
+| `stand_whoami` | fio, e-mail, companyCode, companyId, personId, the Person BO id | §0U.1 item 2; `GET v2/auth/load-auth-info`, `load-bo-id-by-kind {kind: PERSON}` |
+| `bo_groups` | every BO group with its BOs | R4; `load-bo-groups {forEdit}`, `load-bo-records-by-group-id` |
+| `bo_find` | a BO by `code` (`exists: false` when absent) or by a piece of its name | R4; `load-bo-id-by-code` |
+| `bo_read` | one BO: header + a row per field (type, tab, grid, ref, required, column); `raw` = the DTO | R4; `load-business-object-by-id` |
+| `persons_find` | users by a piece of name or e-mail: the ids a Person field or a rights subject takes | `v2/org-unit/load-filtered-persons-v2` |
+| `archive_put` | builds a `.mybpm.zip` on the user's machine from JSONL parts, lints it | `MYBPM-IMPORTS.md` §0.1, §0.10 |
+| `archive_lint` | the form lint of `MYBPM-IMPORTS.md` §0.10 + what the archive holds | — |
+| `import_analyze` | lint, upload, insert, analyze — nothing written, the import stays ANALYZED | R3 steps 1–4 |
+| `import_report` | status, errors, conflicts, BOs; with `recordId` the per-BO diff | R3; `load-import-bo-record` |
+| `import_apply` ✎ | description, apply, waits, reads the log row back | R3 steps 5–7 |
+| `import_cancel` ✎ | drops an analysed import; `remove` also deletes its log row | §5 «Import through the API» |
+| `import_rollback` ✎ | the rollback preview; with `confirm` the rollback | §5 «Rollback trap» |
+| `import_log` | the import log and the open import | `load-import-file-records`, `load-import-state` |
+| `structure_export` | exactly these BOs into the export basket, the file to the user's disk, the user's basket put back | R4a, R8 |
+| `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
+| `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R1, R2, R5–R7, R9, R10) | §0U.4 |
+
+✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
+the model.
 
 ---
 
