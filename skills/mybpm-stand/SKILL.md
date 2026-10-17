@@ -38,7 +38,7 @@ every time. `### 0U.7 Where the rest is` maps the numbered sections behind the c
 
 ## The mybpm-stand MCP server
 
-This plugin also starts an MCP server, `mybpm-stand` (in Claude Desktop: the `mybpm-stand.mcpb` extension).
+This plugin also starts an MCP server, `mybpm-stand` (Claude Code and Claude Desktop start it from the plugin).
 **Its tools connected (`stand_whoami`, `import_analyze` …) → use them instead of hand-made calls** for
 what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
 it holds the stand accounts (do not ask for a password or a token — `stand_whoami` confirms stand and company;
@@ -50,10 +50,9 @@ that the ✎ tools write and need the user's OK, and how an archive built in a c
 **Not connected (no `stand_*` tool among yours) and the task touches a stand → tell the user in your first
 reply and give them the install steps — you cannot install it yourself** (the app's own Install dialog, which
 the user confirms; in a Desktop or claude.ai chat your code runs in a cloud sandbox). The steps per app are the
-first bullet of `### 0U.8 The mybpm-stand MCP server`: the plugin on the account (Chat, Cowork) — Customize →
-Plugins → Add → Add marketplace `dmezhnov/MyBPM` → install `mybpm`, or Upload plugin with
-`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip`; the Desktop Chat tab also needs
-`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb` (open it, Install, new chat);
+first bullet of `### 0U.8 The mybpm-stand MCP server`: Claude Desktop (Chat, Cowork) — download
+`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip`, Customize → Plugins → «+ Add» →
+Upload plugin → that file → Continue, then a new chat (Add marketplace there does not put it on the account);
 Claude Code (also the Desktop Code tab) — `claude plugin marketplace add dmezhnov/MyBPM`,
 `claude plugin install mybpm@mybpm`, restart. Meanwhile the recipes of the document as written, where your code
 reaches the stand.
