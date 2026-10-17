@@ -55,6 +55,16 @@ output and exits 1 while a defect line is left. Paste that output into the repor
 fix every defect line and rerun, answer every `REMINDER` by name, and still walk the prose checks of 0.10.
 No Node or Bun in your sandbox → «How to run it» in `### 0.10` (any JavaScript engine, or a port).
 
+## Handing an archive to the stand MCP
+
+The `mybpm-stand` MCP server connected (tools `archive_put`, `import_analyze` …) and your code runs where
+the user's disk is not (a claude.ai or Claude Desktop chat): **do not zip the archive in your sandbox** —
+the server cannot read it there. Send the JSONL lines of `0000001.mybpm` (`### 0.1 The artefact`) to
+`archive_put` in parts of up to ~100 KB (`part: 1, 2 …`, `last: true` on the final one): the server zips
+them on the user's machine and runs this same lint; then `import_analyze` with the same `name`. With a
+local disk (Claude Code) write the zip as usual and pass its `path`. Delivering it is the mybpm-stand
+skill.
+
 ## Tools (only when the repository is at hand)
 
 With a checkout of the MyBPM repository, its `tools/` sits at `../../tools/` (run with Bun). Useful without a stand:

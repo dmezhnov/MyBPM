@@ -36,9 +36,20 @@ what a success and an error look like (`### 0U.2 One complete call`). Then read 
 Then `### 0U.5 Hard rules` and `### 0U.6 Self-check before you say it worked` — both are short, read them
 every time. `### 0U.7 Where the rest is` maps the numbered sections behind the cookbook.
 
+## The mybpm-stand MCP server
+
+This plugin also starts an MCP server, `mybpm-stand` (in Claude Desktop: the `mybpm-stand.mcpb` extension).
+**Its tools connected (`stand_whoami`, `import_analyze` …) → use them instead of hand-made calls** for
+what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
+it holds the credentials (do not ask for a password or a token — `stand_whoami` confirms stand and company),
+that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
+(`archive_put`). Not connected → the recipes of the document as written; for the rest the tools do not
+cover, `stand_call` sends any method in the envelope of the recipe.
+
 ## Rules that hold for every task
 
-1. **Ask for the stand URL, the company and the credentials — never assume them.** The document uses
+1. **Ask for the stand URL, the company and the credentials — never assume them** (MCP connected: it holds
+   them — confirm with `stand_whoami` instead). The document uses
    placeholders (`<stand>`, `<company-a>` …); ids and codes in its examples belong to other stands.
 2. **HTTP 200 proves nothing.** Detect errors by `errorType` in the body, and read every write back.
 3. **Writes are immediate and have no undo but deletion** (`create-bo`, `apply-import`, `v2/co/add-*`).
