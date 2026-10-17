@@ -135,6 +135,7 @@ Bun.serve({
   port: Number(Bun.env.PORT ?? 8080),
   async fetch(req) {
     const url = new URL(req.url);
+    if (url.pathname === "/latest/plugin.json") return Response.json({ version: "99.0.0" }); // the MCP server's release check
     let payload: any = {}, file: Uint8Array | undefined;
     if (req.headers.get("content-type")?.startsWith("multipart/form-data")) {
       const f = (await req.formData()).get("file");
