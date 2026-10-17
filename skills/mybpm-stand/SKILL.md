@@ -42,7 +42,8 @@ This plugin also starts an MCP server, `mybpm-stand` (Claude Code and Claude Des
 **Its tools connected (`stand_whoami`, `import_analyze` …) → use them instead of hand-made calls** for
 what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
 it holds the stand accounts (do not ask for a password or a token — `stand_whoami` confirms stand and company;
-a new account or an expired session → `stand_accounts`, a page where the user logs in; `stand` on any tool picks
+a new account or an expired session → `stand_accounts`, give the user the link to the page where they log in — open their browser
+only when they ask; `stand` on any tool picks
 an account by name or host),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
 (`archive_put`). For the rest the tools do not cover, `stand_call` sends any method in the envelope of the recipe.

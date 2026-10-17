@@ -82,8 +82,8 @@ function accounts(): Cred[] {
 
 const label = (c: Cred) => `${c.name ? `«${c.name}» ` : ""}${hostKey(c.origin)} / ${c.login || "?"}`;
 const listed = (cs: Cred[]) => cs.map(label).join("; ");
-const NO_ACCOUNTS = "no stand accounts yet — call stand_accounts: it opens a page in the user's browser where they log in " +
-  "(the password goes to that page, never to the chat)";
+const NO_ACCOUNTS = "no stand accounts yet — call stand_accounts and give the user its link to a local page where they log in " +
+  "(the password goes to that page, never to the chat); do not open their browser unasked";
 
 /** The default account: the one marked on the accounts page, else MYBPM_STAND's, else the only one. */
 function defaultAccount(all: Cred[]): Cred | undefined {
@@ -301,7 +301,7 @@ function stand(args: { stand?: string; login?: string }): Stand {
   async function send(make: (token: string) => Promise<Response>): Promise<Response> {
     const r = await make(tokenOf(c));
     if (/"errorType"\s*:\s*"SecurityError"/.test(await r.clone().text()) && !(await checkAccount(c)).alive)
-      throw new Error(`the session of ${label(c)} has expired — call stand_accounts and let the user log in again ` +
+      throw new Error(`the session of ${label(c)} has expired — call stand_accounts and give the user its link to log in again ` +
         "(«Изменить» on that account); the password goes to that page, not to the chat");
     return r;
   }
@@ -473,15 +473,15 @@ const tools: Tool[] = [
         manage: rows.length ? "stand_use sets the default, stand_remove removes one; adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser)"
           : NO_ACCOUNTS };
     } },
-  { name: "stand_accounts", description: "Open the accounts page in the user's browser — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), removes one or marks the default. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL — give it to the user as a link in case the browser did not open; then wait for them, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
+  { name: "stand_accounts", description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), removes one or marks the default. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
     props: { name: { type: "string", description: "A name to prefill, e.g. «Тестовый core2»." },
-      open: { type: "boolean", description: "false = only return the URL, do not open the browser." } },
+      open: { type: "boolean", description: "true = also open the page in the user's browser; only when the user asked for it. Default false: the URL only." } },
     run: async (a) => {
       const url = await accountsPage();
       const pre = new URLSearchParams(Object.entries({ stand: a.stand, login: a.login, name: a.name }).filter(([, v]) => v) as [string, string][]);
       const link = url + (pre.toString() ? `#add&${pre}` : "");
-      return { url: link, opened: a.open === false ? false : openBrowser(link),
-        tell: "The page opens in the user's browser (or give them the url). They log in there; the password never comes to the chat. When they say it is done, call stand_list." };
+      return { url: link, opened: a.open === true ? openBrowser(link) : false,
+        tell: "Give the user the url as a link (opened:true = it is already open in their browser). They log in there; the password never comes to the chat. When they say it is done, call stand_list." };
     } },
   { name: "stand_use", description: "Make an account the default: every tool called without `stand` goes to it. Local, the stand is not touched.",
     required: ["stand"],
@@ -719,7 +719,7 @@ const version = (() => {
 const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " +
   "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " +
   "stand_list names them and the default one, `stand` on any tool picks another by name or host, and a new account or a " +
-  "re-login goes through stand_accounts (a local page in the user's browser — never ask for a password in the chat). Start with stand_whoami. " +
+  "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Start with stand_whoami. " +
   "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear).";
