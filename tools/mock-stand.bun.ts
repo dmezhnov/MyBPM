@@ -62,6 +62,24 @@ function bosOf(file: Uint8Array): Bo[] {
 
 const unb64 = (s: unknown) => Buffer.from(String(s ?? ""), "base64").toString("utf8");
 
+// ── records: stored values per BO, record drafts of the §6a and §6b cycles ──────────────────────────────
+type Rec = { id: string; boId: string; state: string; at: number; values: Record<string, string> };
+const recs = new Map<string, Rec>(); // boiId → record
+const recDrafts = new Map<string, { boId?: string; boiId?: string; isNew?: boolean; dev?: boolean; values: Record<string, string> }>();
+const fieldsOf = (boId: string) => (bos.get(boId)?.fields ?? []).filter((x) => x.type && !x.widgetType && !x.nativeFieldType && x.type !== "TAB_GROUP");
+const shown = (f: any, v: string) => f.type === "DROPDOWN_SINGLE" ? f.options?.find((o: any) => o.id === v)?.label ?? v
+  : f.type === "CHECKBOX" ? (v === "true" ? "Да" : "Нет") : v;
+const cell = (f: any, v = "") => ({ fieldId: f.fieldId, fieldCode: f.code, value: f.type === "BO" ? "" : v, displayValue: f.type === "BO" ? "" : shown(f, v) });
+// trap 73 once per record whose values hold «ES breaker»: a read fails once, the first apply STORES and then fails
+const esOnce = (key: string, values: Record<string, string>) =>
+  Object.values(values).some((v) => String(v).includes("ES breaker")) && !raced.has(key) && !!raced.add(key);
+const ES = { errorType: "EsDataTooLargeException", message: "[parent] Data too large, data for [<http_request>] would be larger than limit" };
+function commit(draftId: string) {
+  const d = recDrafts.get(draftId)!;
+  const r = recs.get(d.boiId!) ?? { id: d.boiId!, boId: d.boId!, state: d.dev ? "DEV" : "ALL", at: ++seq, values: {} };
+  Object.assign(r.values, d.values); recs.set(r.id, r); recDrafts.delete(draftId);
+}
+
 function mcp(path: string, params: any, body: any, token: string, file?: Uint8Array): any {
   const route = path.replace(/^\/web\//, "");
   switch (route) {
@@ -97,8 +115,14 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       if (p.businessObject.nameMap?.RUS) bo.name = p.businessObject.nameMap.RUS;
       if (p.businessObject.formFields) {
         const drop = new Set(p.deletedFieldIds ?? []), add = new Set(p.addedFieldIds ?? []);
-        bo.fields = [...(bo.fields ?? []).filter((x) => !drop.has(x.fieldId)), ...p.businessObject.formFields.filter((x: any) => add.has(x.fieldId))];
-        for (const e of p.editedFields ?? []) Object.assign(bo.fields.find((x) => x.fieldId === e.fieldId) ?? {}, e);
+        // an added list's option codes come generated from the labels, whatever was sent (an EDIT of `options` sets them)
+        const added = p.businessObject.formFields.filter((x: any) => add.has(x.fieldId))
+          .map((x: any) => (x.options?.length ? { ...x, options: x.options.map((o: any, j: number) => ({ ...o, code: `Gen_${j}` })) } : x));
+        bo.fields = [...(bo.fields ?? []).filter((x) => !drop.has(x.fieldId)), ...added];
+        for (const e of p.editedFields ?? []) {
+          const { options, ...rest } = e;
+          Object.assign(bo.fields.find((x) => x.fieldId === e.fieldId) ?? {}, add.has(e.fieldId) ? rest : e);
+        }
       }
       return acc;
     }
@@ -145,6 +169,62 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       if (params.label !== undefined) x.label = params.label; else x.code = params.code;
       return null;
     }
+    // records: the registry (columns only, CREATED_AT DESC), values per tab, the §6a draft cycle, the §6b form cycle, the delete
+    case "v2/business-object-instance/load-bo-instance-bracket-table": {
+      const cols = fieldsOf(body.boId).filter((x) => x.tableColToShow);
+      const all = [...recs.values()].filter((r) => r.boId === body.boId && (body.state === "ALL" ? r.state === "ALL" || r.state === "DEV" : r.state === body.state))
+        .sort((a, b) => b.at - a.at), page = all.slice(body.paging.offset, body.paging.offset + body.paging.limit);
+      return { heads: cols.map((x, i) => ({ fieldId: x.fieldId, name: x.label, orderIndex: i, boFieldArchetype: "DYNAMIC" })), totalHits: all.length,
+        hasNext: body.paging.offset + page.length < all.length,
+        records: page.map((r) => ({ boId: r.boId, instanceId: r.id, state: r.state, values: cols.map((x) => cell(x, r.values[x.fieldId])) })) };
+    }
+    case "v2/business-object-instance/v2/load-boi-values": {
+      const r = recs.get(body.boInstanceId);
+      if (!r) return fail("NoBoInstanceWithId");
+      if (esOnce(`read-${r.id}`, r.values)) return ES;
+      return { boInstanceId: r.id, state: r.state, fields: fieldsOf(r.boId).filter((x) => (x.tabId ?? null) === body.tabId).map((x) => cell(x, r.values[x.fieldId])) };
+    }
+    case "v2/business-object-instance/create-draft": { const id = nextId("RDR"); recDrafts.set(id, { values: {} }); return id; }
+    case "v2/instance-field-form/load-field-data": {
+      const r = recs.get(params.boiId), d = recDrafts.get(params.draftId);
+      if (!d) return fail("NoBoInstanceDraftWithId");
+      return fieldsOf(params.boId).map((x) => ({ fieldId: x.fieldId, storedValue: d.values[x.fieldId] ?? r?.values[x.fieldId] ?? (x.type === "BO" ? "[]" : "") }));
+    }
+    case "v2/business-object-instance/remove-draft": case "v2/instance-form/remove-draft": recDrafts.delete(params.draftId); return null;
+    case "v2/business-object-instance/v2/create-boi": Object.assign(recDrafts.get(params.draftId)!, { boId: params.boId, boiId: nextId("BOI"), isNew: true }); return recDrafts.get(params.draftId)!.boiId;
+    case "v2/business-object-instance/v2/save-boi-value": {
+      const d = recDrafts.get(body.draftId)!;
+      Object.assign(d, { boId: body.boId, boiId: body.boInstanceId, dev: body.newIsDev });
+      for (const v of body.values) d.values[v.fieldId] = v.value;
+      return null;
+    }
+    case "v2/business-object-instance/apply-and-remove-draft": commit(params.draftId); return null;
+    case "v2/instance-form-create-draft/create-draft": { const id = nextId("RDR"); recDrafts.set(id, { boId: params.boId, boiId: params.boiId, values: {} }); return id; }
+    case "v2/instance-form-create-draft/create-draft-with-boi": {
+      const draftId = nextId("RDR"), boiId = nextId("BOI");
+      recDrafts.set(draftId, { boId: params.boId, boiId, isNew: true, dev: params.boiState === "DEV", values: {} });
+      return { draftId, boiId };
+    }
+    case "v2/instance-field-form/save-field-value": {
+      const d = recDrafts.get(body.draftId);
+      if (!d) return fail("NoBoInstanceDraftWithId");
+      for (const v of body.values) d.values[v.fieldId] = v.value;
+      return [];
+    }
+    case "v2/instance-form/validate-apply-remove-draft": {
+      const d = recDrafts.get(params.draftId);
+      if (!d) return fail("NoBoInstanceDraftWithId: the draft is gone");
+      const was = recs.get(d.boiId!)?.values ?? {};
+      const empty = fieldsOf(d.boId!).filter((x) => x.isRequired && !(d.values[x.fieldId] ?? was[x.fieldId]));
+      if (empty.length) return [{ commandType: "SHOW_FIELD_ERROR", fieldId: empty[0].fieldId, errorMessage: "Необходимо заполнить" }];
+      const es = esOnce(`apply-${d.boiId}`, d.values);
+      commit(params.draftId);
+      return es ? ES : [{ commandType: "CLOSE_DIALOG_SAVE" }];
+    }
+    case "v2/business-object-instance/v2/delete-boi": recDrafts.delete(params.draftId); return null;
+    case "v2/business-object-instance/delete-bo-instance":
+      for (const id of params.boInstanceIds ?? []) { const r = recs.get(id); if (r && r.boId === params.businessObjectId) r.state = "REMOVED"; }
+      return null;
     case "v2/org-unit/load-filtered-persons-v2": return [{ name: "Все", persons: [{ id: "PERSON0000000001", name: "Mock Admin", email: "admin@mock", parentGroupNames: "" }] }];
     case "v2/process-indicator/pre-create-process": return nextId("PROC");
     case "v2/process-indicator/load-state-short": return { isFinished: true, percentage: 100, label: "Готово" };
