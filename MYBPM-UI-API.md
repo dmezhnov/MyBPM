@@ -986,11 +986,13 @@ written.** This document stays the spec either way: what a tool cannot do is pla
     [I]. **The account marketplace is pinned to one commit and does not follow the releases by itself** [C]:
     «+ Add» → **Manage marketplaces** shows `MyBPM · Synced · Synced commit: <sha>`, and its switch «Sync
     automatically — Re-syncs on GitHub changes», on by default, does not move it to a newer release [C]; the
-    plugin's own ⋯ under Yours holds only «Remove». A user on an old version (the version is on the plugin's
-    page: `from MyBPM · <version>`): «+ Add» → Manage marketplaces → ⋯ on MyBPM → **Check for updates** → the
-    commit and the plugin version move to the latest `main` at once [C]. Desktop keeps its local copy until a
-    full plugin sync — its periodic 20-min sync is a quick one that leaves user-installed plugins as they are
-    [C]; restart Desktop — it downloads the new copy at start [C] — then a new chat. A second Add marketplace of the same repository answers «This marketplace
+    periodic 20-min sync is a quick one that leaves user-installed plugins as they are [C]. A user on an old
+    version (the version is on the plugin's page: `from MyBPM · <version>`): Customize → Plugins → **Mybpm** →
+    ⋯ → **Check for updates** → the «Update» button beside it → the page shows the new version and Desktop
+    replaces its local copy at once, no restart [C]: the skills are new in the next chat [I]. The server process
+    Desktop already started keeps running the old code [C] — restart Desktop (it starts the server anew) for
+    the tools [I]. The same through «+ Add» → Manage marketplaces → ⋯ on MyBPM → Check for updates moves the
+    commit; then a restart downloads the new copy [C]. A second Add marketplace of the same repository answers «This marketplace
     is already added» — go to Discover. The Code tab's own Add marketplace is a different thing: it writes the
     machine's Claude Code registry, not the account [C]. Without the marketplace: «+ Add» → **Upload plugin** →
     `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` → «Continue» — same result

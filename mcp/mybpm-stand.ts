@@ -738,7 +738,7 @@ function updateHow(): string {
   if (existsSync(join(HERE, "..", "manifest.json")))
     return `a Claude Desktop extension: download ${RELEASE}/mybpm-stand.mcpb, open it and Install (replaces the old one), then restart Desktop`;
   if (p.includes("/local-agent-mode-sessions/"))
-    return "the Claude Desktop account plugin: Customize → Plugins → «+ Add» → Manage marketplaces → ⋯ on MyBPM → Check for updates, then quit Desktop fully and start it again " +
+    return "the Claude Desktop account plugin: Customize → Plugins → Mybpm → ⋯ → Check for updates → «Update» on the plugin's page (the skills are new at once), then quit Desktop fully and start it again so these tools run the new code " +
       `(installed with Upload plugin instead: upload ${RELEASE}/mybpm-plugin.zip again)`;
   if (p.includes("/.claude/plugins/"))
     return "Claude Code: `claude plugin marketplace update mybpm`, then `claude plugin update mybpm@mybpm`, then restart Claude Code";
