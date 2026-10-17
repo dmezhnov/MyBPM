@@ -15,15 +15,17 @@
  * The password is never a tool argument: the model never sees it.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync, appendFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { inflateRawSync } from "node:zlib";
 import { zip } from "../tools/zip.ts";
 
 // ── stands and tokens ────────────────────────────────────────────────────────────────────────────────────
 
+// The folder of the running file. Not `__dirname`: `bun build` replaces it by the build machine's absolute path.
+const HERE = dirname(realpathSync(process.argv[1]));
 const TOKENS = join(homedir(), ".config", "mybpm", "tokens");
 const CACHE = join(homedir(), ".cache", "mybpm");
 const env = process.env;
@@ -216,7 +218,7 @@ function summarize(file: string) {
 
 /** The lint the skill ships (MYBPM-IMPORTS.md 0.10), run as it is — beside this file in the plugin and in the .mcpb. */
 function lint(file: string): { ok: boolean; out: string } {
-  const script = [join(__dirname, "..", "skills", "mybpm-imports", "scripts", "lint-archive.cjs")].find(existsSync);
+  const script = [join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.cjs")].find(existsSync);
   if (!script) return { ok: true, out: "form lint: NOT RUN (lint-archive.cjs not found beside the server)" };
   try {
     return { ok: true, out: execFileSync(process.execPath, [script, file], { encoding: "utf8" }).trim() };
@@ -530,7 +532,7 @@ function trim(v: unknown, max = 30000): unknown {
 
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const version = (() => {
-  for (const f of [join(__dirname, "..", ".claude-plugin", "plugin.json"), join(__dirname, "..", "manifest.json")])
+  for (const f of [join(HERE, "..", ".claude-plugin", "plugin.json"), join(HERE, "..", "manifest.json")])
     try { return JSON.parse(readFileSync(f, "utf8")).version; } catch {}
   return "dev";
 })();

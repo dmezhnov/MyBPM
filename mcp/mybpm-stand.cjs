@@ -86,7 +86,7 @@ function zip(entries, now = new Date) {
 }
 
 // mcp/mybpm-stand.ts
-var __dirname = "/home/dmezhnov/programming/MyBPM/mcp";
+var HERE = import_node_path.dirname(import_node_fs.realpathSync(process.argv[1]));
 var TOKENS = import_node_path.join(import_node_os.homedir(), ".config", "mybpm", "tokens");
 var CACHE = import_node_path.join(import_node_os.homedir(), ".cache", "mybpm");
 var env = process.env;
@@ -270,7 +270,7 @@ function summarize(file) {
   return { file, bytes: b.length, lines: lines.length, types, bos };
 }
 function lint(file) {
-  const script = [import_node_path.join(__dirname, "..", "skills", "mybpm-imports", "scripts", "lint-archive.cjs")].find(import_node_fs.existsSync);
+  const script = [import_node_path.join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.cjs")].find(import_node_fs.existsSync);
   if (!script)
     return { ok: true, out: "form lint: NOT RUN (lint-archive.cjs not found beside the server)" };
   try {
@@ -745,7 +745,7 @@ function trim(v, max = 30000) {
 }
 var VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 var version = (() => {
-  for (const f of [import_node_path.join(__dirname, "..", ".claude-plugin", "plugin.json"), import_node_path.join(__dirname, "..", "manifest.json")])
+  for (const f of [import_node_path.join(HERE, "..", ".claude-plugin", "plugin.json"), import_node_path.join(HERE, "..", "manifest.json")])
     try {
       return JSON.parse(import_node_fs.readFileSync(f, "utf8")).version;
     } catch {}
