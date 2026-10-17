@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.9**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.10**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_whoami`) carries a «NOTE for Claude» when a newer one is
@@ -25,8 +25,8 @@ This copy of the skill is version **1.5.9**. Before the first answer of a conver
 
 Update steps by how it was installed (unsure → give the user the first two):
 
-- Claude Desktop / claude.ai, plugin from the marketplace: Customize → Plugins → «+ Add» → Manage marketplaces →
-  ⋯ on MyBPM → Check for updates, then restart Desktop (it does not update by itself).
+- Claude Desktop / claude.ai, plugin from the marketplace (it does not update by itself): Customize → Plugins → Mybpm → ⋯ → Check for updates → «Update» on the
+  plugin's page — the skills are new at once; restart Desktop so the server's tools run the new code too.
 - Claude Code: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart.
 - installed with Upload plugin: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` again.
 - this skill uploaded alone: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-imports.zip` again.
