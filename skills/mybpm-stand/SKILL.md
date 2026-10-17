@@ -45,8 +45,16 @@ it holds the stand accounts (do not ask for a password or a token — `stand_who
 a new account or an expired session → `stand_accounts`, a page where the user logs in; `stand` on any tool picks
 an account by name or host),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
-(`archive_put`). Not connected → the recipes of the document as written; for the rest the tools do not
-cover, `stand_call` sends any method in the envelope of the recipe.
+(`archive_put`). For the rest the tools do not cover, `stand_call` sends any method in the envelope of the recipe.
+
+**Not connected (no `stand_*` tool among yours) and the task touches a stand → tell the user in your first
+reply and give them the install steps — you cannot install it yourself** (the app's own Install dialog, which
+the user confirms; in a Desktop or claude.ai chat your code runs in a cloud sandbox). The steps per app are the
+first bullet of `### 0U.8 The mybpm-stand MCP server`: Desktop Chat tab — download
+`https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb`, open it, Install, new chat;
+Cowork — Customize → Plugins → Add marketplace `dmezhnov/MyBPM` → install `mybpm`; Claude Code —
+`claude plugin marketplace add dmezhnov/MyBPM`, `claude plugin install mybpm@mybpm`, restart. Meanwhile the
+recipes of the document as written, where your code reaches the stand.
 
 ## Rules that hold for every task
 

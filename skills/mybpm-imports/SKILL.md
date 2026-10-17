@@ -63,7 +63,8 @@ the server cannot read it there. Send the JSONL lines of `0000001.mybpm` (`### 0
 `archive_put` in parts of up to ~100 KB (`part: 1, 2 …`, `last: true` on the final one): the server zips
 them on the user's machine and runs this same lint; then `import_analyze` with the same `name`. With a
 local disk (Claude Code) write the zip as usual and pass its `path`. Delivering it is the mybpm-stand
-skill.
+skill — not connected and the user wants the archive on a stand: its skill says how the user installs the
+server.
 
 ## Tools (only when the repository is at hand)
 
