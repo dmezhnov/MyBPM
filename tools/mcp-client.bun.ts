@@ -78,7 +78,7 @@ if (mode === "list") {
 } else {
   for (let i = 0; i < pairs.length; i += 2) {
     const args = resolveRefs(JSON.parse(pairs[i + 1] ?? "{}"));
-    let text: string, isError: boolean;
+    let text: string, isError: boolean, notes: string[] = [];
     if (pairs[i] === "http") {
       const r = await fetch(String(args.url).replace(/#.*$/, "") + args.path,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args.body ?? {}) });
@@ -86,15 +86,16 @@ if (mode === "list") {
       isError = !r.ok;
     } else {
       const r = await rpc("tools/call", { name: pairs[i], arguments: args });
-      text = r.error ? JSON.stringify(r.error) : r.result.content.map((c: any) => c.text).join("\n");
+      text = r.error ? JSON.stringify(r.error) : r.result.content[0]?.text ?? "";
+      notes = r.error ? [] : r.result.content.slice(1).map((c: any) => c.text);
       isError = !!(r.error || r.result.isError);
     }
     let result: any = text;
     try { result = JSON.parse(text); } catch {}
     if (!isError) results[pairs[i]] = result;
     if (isError) failed = true;
-    if (asJson) report.push({ tool: pairs[i], isError, result });
-    else if (!quiet || isError) console.log(`── ${pairs[i]}${isError ? " (ERROR)" : ""}\n${text}`);
+    if (asJson) report.push({ tool: pairs[i], isError, result, ...(notes.length ? { notes } : {}) });
+    else if (!quiet || isError) console.log(`── ${pairs[i]}${isError ? " (ERROR)" : ""}\n${[text, ...notes].join("\n")}`);
   }
 }
 if (asJson) console.log(JSON.stringify(report, null, 1));

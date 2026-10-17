@@ -1006,6 +1006,13 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   Until the user installs it, the recipes as written work wherever your code reaches the stand; a cloud
   sandbox usually does not reach a customer stand — then the install is the way, say so.
 
+- **A newer release: the server says so.** At start it reads `version` of `.claude-plugin/plugin.json` on
+  `main` of `dmezhnov/MyBPM` (`main` moves only on a green release); newer than its own → its first answer and
+  every `stand_whoami` end with an extra text «NOTE for Claude: the mybpm plugin <new> is out, this copy is
+  <old> …» naming the update steps of the way it was installed (Desktop account plugin, Upload plugin, `.mcpb`,
+  Claude Code) [C]. Tell the user in one line with those steps, then go on with the task; GitHub out of reach →
+  no note, nothing else changes [C].
+
 - **Accounts stay with the server, never in the chat.** An account = a login on a stand host; the server keeps
   several, one of them the default. `stand_list` names them (name, host, login, who, company, the default);
   every tool takes `stand` — an account's name or its host — and goes to the default without it; `stand_use`

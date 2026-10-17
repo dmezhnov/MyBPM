@@ -716,13 +716,53 @@ const version = (() => {
   return "dev";
 })();
 
+// ── a newer release: checked once at start against main (CI fast-forwards main only on a green release) ──────
+
+const LATEST_URL = process.env.MYBPM_LATEST_URL ?? "https://raw.githubusercontent.com/dmezhnov/MyBPM/main/.claude-plugin/plugin.json";
+const RELEASE = "https://github.com/dmezhnov/MyBPM/releases/latest/download";
+const newer = (a: string, b: string) => {
+  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+};
+let latest: string | undefined;
+const started = Date.now();
+const latestCheck: Promise<void> = version === "dev" || !LATEST_URL ? Promise.resolve() :
+  fetch(LATEST_URL, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: any) => {
+    if (typeof j?.version === "string" && /^\d+\.\d+\.\d+$/.test(j.version)) latest = j.version;
+  }).catch(() => {});
+
+// how this copy was installed, by where the server file sits
+function updateHow(): string {
+  const p = HERE.replace(/\\/g, "/");
+  if (existsSync(join(HERE, "..", "manifest.json")))
+    return `a Claude Desktop extension: download ${RELEASE}/mybpm-stand.mcpb, open it and Install (replaces the old one), then restart Desktop`;
+  if (p.includes("/local-agent-mode-sessions/"))
+    return "the Claude Desktop account plugin: Customize → Plugins → «+ Add» → Manage marketplaces → ⋯ on MyBPM → Check for updates, then quit Desktop fully and start it again " +
+      `(installed with Upload plugin instead: upload ${RELEASE}/mybpm-plugin.zip again)`;
+  if (p.includes("/.claude/plugins/"))
+    return "Claude Code: `claude plugin marketplace update mybpm`, then `claude plugin update mybpm@mybpm`, then restart Claude Code";
+  return "a checkout of the MyBPM repository: `git pull` in it";
+}
+
+let releaseTold = false;
+async function releaseNote(t: Tool): Promise<string | undefined> {
+  if (releaseTold && t.name !== "stand_whoami") return;
+  if (!releaseTold) await Promise.race([latestCheck, new Promise((r) => setTimeout(r, Math.max(0, 1500 - (Date.now() - started))))]);
+  releaseTold = true;
+  if (!latest || !newer(latest, version)) return;
+  return `NOTE for Claude: the mybpm plugin ${latest} is out, this copy is ${version}. Tell the user so in one line before the answer, ` +
+    `with how to update this install — ${updateHow()}. Then go on with the task on this copy.`;
+}
+
 const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " +
   "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " +
   "stand_list names them and the default one, `stand` on any tool picks another by name or host, and a new account or a " +
   "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Start with stand_whoami. " +
   "Write tools (import_apply, import_rollback, import_cancel, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
-  "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear).";
+  "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " +
+  "A result that ends with «NOTE for Claude» about a newer release: tell the user in one line with the update steps it names, then go on.";
 
 function schema(t: Tool) {
   return { type: "object", properties: { ...(t.props ?? {}), ...STAND_ARGS }, ...(t.required ? { required: t.required } : {}) };
@@ -743,7 +783,8 @@ async function handle(msg: any): Promise<any> {
       try {
         await baseline(t, msg.params?.arguments ?? {});
         const out = await t.run(msg.params?.arguments ?? {});
-        return { content: [{ type: "text", text: typeof out === "string" ? out : JSON.stringify(out, null, 1) }] };
+        const note = await releaseNote(t);
+        return { content: [{ type: "text", text: typeof out === "string" ? out : JSON.stringify(out, null, 1) }, ...(note ? [{ type: "text", text: note }] : [])] };
       } catch (e: any) {
         return { content: [{ type: "text", text: `error: ${e.message}` }], isError: true };
       }
