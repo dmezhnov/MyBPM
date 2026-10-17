@@ -111,7 +111,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -309,6 +309,24 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "forward" }, (r) => /forward needs arrowId/.test(r)],
   ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "forward", arrowId: "@process_edit.ids.fw" },
     (r) => r.changed && r.over && r.steps.at(-1).state === "PASSED" && r.steps.length === 5],
+  // rights (R5): BO, tab, field, menu item; exact subjects, «выборочно» follows, a «Системные» tab closed by bo_create
+  ["rights_read", { code: "mcp_probe_records", subjects: true }, (r) => r.rights.view === "all" && r.rights.add === "all" && r.groups.some((g: any) => g.name === "Менеджеры") && r.persons.length === 1],
+  ["rights_save", { code: "mcp_probe_records", set: { view: { groups: ["Менеджеры"], persons: ["admin@mock"], author: true }, edit: "nobody" } },
+    (r) => !r.mismatch?.length && r.chosenAccessRight === true && r.rights.view.groups[0] === "Менеджеры" && r.rights.view.persons[0] === "Mock Admin" && r.rights.view.author && r.rights.edit === "nobody"],
+  ["rights_save", { code: "mcp_probe_records", set: { view: { persons: ["admin@mock"] } } }, (r) => !r.mismatch?.length && !r.rights.view.groups && !r.rights.view.author],
+  ["rights_save", { code: "mcp_probe_records", set: { view: { groups: ["Нет такой"] } } }, (r) => /no group «Нет такой»/.test(r)],
+  ["rights_save", { code: "mcp_probe_records", set: { look: "all" } }, (r) => /has no action look/.test(r)],
+  ["rights_save", { code: "mcp_probe_records", tab: "Детали", set: { view: "nobody" } }, (r) => r.rights.view === "nobody" && /tab «Детали»/.test(r.what) && r.chosenAccessRight === true],
+  ["rights_save", { code: "mcp_probe_records", field: "title", set: { edit: { author: true } } }, (r) => r.rights.edit.author === true && r.rights.view === "all" && r.chosenAccessRight === true],
+  ["rights_save", { code: "mcp_probe_records", set: { view: "all", edit: "all" } }, (r) => r.chosenAccessRight === "stays on" && /cannot be turned off/.test(r.note) && !r.mismatch?.length && r.rights.view === "all"],
+  ["rights_save", { code: "mcp_probe_records", field: "title", set: { edit: "all" } }, (r) => r.chosenAccessRight === false && r.rights.edit === "all"],
+  ["rights_read", { menu: "mcp_menu" }, (r) => r.rights.view === "all" && !("edit" in r.rights)],
+  ["rights_save", { menu: "mcp_menu", set: { view: { groups: ["Менеджеры"] } }, dryRun: true }, (r) => r.dryRun && r.body.view.orgUnitToAdd.length === 1 && r.body.view.accessForAll === false],
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe rights", code: "mcp_probe_rights", window: false, fields: [
+    { label: "Название", type: "INPUT_TEXT", code: "title" }, { label: "Служебное", type: "INPUT_TEXT", code: "svc", tab: "Системные" }] },
+    (r) => r.notes.some((n: string) => /tab «Системные» closed/.test(n))],
+  ["rights_read", { code: "mcp_probe_rights", tab: "Системные" }, (r) => r.rights.view === "nobody"],
+  ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xlsx", confirm: true }, (r) => r.deleted === true],
@@ -340,7 +358,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not

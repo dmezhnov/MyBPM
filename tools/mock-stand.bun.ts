@@ -49,6 +49,27 @@ let bell: { id: string; header: string; body: string; happenedAt: number }[] = [
 let seq = 0;
 const nextId = (p: string) => `${p}${String(++seq).padStart(16 - p.length, "0")}`;
 const raced = new Set<string>();
+// access rights (R5): a group per target; units persist only through orgUnitToAdd / orgUnitToDelete (trap 3)
+const ORG = [{ id: "GROUP00000000001", type: "GROUP", name: "Менеджеры", avatar: null, parentGroupNames: "", email: null },
+  { id: "PERSON0000000001", type: "PERSON", name: "Mock Admin", avatar: null, parentGroupNames: "Все", email: null }];
+const NAV = [{ id: "MENU000000000001", code: "mcp_menu", type: "BO", displayName: "Клиенты", iconName: "phosphor:users", parentId: null }];
+const access = new Map<string, any>(), chosen = new Map<string, boolean>();
+const ACTIONS = ["all", "view", "edit", "create", "delete", "archive", "export", "duplicate", "add"];
+const accessOf = (key: string) => {
+  if (!access.has(key)) access.set(key, Object.fromEntries([...ACTIONS.map((k) => [k, { accessForAll: true, participants: false, authorsField: null,
+    fromFields: {}, orgUnitRecordList: [], orgUnitToAdd: [], orgUnitToDelete: [] }]), ["useAll", false]]));
+  return JSON.parse(JSON.stringify(access.get(key)));
+};
+const saveAccess = (key: string, g: any) => {
+  const cur = accessOf(key);
+  for (const [k, v] of Object.entries<any>(g ?? {})) {
+    if (!v || typeof v !== "object") { cur[k] = v; continue; }
+    const drop = new Set((v.orgUnitToDelete ?? []).map((u: any) => u.id));
+    const list = [...(cur[k]?.orgUnitRecordList ?? []).filter((u: any) => !drop.has(u.id)), ...(v.orgUnitToAdd ?? [])];
+    cur[k] = { ...v, orgUnitRecordList: list, orgUnitToAdd: [], orgUnitToDelete: [] };
+  }
+  access.set(key, cur); return "";
+};
 const fail = (message: string) => ({ errorType: "RuntimeException", message });
 const openImport = () => [...imports.entries()].find(([, i]) => i.status === "ANALYZED");
 const logRow = (id: string) => { const i = imports.get(id)!; return { id, fileName: i.fileName, description: i.description, status: i.status,
@@ -359,6 +380,22 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/bo-transfer/export-bracket-bo": { const id = nextId("XEXP"); xexports.set(id, body); return id; }
     case "v2/bo-transfer/is-bo-export-file-ready": return xexports.has(params.exportId);
     case "v2/bo-transfer/load-bo-export-file": return fileOf(xexport(xexports.get(params.exportId)), `${bos.get(xexports.get(params.exportId).boId)!.name} export.xlsx`);
+    case "v2/business-objects/load-org-unit-record-list":
+      return ORG.filter((u) => u.name.toLowerCase().includes(String(params.filter ?? "").toLowerCase())).slice(params.skipFirstCount ?? 0, (params.skipFirstCount ?? 0) + 20);
+    case "v2/business-objects/load-org-field-record-list":
+      return fieldsOf(params.businessObjectId).filter((x) => x.type === "BO" && x.refBoId === "PERSONBO00000001").map((x) => ({ id: x.fieldId, name: x.label, kind: "PERSON" }));
+    case "v2/business-objects/load-access-group": return accessOf(`bo:${params.businessObjectId}`);
+    case "v2/business-objects/save-access-group": return saveAccess(`bo:${body.businessObjectId}`, body.accessGroup);
+    case "v2/business-objects/load-field-access-group": return accessOf(`f:${params.businessObjectId}:${params.fieldId}`);
+    case "v2/business-objects/save-field-access-group": return saveAccess(`f:${body.businessObjectId}:${body.fieldId}`, body.accessGroup);
+    case "v2/business-objects/load-field-tab-access-group": return accessOf(`t:${params.businessObjectId}:${params.fieldId}:${params.tabId}`);
+    case "v2/business-objects/save-field-tab-access-group": return saveAccess(`t:${body.businessObjectId}:${body.fieldId}:${body.tabId}`, body.accessGroup);
+    case "v2/business-objects/save-bo-field-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
+    case "v2/business-objects/save-bo-field-tab-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId)?.tabs?.find((y: any) => y.id === params.tabId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
+    case "v2/menu-item/load-nav-items": return params.parentId ? [] : NAV;
+    case "v2/menu-item/load-access-group": return accessOf(`m:${params.menuItemId}`);
+    case "v2/menu-item/save-access-group": return saveAccess(`m:${params.menuItemId}`, body);
+    case "v2/menu-item/save-menu-item-chosen-access-right": chosen.set(`m:${params.menuItemId}`, params.chosenAccessRight); return "";
     case "v2/org-unit/load-filtered-persons-v2": return [{ name: "Все", persons: [{ id: "PERSON0000000001", name: "Mock Admin", email: "admin@mock", parentGroupNames: "" }] }];
     case "v2/process-indicator/pre-create-process": return nextId("PROC");
     case "v2/process-indicator/load-state-short": return { isFinished: true, percentage: 100, label: "Готово" };
