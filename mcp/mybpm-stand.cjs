@@ -461,20 +461,25 @@ function standOf(c) {
       return r;
     },
     get: async (p) => text(await send((token) => fetch(url(p), { headers: { token } }))),
-    upload: async (p, file, name) => text(await send((token) => {
+    upload: async (p, file, name, form) => text(await send((token) => {
       const fd = new FormData;
       fd.append("file", new Blob([file]), name);
+      for (const [k, v] of Object.entries(form ?? {}))
+        fd.append(k, v);
       return fetch(url(p), { method: "POST", headers: { token }, body: fd });
     })),
-    bytes: async (p, params, body) => {
-      const r = await send((token) => fetch(url(p), { method: "POST", headers: { "Content-Type": "application/json", token }, body: envelope(params, body) }));
-      const data = new Uint8Array(await r.arrayBuffer());
-      if (data[0] === 123)
-        parse(new TextDecoder().decode(data));
-      const name = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(r.headers.get("content-disposition") ?? "")?.[1];
-      return { data, name: name ? decodeURIComponent(name) : "export.mybpm.zip" };
-    }
+    bytes: async (p, params, body) => fileOf(await send((token) => fetch(url(p), { method: "POST", headers: { "Content-Type": "application/json", token }, body: envelope(params, body) })), "export.mybpm.zip"),
+    download: async (p) => fileOf(await send((token) => fetch(url(p), { headers: { token } })), "download.xlsx")
   };
+}
+async function fileOf(r, fallback) {
+  const data = new Uint8Array(await r.arrayBuffer());
+  if (data[0] === 123)
+    parse(new TextDecoder().decode(data));
+  if (!r.ok)
+    throw new StandError(`HTTP ${r.status}`, new TextDecoder().decode(data).slice(0, 300));
+  const name = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(r.headers.get("content-disposition") ?? "")?.[1];
+  return { data, name: name ? decodeURIComponent(name.replace(/\+/g, " ")) : fallback };
 }
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitProcess(s, processId, seconds = 300) {
@@ -1016,6 +1021,226 @@ function formOutcome(answers, fields) {
   walk(answers);
   return { saved: all.includes("CLOSE_DIALOG_SAVE"), errors, notifications: notes };
 }
+var XF_ = "v2/bo-transfer/";
+var ID_COLUMN = "Внутренний айди";
+var unxml = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+var enxml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+var colName = (i) => {
+  let s = "";
+  for (i++;i; i = Math.floor((i - 1) / 26))
+    s = String.fromCharCode(65 + (i - 1) % 26) + s;
+  return s;
+};
+var colIndex = (letters) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+var texts = (xml) => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => unxml(m[1])).join("");
+function readSheet(bytes) {
+  const entries = unzip(Buffer.from(bytes));
+  const get = (n) => entries.find((e) => e.name === n)?.data.toString("utf8");
+  const sheet = entries.map((e) => e.name).filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0];
+  if (!sheet)
+    throw new Error("not an xlsx: no worksheet");
+  const shared = [...(get("xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => texts(m[1]));
+  const xml = get(sheet), grid = [];
+  for (const r of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    const n = Number(/\br="(\d+)"/.exec(r[1])?.[1] ?? grid.length + 1), cells = [];
+    for (const c of (r[2] ?? "").matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const ref = /\br="([A-Z]+)\d+"/.exec(c[1])?.[1], t = /\bt="(\w+)"/.exec(c[1])?.[1], inner = c[2] ?? "";
+      const v = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
+      cells[ref ? colIndex(ref) : cells.length] = t === "inlineStr" ? texts(inner) : v === undefined ? "" : t === "s" ? shared[Number(v)] ?? "" : unxml(v);
+    }
+    grid[n - 1] = Array.from(cells, (x) => x ?? "");
+  }
+  const rows = Array.from(grid, (r) => r ?? []);
+  const head = Number(/<pane\b[^>]*\bySplit="([\d.]+)"/.exec(xml)?.[1] ?? 1) >= 2 ? 2 : 1;
+  const caption = [...rows[0] ?? []];
+  for (const m of xml.matchAll(/<mergeCell ref="([A-Z]+)1:([A-Z]+)1"\/>/g))
+    for (let i = colIndex(m[1]) + 1;i <= colIndex(m[2]); i++)
+      caption[i] = caption[colIndex(m[1])];
+  const width = Math.max(caption.length, rows[1]?.length ?? 0);
+  const columns = Array.from({ length: width }, (_, i) => ({ column: colName(i), caption: caption[i] ?? "", sub: head === 2 ? rows[1]?.[i] ?? "" : "" }));
+  return { entries, sheet, xml, head, columns, data: rows.slice(head) };
+}
+function writeSheet(x, lines) {
+  const rows = lines.map((r, j) => `<row r="${x.head + j + 1}">` + r.map((v, i) => v === "" ? "" : `<c r="${colName(i)}${x.head + j + 1}" t="inlineStr"><is><t xml:space="preserve">${enxml(v)}</t></is></c>`).join("") + "</row>");
+  const last = `${colName(x.columns.length - 1)}${x.head + lines.length}`;
+  const xml = x.xml.replace(/<sheetData>[\s\S]*<\/sheetData>|<sheetData\/>/, (all) => {
+    const keep = [...all.matchAll(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g)].map((m) => m[0]).slice(0, x.head);
+    return `<sheetData>${keep.join(`
+`)}
+${rows.join(`
+`)}
+</sheetData>`;
+  }).replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:${last}"/>`);
+  return zip(x.entries.map((e) => ({ name: e.name, data: new Uint8Array(e.name === x.sheet ? Buffer.from(xml, "utf8") : e.data) })));
+}
+var xlsxFields = (bo) => valueFields(bo).filter((f) => f.type !== "STATIC_TEXT");
+function captionOf(bo, f) {
+  if (!f.tabId)
+    return f.label ?? "";
+  const tab = (bo.formFields ?? []).flatMap((g) => g.tabs ?? []).find((t) => t.id === f.tabId);
+  return tab ? `${tab.label ?? tab.labelMap?.RUS ?? ""}.${f.label}` : f.label;
+}
+function fieldColumns(bo, cols) {
+  const fields = xlsxFields(bo);
+  return cols.map((c) => ({ ...c, field: c.caption === ID_COLUMN ? undefined : fields.find((f) => captionOf(bo, f) === c.caption) }));
+}
+async function template(s, boId, fields) {
+  const q = fields.map((f) => `selectedFieldIds=${encodeURIComponent(f.fieldId)}`).join("&");
+  return s.download(`${XF_}download-template?businessObjectId=${encodeURIComponent(boId)}&${q}`);
+}
+function saveFile(out, sub, name, data) {
+  const dl = import_node_path.join(import_node_os.homedir(), "Downloads");
+  const dir = out ? import_node_path.resolve(out.replace(/^~(?=\/|$)/, import_node_os.homedir())) : import_node_fs.existsSync(dl) ? dl : import_node_path.join(CACHE, sub);
+  import_node_fs.mkdirSync(dir, { recursive: true });
+  const file = import_node_path.join(dir, import_node_path.basename(name).replace(/[\\/:*?"<>|]/g, "-"));
+  import_node_fs.writeFileSync(file, data);
+  return file;
+}
+function xlsxDate(v, time) {
+  const s = String(v).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(s);
+  if (!m) {
+    if (/^\d{2}\.\d{2}\.\d{4}/.test(s))
+      return s;
+    throw new Error(`«${s}» is not a date — pass 2026-10-17 or 17.10.2026`);
+  }
+  return `${m[3]}.${m[2]}.${m[1]}` + (time ? ` ${m[4] ?? "00"}:${m[5] ?? "00"}` : "");
+}
+function cellOf(f, v, warn) {
+  const t = f.type;
+  if (v === null || v === undefined || v === "")
+    return "";
+  if (t === "CHECKBOX")
+    return v === true || /^(true|да|yes|1)$/i.test(String(v)) ? "Да" : "Нет";
+  if (t === "DATE" || t === "FULL_DATE")
+    return xlsxDate(v, t === "FULL_DATE");
+  if (t === "PERIOD" || t === "PERIOD_TIME")
+    return `${xlsxDate(v.startDate ?? v.start ?? v[0], t === "PERIOD_TIME")} - ${xlsxDate(v.endDate ?? v.end ?? v[1], t === "PERIOD_TIME")}`;
+  if ((t === "DROPDOWN_SINGLE" || t === "RADIO_BUTTON_GROUP") && f.optionSource !== "FROM_BO") {
+    const opts = f.options ?? [], s = String(v).trim().toLowerCase();
+    const o = opts.find((x) => x.id === v) ?? opts.find((x) => x.code && x.code.toLowerCase() === s) ?? opts.find((x) => String(x.label).toLowerCase() === s);
+    if (!o)
+      warn(`«${v}» is not an option of «${nameOf(f)}» (${opts.map((x) => x.label).join(", ")}) — its row will fail`);
+    return o ? o.label : String(v);
+  }
+  if (LANGS.includes(t) && typeof v === "object")
+    return String(v.RUS ?? Object.values(v)[0] ?? "");
+  return typeof v === "object" ? JSON.stringify(v) : String(v);
+}
+async function actReport(s, importId, head) {
+  const act = await s.call(XF_ + "load-import-file", { actId: importId });
+  const errorRows = [];
+  let scanned = 0;
+  for (let offset = 0;offset < 2000 && errorRows.length < 50; offset += 100) {
+    const t = await s.call(XF_ + "load-bo-import-table", {}, { importId, paging: { offset, limit: 100 } });
+    const recs = t?.records ?? [];
+    recs.forEach((r, j) => {
+      if (r.hasError && errorRows.length < 50)
+        errorRows.push({
+          line: head + offset + j + 1,
+          error: r.errorText,
+          values: Object.fromEntries((t.heads ?? []).map((h, i) => [h, r.values?.[i]]).filter(([, v]) => v !== "" && v != null))
+        });
+    });
+    scanned += recs.length;
+    if (recs.length < 100)
+      break;
+  }
+  return clean({
+    importId,
+    file: act?.fileName,
+    rows: act?.total,
+    newRows: act?.newRecords,
+    updatedRows: act?.updatedRecords,
+    errorRows: act?.errorRecords,
+    fileError: act?.fileError,
+    failing: errorRows
+  });
+}
+var keysOf = (bo) => xlsxFields(bo).filter((f) => f.isUnique || f.label === "ID");
+async function buildRows(s, bo, rows, warn) {
+  const fields = xlsxFields(bo), used = [];
+  for (const r of rows)
+    for (const k of Object.keys(r)) {
+      const f = fieldBy(fields, k);
+      if (!used.includes(f))
+        used.push(f);
+    }
+  if (!used.length)
+    throw new Error("`rows` carry no values");
+  const co = used.filter((f) => f.type === "CO");
+  if (co.length)
+    throw new Error(`a CO field does not go through xlsx: ${co.map(nameOf).join(", ")} — record_save`);
+  const tpl = await template(s, bo.id, used), sheet = readSheet(tpl.data), cols = fieldColumns(bo, sheet.columns);
+  for (const f of used)
+    if (!cols.some((c) => c.field === f))
+      throw new Error(`the template has no column for «${nameOf(f)}»: ${sheet.columns.map((c) => c.caption).join(", ")}`);
+  const subsOf = (f) => cols.flatMap((c, i) => c.field === f ? [{ ...c, i }] : []);
+  const targets = new Map;
+  async function keyColumn(f) {
+    const subs = subsOf(f), bare = (sub) => sub.slice(sub.indexOf(".") + 1);
+    if (!targets.has(f.refBoId))
+      targets.set(f.refBoId, await loadBo(s, f.refBoId));
+    const t = targets.get(f.refBoId), keys = keysOf(t).map((x) => x.label);
+    const email = (f.boFieldRefs ?? []).filter((x) => x.type === "INPUT_EMAIL").map((x) => x.label);
+    const hit = subs.find((c) => keys.includes(bare(c.sub))) ?? subs.find((c) => email.includes(bare(c.sub))) ?? subs.find((c) => bare(c.sub) === "ID");
+    if (!hit)
+      throw new Error(`«${nameOf(f)}»: none of its sub-columns (${subs.map((c) => c.sub).join(", ")}) is a key of «${t.name}» — ` + `pass {"<sub-header>": value} naming the target's unique field, and show that field in the reference (bo_fields_save) if it is not there`);
+    return hit.i;
+  }
+  const subColumn = (f, sub) => {
+    const c = subsOf(f).find((x) => x.sub === sub) ?? subsOf(f).find((x) => x.sub.slice(x.sub.indexOf(".") + 1) === sub);
+    if (!c)
+      throw new Error(`«${nameOf(f)}» has no sub-column «${sub}»: ${subsOf(f).map((x) => x.sub).join(", ")}`);
+    return c.i;
+  };
+  const lines = [];
+  for (const r of rows) {
+    const base = Array(cols.length).fill(""), kids = [];
+    for (const [k, v] of Object.entries(r)) {
+      const f = fieldBy(fields, k);
+      if (f.type !== "BO") {
+        base[subsOf(f)[0].i] = cellOf(f, v, warn);
+        continue;
+      }
+      const items = v === null || v === undefined || v === "" ? [] : Array.isArray(v) ? v : [v];
+      if (f.viewType === "SINGLE" && items.length > 1)
+        throw new Error(`«${nameOf(f)}» holds one record, the row gives ${items.length}`);
+      for (const [j, it] of items.entries()) {
+        const cells = it && typeof it === "object" ? Object.entries(it).map(([sub, x]) => [subColumn(f, sub), String(x ?? "")]) : [[await keyColumn(f), String(it)]];
+        for (const [i, x] of cells)
+          if (j === 0 && f.viewType === "SINGLE")
+            base[i] = x;
+          else
+            (kids[j] ??= new Map).set(i, x);
+      }
+    }
+    for (let j = 0;j < Math.max(1, kids.length); j++) {
+      const line = [...base];
+      for (const [i, x] of kids[j] ?? [])
+        line[i] = x;
+      lines.push(line);
+    }
+  }
+  const keys = keysOf(bo);
+  if (!keys.length)
+    warn("the BO has no unique field (nor an own «ID»): every row CREATES a record, a re-run duplicates them");
+  else if (!keys.some((f) => used.includes(f)))
+    warn(`the key field (${keys.map(nameOf).join(" / ")}) is not in the rows: every row CREATES a record`);
+  const blank = used.filter((f) => f.type !== "BO" && f.type !== "DATE" && rows.some((r) => {
+    const k = Object.keys(r).find((x) => fieldBy(fields, x) === f);
+    return !k || r[k] === null || r[k] === "";
+  }));
+  if (blank.length)
+    warn(`blank cells CLEAR the field on an existing record: ${blank.map(nameOf).join(", ")} (a DATE keeps its value; a column left out keeps the field)`);
+  if (used.some((f) => f.type === "BO" && f.viewType !== "SINGLE"))
+    warn("a TABLE block only ADDS links on an update, it never unlinks (MYBPM-IMPORTS.md 0X.4)");
+  const ro = used.filter((f) => f.isReadonly);
+  if (ro.length)
+    warn(`isReadonly fields are written by the import: ${ro.map(nameOf).join(", ")}`);
+  return { data: writeSheet(sheet, lines), name: tpl.name, head: sheet.head, lines: lines.length };
+}
+var actHead = new Map;
 var ISSUES = "https://github.com/dmezhnov/MyBPM/issues";
 function leaks(text) {
   const words = new Set;
@@ -1423,12 +1648,7 @@ var tools = [
         await s.call("struct/save-bo-export-records", {}, records);
         const processId = await s.call("v2/process-indicator/pre-create-process");
         const { data, name } = await s.bytes("struct/export-company-structure", { processId });
-        const dl = import_node_path.join(import_node_os.homedir(), "Downloads");
-        const dir = a.out ? import_node_path.resolve(a.out.replace(/^~(?=\/|$)/, import_node_os.homedir())) : import_node_fs.existsSync(dl) ? dl : import_node_path.join(CACHE, "exports");
-        import_node_fs.mkdirSync(dir, { recursive: true });
-        const file = import_node_path.join(dir, import_node_path.basename(name));
-        import_node_fs.writeFileSync(file, data);
-        return { ...summarize(file), alsoInBaskets: others };
+        return { ...summarize(saveFile(a.out, "exports", name, data)), alsoInBaskets: others };
       } finally {
         await s.call("struct/clear-export-records");
         if (saved.length)
@@ -1952,6 +2172,211 @@ var tools = [
     }
   },
   {
+    name: "xlsx_template",
+    description: "The stand's own xlsx template of a BO's registry (download-template): saved on this machine, plus what each column is — caption, sub-header of a nested block, field code and type — and the BO's key field (unique / «ID»; none → an import only creates). Columns follow the BO, so take a fresh one after every structure change. To import, xlsx_import `rows` builds the file for you.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      fields: { type: "array", items: { type: "string" }, description: "Field codes / labels, in column order; default every value field" },
+      out: { type: "string", description: "Directory for the file (default ~/Downloads, else ~/.cache/mybpm/xlsx)" }
+    },
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), all = xlsxFields(bo);
+      const fields = a.fields?.length ? a.fields.map((k) => fieldBy(all, k)) : all;
+      const tpl = await template(s, boId, fields), sheet = readSheet(tpl.data);
+      return {
+        file: saveFile(a.out, "xlsx", tpl.name, tpl.data),
+        headerRows: sheet.head,
+        columns: fieldColumns(bo, sheet.columns).map((c) => clean({ column: c.column, caption: c.caption, sub: c.sub || undefined, field: c.field && nameOf(c.field), type: c.field?.type })),
+        key: keysOf(bo).map(nameOf),
+        ...keysOf(bo).length ? {} : { warning: "no unique field (nor an own «ID»): every imported row CREATES a record" }
+      };
+    }
+  },
+  {
+    name: "xlsx_import",
+    write: true,
+    description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), a dropdown's label or code, a BO field the target's key (its unique field, a Person's e-mail) or {\"<sub-header>\": value}, an array of them for a TABLE. An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      path: { type: "string", description: "An xlsx on this machine (a filled template or an export)" },
+      rows: { type: "array", items: { type: "object" }, description: "Records as {fieldCodeOrLabel: plain value}; the file is built for you" },
+      importId: { type: "string", description: "Phase 2: the act of phase 1" },
+      confirm: { type: "boolean" },
+      cancel: { type: "boolean" },
+      out: { type: "string", description: "Directory for the built file (default ~/Downloads, else ~/.cache/mybpm/xlsx)" }
+    },
+    run: async (a) => {
+      const s = stand(a);
+      if (a.importId) {
+        const importId = a.importId;
+        if (a.cancel) {
+          await s.call(XF_ + "cancel-imported", { importId });
+          return { importId, canceled: true };
+        }
+        if (!a.confirm)
+          return { ...await actReport(s, importId, actHead.get(importId) ?? 1), next: "confirm:true applies, cancel:true drops it" };
+        await s.call(XF_ + "apply-imported", { importId });
+        for (const t0 = Date.now();await s.call(XF_ + "watch-import-finished", { importId }) !== true; await sleep(2000))
+          if (Date.now() - t0 > 600000)
+            throw new Error(`the apply of ${importId} did not finish in 10 min — xlsx_export / records_find shows what is in`);
+        const act = await s.call(XF_ + "load-import-file", { actId: importId });
+        await s.call(XF_ + "imported-ok", { importId }).catch(() => {});
+        return clean({
+          importId,
+          applied: true,
+          rows: act?.total,
+          newRows: act?.newRecords,
+          updatedRows: act?.updatedRecords,
+          skippedRows: act?.errorRecords,
+          next: "verify: xlsx_export (or records_find / record_read) and compare with what was meant (R7 step 7)"
+        });
+      }
+      const boId = await boById(s, a), bo = await loadBo(s, boId), warnings = [];
+      const warn = (w) => {
+        if (!warnings.includes(w))
+          warnings.push(w);
+      };
+      let data, name, file, head;
+      if (a.rows?.length) {
+        const b = await buildRows(s, bo, a.rows, warn);
+        ({ data, name, head } = b);
+        file = saveFile(a.out, "xlsx", name.replace(/^Шаблон\s*/, "").replace(/(\.xlsx)?$/i, " import.xlsx"), data);
+      } else if (a.path) {
+        file = import_node_path.resolve(a.path.replace(/^~(?=\/|$)/, import_node_os.homedir()));
+        if (!import_node_fs.existsSync(file))
+          throw new Error(`${file}: no such file`);
+        data = new Uint8Array(import_node_fs.readFileSync(file));
+        name = import_node_path.basename(file);
+        const sheet = readSheet(data), cols = fieldColumns(bo, sheet.columns);
+        head = sheet.head;
+        const odd = cols.filter((c) => c.caption && !c.field && c.caption !== ID_COLUMN).map((c) => c.caption);
+        if (odd.length)
+          warn(`captions that name no field of «${bo.name}» (the stand rejects the file): ${[...new Set(odd)].join(", ")}`);
+        if (!keysOf(bo).some((f) => cols.some((c) => c.field === f)))
+          warn("no key column (unique field / «ID»): every row CREATES a record");
+      } else
+        throw new Error("pass `path` or `rows` (phase 1), or `importId` with confirm / cancel (phase 2)");
+      const actId = await s.upload(XF_ + "import-from-file", data, name, { businessObjectId: boId });
+      actHead.set(actId, head);
+      for (const t0 = Date.now();; await sleep(1000)) {
+        let r;
+        try {
+          r = await s.call(XF_ + "is-import-file-finished", { actId });
+        } catch (e) {
+          r = { message: e.message };
+        }
+        if (r === true)
+          break;
+        if (r !== false) {
+          await s.call(XF_ + "cancel-imported", { importId: actId }).catch(() => {});
+          return clean({
+            importId: actId,
+            file,
+            fileError: r?.message ?? JSON.stringify(r),
+            warnings,
+            next: "the file was rejected as a whole — fix the header (captions, sub-headers, freeze) and upload again"
+          });
+        }
+        if (Date.now() - t0 > 120000)
+          throw new Error(`the act of ${actId} is not ready after 2 min — xlsx_import importId:${actId} re-reads it`);
+      }
+      return {
+        ...await actReport(s, actId, head),
+        file,
+        warnings,
+        next: "NOTHING is written yet: show the user the counts, failing rows and warnings; xlsx_import importId + confirm:true applies (failing rows are skipped), cancel:true drops it"
+      };
+    }
+  },
+  {
+    name: "xlsx_export",
+    description: "Export records to an xlsx (the registry's «Экспорт в .xlsx», R7 step 6): saved on this machine and read back as records — values keyed by field code: the cell text (dropdown label, Да/Нет, dd.mm.yyyy), a block as {sub-header: text}, a TABLE block as a list of them (its repeated rows folded by the record id column). The export ignores paging: every record of the filter goes into the file, `limit` only cuts what is returned here.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      fields: { type: "array", items: { type: "string" }, description: "Field codes / labels, in column order; default every value field (an empty list on the stand would blank the blocks)" },
+      ids: { type: "array", items: { type: "string" }, description: "Only these records" },
+      search: { type: "string", description: "The registry's full-text box" },
+      state: { type: "string", enum: ["ALL", "ARCHIVED", "REMOVED", "DEV"], description: "Default ALL" },
+      limit: { type: "number", description: "Records returned here (default 50); the file holds all" },
+      out: { type: "string", description: "Directory for the file (default ~/Downloads, else ~/.cache/mybpm/xlsx)" }
+    },
+    run: async (a) => {
+      const s = esRetry(stand(a)), boId = await boById(s, a), bo = await loadBo(s, boId), all = xlsxFields(bo);
+      const fields = a.fields?.length ? a.fields.map((k) => fieldBy(all, k)) : all;
+      const body = {
+        boId,
+        dynamicFilters: [],
+        nativeFilters: [],
+        brackets: [],
+        search: a.search ?? "",
+        paging: { offset: 0, limit: 50 },
+        ordering: { fieldId: "", state: "UNSET", archetype: null },
+        state: a.state ?? "ALL",
+        boInstanceIds: a.ids ?? [],
+        boFieldIds: fields.map((f) => f.fieldId),
+        needBoiId: true
+      };
+      let exportId, noIds = false;
+      try {
+        exportId = await s.call(XF_ + "export-bracket-bo", {}, body);
+      } catch (e) {
+        if (ES_ERR.test(e.message))
+          throw e;
+        exportId = await s.call(XF_ + "export-bracket-bo", {}, { ...body, needBoiId: false });
+        noIds = true;
+      }
+      for (const t0 = Date.now();await s.call(XF_ + "is-bo-export-file-ready", { exportId }) !== true; await sleep(1000))
+        if (Date.now() - t0 > 300000)
+          throw new Error(`the export ${exportId} is not ready after 5 min`);
+      const { data, name } = await s.bytes(XF_ + "load-bo-export-file", { exportId });
+      const file = saveFile(a.out, "xlsx", name, data), sheet = readSheet(data), cols = fieldColumns(bo, sheet.columns);
+      const idCol = cols.findIndex((c) => c.caption === ID_COLUMN);
+      const records = [];
+      let prev = "";
+      for (const row of sheet.data) {
+        if (!row.some((v) => v !== ""))
+          continue;
+        const key = idCol >= 0 ? row[idCol] : JSON.stringify(cols.map((c, i) => c.field?.type === "BO" && c.field.viewType !== "SINGLE" ? "" : row[i] ?? ""));
+        if (key !== prev || !records.length)
+          records.push({ ...idCol >= 0 ? { id: row[idCol] } : {}, values: {} });
+        prev = key;
+        const rec = records[records.length - 1];
+        for (const f of fields) {
+          const fc = cols.flatMap((c, i) => c.field === f ? [{ ...c, i }] : []);
+          if (!fc.length)
+            continue;
+          if (f.type !== "BO") {
+            if (!(nameOf(f) in rec.values) && (row[fc[0].i] ?? "") !== "")
+              rec.values[nameOf(f)] = row[fc[0].i];
+            continue;
+          }
+          const obj = Object.fromEntries(fc.map((c) => [c.sub || c.caption, row[c.i] ?? ""]).filter(([, v]) => v !== ""));
+          if (!Object.keys(obj).length)
+            continue;
+          if (f.viewType === "SINGLE") {
+            rec.values[nameOf(f)] ??= obj;
+            continue;
+          }
+          const list = rec.values[nameOf(f)] ??= [];
+          if (!list.some((x) => JSON.stringify(x) === JSON.stringify(obj)))
+            list.push(obj);
+        }
+      }
+      const limit = a.limit ?? 50;
+      return clean({
+        file,
+        columns: sheet.columns.map((c) => c.sub ? `${c.caption} › ${c.sub}` : c.caption),
+        total: records.length,
+        records: records.slice(0, limit),
+        cut: records.length > limit ? `${records.length - limit} more in the file` : undefined,
+        note: noIds ? "no «Внутренний айди» column (it is for administrators): records are told apart by their cells" : undefined
+      });
+    }
+  },
+  {
     name: "platform_report",
     description: "The stand behaved unlike MYBPM-IMPORTS.md / MYBPM-UI-API.md say, on the LATEST plugin → a prefilled GitHub issue for the user to submit under their own account (nothing is sent by this tool). Refuses on an outdated copy (update first — the fact may be fixed) and when the text names the user's stands, logins, people or companies: de-identify to placeholders (`<stand>`, `<company-a>`, …) and keep record data out. Search existing issues first (`search` url). One fact per issue. Show the user the text and give them the url; open:true only when they ask.",
     props: {
@@ -2052,7 +2477,7 @@ var tools = [
   {
     name: "stand_call",
     write: true,
-    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (scripts, processes, rights, menu, xlsx records — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
+    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (scripts, processes, rights, menu — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } },
     required: ["path"],
     run: async (a) => {
@@ -2115,7 +2540,7 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, record_save, record_delete, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, record_save, record_delete, xlsx_import with confirm, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }

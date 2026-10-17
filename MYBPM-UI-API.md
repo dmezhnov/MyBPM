@@ -653,7 +653,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    ordinary GET with query parameters and the `token` header (no envelope) — **one `selectedFieldIds` per
    field**; a comma-separated list fails `NullPointerException … colHeader is null` — returning the xlsx `[C]`: the
    header rows only (one row, or two with merged nested blocks and freeze at A3), no data rows, no table
-   part. Field ids come from `load-business-object-by-id` → `formFields[].fieldId`. **Take a fresh template after
+   part. Field ids come from `load-business-object-by-id` → `formFields[].fieldId`. The columns follow the order
+   of the `selectedFieldIds`; a selection the stand cannot parse gives every field in form order `[C]`. **Take a fresh template after
    every structure change**: the columns follow the BO, and their positions move between exports.
 2. Fill it. The three rules that break the most files: every cell must be an **inline string** (a numeric
    `103` becomes «103.0» and breaks lookups); the header must have **frozen rows** (or a double bottom
@@ -663,7 +664,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    («Пользователь.Почта» for a Person block on a stand whose Person fields sit on a tab; a bare «Почта» or
    «Email» rejects the file with `NoFieldWithLabel`) `[C]`. A sub-column may name a field the reference
    hides (`toShow:false`): a block showing only a non-unique field links once you add the unique field's
-   sub-column by hand — its template and export never carry it `[C]`. **`isReadonly` fields are written**
+   sub-column by hand — its template and export never carry it `[C]`. A Person block links by its e-mail
+   sub-column alone `[C]`. **`isReadonly` fields are written**
    on create and update and cleared by a blank cell `[C]` — drop their columns unless you mean to overwrite.
    The rest of the format a template fill needs (same rules as `MYBPM-IMPORTS.md` 0X.2–0X.4) `[C]`:
    - **Ask the user first** for the template (or a registry export) of the target BO, its **unique field** (or an
@@ -691,7 +693,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    header).
 4. `is-import-file-finished` — `P {"actId":…}` → `true` when done; then `load-import-file` — `P {"actId":…}` →
    `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` (`importId` = the actId). **Nothing
-   is written yet** — this is the same two-phase shape as R3.
+   is written yet** — this is the same two-phase shape as R3. **The counts are ROWS, not records** `[C]`: a new
+   record on two rows (a TABLE block with two links) counts 2 in `newRecords` and is created once, with both links.
    **A header error comes back from `is-import-file-finished` itself** `[C]`: instead of `true`/`false` it
    answers an error object whose `message` is the reason («qy7G90BqN7 :: Ошибка при импорте данных: Нет поля с
    именем 'Почта' в бизнес-объекте 'Пользователи'») — stop polling on anything that is not a boolean, or the
@@ -699,13 +702,21 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
 5. `apply-imported` — `P {"importId":…}` writes (answers `""`); poll `watch-import-finished` — `P {"importId":…}`
    → `true`; `cancel-imported` drops it; `imported-ok` closes it;
    Before applying, read each row's error with `load-bo-import-table` — `B {"importId":…, "paging":{"offset":0,"limit":10}}`
-   → `{heads, records:[{hasError, errorText, values}]}` `[C]` (params instead of body → NPE). `download-errors` is a
+   → `{heads, records:[{hasError, errorText, values}], emptyExplain}` `[C]` (params instead of body → NPE): `heads` are the
+   column captions as strings, `values` align with them. A dropdown label not on the stand fails its row with
+   «Не найдено значение `X` в поле `Статус`. Это поле должно содержать одно из следующих значений: …», the rest
+   imports. `emptyExplain` («Поле не заполнено, потому что не найдено уникального значения для связанного
+   объекта …») lists every sub-column of a block even when the link resolved — not an error. `cancel-imported`
+   and `apply-imported` answer `""` `[C]`. `download-errors` is a
    GET `?importId=` (POST → 405); after an apply it returned the header only, no rows `[C]` — do not rely on it.
 6. Export: `export-bracket-bo` — **B** = the registry filter plus the selection:
    `{boId, dynamicFilters:[], nativeFilters:[], brackets:[], search:"", paging:{offset:0,limit:50},
    ordering:{fieldId:"",state:"UNSET",archetype:null}, state:"ALL", boInstanceIds:[…], boFieldIds:[…],
    needBoiId:true}` → a bare `"<exportId>"`; `is-bo-export-file-ready` — `P {"exportId":…}` → `true`;
-   `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`needBoiId:true` adds a last
+   `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`paging` is ignored** — every
+   record of the filter goes into the file; `boInstanceIds` and `search` do filter `[C]`. A TABLE block in the
+   file = the record REPEATED, one row per link, its scalars and SINGLE blocks on every row and no merges in the
+   data rows `[C]` — rebuild the records by «Внутренний айди» (or the unique field). **`needBoiId:true` adds a last
    column «Внутренний айди»** holding each record's id — **a re-import does NOT match rows by it** `[C]`:
    the header is accepted and the value ignored; re-importing its own export into a BO with no unique field
    creates a duplicate record. Rows match by the unique field only (`MYBPM-IMPORTS.md` §19.5). In the UI it
@@ -1051,7 +1062,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `record_save`, `record_delete`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `bo_delete`, `co_build`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback`, `bo_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
@@ -1072,6 +1083,15 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   (§5b «Data too large»). `records_find` gives the registry COLUMNS only (trap 47), `where` matches a code
   exactly over up to 2000 records; `record_read` gives every field, tabs included, and the `BO` / `CO` values
   through a bare draft (§6a «Reading an existing record»). `record_delete` is soft: state `REMOVED`.
+- **The xlsx tools make R7 whole.** `xlsx_template` saves the stand's template on the user's disk and names each
+  column (caption, sub-header, field code, type) and the BO's key field. `xlsx_import` is two-phase like R3: `path`
+  (a filled template or an export) or `rows` (plain values by field code or label — the file is built on a fresh
+  template by the step 2 rules: TABLE children on repeated rows, a block by the target's unique field or a Person's
+  e-mail, or by `{"<sub-header>": value}`) → upload → the act: rows new / updated / failing with each reason, and
+  warnings for what the stand does silently (no key → every row creates, a blank cell clears, a TABLE block only
+  adds, `isReadonly` written). Nothing is written until `importId` + `confirm: true`; `cancel: true` drops the act.
+  An xlsx import runs none of the BO's scripts (trap 51) — `record_save` does. `xlsx_export` saves the file and
+  reads it back as records keyed by field code, a TABLE block folded into a list by the id column.
 - **The stand contradicts a document → `platform_report`** (the rule at the top of this document): it returns
   the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
   stands, logins, people or companies. Ask the user before giving them the link to submit.
@@ -1112,10 +1132,13 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
 | `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
 | `record_delete` ✎ | the preview (each record's values); with `confirm` the soft delete | `delete-bo-instance` (trap 46) |
+| `xlsx_template` | the BO's xlsx template on the user's disk; what each column is; the key field | R7 step 1 |
+| `xlsx_import` ✎ | `path` or `rows` → the act (counts, failing rows, warnings); with `importId` + `confirm` the apply, `cancel` drops it | R7 steps 2–5 |
+| `xlsx_export` | the records to an xlsx on the user's disk, read back by field code | R7 step 6 |
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
-| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R5–R7, the xlsx of records, R9 kanban settings, R10, scripts, processes) | §0U.4 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R5, R6, R9 kanban settings, R10, scripts, processes) | §0U.4 |
 
 ✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
 the model.

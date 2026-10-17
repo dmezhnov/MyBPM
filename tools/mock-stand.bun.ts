@@ -13,7 +13,8 @@
 // password «secret» answers the token `mock-token-<login>`, and that token's session is <login>; any other token is admin@mock.
 // The constructor is stateful too: create-bo, the portion save (only addedFieldIds / editedFields / deletedFieldIds change
 // the stored fields — a change made only inside formFields is dropped, as on a stand, trap 53), field / widget / BO codes,
-// a soft delete, and the composite draft cycle (`v2/co/load-mock-open-drafts` counts the drafts left open).
+// a soft delete, and the composite draft cycle (`v2/co/load-mock-open-drafts` counts the drafts left open). The records xlsx
+// too: the template (GET), the import act, its apply and the export answer real xlsx files built and read here.
 //
 // A mock MyBPM stand: records every request and answers canned DTOs, so two independent clients can be
 // driven over the same recipe and their request streams diffed.
@@ -79,6 +80,117 @@ function commit(draftId: string) {
   const r = recs.get(d.boiId!) ?? { id: d.boiId!, boId: d.boId!, state: d.dev ? "DEV" : "ALL", at: ++seq, values: {} };
   Object.assign(r.values, d.values); recs.set(r.id, r); recDrafts.delete(draftId);
 }
+
+// ── xlsx of records: the template, the import act (rows counted, a row new when its key was absent before the act),
+// the apply (a dropdown by label, a block by the value of a sub-column, a TABLE only adds, a blank clears except DATE), the export
+const ID_COLUMN = "Внутренний айди";
+const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const unxml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+const colName = (i: number) => { let s = ""; for (i++; i; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s; return s; };
+const colIndex = (l: string) => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+type XCol = { caption: string; sub: string; field: any; ref?: string }; // ref = the target field of a block's sub-column
+const xcols = (boId: string, ids: string[]): XCol[] => ids.flatMap((id) => {
+  const f = fieldsOf(boId).find((x) => x.fieldId === id);
+  if (!f) return [];
+  if (f.type !== "BO") return [{ caption: f.label, sub: "", field: f }];
+  return (f.boFieldRefs ?? []).filter((r: any) => r.toShow).map((r: any) => ({ caption: f.label, sub: r.label, field: f, ref: r.fieldId }));
+});
+function xlsxOf(cols: XCol[], lines: string[][], idColumn: boolean): Uint8Array {
+  const head = cols.some((c) => c.sub) ? 2 : 1, caps = [...cols.map((c) => c.caption), ...(idColumn ? [ID_COLUMN] : [])];
+  const row = (n: number, cells: string[]) => `<row r="${n}">${cells.map((v, i) => v === "" ? "" : `<c r="${colName(i)}${n}" t="inlineStr"><is><t>${xml(v)}</t></is></c>`).join("")}</row>`;
+  const merges: string[] = [];
+  caps.forEach((c, i) => { if (i && caps[i - 1] === c) return; let j = i; while (caps[j + 1] === c && cols[j + 1]?.sub) j++; if (j > i) merges.push(`${colName(i)}1:${colName(j)}1`); });
+  const rows = [row(1, caps.map((c, i) => (i && caps[i - 1] === c ? "" : c))), ...(head === 2 ? [row(2, cols.map((c) => c.sub))] : []),
+    ...lines.map((l, j) => row(head + j + 1, l))];
+  const sheet = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${colName(caps.length - 1)}${head + lines.length}"/>` +
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${head}" topLeftCell="A${head + 1}" state="frozen"/></sheetView></sheetViews><sheetData>${rows.join("")}</sheetData>` +
+    (merges.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "") + "</worksheet>";
+  return zip([{ name: "xl/worksheets/sheet1.xml", data: new TextEncoder().encode(sheet) }]);
+}
+function sheetOf(bytes: Uint8Array) {
+  const x = new TextDecoder().decode(unzip(bytes).find((e) => /^xl\/worksheets\/sheet\d+\.xml$/.test(e.name))?.data);
+  const grid: string[][] = [];
+  for (const m of x.matchAll(/<c r="([A-Z]+)(\d+)"[^>]*?(?:\/>|>([\s\S]*?)<\/c>)/g))
+    (grid[Number(m[2]) - 1] ??= [])[colIndex(m[1])] = unxml([...(m[3] ?? "").matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join(""));
+  const rows = Array.from(grid, (r) => Array.from(r ?? [], (v) => v ?? ""));
+  const head = Number(/<pane\b[^>]*ySplit="(\d+)"/.exec(x)?.[1] ?? 1) >= 2 ? 2 : 1, caps = [...(rows[0] ?? [])];
+  const width = Math.max(caps.length, head === 2 ? rows[1]?.length ?? 0 : 0);
+  for (let i = 1; i < width; i++) if (!caps[i] && head === 2 && rows[1]?.[i]) caps[i] = caps[i - 1];
+  return { head, cols: Array.from({ length: width }, (_, i) => ({ caption: caps[i] ?? "", sub: head === 2 ? rows[1]?.[i] ?? "" : "" })),
+    data: rows.slice(head).filter((r) => r.some((v) => v !== "")) };
+}
+const xshown = (f: any, v = "") => f.type === "DATE" && v ? JSON.parse(v).slice(0, 10).split("-").reverse().join(".") : shown(f, v);
+type XRow = { key: { id?: string; unique?: [string, string] }; set: Record<string, string>; links: Record<string, string[]>; err?: string; isNew: boolean; line: string[] };
+const xacts = new Map<string, { boId: string; fileName: string; heads: string[]; rows: XRow[]; fileError?: string; applied?: boolean }>();
+const xexports = new Map<string, any>();
+const findRec = (boId: string, key: XRow["key"]) => key.id ? recs.get(key.id)
+  : key.unique ? [...recs.values()].find((r) => r.boId === boId && r.state !== "REMOVED" && r.values[key.unique![0]] === key.unique![1]) : undefined;
+function xact(boId: string, bytes: Uint8Array, fileName: string) {
+  const sh = sheetOf(bytes), fields = fieldsOf(boId), act = { boId, fileName, heads: sh.cols.map((c) => c.sub ? `${c.caption}.${c.sub}` : c.caption), rows: [] as XRow[], fileError: undefined as string | undefined };
+  const cols = sh.cols.map((c) => ({ ...c, field: fields.find((f) => f.label === c.caption) }));
+  const odd = cols.find((c) => c.caption && c.caption !== ID_COLUMN && !c.field);
+  if (odd) { act.fileError = `kD4QsxZrAY :: Нет поля с именем \`${odd.caption}\``; return act; }
+  const unique = fields.find((f) => f.isUnique);
+  for (const line of sh.data) {
+    const row: XRow = { key: {}, set: {}, links: {}, isNew: false, line };
+    cols.forEach((c, i) => {
+      const v = line[i] ?? "", f = c.field;
+      if (c.caption === ID_COLUMN) { if (v) row.key.id = v; return; }
+      if (f.type === "BO") {
+        if (!v) return;
+        const t = fieldsOf(f.refBoId).find((x) => x.label === c.sub);
+        const hit = t && [...recs.values()].find((r) => r.boId === f.refBoId && r.state !== "REMOVED" && xshown(t, r.values[t.fieldId]) === v);
+        if (!hit) row.err ??= `Не найдена запись \`${v}\` в поле \`${f.label}\``;
+        else (row.links[f.fieldId] ??= []).includes(hit.id) || row.links[f.fieldId].push(hit.id);
+        return;
+      }
+      let s = v;
+      if (f.type === "DROPDOWN_SINGLE" && v) {
+        const o = f.options?.find((x: any) => x.label === v);
+        if (!o) { row.err ??= `Не найдено значение \`${v}\` в поле \`${f.label}\`. Это поле должно содержать одно из следующих значений: ${f.options.map((x: any) => x.label).join(", ")}`; return; }
+        s = o.id;
+      } else if (f.type === "CHECKBOX") s = v === "Да" ? "true" : v ? "false" : "";
+      else if (f.type === "DATE") { if (!v) return; s = JSON.stringify(`${v.split(".").reverse().join("-")}T00:00:00.000Z`); }
+      row.set[f.fieldId] = s;
+      if (f === unique && v) row.key.unique = [f.fieldId, s];
+    });
+    row.isNew = !findRec(boId, row.key);
+    act.rows.push(row);
+  }
+  return act;
+}
+function xapply(importId: string) {
+  const act = xacts.get(importId)!;
+  for (const row of act.rows.filter((r) => !r.err)) {
+    let r = findRec(act.boId, row.key);
+    if (!r) { r = { id: nextId("BOI"), boId: act.boId, state: "ALL", at: ++seq, values: {} }; recs.set(r.id, r); }
+    Object.assign(r.values, row.set);
+    for (const [fid, ids] of Object.entries(row.links)) {
+      const single = fieldsOf(act.boId).find((x) => x.fieldId === fid)?.viewType === "SINGLE";
+      const had: string[] = single ? [] : JSON.parse(r.values[fid] || "[]");
+      r.values[fid] = JSON.stringify([...had, ...ids.filter((x) => !had.includes(x))].slice(single ? -1 : 0));
+    }
+  }
+  act.applied = true;
+}
+function xexport(e: any): Uint8Array {
+  const cols = xcols(e.boId, e.boFieldIds);
+  const rows = [...recs.values()].filter((r) => r.boId === e.boId && (e.state === "ALL" ? r.state === "ALL" || r.state === "DEV" : r.state === e.state)
+    && (!e.boInstanceIds?.length || e.boInstanceIds.includes(r.id))).sort((a, b) => b.at - a.at);
+  const lines = rows.filter((r) => !e.search || cols.some((c) => c.field.type !== "BO" && xshown(c.field, r.values[c.field.fieldId]).toLowerCase().includes(e.search.toLowerCase())))
+    .flatMap((r) => {
+      const linked = (f: any) => JSON.parse(r.values[f.fieldId] || "[]") as string[];
+      const n = Math.max(1, ...cols.filter((c) => c.field.type === "BO" && c.field.viewType !== "SINGLE").map((c) => linked(c.field).length));
+      return Array.from({ length: n }, (_, j) => [...cols.map((c) => {
+        if (c.field.type !== "BO") return xshown(c.field, r.values[c.field.fieldId]);
+        const t = recs.get(linked(c.field)[c.field.viewType === "SINGLE" ? 0 : j]), tf = t && fieldsOf(t.boId).find((x) => x.fieldId === c.ref);
+        return tf ? xshown(tf, t!.values[tf.fieldId]) : "";
+      }), ...(e.needBoiId ? [r.id] : [])]);
+    });
+  return xlsxOf(cols, lines, !!e.needBoiId);
+}
+const fileOf = (data: Uint8Array, name: string) => new Response(data, { headers: { "Content-Type": "application/octet-stream",
+  "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}` } });
 
 function mcp(path: string, params: any, body: any, token: string, file?: Uint8Array): any {
   const route = path.replace(/^\/web\//, "");
@@ -225,6 +337,28 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/business-object-instance/delete-bo-instance":
       for (const id of params.boInstanceIds ?? []) { const r = recs.get(id); if (r && r.boId === params.businessObjectId) r.state = "REMOVED"; }
       return null;
+    case "v2/bo-transfer/download-template": {
+      const bo = bos.get(params.businessObjectId)!;
+      return fileOf(xlsxOf(xcols(bo.id, [params.selectedFieldIds ?? []].flat()), [], false), `Шаблон ${bo.name}.xlsx`);
+    }
+    case "v2/bo-transfer/import-from-file": { const id = nextId("XACT"); xacts.set(id, xact(params.businessObjectId, file!, "upload.xlsx")); return id; }
+    case "v2/bo-transfer/is-import-file-finished": { const a = xacts.get(params.actId); return a?.fileError ? fail(a.fileError) : !!a; }
+    case "v2/bo-transfer/load-import-file": {
+      const a = xacts.get(params.actId);
+      return a && { fileName: a.fileName, total: a.rows.length, newRecords: a.rows.filter((r) => !r.err && r.isNew).length,
+        updatedRecords: a.rows.filter((r) => !r.err && !r.isNew).length, errorRecords: a.rows.filter((r) => r.err).length };
+    }
+    case "v2/bo-transfer/load-bo-import-table": {
+      const a = xacts.get(body.importId)!;
+      return { heads: a.heads, records: a.rows.slice(body.paging.offset, body.paging.offset + body.paging.limit)
+        .map((r) => ({ hasError: !!r.err, errorText: r.err ?? null, values: r.line })) };
+    }
+    case "v2/bo-transfer/apply-imported": xapply(params.importId); return "";
+    case "v2/bo-transfer/watch-import-finished": return xacts.get(params.importId)?.applied ?? true;
+    case "v2/bo-transfer/imported-ok": case "v2/bo-transfer/cancel-imported": xacts.delete(params.importId); return "";
+    case "v2/bo-transfer/export-bracket-bo": { const id = nextId("XEXP"); xexports.set(id, body); return id; }
+    case "v2/bo-transfer/is-bo-export-file-ready": return xexports.has(params.exportId);
+    case "v2/bo-transfer/load-bo-export-file": return fileOf(xexport(xexports.get(params.exportId)), `${bos.get(xexports.get(params.exportId).boId)!.name} export.xlsx`);
     case "v2/org-unit/load-filtered-persons-v2": return [{ name: "Все", persons: [{ id: "PERSON0000000001", name: "Mock Admin", email: "admin@mock", parentGroupNames: "" }] }];
     case "v2/process-indicator/pre-create-process": return nextId("PROC");
     case "v2/process-indicator/load-state-short": return { isFinished: true, percentage: 100, label: "Готово" };
@@ -293,17 +427,19 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === "/latest/plugin.json") return Response.json({ version: "99.0.0" }); // the MCP server's release check
-    let payload: any = {}, file: Uint8Array | undefined;
+    let payload: any = {}, file: Uint8Array | undefined, form: Record<string, string> = {};
     if (req.headers.get("content-type")?.startsWith("multipart/form-data")) {
-      const f = (await req.formData()).get("file");
-      if (f instanceof Blob) file = new Uint8Array(await f.arrayBuffer());
+      for (const [k, v] of await req.formData()) if (v instanceof Blob) file = new Uint8Array(await v.arrayBuffer()); else form[k] = v;
+    } else if (req.method === "GET") { // a download: its parameters ride in the query, a repeated one becomes a list
+      for (const k of new Set(url.searchParams.keys())) { const all = url.searchParams.getAll(k); form[k] = all.length > 1 ? all : all[0] as any; }
     } else payload = await req.json().catch(() => ({}));
-    const params = payload.params_Lr1oSgwPR8 ?? {}, body = payload.body_o1nhHUG480 ?? {};
+    const params = payload.params_Lr1oSgwPR8 ?? form, body = payload.body_o1nhHUG480 ?? {};
     log.push({ path: url.pathname.replace(/^\/web/, ""), params, body });
     await Bun.write(out, log.map(l => JSON.stringify(l)).join("\n") + "\n");
     if (url.pathname === "/web/struct/export-company-structure")
       return new Response(exportZip(), { headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="MyBPM-export-MOCK.mybpm.zip"' } });
     const special = Bun.env.MOCK_MCP ? mcp(url.pathname, params, body, req.headers.get("token") ?? "", file) : undefined;
+    if (special instanceof Response) return special;
     return new Response(JSON.stringify(special !== undefined ? special : answer(url.pathname, params, body)), { headers: { "Content-Type": "application/json" } });
   },
 });
