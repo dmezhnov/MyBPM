@@ -26,6 +26,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { inflateRawSync } from "node:zlib";
 import { zip } from "../tools/zip.ts";
+import ICONS from "../tools/menu-icons.json";
 import { PAGE_HTML } from "./accounts-page.ts";
 
 // ── accounts ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1367,19 +1368,20 @@ async function menuTree(s: Stand, parentId: string | null = null, depth = 0): Pr
   return out;
 }
 
-type RightsAt = { what: string; boId?: string; fields: any[]; actions: string[]; load: () => Promise<any>;
+/** One menu item of the tree by id, code or name. */
+function menuItem(tree: any[], key: string) {
+  const hit = tree.filter((m) => m.id === key || m.code === key || m.displayName === key);
+  if (hit.length !== 1) throw new Error(`${hit.length ? "several" : "no"} menu items «${key}» — pass its id: ${tree.map((m) => `${m.displayName} (${m.code ?? m.id})`).join(", ")}`);
+  return hit[0];
+}
+
+type RightsAt ={ what: string; boId?: string; fields: any[]; actions: string[]; load: () => Promise<any>;
   save: (group: any) => Promise<unknown>; flag?: (on: boolean) => unknown; flagNow?: () => Promise<boolean> };
 
 /** Where the rights live: a menu item, a tab, a field, or the BO itself. */
 async function rightsAt(s: Stand, a: any): Promise<RightsAt> {
   if (a.menuItemId || a.menu) {
-    let id = a.menuItemId;
-    if (!id) {
-      const all = await menuTree(s);
-      const hit = all.filter((m) => m.code === a.menu || m.id === a.menu || m.displayName === a.menu);
-      if (hit.length !== 1) throw new Error(`${hit.length ? "several" : "no"} menu items «${a.menu}» — pass menuItemId: ${all.map((m) => `${m.displayName} (${m.code ?? m.id})`).join(", ")}`);
-      id = hit[0].id;
-    }
+    const id = a.menuItemId ?? menuItem(await menuTree(s), a.menu).id;
     return { what: `menu item ${id}`, fields: [], actions: ["view"],
       load: () => s.call(MENU_ + "load-access-group", { menuItemId: id }),
       save: (g) => s.call(MENU_ + "save-access-group", { menuItemId: id }, g),
@@ -1535,6 +1537,169 @@ async function rightsSave(s: Stand, at: RightsAt, set: Record<string, any>, dryR
   return { what: at.what, chosenAccessRight: at.flag ? on || (kept ? "stays on" : false) : undefined,
     note: kept ? "every action is «all» again, but a BO's «выборочно» lock cannot be turned off through the API (the UI never does it either) — it only marks the BO [I]" : undefined,
     rights: Object.fromEntries(at.actions.map((k) => [k, rightsOf(after[k], at.fields)])), mismatch };
+}
+
+// ── menu (UI-API R6, §4) and record filters (§4 «Record filters») ──
+/** Every icon name the sidebar draws (UI-API §4 «Menu icon catalogue»); the server stores any string. */
+const ICON_NAMES = new Set<string>([...(ICONS as any).tabs.flatMap((t: any) => t.names), ...((ICONS as any).offPicker ?? [])]);
+/** UI-API §4 «Icons by meaning». */
+const ICONS_BY_MEANING: [string, string[]][] = [
+  ["people, clients, contacts, staff", ["users", "user", "user-circle", "address-book", "identification-card", "handshake"]],
+  ["vehicles, transport, delivery", ["car", "truck", "bus", "airplane", "gas-pump"]],
+  ["work, service, repair, tasks", ["wrench", "gear", "clipboard-text", "list-checks", "kanban", "note-pencil"]],
+  ["money, payments, invoices", ["money", "wallet", "credit-card", "receipt", "coins", "currency-rub", "bank", "calculator"]],
+  ["goods, stock, purchases, suppliers", ["package", "shopping-cart", "storefront", "archive-box", "barcode", "tag", "factory"]],
+  ["documents, contracts, folders", ["file-text", "files", "folder", "folder-open", "briefcase", "notebook"]],
+  ["dictionaries, catalogues", ["book", "books", "list-bullets"]],
+  ["schedule, appointments, time", ["calendar", "calendar-check", "clock", "timer"]],
+  ["places, branches, objects", ["house", "buildings", "map-pin", "globe"]],
+  ["calls, mail, chats, campaigns", ["phone", "envelope", "chat", "megaphone"]],
+  ["reports, analytics", ["chart-bar", "chart-pie", "chart-line-up", "trend-up"]],
+  ["medicine, education, food, hotel", ["first-aid", "heartbeat", "pill", "graduation-cap", "student", "fork-knife", "bed"]],
+  ["IT, equipment, quality, risks", ["desktop", "database", "shield-check", "star", "warning"]],
+].map(([m, n]) => [m as string, (n as string[]).map((x) => `phosphor:${x}`)]);
+
+function iconOf(name: string) {
+  const n = /:/.test(name) ? name : `phosphor:${name}`;
+  if (!ICON_NAMES.has(n)) throw new Error(`«${name}» is not a sidebar icon (the stand would store it and draw a blank) — pick one with menu_icons`);
+  return n;
+}
+
+const VIEWS = ["list", "kanban", "calendar", "timeline", "map", "grouping"];
+const up = (k: string) => k[0].toUpperCase() + k.slice(1);
+/** The views of an item as {list: true, kanban: "<field code>", …} — what boPages switches on. */
+function viewsOf(p: any, fields: any[] = []) {
+  if (!p) return undefined;
+  const code = (id: string) => { const f = fields.find((x) => x.fieldId === id); return f ? nameOf(f) : id; };
+  return Object.fromEntries(VIEWS.filter((k) => p[`is${up(k)}Enabled`])
+    .map((k) => [k, k === "kanban" && p.kanbanFieldId ? code(p.kanbanFieldId) : k === "timeline" && p.timelineFieldId ? code(p.timelineFieldId) : true]));
+}
+
+/** views {list?, kanban?: dropdown code | true, calendar?, timeline?: PERIOD code | true, map?} → all twelve boPages keys
+ *  (+ kanbanFieldId / timelineFieldId); `base` = the item's current boPages, merged under the given views. */
+async function boPagesOf(s: Stand, bo: any, views: any, base?: any) {
+  const v: any = { ...(viewsOf(base, bo.formFields) ?? {}), ...(views ?? (base ? {} : { list: true })) };
+  if (v.grouping) throw new Error("the grouping view is dead on the server (UI-API §4) — leave it off");
+  const notes: string[] = [];
+  const pick = (k: string, types: string[]) => {
+    if (!v[k]) return null;
+    const fields = (bo.formFields ?? []).filter((f: any) => types.includes(f.type));
+    if (v[k] === true) {
+      if (fields.length !== 1) throw new Error(`views.${k}: pass the field code — ${fields.length ? `several ${types.join(" / ")} fields: ${fields.map(nameOf).join(", ")}` : `the BO has no ${types.join(" / ")} field`}`);
+      return fields[0].fieldId;
+    }
+    const f = fieldBy(bo.formFields ?? [], v[k]);
+    if (!types.includes(f.type)) throw new Error(`views.${k}: «${v[k]}» is ${f.type}, the ${k} needs ${types.join(" / ")}`);
+    return f.fieldId;
+  };
+  const pages: any = { kanbanFieldId: pick("kanban", ["DROPDOWN_SINGLE"]), timelineFieldId: pick("timeline", ["PERIOD", "PERIOD_TIME"]) };
+  let n = 0;
+  for (const k of VIEWS) { pages[`is${up(k)}Enabled`] = !!v[k]; pages[`${k}Index`] = v[k] ? ++n : 0; }
+  if (!n) throw new Error("views: switch at least one view on (list, kanban, calendar, timeline, map)");
+  if (pages.kanbanFieldId) {
+    const t = await s.call("v2/kanban/load-kanban-template", { boId: bo.id, fieldId: pages.kanbanFieldId }).catch(() => null);
+    const c = t?.cardTemplate; // {header, content, footer: [] each} when the BO has no card for this dropdown
+    const empty = !c || !["header", "content", "footer"].some((k) => c[k]?.length);
+    if (empty) notes.push(`kanban «${v.kanban}»: the BO has no card template for this dropdown — the board opens with blank cards until a template comes in through the archive (UI-API §7)`);
+  }
+  if (v.calendar && !bo.isCalendarEnabled) notes.push("calendar: the BO's own calendar switch (isCalendarEnabled, §5l) is off — the view stays empty until it is on and a FULL_DATE has needShowToCalendar");
+  if (v.map && !bo.isMapEnabled) notes.push("map: the BO's own map switch (isMapEnabled, §5l) is off");
+  return { pages, notes };
+}
+const pagesKey = (p: any) => JSON.stringify(VIEWS.flatMap((k) => [p?.[`is${up(k)}Enabled`] ?? false, p?.[`${k}Index`] ?? 0]).concat(p?.kanbanFieldId ?? null, p?.timelineFieldId ?? null));
+
+const menuRow = (m: any, fields?: any[]) => clean({ id: m.id, code: m.code, type: m.type, name: m.displayName, icon: m.iconName, boId: m.boId,
+  parentId: m.parentId, order: m.orderIndex, depth: m.depth, views: viewsOf(m.boPages, fields), selectiveRights: m.chosenAccessRight || undefined,
+  filter: m.bracketFilterId ? true : undefined, removed: m.isRemoved || undefined });
+
+/** menuRow of each item, a kanban / timeline field shown by its code. */
+async function menuRows(s: Stand, items: any[]) {
+  const fields = new Map<string, any[]>();
+  for (const m of items) if (m.boId && (m.boPages?.kanbanFieldId || m.boPages?.timelineFieldId) && !fields.has(m.boId))
+    fields.set(m.boId, (await loadBo(s, m.boId).catch(() => ({}))).formFields ?? []);
+  return items.map((m) => menuRow(m, fields.get(m.boId)));
+}
+
+/** An item and everything under it. */
+const menuBranch = (tree: any[], id: string): any[] => [tree.find((m) => m.id === id), ...tree.filter((m) => m.parentId === id).flatMap((c) => menuBranch(tree, c.id))].filter(Boolean);
+
+// a filter: a condition {field, eq? | currentUser?, not?} | {native: "CREATED_BY", currentUser: true}, or a group {all | any: […], not?}
+const id8 = () => newId().slice(0, 8);
+const isGroup = (n: any) => Array.isArray(n?.all) || Array.isArray(n?.any);
+
+/** A filter spec → the root bracket of `brackets` (UI-API §4 «Record filters»: AND inside a bracket, a bracket's own filters
+ *  are ignored when it has sub-brackets, siblings joined by the EARLIER sibling's connectionType). */
+async function bracketsOf(s: Stand, bo: any, spec: any) {
+  const notes: string[] = [], fields = valueFields(bo);
+  let person: { boId: string; fields: any[] } | undefined;
+  const personInfo = async () => {
+    if (person) return person;
+    const boId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" });
+    const pf = ((await loadBo(s, boId)).formFields ?? []).filter((f: any) => /^(Фамилия|Имя)$/i.test(f.label ?? "") || /^(surname|last_?name|name|first_?name)$/i.test(f.code ?? ""));
+    if (!pf.length) notes.push("the Person BO has no Фамилия / Имя field: businessFields left empty [U]");
+    // the UI sends field refs, not ids (toBusinessFieldRef): bare ids answer 400 «Failed to read request»
+    return (person = { boId, fields: pf.map((f: any, i: number) => ({ fieldId: f.fieldId, orderIndex: i, label: f.label, toShow: true, type: f.type })) });
+  };
+  const cond = async (c: any) => {
+    if (c.native) {
+      if (!c.currentUser) throw new Error(`a system-field condition takes {native: "CREATED_BY", currentUser: true} only — got ${JSON.stringify(c)}`);
+      return { native: { type: c.native, isCurrentUser: true } };
+    }
+    if (!c.field) throw new Error(`a condition needs field (or native): ${JSON.stringify(c)}`);
+    const f = fieldBy(fields, c.field);
+    const item: any = { id: id8(), fieldId: f.fieldId, label: f.label, type: f.type, value: null, options: [], businessFields: [], businessObjectId: null,
+      chipsMode: false, numberTo: 0, numberFrom: 0, selectedBois: [], boiIds: [], isCurrentUser: false, isEmptyValue: false, fromFields: [] };
+    if (c.empty) throw new Error("an «empty» condition is not offered: the bracket table ignores isEmptyValue (every record matches, any field type)");
+    if (c.currentUser) {
+      const p = await personInfo();
+      if (f.type !== "BO" || f.refBoId !== p.boId) throw new Error(`currentUser needs a user field (BO → Person), «${nameOf(f)}» is ${f.type}${f.refBoId ? ` → ${f.refBoId}` : ""}`);
+      Object.assign(item, { businessObjectId: p.boId, businessFields: p.fields, isCurrentUser: true });
+    } else if (c.eq === undefined) throw new Error(`condition on «${nameOf(f)}»: pass eq, currentUser or empty`);
+    else if (f.type === "DROPDOWN_SINGLE" || f.type === "RADIO_BUTTON_GROUP") {
+      if (f.optionSource === "FROM_BO") Object.assign(item, { value: String(c.eq), businessObjectId: f.refBoId }); // the dictionary record's code
+      else {
+        const w = String(c.eq).trim().toLowerCase(), opts: any[] = f.options ?? [];
+        const o = opts.find((x) => x.id === c.eq || x.code?.toLowerCase() === w) ?? opts.find((x) => String(x.label).toLowerCase() === w);
+        if (!o) throw new Error(`«${c.eq}» is not an option of «${nameOf(f)}»: ${opts.map((x) => x.label + (x.code ? ` (${x.code})` : "")).join(", ")}`);
+        item.value = o.id;
+      }
+    } else if (f.type === "CHECKBOX") item.value = String(c.eq === true || /^(true|да|yes|1)$/i.test(String(c.eq)));
+    else if (["INPUT_TEXT", "TEXTAREA"].includes(f.type)) item.value = String(c.eq);
+    else {
+      item.value = Array.isArray(c.eq) ? undefined : String(c.eq);
+      if (Array.isArray(c.eq)) item.boiIds = c.eq;
+      notes.push(`«${nameOf(f)}» (${f.type}): the value shape of this type in a filter is not checked on a stand [U] — compare the count with filter_try before saving`);
+    }
+    return { dynamic: item };
+  };
+  const plain = (n: any) => !isGroup(n) && !n.not;
+  const build = async (n: any, parentId: string, tree: string[]): Promise<any> => {
+    const b: any = { id: id8(), parentId, parentTreeIds: tree, connectionType: "AND", notType: n.not ? "NOT" : "DEFAULT", dynamicFilters: [], nativeFilters: [], brackets: [] };
+    const kids: any[] = isGroup(n) ? n.all ?? n.any : [n];
+    if (!kids.length) throw new Error("an empty all / any group");
+    if (!isGroup(n) || (kids.every(plain) && (n.all || kids.length === 1))) {
+      for (const k of kids) { const c = await cond(k); if (c.dynamic) b.dynamicFilters.push(c.dynamic); else b.nativeFilters.push(c.native); }
+    } else {
+      for (const k of kids) {
+        const sub = await build(k, b.id, [...tree, b.id]);
+        sub.connectionType = n.any ? "OR" : "AND";
+        b.brackets.push(sub);
+      }
+    }
+    return b;
+  };
+  if (!spec || typeof spec !== "object") throw new Error("pass `filter`: {field, eq} | {all: […]} | {any: […]}");
+  return { root: await build(spec, "", []), notes };
+}
+
+/** The registry of a BO under brackets: the count and the first rows (records_find's shape). */
+async function bracketTable(s: Stand, boId: string, brackets: any[], limit = 5) {
+  const t = await esRetry(s).call(BOI_ + "load-bo-instance-bracket-table", {}, { boId, dynamicFilters: [], nativeFilters: [], search: "",
+    paging: { offset: 0, limit }, ordering: { archetype: "NATIVE", fieldId: "CREATED_AT", state: "DESC" }, state: "ALL", brackets });
+  const heads: any[] = t?.heads ?? [];
+  return { total: t?.totalHits, records: (t?.records ?? []).map((r: any) => ({ id: r.instanceId,
+    values: Object.fromEntries((r.values ?? []).map((v: any) => [v.fieldCode || heads.find((h) => h.fieldId === v.fieldId)?.name || v.fieldId,
+      v.displayValue === undefined || v.displayValue === v.value ? v.value : v.displayValue])) })) };
 }
 
 const tools: Tool[] = [
@@ -2546,6 +2711,141 @@ const tools: Tool[] = [
       return clean(await rightsSave(s, await rightsAt(s, a), a.set, a.dryRun));
     } },
 
+  // menu and record filters
+  { name: "menu_read", description: "The sidebar menu (R6, §4) as a tree, every level (load-nav-items per GROUP): per item id, code, type (GROUP, BO, built-in kinds), name, icon, the BO it opens, parentId, order, depth, the views switched on ({list: true, kanban: \"<dropdown code>\", calendar, timeline, map}), selectiveRights (rights_read menu:<id> shows who sees it), filter (it carries a record filter). `under` = only the branch of one item (id, code or name).",
+    props: { under: { type: "string" } },
+    run: async (a) => {
+      const s = stand(a), tree = await menuTree(s);
+      const items = a.under ? menuBranch(tree, menuItem(tree, a.under).id) : tree;
+      return { items: await menuRows(s, items) };
+    } },
+  { name: "menu_save", write: true, description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in «Системные»). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off)}]. A kanban view needs the BO's card template for that dropdown (archive only, §7) — a note says when it is missing. Rename, move and the item's code are not offered (calls unknown). Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
+    props: { create: { type: "array", items: { type: "object" } }, change: { type: "array", items: { type: "object" } }, dryRun: { type: "boolean" } },
+    run: async (a) => {
+      const s = stand(a);
+      if (!a.create?.length && !a.change?.length) throw new Error("pass create and / or change");
+      let tree = await menuTree(s);
+      const keys = new Map<string, string>(), out: any = { created: [], changed: [], notes: [] }, bodies: any[] = [];
+      const bos = new Map<string, any>();
+      const boOf = async (k: string) => {
+        if (!bos.has(k)) bos.set(k, await loadBo(s, await boById(s, { code: k }).catch((e) => { if (ID16.test(k)) return k; throw e; })));
+        return bos.get(k);
+      };
+      const ids = a.create?.length ? await freshIds(s, a.create.length) : [];
+      for (const [i, c] of (a.create ?? []).entries()) {
+        const type = c.type ?? (c.bo ? "BO" : undefined);
+        if (type !== "GROUP" && type !== "BO") throw new Error(`create[${i}]: type GROUP or BO (got ${c.type ?? "none"})`);
+        if (!c.name) throw new Error(`create[${i}]: name is required`);
+        if (!c.icon) throw new Error(`create[${i}] «${c.name}»: icon is required — choose one by meaning (menu_icons)`);
+        const iconName = iconOf(c.icon);
+        const parentId = !c.parent ? null : keys.get(c.parent) ?? menuItem(tree, c.parent).id;
+        const parent = parentId && tree.find((m) => m.id === parentId);
+        if (parent && parent.type !== "GROUP") throw new Error(`create[${i}]: the parent «${parent.displayName}» is a ${parent.type}, not a GROUP`);
+        let boId = null, boPages = null;
+        if (type === "BO") {
+          if (!c.bo) throw new Error(`create[${i}] «${c.name}»: bo (id or code) is required for a BO item`);
+          const bo = await boOf(c.bo), p = await boPagesOf(s, bo, c.views);
+          boId = bo.id; boPages = p.pages; out.notes.push(...p.notes.map((n) => `«${c.name}»: ${n}`));
+        }
+        const sib = [...tree, ...bodies].filter((m) => (m.parentId ?? null) === parentId).map((m) => m.orderIndex ?? 0);
+        const orderIndex = c.order ?? (parentId ? (sib.length ? Math.max(...sib) + 10000 : 10000) : Math.max(100000, sib.length ? Math.max(...sib) + 10000 : 0));
+        const body = { id: ids[i], type, displayName: c.name, displayNameMap: { RUS: c.name }, boId, iconName, orderIndex, isPanel: false,
+          boPages, chosenAccessRight: false, parentId };
+        bodies.push(body);
+        if (c.key) keys.set(c.key, body.id);
+      }
+      const changes: any[] = [];
+      for (const [i, c] of (a.change ?? []).entries()) {
+        if (!c.item) throw new Error(`change[${i}]: item (id, code or name) is required`);
+        const m = menuItem(tree, c.item), ch: any = { id: m.id, name: m.displayName };
+        if (c.icon) ch.iconName = iconOf(c.icon);
+        if (c.views) {
+          if (m.type !== "BO" || !m.boId) throw new Error(`change[${i}]: «${m.displayName}» is a ${m.type} — only a BO item has views`);
+          const p = await boPagesOf(s, await boOf(m.boId), c.views, m.boPages);
+          ch.boPages = p.pages; out.notes.push(...p.notes.map((n) => `«${m.displayName}»: ${n}`));
+        }
+        if (!ch.iconName && !ch.boPages) throw new Error(`change[${i}]: pass icon and / or views`);
+        changes.push(ch);
+      }
+      if (a.dryRun) return clean({ dryRun: true, create: bodies, change: changes, notes: out.notes });
+      const want: any[] = [];
+      for (const b of bodies) {
+        await s.call(MENU_ + "create-menu-item", {}, b);
+        tree = await menuTree(s);
+        const got = tree.find((m) => m.id === b.id) ?? tree.find((m) => m.displayName === b.displayName && (m.parentId ?? null) === b.parentId);
+        if (!got) { out.notes.push(`«${b.displayName}» is not in the menu after create-menu-item — menu_read`); continue; }
+        if (got.id !== b.id) for (const [k, v] of keys) if (v === b.id) keys.set(k, got.id);
+        if (got.iconName !== b.iconName) await s.call(MENU_ + "save-menu-item-icon-name", { menuItemId: got.id, iconName: b.iconName });
+        if (b.boPages && pagesKey(got.boPages) !== pagesKey(b.boPages)) await s.call(MENU_ + "save-menu-item-bo-pages", { menuItemId: got.id }, b.boPages);
+        out.created.push(got.id); want.push({ id: got.id, iconName: b.iconName, boPages: b.boPages });
+      }
+      for (const ch of changes) {
+        if (ch.iconName) await s.call(MENU_ + "save-menu-item-icon-name", { menuItemId: ch.id, iconName: ch.iconName });
+        if (ch.boPages) await s.call(MENU_ + "save-menu-item-bo-pages", { menuItemId: ch.id }, ch.boPages);
+        out.changed.push(ch.id); want.push(ch);
+      }
+      // read back: what holds now
+      tree = await menuTree(s);
+      const rows = [...out.created, ...out.changed].map((id) => tree.find((m) => m.id === id)).filter(Boolean);
+      const mismatch = want.map((w) => { const m = tree.find((x) => x.id === w.id);
+        return !m ? { id: w.id, missing: true } : [w.iconName && m.iconName !== w.iconName && "icon", w.boPages && pagesKey(m.boPages) !== pagesKey(w.boPages) && "views"].filter(Boolean).length
+          ? { id: m.id, icon: m.iconName, views: viewsOf(m.boPages) } : null; }).filter(Boolean);
+      return clean({ items: await menuRows(s, rows), keys: Object.fromEntries(keys), mismatch, notes: out.notes });
+    } },
+  { name: "menu_delete", write: true, description: "Delete a sidebar menu item you made (a BO or GROUP item; built-in items are refused). Without `confirm` only the preview: the item and what is under it. A GROUP with items inside is refused — delete those first (whether the stand cascades is unknown). With `confirm: true` — after the user agreed — delete-menu-item, then the menu is read back. The BO and its records are not touched.",
+    props: { item: { type: "string", description: "id, code or name" }, confirm: { type: "boolean" } },
+    required: ["item"],
+    run: async (a) => {
+      const s = stand(a), tree = await menuTree(s), m = menuItem(tree, a.item), branch = menuBranch(tree, m.id), [row] = await menuRows(s, [m]);
+      if (m.type !== "BO" && m.type !== "GROUP") throw new Error(`«${m.displayName}» is a built-in ${m.type} item — refused`);
+      if (branch.length > 1) throw new Error(`«${m.displayName}» holds ${branch.length - 1} items — refused; delete them first: ${branch.slice(1).map((x) => `${x.displayName} (${x.id})`).join(", ")}`);
+      if (!a.confirm) return { preview: row, note: "nothing deleted — call again with confirm: true after the user agreed" };
+      await s.call(MENU_ + "delete-menu-item", { menuItemId: m.id });
+      const left = (await menuTree(s)).find((x) => x.id === m.id && !x.isRemoved);
+      return clean({ deleted: !left, item: row, note: left ? "the item is still in the menu — menu_read" : undefined });
+    } },
+  { name: "menu_icons", description: "Sidebar icon names (UI-API §4): no `query` → the «Icons by meaning» table; `query` → the catalogue names (1153, phosphor:* and menu-item:*) holding that piece, plus the meaning rows it matches. Every item gets an icon by its meaning, unasked; a name off the catalogue draws a blank.",
+    props: { query: { type: "string", description: "A piece of a name (English: «car», «user») or of a meaning («money»)" } },
+    run: async (a) => {
+      const q = String(a.query ?? "").trim().toLowerCase();
+      const meaning = ICONS_BY_MEANING.filter(([m, n]) => !q || m.includes(q) || n.some((x) => x.includes(q))).map(([m, n]) => ({ meaning: m, icons: n }));
+      if (!q) return { byMeaning: meaning, catalogue: ICON_NAMES.size };
+      const names = [...ICON_NAMES].filter((n) => n.toLowerCase().includes(q));
+      return clean({ byMeaning: meaning, names: names.slice(0, 150), more: names.length > 150 ? names.length - 150 : undefined });
+    } },
+  { name: "filter_try", description: "Count a BO's records under a record filter WITHOUT saving it (load-bo-instance-bracket-table with brackets, §4 «Record filters»): the total and the first rows (registry columns). `filter` = a condition {field (code / label), eq | currentUser: true (a user field = the viewer), not?} or {native: \"CREATED_BY\", currentUser: true} (records the viewer created), or a group {all: […]} / {any: […]} with not?, nested freely. eq: a dropdown's option label or code (sent as the option id; a dictionary dropdown: the dictionary record's code), CHECKBOX true / false, a text field its exact text; other types are [U]. «Is empty» is not offered: the stand ignores it here (a note says so — check the count). `brackets` = the raw root bracket list instead. Returns the built brackets too: filter_save stores the same.",
+    props: { boId: { type: "string" }, code: { type: "string" }, filter: { type: "object" }, brackets: { type: "array", items: { type: "object" } },
+      limit: { type: "number", description: "Rows returned, default 5" } },
+    run: async (a) => {
+      const s = stand(a), bo = await loadBo(s, await boById(s, a));
+      const built = a.brackets ? { root: null, notes: [] as string[] } : await bracketsOf(s, bo, a.filter);
+      const brackets = a.brackets ?? [built.root];
+      const all = await bracketTable(s, bo.id, [], 1);
+      return clean({ ...(await bracketTable(s, bo.id, brackets, Math.min(50, a.limit ?? 5))), of: all.total, brackets, notes: built.notes });
+    } },
+  { name: "filter_save", write: true, description: "Store a record filter on a BO menu item (§4 «Record filters»): the item then lists only the matching records — one BO may have several items, one per user job («Мои …», «… в работе»). load-bracket-filter creates the item's filter record when it has none → bracket-filter/save {id, boId, brackets} → read back and the count. `filter` / `brackets` as in filter_try (try it first); `clear: true` removes the conditions. A filter narrows a list, it is no protection — rights are (rights_save). Ask the user first; dryRun:true = the body only.",
+    props: { item: { type: "string", description: "The BO menu item: id, code or name" }, filter: { type: "object" }, brackets: { type: "array", items: { type: "object" } },
+      clear: { type: "boolean" }, dryRun: { type: "boolean" } },
+    required: ["item"],
+    run: async (a) => {
+      const s = stand(a), m = menuItem(await menuTree(s), a.item);
+      if (m.type !== "BO" || !m.boId) throw new Error(`«${m.displayName}» is a ${m.type} item — a filter goes on a BO item`);
+      if (!a.clear && !a.filter && !a.brackets) throw new Error("pass filter, brackets or clear: true");
+      const bo = await loadBo(s, m.boId);
+      const built = a.clear || a.brackets ? { root: null, notes: [] as string[] } : await bracketsOf(s, bo, a.filter);
+      const brackets = a.clear ? [] : a.brackets ?? [built.root];
+      if (a.dryRun) return clean({ dryRun: true, item: menuRow(m, bo.formFields), body: { id: m.bracketFilterId ?? "<created by load-bracket-filter>", boId: bo.id, brackets }, notes: built.notes });
+      const f = await s.call(MENU_ + "load-bracket-filter", { menuItemId: m.id });
+      const id = typeof f === "string" ? f : f?.id;
+      if (!id) throw new Error(`load-bracket-filter returned no filter id: ${JSON.stringify(f)?.slice(0, 200)}`);
+      await s.call("v2/bracket-filter/save", {}, { id, boId: bo.id, brackets });
+      const back = await s.call(MENU_ + "load-bracket-filter", { menuItemId: m.id });
+      const got = (typeof back === "object" && back?.brackets) || [];
+      const count = (b: any[]): number => b.reduce((n, x) => n + 1 + count(x.brackets ?? []), 0);
+      const t = await bracketTable(s, bo.id, brackets, 0);
+      return clean({ item: menuRow(m, bo.formFields), filterId: id, saved: typeof back !== "object" || count(got) === count(brackets), brackets: count(got), total: t.total, notes: built.notes });
+    } },
+
   // 14. notifications
   { name: "notifications_read", description: "The bell (header «События»): counters and the latest entries with ids. `newThisSession` marks what appeared after this server first looked — the ones your work raised (every import leaves «Анализ импорта завершен»).",
     props: { limit: { type: "number" } },
@@ -2569,7 +2869,7 @@ const tools: Tool[] = [
       const s = stand(a);
       return trim(a.get ? await s.get(a.path) : await s.call(a.path, a.params, a.body), a.maxChars);
     } },
-  { name: "stand_call", write: true, description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (rights, menu, company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
+  { name: "stand_call", write: true, description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (kanban card, participants, company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } }, required: ["path"],
     run: async (a) => {
       if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session token — refused");
@@ -2636,7 +2936,7 @@ const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the
   "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " +
   "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " +
   "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " +
-  "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " +
+  "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " +
   "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " +
