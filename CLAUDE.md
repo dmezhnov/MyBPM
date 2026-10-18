@@ -26,7 +26,7 @@ platform facts into them (marked `[C]` confirmed / `[I]` inferred / `[U]` unveri
   Three independent cookbooks: §0, §0S, §0X.
 - `MYBPM-UI-API.md` — the running stand: `/web/v2` API, access rights, menus,
   the routes that deliver those artefacts (structure import §5, records §6),
-  kanban, HTML sanitizer, xlsx/Drive tooling, Claude-in-Chrome traps.
+  kanban, HTML sanitizer, xlsx/Drive tooling, browser-automation traps.
   One cookbook: §0U.
 
 Rule of thumb: **format → `MYBPM-IMPORTS.md`, transport → `MYBPM-UI-API.md`.**
