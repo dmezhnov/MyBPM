@@ -344,6 +344,30 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["menu_delete", { item: "MCP записи" }, (r) => r.preview.name === "MCP записи" && r.deleted === undefined],
   ["menu_delete", { item: "MCP записи", confirm: true }, (r) => r.deleted === true],
   ["menu_delete", { item: "MCP группа", confirm: true }, (r) => r.deleted === true],
+  // the kanban card through a one-BO archive, participants of a record, the invitation; a conflict mapped onto a group
+  ["kanban_card_save", { code: "mcp_probe_records", dropdown: "title", header: ["title"] }, (r) => /a kanban runs on a DROPDOWN_SINGLE/.test(r)],
+  ["kanban_card_save", { code: "mcp_probe_records", dropdown: "status", header: ["title"], footer: ["CREATED_BY"] }, (r) => /card field «CREATED_BY»: not a field/.test(r)],
+  ["kanban_card_save", { code: "mcp_probe_records", dropdown: "Статус", header: ["title"], content: ["Готово", "due"], dryRun: true },
+    (r) => r.dryRun && r.was === null && r.kanbanFields.done.locationType === "CONTENT" && r.kanbanFields.due.cardOrderIndex === 1],
+  ["import_log", {}, (r) => !r.open.importExists],
+  ["kanban_card_save", { code: "mcp_probe_records", dropdown: "status", header: ["title"], content: ["done"] },
+    (r) => r.card.header[0] === "title" && r.card.content[0] === "done" && r.import.status === "APPLIED"],
+  ["bo_find", { code: "mcp_probe_records" }, (r) => r.exists === true],
+  ["records_find", { code: "mcp_probe_records" }, (r) => r.total === 1],
+  ["record_participants", { code: "mcp_probe_records", id: "@records_find.records.0.id" }, (r) => r.participants[0].email === "admin@mock" && !r.added],
+  ["record_participants", { code: "mcp_probe_records", id: "@records_find.records.0.id", remove: ["admin@mock"] }, (r) => !r.participants && r.removed[0] === "Mock Admin"],
+  ["record_participants", { code: "mcp_probe_records", id: "@records_find.records.0.id", add: ["Mock Admin"] }, (r) => r.participants.length === 1 && r.added[0] === "Mock Admin" && !r.mismatch],
+  ["record_participants", { code: "mcp_probe_records", id: "@records_find.records.0.id", remove: ["nobody@mock"] }, (r) => /not a participant/.test(r)],
+  ["person_invite", { person: "admin@mock" }, (r) => r.personId === "PERSON0000000001" && r.name === "Mock Admin"],
+  ["archive_put", { name: "conflict", part: 1, last: true, lines: JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto", code: "Conflict_probe", category: "BO", name: { rus: "Conflict" } }) },
+    (r) => r.bos[0].code === "Conflict_probe"],
+  ["import_analyze", { name: "conflict", skipLint: true }, (r) => r.conflicts[0].type === "GROUP" && r.conflicts[0].name === "Архивная группа" && r.conflicts[0].candidates[0].text === "Менеджеры" && /conflicts/.test(r.next)],
+  ["import_apply", { importId: "@import_analyze.importId", description: "mcp conflict" }, (r) => /conflicts still open/.test(r)],
+  ["import_apply", { importId: "@import_analyze.importId", description: "mcp conflict", resolve: { CONFLICT00000001: "Менеджеры" } }, (r) => r.status === "APPLIED"],
+  ["import_rollback", { importId: "@import_analyze.importId", confirm: true }, (r) => r.log.status === "ROLLED_BACK"],
+  ["bo_find", { code: "Conflict_probe" }, (r) => r.exists === false],
+  ["notifications_read", {}, (r) => r.items.filter((n: any) => n.newThisSession).length >= 3],
+  ["notifications_clear", { ids: ["@notifications_read.items.0.id", "@notifications_read.items.1.id", "@notifications_read.items.2.id"] }, (r) => r.deleted === 3],
   ["menu_read", {}, (r) => r.items.length === 1 && r.items[0].code === "mcp_menu"],
   ["bo_create", { group: "Бизнес-объект", name: "MCP probe rights", code: "mcp_probe_rights", window: false, fields: [
     { label: "Название", type: "INPUT_TEXT", code: "title" }, { label: "Служебное", type: "INPUT_TEXT", code: "svc", tab: "Системные" }] },
@@ -381,7 +405,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
