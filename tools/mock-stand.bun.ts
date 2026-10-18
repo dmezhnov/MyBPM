@@ -52,7 +52,22 @@ const raced = new Set<string>();
 // access rights (R5): a group per target; units persist only through orgUnitToAdd / orgUnitToDelete (trap 3)
 const ORG = [{ id: "GROUP00000000001", type: "GROUP", name: "Менеджеры", avatar: null, parentGroupNames: "", email: null },
   { id: "PERSON0000000001", type: "PERSON", name: "Mock Admin", avatar: null, parentGroupNames: "Все", email: null }];
-const NAV = [{ id: "MENU000000000001", code: "mcp_menu", type: "BO", displayName: "Клиенты", iconName: "phosphor:users", parentId: null }];
+const NAV: any[] = [{ id: "MENU000000000001", code: "mcp_menu", type: "BO", displayName: "Клиенты", iconName: "phosphor:users", parentId: null, orderIndex: 100000 }];
+const filters = new Map<string, any>(); // bracket filter id → {id, boId, brackets}
+/** A record under a bracket tree (UI-API §4 «Record filters»): AND inside, own filters ignored with sub-brackets, siblings by the earlier one. */
+const inBracket = (r: any, b: any): boolean => {
+  let ok: boolean;
+  if (b.brackets?.length) {
+    ok = inBracket(r, b.brackets[0]);
+    for (let i = 1; i < b.brackets.length; i++) ok = b.brackets[i - 1].connectionType === "OR" ? ok || inBracket(r, b.brackets[i]) : ok && inBracket(r, b.brackets[i]);
+  } else ok = (b.dynamicFilters ?? []).every((f: any) => {
+    const v = r.values[f.fieldId], x = fieldsOf(r.boId).find((y) => y.fieldId === f.fieldId);
+    if (f.isEmptyValue) return v == null || v === "";
+    const want = x?.options?.find((o: any) => o.code === f.value)?.id ?? f.value;
+    return String(v ?? "") === String(want);
+  });
+  return b.notType === "NOT" ? !ok : ok;
+};
 const access = new Map<string, any>(), chosen = new Map<string, boolean>();
 const ACTIONS = ["all", "view", "edit", "create", "delete", "archive", "export", "duplicate", "add"];
 const accessOf = (key: string) => {
@@ -305,7 +320,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     // records: the registry (columns only, CREATED_AT DESC), values per tab, the §6a draft cycle, the §6b form cycle, the delete
     case "v2/business-object-instance/load-bo-instance-bracket-table": {
       const cols = fieldsOf(body.boId).filter((x) => x.tableColToShow);
-      const all = [...recs.values()].filter((r) => r.boId === body.boId && (body.state === "ALL" ? r.state === "ALL" || r.state === "DEV" : r.state === body.state))
+      const all = [...recs.values()].filter((r) => r.boId === body.boId && (body.state === "ALL" ? r.state === "ALL" || r.state === "DEV" : r.state === body.state) && (body.brackets ?? []).every((b: any) => inBracket(r, b)))
         .sort((a, b) => b.at - a.at), page = all.slice(body.paging.offset, body.paging.offset + body.paging.limit);
       return { heads: cols.map((x, i) => ({ fieldId: x.fieldId, name: x.label, orderIndex: i, boFieldArchetype: "DYNAMIC" })), totalHits: all.length,
         hasNext: body.paging.offset + page.length < all.length,
@@ -392,10 +407,21 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/business-objects/save-field-tab-access-group": return saveAccess(`t:${body.businessObjectId}:${body.fieldId}:${body.tabId}`, body.accessGroup);
     case "v2/business-objects/save-bo-field-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
     case "v2/business-objects/save-bo-field-tab-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId)?.tabs?.find((y: any) => y.id === params.tabId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
-    case "v2/menu-item/load-nav-items": return params.parentId ? [] : NAV;
+    case "v2/menu-item/load-nav-items": return NAV.filter((m) => (m.parentId ?? null) === (params.parentId ?? null));
+    case "v2/menu-item/create-menu-item": NAV.push({ ...body, code: `menu_${++seq}`, bracketFilterId: null }); return "";
+    case "v2/menu-item/delete-menu-item": NAV.splice(NAV.findIndex((m) => m.id === params.menuItemId), 1); return "";
+    case "v2/menu-item/save-menu-item-icon-name": NAV.find((m) => m.id === params.menuItemId)!.iconName = params.iconName; return "";
+    case "v2/menu-item/save-menu-item-bo-pages": NAV.find((m) => m.id === params.menuItemId)!.boPages = body; return "";
+    case "v2/menu-item/load-bracket-filter": {
+      const m = NAV.find((x) => x.id === params.menuItemId)!;
+      if (!m.bracketFilterId) { m.bracketFilterId = nextId("FLT"); filters.set(m.bracketFilterId, { id: m.bracketFilterId, boId: m.boId, brackets: [] }); }
+      return filters.get(m.bracketFilterId);
+    }
+    case "v2/bracket-filter/save": filters.set(body.id, structuredClone(body)); return "";
+    case "v2/kanban/load-kanban-template": return null;
     case "v2/menu-item/load-access-group": return accessOf(`m:${params.menuItemId}`);
     case "v2/menu-item/save-access-group": return saveAccess(`m:${params.menuItemId}`, body);
-    case "v2/menu-item/save-menu-item-chosen-access-right": chosen.set(`m:${params.menuItemId}`, params.chosenAccessRight); return "";
+    case "v2/menu-item/save-menu-item-chosen-access-right": chosen.set(`m:${params.menuItemId}`, params.chosenAccessRight); { const m = NAV.find((x) => x.id === params.menuItemId); if (m) m.chosenAccessRight = params.chosenAccessRight; } return "";
     case "v2/org-unit/load-filtered-persons-v2": return [{ name: "Все", persons: [{ id: "PERSON0000000001", name: "Mock Admin", email: "admin@mock", parentGroupNames: "" }] }];
     case "v2/process-indicator/pre-create-process": return nextId("PROC");
     case "v2/process-indicator/load-state-short": return { isFinished: true, percentage: 100, label: "Готово" };
