@@ -4469,22 +4469,176 @@ async function handle(msg) {
       throw Object.assign(new Error(`method not found: ${msg.method}`), { code: -32601 });
   }
 }
+var kebab = (k) => k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+var firstSentence = (d) => (d.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0] ?? d).replace(/\s+/g, " ");
+function cliList() {
+  const w = Math.max(...tools.map((t) => t.name.length));
+  return [
+    "Usage: mise run stand <tool> [--arg value …] [{json args}]   ·   mise run stand <tool> help — its arguments",
+    "✎ = changes the stand",
+    "",
+    ...tools.map((t) => `${t.name.padEnd(w)} ${t.write ? "✎" : " "} ${cut(firstSentence(t.description), 160)}`)
+  ].join(`
+`);
+}
+function cliHelp(t) {
+  const props = schema(t).properties;
+  const typeOf = (p) => p.type === "array" ? `[${p.items?.type ?? "json"}] (repeat the flag, or a JSON array)` : p.type ?? "json";
+  return [
+    `${t.name}${t.write ? "  ✎ changes the stand" : ""}`,
+    "",
+    t.description,
+    "",
+    "Arguments:",
+    ...Object.entries(props).map(([k, p]) => `  --${kebab(k)} <${typeOf(p)}>${t.required?.includes(k) ? "  REQUIRED" : ""}` + (p.description ? `
+      ${p.description}` : "")),
+    "",
+    "Any --<arg>-file <path> reads that argument from a file (- = stdin); a {json} word or --json-file <path> passes several at once."
+  ].join(`
+`);
+}
+function cliValue(p, raw, name) {
+  const json = () => {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error(`--${name}: not JSON: ${cut(raw, 80)}`);
+    }
+  };
+  switch (p?.type) {
+    case "string":
+      return raw;
+    case "number": {
+      const n = Number(raw);
+      if (raw.trim() === "" || Number.isNaN(n))
+        throw new Error(`--${name}: not a number: ${raw}`);
+      return n;
+    }
+    case "boolean":
+      if (/^(true|yes|1)$/i.test(raw))
+        return true;
+      if (/^(false|no|0)$/i.test(raw))
+        return false;
+      throw new Error(`--${name}: true or false, not ${raw}`);
+    case "object":
+      return json();
+    case "array": {
+      if (raw.trim().startsWith("["))
+        return json();
+      return [cliValue(p.items ?? {}, raw, name)];
+    }
+    default:
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+  }
+}
+function cliArgs(t, words) {
+  const props = schema(t).properties;
+  const camel = (k) => k.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  const read = (path) => import_node_fs.readFileSync(path === "-" ? 0 : path, "utf8");
+  const args = {};
+  for (let i = 0;i < words.length; i++) {
+    const w = words[i];
+    if (!w.startsWith("--")) {
+      let o;
+      try {
+        o = JSON.parse(w);
+      } catch {}
+      if (!o || typeof o !== "object" || Array.isArray(o))
+        throw new Error(`${t.name}: «${cut(w, 60)}» is neither --<arg> nor a {json} object of arguments`);
+      Object.assign(args, o);
+      continue;
+    }
+    const eq = w.indexOf("=");
+    let flag = eq > 0 ? w.slice(2, eq) : w.slice(2), raw = eq > 0 ? w.slice(eq + 1) : undefined;
+    const take = () => {
+      if (raw !== undefined)
+        return raw;
+      if (i + 1 >= words.length)
+        throw new Error(`--${flag} needs a value`);
+      return words[++i];
+    };
+    if (flag === "json-file") {
+      Object.assign(args, JSON.parse(read(take())));
+      continue;
+    }
+    const fromFile = flag.endsWith("-file") && !(camel(flag) in props);
+    const key = camel(fromFile ? flag.slice(0, -5) : flag);
+    const p = props[key];
+    if (!p)
+      throw new Error(`${t.name}: no argument --${flag}. Its arguments: ${Object.keys(props).map((k) => "--" + kebab(k)).join(" ")}`);
+    if (fromFile) {
+      const text = read(take());
+      args[key] = p.type === "string" ? text : cliValue({ type: "object" }, text, flag);
+      continue;
+    }
+    if (p.type === "boolean" && raw === undefined && !/^(true|false|yes|no|1|0)$/i.test(words[i + 1] ?? "")) {
+      args[key] = true;
+      continue;
+    }
+    const text = take(), v = cliValue(p, text, flag);
+    args[key] = p.type === "array" && Array.isArray(args[key]) && !text.trim().startsWith("[") ? [...args[key], ...v] : v;
+  }
+  const missing = (t.required ?? []).filter((k) => args[k] === undefined);
+  if (missing.length)
+    throw new Error(`${t.name}: missing ${missing.map((k) => "--" + kebab(k)).join(", ")} — mise run stand ${t.name} help`);
+  return args;
+}
+async function cli(words) {
+  const [name, ...rest] = words;
+  if (["help", "--help", "-h", "list"].includes(name)) {
+    console.log(cliList());
+    return 0;
+  }
+  const t = tools.find((x) => x.name === name.replace(/-/g, "_"));
+  if (!t) {
+    console.error(`no tool ${name}
+
+${cliList()}`);
+    return 2;
+  }
+  if (["help", "--help", "-h"].includes(rest[0])) {
+    console.log(cliHelp(t));
+    return 0;
+  }
+  try {
+    const args = cliArgs(t, rest);
+    await baseline(t, args);
+    const out = await t.run(args);
+    console.log(typeof out === "string" ? out : JSON.stringify(out, null, 2));
+    if (t.name === "stand_accounts") {
+      console.error("The page works while this command runs — Ctrl+C when you are done; `mise run stand stand_list` shows the result.");
+      setInterval(() => {}, 1 << 30);
+      await new Promise(() => {});
+    }
+    return 0;
+  } catch (e) {
+    console.error(`error: ${e.message}`);
+    return 1;
+  }
+}
 var send = (o) => process.stdout.write(JSON.stringify(o) + `
 `);
-import_node_readline.createInterface({ input: process.stdin }).on("line", async (line) => {
-  if (!line.trim())
-    return;
-  let msg;
-  try {
-    msg = JSON.parse(line);
-  } catch {
-    return send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
-  }
-  if (msg.id === undefined || msg.id === null)
-    return;
-  try {
-    send({ jsonrpc: "2.0", id: msg.id, result: await handle(msg) });
-  } catch (e) {
-    send({ jsonrpc: "2.0", id: msg.id, error: { code: e.code ?? -32603, message: e.message } });
-  }
-});
+if (process.argv.length > 2)
+  cli(process.argv.slice(2)).then((code) => process.exit(code));
+else
+  import_node_readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+    if (!line.trim())
+      return;
+    let msg;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
+    }
+    if (msg.id === undefined || msg.id === null)
+      return;
+    try {
+      send({ jsonrpc: "2.0", id: msg.id, result: await handle(msg) });
+    } catch (e) {
+      send({ jsonrpc: "2.0", id: msg.id, error: { code: e.code ?? -32603, message: e.message } });
+    }
+  });

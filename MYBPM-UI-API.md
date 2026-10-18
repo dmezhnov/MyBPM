@@ -1046,6 +1046,13 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   Until the user installs it, the recipes as written work wherever your code reaches the stand; a cloud
   sandbox usually does not reach a customer stand — then the install is the way, say so.
 
+- **The same tools from a terminal, without Claude:** in a checkout of the repository `mise run stand` lists
+  them, `mise run stand <tool> help` shows a tool's arguments, `mise run stand <tool> --<arg> <value> …` runs
+  it on the same accounts (kebab-case flags: `--bo-id`, `--dry-run`; a repeated flag adds to a list; a JSON
+  value for an object; `--<arg>-file <path>` reads a value from a file; a `{json}` word passes several). The
+  plugin's server file does the same: `node mybpm-stand.cjs <tool> …`. A ✎ tool writes at once — there is no
+  Claude to ask first.
+
 - **A newer release: the server says so.** At start it reads `version` of `.claude-plugin/plugin.json` on
   `main` of `dmezhnov/MyBPM` (`main` moves only on a green release); newer than its own → its first answer and
   every `stand_list` end with an extra text «NOTE for Claude: the mybpm plugin <new> is out, this copy is
