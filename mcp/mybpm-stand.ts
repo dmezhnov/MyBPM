@@ -5,6 +5,9 @@
  * mcp/mybpm-stand.cjs, which runs under any Node >= 18 (Claude Desktop ships its own) and under Bun; the
  * Claude Code plugin starts it from plugin.json, Claude Desktop from the .mcpb that `mise run mcp-pack` builds.
  *
+ * Started with arguments it is a one-shot terminal command instead: `<tool> --arg value …` runs one tool and
+ * prints its result (`mise run stand` wraps it; `list` / `<tool> help` print the tools / a tool's arguments).
+ *
  * Node built-ins (`node:fs`, `node:child_process`, `node:zlib` …) instead of Bun's API: the bundle runs under
  * plain Node in Claude Desktop, where Bun does not exist.
  *
@@ -3127,8 +3130,107 @@ async function handle(msg: any): Promise<any> {
   }
 }
 
+// ── the same tools from a terminal: `mise run stand <tool> [--arg value …]` or `node mybpm-stand.cjs <tool> …` ──
+// A first argument switches the server into a one-shot command: run one tool, print its result, exit (1 on an error).
+// Each command is its own session: notifications_read marks as new only what appeared during that one command.
+
+const kebab = (k: string) => k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+const firstSentence = (d: string) => (d.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0] ?? d).replace(/\s+/g, " ");
+
+function cliList(): string {
+  const w = Math.max(...tools.map((t) => t.name.length));
+  return ["Usage: mise run stand <tool> [--arg value …] [{json args}]   ·   mise run stand <tool> help — its arguments",
+    "✎ = changes the stand", "",
+    ...tools.map((t) => `${t.name.padEnd(w)} ${t.write ? "✎" : " "} ${cut(firstSentence(t.description), 160)}`)].join("\n");
+}
+
+function cliHelp(t: Tool): string {
+  const props = schema(t).properties as Record<string, any>;
+  const typeOf = (p: any) => p.type === "array" ? `[${p.items?.type ?? "json"}] (repeat the flag, or a JSON array)` : p.type ?? "json";
+  return [`${t.name}${t.write ? "  ✎ changes the stand" : ""}`, "", t.description, "", "Arguments:",
+    ...Object.entries(props).map(([k, p]) => `  --${kebab(k)} <${typeOf(p)}>${t.required?.includes(k) ? "  REQUIRED" : ""}` +
+      (p.description ? `\n      ${p.description}` : "")),
+    "", "Any --<arg>-file <path> reads that argument from a file (- = stdin); a {json} word or --json-file <path> passes several at once."].join("\n");
+}
+
+function cliValue(p: any, raw: string, name: string): any {
+  const json = () => { try { return JSON.parse(raw); } catch { throw new Error(`--${name}: not JSON: ${cut(raw, 80)}`); } };
+  switch (p?.type) {
+    case "string": return raw;
+    case "number": { const n = Number(raw); if (raw.trim() === "" || Number.isNaN(n)) throw new Error(`--${name}: not a number: ${raw}`); return n; }
+    case "boolean":
+      if (/^(true|yes|1)$/i.test(raw)) return true;
+      if (/^(false|no|0)$/i.test(raw)) return false;
+      throw new Error(`--${name}: true or false, not ${raw}`);
+    case "object": return json();
+    case "array": {
+      if (raw.trim().startsWith("[")) return json();
+      return [cliValue(p.items ?? {}, raw, name)];
+    }
+    default: try { return JSON.parse(raw); } catch { return raw; }
+  }
+}
+
+function cliArgs(t: Tool, words: string[]): any {
+  const props = schema(t).properties as Record<string, any>;
+  const camel = (k: string) => k.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  const read = (path: string) => readFileSync(path === "-" ? 0 : path, "utf8");
+  const args: any = {};
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (!w.startsWith("--")) {
+      let o: any;
+      try { o = JSON.parse(w); } catch {}
+      if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error(`${t.name}: «${cut(w, 60)}» is neither --<arg> nor a {json} object of arguments`);
+      Object.assign(args, o);
+      continue;
+    }
+    const eq = w.indexOf("=");
+    let flag = eq > 0 ? w.slice(2, eq) : w.slice(2), raw: string | undefined = eq > 0 ? w.slice(eq + 1) : undefined;
+    const take = () => {
+      if (raw !== undefined) return raw;
+      if (i + 1 >= words.length) throw new Error(`--${flag} needs a value`);
+      return words[++i];
+    };
+    if (flag === "json-file") { Object.assign(args, JSON.parse(read(take()))); continue; }
+    const fromFile = flag.endsWith("-file") && !(camel(flag) in props);
+    const key = camel(fromFile ? flag.slice(0, -5) : flag);
+    const p = props[key];
+    if (!p) throw new Error(`${t.name}: no argument --${flag}. Its arguments: ${Object.keys(props).map((k) => "--" + kebab(k)).join(" ")}`);
+    if (fromFile) { const text = read(take()); args[key] = p.type === "string" ? text : cliValue({ type: "object" }, text, flag); continue; }
+    if (p.type === "boolean" && raw === undefined && !/^(true|false|yes|no|1|0)$/i.test(words[i + 1] ?? "")) { args[key] = true; continue; }
+    const text = take(), v = cliValue(p, text, flag);
+    // a repeated array flag adds an element; a JSON array replaces the list
+    args[key] = p.type === "array" && Array.isArray(args[key]) && !text.trim().startsWith("[") ? [...args[key], ...v] : v;
+  }
+  const missing = (t.required ?? []).filter((k) => args[k] === undefined);
+  if (missing.length) throw new Error(`${t.name}: missing ${missing.map((k) => "--" + kebab(k)).join(", ")} — mise run stand ${t.name} help`);
+  return args;
+}
+
+async function cli(words: string[]): Promise<number> {
+  const [name, ...rest] = words;
+  if (["help", "--help", "-h", "list"].includes(name)) { console.log(cliList()); return 0; }
+  const t = tools.find((x) => x.name === name.replace(/-/g, "_"));
+  if (!t) { console.error(`no tool ${name}\n\n${cliList()}`); return 2; }
+  if (["help", "--help", "-h"].includes(rest[0])) { console.log(cliHelp(t)); return 0; }
+  try {
+    const args = cliArgs(t, rest);
+    await baseline(t, args);
+    const out = await t.run(args);
+    console.log(typeof out === "string" ? out : JSON.stringify(out, null, 2));
+    if (t.name === "stand_accounts") {
+      console.error("The page works while this command runs — Ctrl+C when you are done; `mise run stand stand_list` shows the result.");
+      setInterval(() => {}, 1 << 30); // the page's server is unref'd: keep this process alive for it
+      await new Promise(() => {});
+    }
+    return 0;
+  } catch (e: any) { console.error(`error: ${e.message}`); return 1; }
+}
+
 const send = (o: unknown) => process.stdout.write(JSON.stringify(o) + "\n");
-createInterface({ input: process.stdin }).on("line", async (line) => {
+if (process.argv.length > 2) cli(process.argv.slice(2)).then((code) => process.exit(code));
+else createInterface({ input: process.stdin }).on("line", async (line) => {
   if (!line.trim()) return;
   let msg: any;
   try { msg = JSON.parse(line); } catch { return send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }); }

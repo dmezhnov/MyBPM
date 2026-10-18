@@ -111,7 +111,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -422,6 +422,23 @@ try {
       bad++; console.error(`mcp (${rt}) platform_report: ${JSON.stringify(issue)?.slice(0, 400)}\n${rep.stderr}`);
     }
   }
+  // the same tools as a terminal command (mise run stand): flags coerced by the schema, a JSON word, help, errors with exit 1
+  for (const [rt, server] of [["bun", "mcp/mybpm-stand.ts"], ["node", "mcp/mybpm-stand.cjs"]].filter(([r]) => Bun.which(r))) {
+    const run = (...a: string[]) => $`${rt} ${server} ${a}`.env(env).nothrow().quiet();
+    const checks: [string[], (r: any) => boolean][] = [
+      [["list"], (r) => r.exitCode === 0 && /^bo_delete +✎ /m.test(r.stdout.toString())],
+      [["bo_read", "help"], (r) => r.exitCode === 0 && /--bo-id <string>/.test(r.stdout.toString())],
+      [["bo_find", "--code", "Lint_dict"], (r) => r.exitCode === 0 && JSON.parse(r.stdout.toString()).exists === false],
+      [["bo_find", JSON.stringify({ code: "Lint_dict" })], (r) => r.exitCode === 0 && JSON.parse(r.stdout.toString()).exists === false],
+      [["bo_find", "--cod", "x"], (r) => r.exitCode === 1 && /no argument --cod/.test(r.stderr.toString())],
+      [["stand_remove"], (r) => r.exitCode === 1 && /missing --stand/.test(r.stderr.toString())],
+      [["no_such_tool"], (r) => r.exitCode === 2],
+    ];
+    for (const [a, ok] of checks) {
+      const r = await run(...a);
+      if (!ok(r)) { bad++; console.error(`cli (${rt}) ${a.join(" ")}: exit ${r.exitCode}\n${r.stdout.toString().slice(0, 300)}${r.stderr.toString().slice(0, 300)}`); }
+    }
+  }
 } finally { mock.kill(); }
 if (bad) process.exit(1);
 // the Desktop extension packs, and its server finds the lint and its version where the .mcpb puts them
@@ -702,4 +719,32 @@ let out: unknown = text; try { out = JSON.parse(text); } catch {}
 if ((out as any)?.errorType === "SecurityError") { console.error(`сессия истекла — заново: mise run stand-login ${host} ${login}`); process.exit(2); }
 console.log(typeof out === "string" ? out : JSON.stringify(out, null, 2));
 if (!r.ok) process.exit(1);
+'''
+
+[tasks.stand]
+description = "Run any tool of the mybpm-stand MCP server from the terminal — the same code Claude calls: `mise run stand` lists the tools, `mise run stand <tool> help` shows a tool's arguments, `mise run stand <tool> --arg value …` runs it (accounts as in the MCP: saved by stand_accounts or stand-login; --stand picks one of several). Relative paths are from the current folder"
+usage = '''
+arg "[tool]" help="A tool name (bo_read, record_save, …); none = the list"
+arg "[args]" var=#true double_dash="automatic" help="--<arg> <value> per argument, `help` for the tool's arguments; --<arg>-file <path> reads a value from a file, a {json} word passes several"
+'''
+dir = "{{cwd}}"
+quiet = true
+shell = "bun -e"
+run = '''
+// usage_args arrives shell-quoted (POSIX); split it back into words
+const words: string[] = [];
+const s = Bun.env.usage_args ?? "";
+let cur: string | null = null;
+for (let i = 0; i < s.length; i++) {
+  const c = s[i];
+  if (c === "'") { const end = s.indexOf("'", i + 1); cur = (cur ?? "") + s.slice(i + 1, end); i = end; }
+  else if (c === '"') { cur ??= ""; for (i++; s[i] !== '"'; i++) cur += s[i] === "\\" ? s[++i] : s[i]; }
+  else if (c === "\\") cur = (cur ?? "") + s[++i];
+  else if (/\s/.test(c)) { if (cur !== null) words.push(cur); cur = null; }
+  else cur = (cur ?? "") + c;
+}
+if (cur !== null) words.push(cur);
+const tool = Bun.env.usage_tool ? [Bun.env.usage_tool] : ["list"];
+const p = Bun.spawn(["bun", `${Bun.env.MISE_CONFIG_ROOT}/mcp/mybpm-stand.ts`, ...tool, ...words], { stdio: ["inherit", "inherit", "inherit"] });
+process.exit(await p.exited);
 '''
