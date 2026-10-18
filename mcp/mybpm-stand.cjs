@@ -4409,12 +4409,12 @@ var latestCheck = version === "dev" || !LATEST_URL ? Promise.resolve() : fetch(L
 function updateHow() {
   const p = HERE.replace(/\\/g, "/");
   if (import_node_fs.existsSync(import_node_path.join(HERE, "..", "manifest.json")))
-    return `a Claude Desktop extension: download ${RELEASE}/mybpm-stand.mcpb, open it and Install (replaces the old one), then restart Desktop`;
+    return p.includes("/Claude Extensions/") ? `a Claude Desktop extension: download ${RELEASE}/mybpm-stand.mcpb, open it and Install (replaces the old one), then restart Desktop` : `the server unzipped from mybpm-stand.mcpb (${import_node_path.dirname(HERE)}): download ${RELEASE}/mybpm-stand.mcpb, unzip it again over that folder, then restart the client that runs it ` + "(a Claude Desktop extension instead: open the downloaded file and Install, then restart Desktop)";
   if (p.includes("/local-agent-mode-sessions/"))
     return "the Claude Desktop account plugin: Customize → Plugins → Yours → Mybpm in the plugin list → ⋯ → Check for updates → the «Update» button becomes active → press it (the skills are new at once), then quit Desktop fully and start it again so these tools run the new code " + `(installed with Upload plugin instead: upload ${RELEASE}/mybpm-plugin.zip again)`;
   if (p.includes("/.claude/plugins/"))
     return "Claude Code: `claude plugin marketplace update mybpm`, then `claude plugin update mybpm@mybpm`, then restart Claude Code";
-  return "a checkout of the MyBPM repository: `git pull` in it";
+  return `a checkout of the MyBPM repository (${import_node_path.dirname(HERE)}): \`git pull\` in it, then restart the client that runs the server`;
 }
 var releaseTold = false;
 async function releaseNote(t) {
@@ -4425,12 +4425,12 @@ async function releaseNote(t) {
   releaseTold = true;
   if (!latest || !newer(latest, version))
     return;
-  return `NOTE for Claude: the mybpm plugin ${latest} is out, this copy is ${version}. Open your reply with this warning block, in the user's language, ` + `then the answer (go on with the task on this copy):
+  return `NOTE for the assistant: the mybpm plugin ${latest} is out, this copy is ${version}. Open your reply with this warning block, in the user's language, ` + `then the answer (go on with the task on this copy):
 
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for the assistant» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }
