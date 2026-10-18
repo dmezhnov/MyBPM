@@ -538,6 +538,8 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 | 5 | `struct/export-company-structure` | params `{processId}`, body `{}` | the response body IS the `.mybpm.zip` |
 | 6 | `struct/remove-bo-export-records` / `struct/clear-export-records` | **body** = an ARRAY OF `boId` STRINGS / `{}` | put the basket back as you found it |
 
+- **An export taken right after a rights write may come out without the `AccessStructDto`** `[I]` (the same
+  late write as R5's read-back): check the DTO tally and export again.
 - **Read the basket first and restore it afterwards** — it is the user's own selection on the
   «Импорт/Экспорт» screen, not scratch space.
 - **Both basket writes work over the API** `[C]`: **`remove-*` takes an array of id STRINGS**
@@ -980,7 +982,9 @@ and dropping the rest «for scope» is a fraction reported as done.
 - [ ] The notifications your work raised were cleared, whichever way they came: every structure import
       leaves an «Анализ импорта завершен»; every non-2xx REST call from a script you clicked leaves
       «Ошибка — Возникла ошибка при запросе в сервис …» (`MYBPM-IMPORTS.md`, RestRequest section); a
-      script's own `ScriptNotification` lands there too. They sit under the bell (header, «События»).
+      script's own `ScriptNotification` lands there too. They sit under the bell (header, «События»). Every notice pops up
+      as a short-lived toast on the screen; the bell entries are the ones that are also KEPT. Some are toast-only — system
+      errors, «the registration link was sent» — and never reach the bell `[C]`: nothing to clear, and no API call reads them.
       Check the count before your first write and after your last one. The red × on the «События» header deletes them all —
       `v2/user-notification/delete-notifications` (`P {}`, `B {}` — deletes ALL of them `[C]`); the grey × on one entry
       deletes that one; `v2/user-notification/count` / `load-notifications` read them `[C]`.
@@ -1068,7 +1072,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `rights_save`, `menu_save`, `menu_delete`, `filter_save`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `bo_delete`, `co_build`, `rights_save`, `menu_save`, `menu_delete`, `filter_save`, `kanban_card_save`, `record_save`, `record_delete`, `record_participants`, `person_invite`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback`, `bo_delete`, `menu_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
@@ -1089,13 +1093,24 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   selective and carries a filter. `menu_save` creates GROUP / BO items (an icon by meaning is required and checked
   against the catalogue — `menu_icons` lists the meaning table or searches the 1153 names; a parent may be an item
   of the same call) and changes an item's icon or views (merged; `false` switches one off; a kanban without the
-  BO's card template comes back as a note — the card is archive-only, §7). Rename, move and the item code are not
+  BO's card template comes back as a note — `kanban_card_save` sets it, §7). Rename, move and the item code are not
   offered (§4: the code is the stand's own transliteration). `menu_delete` deletes a BO / GROUP item you made — a
   GROUP with items inside is refused; built-in items always. `filter_try` counts a BO's records under a filter
   without saving it — `{field, eq}` / `{field, currentUser: true}` / `{native: "CREATED_BY", currentUser: true}`,
   groups `{all | any: […], not?}` nested, each value sent in the shape of §4 «Record filters» (an «пусто»
   condition is refused: the stand ignores it); `filter_save` stores the same filter on a BO menu item and reads back
   the count, `clear: true` removes it. Menu rights: `rights_save {menu}`.
+- **Kanban card, participants, invitation, import conflicts.** `kanban_card_save` sets a BO's card for one
+  `DROPDOWN_SINGLE` by field codes (header / content / footer; a system field by its type, e.g. `CREATED_BY`):
+  the archive route of §7 — export, the key set in the BO's line, a one-BO import (it leaves a log row, a bell
+  entry and can be rolled back), `load-kanban-template` read back; `dryRun` cancels the import after the
+  analysis. `record_participants` reads, adds and removes a record's participants (§3 «Participants»), users by
+  e-mail, name or id. `person_invite` e-mails a user the invitation again (§3) — a REAL letter to the address
+  of that «Пользователи» record: name the person and the address when asking. Conflicts (§5 «Conflicts»):
+  `import_analyze` / `import_report` give one row per unknown org unit — `conflictId`, type, the archive's
+  name and id, `candidates` `[{id, text, removed}]`; `import_apply {resolve: {<conflictId>: <unit id or its
+  name>}}` maps them and is refused while one is open. The apply writes the archive's name onto the chosen
+  unit; `removed: true` = a deleted group the stand still offers — never map onto it.
 - **The record tools make §6a / §6b whole.** `record_save` takes values by field code, fieldId or label in
   plain form (text, number, `true`/`false`, an ISO date, the option label or code, a record id or an array of
   them, `{RUS, KAZ, ENG}` …) and converts each by the §6b value table. `scripts: true` (the default) = the
@@ -1161,7 +1176,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `archive_lint` | the form lint of `MYBPM-IMPORTS.md` §0.10 + what the archive holds | — |
 | `import_analyze` | lint, upload, insert, analyze — nothing written, the import stays ANALYZED | R3 steps 1–4 |
 | `import_report` | status, errors, conflicts, BOs; with `recordId` the per-BO diff | R3; `load-import-bo-record` |
-| `import_apply` ✎ | description, apply, waits, reads the log row back | R3 steps 5–7 |
+| `import_apply` ✎ | description, apply, waits, reads the log row back; `resolve` maps the conflicts first | R3 steps 5–7, §5 «Conflicts» |
 | `import_cancel` ✎ | drops an analysed import; `remove` also deletes its log row | §5 «Import through the API» |
 | `import_rollback` ✎ | the rollback preview; with `confirm` the rollback | §5 «Rollback trap» |
 | `import_log` | the import log and the open import | `load-import-file-records`, `load-import-state` |
@@ -1179,10 +1194,13 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `menu_icons` | the «Icons by meaning» table, or catalogue names holding a piece | §4 «Menu icon catalogue» |
 | `filter_try` | a BO's records under a filter, not saved: the count, the first rows, the built brackets | R6 step 6, §4 «Record filters» |
 | `filter_save` ✎ | a record filter on a BO menu item (or `clear`), read back with the count | R6 step 5 |
+| `kanban_card_save` ✎ | a BO's kanban card for one dropdown, by field codes, through a one-BO archive; read back | §7 «The template» |
 | `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
 | `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
 | `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
 | `record_delete` ✎ | the preview (each record's values); with `confirm` the soft delete | `delete-bo-instance` (trap 46) |
+| `record_participants` ✎ | a record's participants: read, add, remove, read back | §3 «Participants» |
+| `person_invite` ✎ | the invitation e-mailed again to a user (a real letter) | §3 «Выслать приглашение» |
 | `xlsx_template` | the BO's xlsx template on the user's disk; what each column is; the key field | R7 step 1 |
 | `xlsx_import` ✎ | `path` or `rows` → the act (counts, failing rows, warnings); with `importId` + `confirm` the apply, `cancel` drops it | R7 steps 2–5 |
 | `xlsx_export` | the records to an xlsx on the user's disk, read back by field code | R7 step 6 |
@@ -1199,7 +1217,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
-| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R9 kanban card, R10, participants, company settings) | §0U.4 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R10, company settings) | §0U.4 |
 
 ✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
 the model.
@@ -1332,7 +1350,8 @@ admin `[C]`; the admin does not see «Аккаунт».
 **«Выслать приглашение»** sends the invitation again. It is NOT a `BUTTON` widget: it is part of the Email field
 itself (field kind `PERSON_EMAIL`, the `dff-input-email` component), drawn only on an existing record's card
 (never in the create dialog) and only for a user with the right `SEND_invitation` `[C]`. The call:
-`POST /web/v2/invitation/send-to-person` P `{personId:<the record id>}` `[I]`. The rest of `v2/invitation` `[I]`:
+`POST /web/v2/invitation/send-to-person` P `{personId:<the record id>}` → `null` `[C]`. The UI then shows a short-lived toast that the link was sent; that one is toast-only and never kept in the bell `[C]`, so a
+headless call has no trace of it — the person's mailbox is the proof. The rest of `v2/invitation` `[I]`:
 `check-person {invitationId}` and `v2/complete-person` (the invited person sets the password),
 `send-to-person-password` / `v2/send-to-person-password {email, clientType}` (password reset),
 `send-to-admin {companyId}` — the same link on a company card's Email of kind `COMPANY_EMAIL`.
@@ -1366,7 +1385,7 @@ The head / employees / department flags of «Из поля»: not known yet `[U]
   also shows a user their own records); `v2/business-object-instance/members-of-instance` —
   `P {businessObjectId, boInstanceId, draftId:null}` → `[{id, type:"PERSON", name, email, …}]` reads them;
   `add-members-to-instance` (same params, **B** = an array of org units `[{id,type:"PERSON",name}]`, → `""`)
-  and `delete-members-from-instance` change them. A Person field with `needAddToParticipants:true` adds the
+  and `delete-members-from-instance` (same params, the same array of the units to drop, → `""`) change them `[C]`. A Person field with `needAddToParticipants:true` adds the
   person put into it — even through the script-less draft cycle (§6a). Each addition raises a bell event
   «Вас добавили» (`type:"ADD_PARTICIPANTS"`) for the added person (`v2/user-notification/count` →
   `events`). A user named in the field of a record they are NOT a participant of does not see it under
@@ -1752,8 +1771,9 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   exportedOrgUnitId, selectFromIds}, isResolved, sourceMap}` `[C]`. `apply-import` refuses while one is open
   («Conflicts have to be resolved before applying») `[C]`; the UI opens its conflict dialog right after the
   analysis, and cancelling it closes the import. Candidates: `load-select-instance-table` B `{importId,
-  conflictId, searchValue:"", paging:{limit:20, offset:0}}` → the unit BO's registry rows (`records[].instanceId`)
-  `[C]`. Resolve: `resolve-conflicts` P `{importId}` B `[{conflictId, selectInstance:{selectedBoiId}}]` →
+  conflictId, searchValue:"", paging:{limit:20, offset:0}}` → the unit BO's registry rows `{businessObjectId, heads, records:[{instanceId,
+  values:[{fieldId, value, displayValue}], state}], totalHits}` — the shown name is `values[].displayValue`, and DELETED
+  units are listed too, with `state:"REMOVED"` (do not map onto one) `[C]`. Resolve: `resolve-conflicts` P `{importId}` B `[{conflictId, selectInstance:{selectedBoiId}}]` →
   `isResolved:true` `[C]`. There is NO «create» choice — the import never creates a group; and **the apply
   writes the archive's name onto the chosen group** (also onto a group whose id matches) `[C]`
   (`MYBPM-IMPORTS.md` §8).
@@ -4933,7 +4953,9 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
 - For a BO that is ALREADY on the stand: its line comes out of the struct export of R4a, the key is
   added and the line re-imported — **this works** `[C]` (it repairs an archive BO whose kanban and
   map die with «cardTemplate is null», §5l); keep the `kanbanFields` wrapper — without it the import is APPLIED
-  and changes nothing. The other writer is the constructor UI (below).
+  and changes nothing. A constructor-made BO's export already carries
+  `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` (empty); the one-BO re-import updates the BO in place —
+  same id, records kept `[C]`. MCP connected → `kanban_card_save` does this. The other writer is the constructor UI (below).
 
 - The API route is a dead end: `save-kanban-card-template` (body `{header, content, footer,
   *DelFieldIds}`, `*DelFieldIds = "D-<fieldId>"`; an EMPTY body returns 200 and does nothing) writes a

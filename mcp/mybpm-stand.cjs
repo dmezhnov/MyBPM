@@ -557,6 +557,18 @@ function lint(file) {
     throw new Error(`lint-archive.cjs failed: ${String(e.stderr || e.message).slice(0, 500)}`);
   }
 }
+function writeArchive(file, objects) {
+  const d = "data-" + new Date().toISOString().replace(/[:.]/g, "-").replace("Z", "");
+  const enc = new TextEncoder;
+  import_node_fs.mkdirSync(import_node_path.dirname(file), { recursive: true });
+  import_node_fs.writeFileSync(file, zip([
+    { name: `${d}/0000001.mybpm`, data: enc.encode(objects.map((o) => JSON.stringify(o)).join(`
+`) + `
+`) },
+    { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${objects.length}`) }
+  ]));
+  return file;
+}
 var safeName = (n) => {
   if (!/^[\w.-]{1,80}$/.test(n))
     throw new Error("name: letters, digits, `_`, `-`, `.` only");
@@ -584,11 +596,98 @@ async function importReport(s, importId) {
     pageId = page.nextPageId;
   }
   const bos = await s.call("import-structure/load-import-bo-infos", {}, { importId });
-  return { importId, status: data?.status, error: cut(data?.error), conflicts: data?.conflicts, errors, bos };
+  return { importId, status: data?.status, error: cut(data?.error), conflicts: await conflictRows(s, importId, data?.conflicts), errors, bos };
 }
 async function logRow(s, importId) {
   const rows = await s.call("import-structure/load-import-file-records", {}, { paging: { offset: 0, limit: 50 } });
   return (rows ?? []).find((r) => r.id === importId);
+}
+var CF_ = "v2/struct/conflict/";
+async function conflictRows(s, importId, conflicts) {
+  return Promise.all(Object.entries(conflicts ?? {}).map(async ([conflictId, c]) => {
+    const si = c?.selectInstance ?? {};
+    const row = { conflictId, type: si.exportedOrgUnitType, name: si.exportedOrgUnitName, archiveId: si.exportedOrgUnitId, resolved: !!c?.isResolved };
+    if (!row.resolved) {
+      const t = await s.call(CF_ + "load-select-instance-table", {}, { importId, conflictId, searchValue: "", paging: { limit: 50, offset: 0 } }).catch((e) => ({ error: e.message }));
+      row.candidates = t?.error ? `not read: ${t.error}` : (t?.records ?? []).map((r) => clean({
+        id: r.instanceId,
+        text: (r.values ?? []).map((v) => v.displayValue ?? v.value).filter((v) => v != null && v !== "").join(" · "),
+        removed: r.state === "REMOVED" || undefined
+      }));
+    }
+    return row;
+  }));
+}
+async function analyzeFile(s, file) {
+  const state = await s.call("import-structure/load-import-state");
+  if (state?.importExists)
+    throw new Error(`an import is already open: importId ${state.importId} (${state.fileName}) — import_apply or import_cancel it first`);
+  let fileName = import_node_path.basename(file);
+  if (!/\.mybpm(\.zip)?$/.test(fileName))
+    fileName += ".mybpm.zip";
+  const importId = await s.upload("import-structure/import-file", import_node_fs.readFileSync(file), fileName);
+  await waitProcess(s, await s.call("import-structure/insert-file-data", { importId }));
+  await waitProcess(s, await s.call("import-structure/analyze-file-data", { importId }));
+  return importReport(s, importId);
+}
+async function resolveConflicts(s, importId, resolve = {}) {
+  const data = await s.call("import-structure/load-import-data", { importId });
+  const rows = await conflictRows(s, importId, data?.conflicts);
+  const body = [];
+  for (const [conflictId, key] of Object.entries(resolve)) {
+    const r = rows.find((x) => x.conflictId === conflictId);
+    if (!r)
+      throw new Error(`resolve: no conflict ${conflictId} in this import (${rows.map((x) => x.conflictId).join(", ") || "none"})`);
+    if (r.resolved)
+      continue;
+    const cands = Array.isArray(r.candidates) ? r.candidates : [];
+    const lc = String(key).trim().toLowerCase();
+    const hit = cands.find((c) => c.id === key) ?? cands.find((c) => !c.removed && String(c.text ?? "").toLowerCase() === lc) ?? cands.find((c) => !c.removed && String(c.text ?? "").toLowerCase().includes(lc));
+    if (!hit)
+      throw new Error(`resolve ${conflictId} («${r.name}»): no unit «${key}» among ${JSON.stringify(cands).slice(0, 500)}`);
+    body.push({ conflictId, selectInstance: { selectedBoiId: hit.id } });
+  }
+  if (body.length)
+    await s.call(CF_ + "resolve-conflicts", { importId }, body);
+  const open = (await conflictRows(s, importId, (await s.call("import-structure/load-import-data", { importId }))?.conflicts)).filter((r) => !r.resolved);
+  if (open.length)
+    throw new Error(`conflicts still open — the stand refuses the apply until each is mapped onto an existing unit; pass resolve {conflictId: unit id} (the apply WRITES the archive's name onto the chosen unit): ${JSON.stringify(open).slice(0, 1500)}`);
+}
+async function applyImport(s, importId, description, resolve) {
+  await resolveConflicts(s, importId, resolve);
+  await s.call("import-structure/save-import-description", { importId, value: description });
+  const processId = await s.call("v2/process-indicator/pre-create-process");
+  const applied = await s.call("import-structure/apply-import", { importId, processId });
+  const st = await waitProcess(s, processId);
+  const data = await s.call("import-structure/load-import-data", { importId });
+  return { importId, applied, process: { label: st?.label, percentage: st?.percentage }, status: data?.status, error: cut(data?.error), log: await logRow(s, importId) };
+}
+async function exportBos(s, ids, o = {}) {
+  const records = await Promise.all(ids.map(async (id) => {
+    const bo = await s.call("v2/business-objects/load-business-object-by-id", { businessObjectId: id });
+    return {
+      boId: id,
+      boName: bo.name,
+      boCategory: bo.boCategory,
+      hasScript: !!bo.hasScript,
+      isStructureExport: true,
+      isAccessRightsExport: !!o.rights,
+      isScriptsExport: !!o.scripts && !!bo.hasScript
+    };
+  }));
+  const saved = await s.call("struct/load-bo-export-records", { offset: 0, limit: 1000 }) ?? [];
+  const others = { menuItems: await s.call("struct/count-menu-export-records"), globalMethods: await s.call("struct/load-export-is-global-methods") };
+  await s.call("struct/clear-export-records");
+  try {
+    await s.call("struct/save-bo-export-records", {}, records);
+    const processId = await s.call("v2/process-indicator/pre-create-process");
+    const { data, name } = await s.bytes("struct/export-company-structure", { processId });
+    return { data, name, others };
+  } finally {
+    await s.call("struct/clear-export-records");
+    if (saved.length)
+      await s.call("struct/save-bo-export-records", {}, saved);
+  }
 }
 var seenAtStart = new Map;
 var OFFLINE = new Set(["stand_list", "stand_accounts", "stand_remove", "archive_put", "archive_lint", "platform_report"]);
@@ -2037,7 +2136,7 @@ async function boPagesOf(s, bo, views, base) {
     const c = t?.cardTemplate;
     const empty = !c || !["header", "content", "footer"].some((k) => c[k]?.length);
     if (empty)
-      notes.push(`kanban «${v.kanban}»: the BO has no card template for this dropdown — the board opens with blank cards until a template comes in through the archive (UI-API §7)`);
+      notes.push(`kanban «${v.kanban}»: the BO has no card template for this dropdown — the board opens with blank cards until kanban_card_save sets one (UI-API §7)`);
   }
   if (v.calendar && !bo.isCalendarEnabled)
     notes.push("calendar: the BO's own calendar switch (isCalendarEnabled, §5l) is off — the view stays empty until it is on and a FULL_DATE has needShowToCalendar");
@@ -2373,15 +2472,7 @@ var tools = [
           throw new Error(`line ${i + 1} is not JSON: ${e.message}`);
         }
       });
-      const d = "data-" + new Date().toISOString().replace(/[:.]/g, "-").replace("Z", "");
-      const enc = new TextEncoder;
-      const file = import_node_path.join(dir, `${name}.mybpm.zip`);
-      import_node_fs.writeFileSync(file, zip([
-        { name: `${d}/0000001.mybpm`, data: enc.encode(objects.map((o) => JSON.stringify(o)).join(`
-`) + `
-`) },
-        { name: `${d}/metadata.mybpm`, data: enc.encode(`objectCount-${objects.length}`) }
-      ]));
+      const file = writeArchive(import_node_path.join(dir, `${name}.mybpm.zip`), objects);
       return { ...summarize(file), lint: lint(file).out };
     }
   },
@@ -2410,17 +2501,8 @@ var tools = [
         if (!l.ok)
           return { stopped: "the form lint flags defects — fix the archive (or pass skipLint)", lint: l.out };
       }
-      const s = stand(a);
-      const state = await s.call("import-structure/load-import-state");
-      if (state?.importExists)
-        throw new Error(`an import is already open: importId ${state.importId} (${state.fileName}) — import_apply or import_cancel it first`);
-      let fileName = import_node_path.basename(file);
-      if (!/\.mybpm(\.zip)?$/.test(fileName))
-        fileName += ".mybpm.zip";
-      const importId = await s.upload("import-structure/import-file", import_node_fs.readFileSync(file), fileName);
-      await waitProcess(s, await s.call("import-structure/insert-file-data", { importId }));
-      await waitProcess(s, await s.call("import-structure/analyze-file-data", { importId }));
-      return { ...await importReport(s, importId), next: "read errors + bos; then import_apply (asks the user) or import_cancel" };
+      const r = await analyzeFile(stand(a), file);
+      return { ...r, next: r.conflicts.some((c) => !c.resolved) ? "conflicts: show the user each unit and its candidates, ask which existing unit it maps onto (the apply renames that unit to the archive's name); then import_apply with resolve, or import_cancel" : "read errors + bos; then import_apply (asks the user) or import_cancel" };
     }
   },
   {
@@ -2438,26 +2520,17 @@ var tools = [
   {
     name: "import_apply",
     write: true,
-    description: "APPLY an analysed import — the one call that writes the structure to the stand (R3 steps 5-7). Ask the user first and give them the description. Waits for the apply process, then reads the import log back (status APPLIED, canRollback).",
-    props: { importId: { type: "string" }, description: { type: "string", description: "What and why — required by the stand" } },
+    description: "APPLY an analysed import — the one call that writes the structure to the stand (R3 steps 5-7). Ask the user first and give them the description. Conflicts (§5 «Conflicts»: a group or user the archive names in its rights that the stand does not know) must each be mapped onto an EXISTING unit first — `resolve` {conflictId: unit id or its shown text} from the candidates import_analyze listed; the import never creates a unit and the apply WRITES the archive's name onto the chosen one, so ask the user which unit. Any conflict left open refuses. Waits for the apply process, then reads the import log back (status APPLIED, canRollback).",
+    props: {
+      importId: { type: "string" },
+      description: { type: "string", description: "What and why — required by the stand" },
+      resolve: { type: "object", description: "{conflictId: unit id | shown text of a candidate}" }
+    },
     required: ["importId", "description"],
-    run: async (a) => {
-      const s = stand(a), importId = a.importId;
-      await s.call("import-structure/save-import-description", { importId, value: a.description });
-      const processId = await s.call("v2/process-indicator/pre-create-process");
-      const applied = await s.call("import-structure/apply-import", { importId, processId });
-      const st = await waitProcess(s, processId);
-      const data = await s.call("import-structure/load-import-data", { importId });
-      return {
-        importId,
-        applied,
-        process: { label: st?.label, percentage: st?.percentage },
-        status: data?.status,
-        error: cut(data?.error),
-        log: await logRow(s, importId),
-        next: "verify with bo_find / bo_read; then notifications_read + notifications_clear"
-      };
-    }
+    run: async (a) => ({
+      ...await applyImport(stand(a), a.importId, a.description, a.resolve),
+      next: "verify with bo_find / bo_read; then notifications_read + notifications_clear"
+    })
   },
   {
     name: "import_cancel",
@@ -2521,31 +2594,8 @@ var tools = [
         ids.push(await s.call("v2/business-objects/load-bo-id-by-code", { boCode: code }));
       if (!ids.length)
         throw new Error("pass `boIds` or `codes`");
-      const records = await Promise.all(ids.map(async (id) => {
-        const bo = await s.call("v2/business-objects/load-business-object-by-id", { businessObjectId: id });
-        return {
-          boId: id,
-          boName: bo.name,
-          boCategory: bo.boCategory,
-          hasScript: !!bo.hasScript,
-          isStructureExport: true,
-          isAccessRightsExport: !!a.rights,
-          isScriptsExport: !!a.scripts && !!bo.hasScript
-        };
-      }));
-      const saved = await s.call("struct/load-bo-export-records", { offset: 0, limit: 1000 }) ?? [];
-      const others = { menuItems: await s.call("struct/count-menu-export-records"), globalMethods: await s.call("struct/load-export-is-global-methods") };
-      await s.call("struct/clear-export-records");
-      try {
-        await s.call("struct/save-bo-export-records", {}, records);
-        const processId = await s.call("v2/process-indicator/pre-create-process");
-        const { data, name } = await s.bytes("struct/export-company-structure", { processId });
-        return { ...summarize(saveFile(a.out, "exports", name, data)), alsoInBaskets: others };
-      } finally {
-        await s.call("struct/clear-export-records");
-        if (saved.length)
-          await s.call("struct/save-bo-export-records", {}, saved);
-      }
+      const { data, name, others } = await exportBos(s, ids, a);
+      return { ...summarize(saveFile(a.out, "exports", name, data)), alsoInBaskets: others };
     }
   },
   {
@@ -3921,7 +3971,7 @@ var tools = [
   {
     name: "menu_save",
     write: true,
-    description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in «Системные»). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off)}]. A kanban view needs the BO's card template for that dropdown (archive only, §7) — a note says when it is missing. Rename, move and the item's code are not offered (calls unknown). Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
+    description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in «Системные»). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off)}]. A kanban view needs the BO's card template for that dropdown (kanban_card_save) — a note says when it is missing. Rename, move and the item's code are not offered (calls unknown). Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
     props: { create: { type: "array", items: { type: "object" } }, change: { type: "array", items: { type: "object" } }, dryRun: { type: "boolean" } },
     run: async (a) => {
       const s = stand(a);
@@ -4125,6 +4175,151 @@ var tools = [
     }
   },
   {
+    name: "kanban_card_save",
+    write: true,
+    description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. The stand has no call for it — the card comes only through an archive (§7), so the tool exports the BO's structure, sets kanbanCardTemplates.<dropdown> in its BoStructDto (MYBPM-IMPORTS.md 0.5c), imports that one-BO archive and reads load-kanban-template back. Fields: codes (or labels) of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it. The smallest card is one header field — the BO's name. Without it the BO's kanban dies with «cardTemplate is null» once a record exists; a menu item's kanban view needs it too (menu_save). The import leaves a log row and a bell entry; it can be rolled back (import_rollback) while it is the latest. Ask the user first; dryRun:true = export + analysis only, the import is then cancelled.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      dropdown: { type: "string", description: "The DROPDOWN_SINGLE (code / label) whose options are the columns" },
+      header: { type: "array", items: { type: "string" } },
+      content: { type: "array", items: { type: "string" } },
+      footer: { type: "array", items: { type: "string" } },
+      description: { type: "string", description: "The import's description (default: what it sets)" },
+      dryRun: { type: "boolean" }
+    },
+    required: ["dropdown", "header"],
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), fields = bo.formFields ?? [];
+      const dd = fieldBy(fields, a.dropdown);
+      if (dd.type !== "DROPDOWN_SINGLE")
+        throw new Error(`«${a.dropdown}» is ${dd.type || dd.widgetType || dd.nativeFieldType} — a kanban runs on a DROPDOWN_SINGLE (MYBPM-IMPORTS.md 0.5c)`);
+      const { data } = await exportBos(s, [boId]);
+      const main = unzip(Buffer.from(data)).find((e) => /(^|\/)0000001\.mybpm$/.test(e.name));
+      if (!main)
+        throw new Error("the export holds no 0000001.mybpm");
+      const lines = main.data.toString("utf8").split(`
+`).filter((l) => l.trim()).map((l) => JSON.parse(l));
+      const dto = (l) => String(l["@class"] ?? "").split(".").pop();
+      const line = lines.find((l) => dto(l) === "BoStructDto" && l.code === bo.code);
+      if (!line)
+        throw new Error(`the export has no BoStructDto «${bo.code}»: ${lines.map(dto).join(", ")}`);
+      if (!line.dynamicFields?.[dd.code])
+        throw new Error(`the dropdown's code «${dd.code}» is not a key of the exported dynamicFields — set its code first (bo_code_set)`);
+      const natives = Object.keys(line.nativeFields ?? {});
+      const kanbanFields = {};
+      for (const [loc, keys] of [["HEADER", a.header], ["CONTENT", a.content], ["FOOTER", a.footer]]) {
+        (keys ?? []).forEach((key, i) => {
+          let code = line.dynamicFields?.[key] ? key : undefined, archetype = "DYNAMIC";
+          if (!code && natives.includes(String(key).toUpperCase())) {
+            code = String(key).toUpperCase();
+            archetype = "NATIVE";
+          }
+          if (!code) {
+            const f = fields.find((x) => x.fieldId === key || x.label === key);
+            if (f?.code && line.dynamicFields?.[f.code])
+              code = f.code;
+            else if (f?.nativeFieldType && natives.includes(f.nativeFieldType)) {
+              code = f.nativeFieldType;
+              archetype = "NATIVE";
+            }
+          }
+          if (!code)
+            throw new Error(`card field «${key}»: not a field of the BO — dynamic: ${Object.keys(line.dynamicFields ?? {}).join(", ")}; system on the form: ${natives.join(", ") || "none"}`);
+          if (kanbanFields[code])
+            throw new Error(`card field «${key}» is placed twice`);
+          kanbanFields[code] = { cardOrderIndex: i, locationType: loc, archetype };
+        });
+      }
+      if (!Object.keys(kanbanFields).length)
+        throw new Error("header: at least one field (the BO's name field)");
+      const old = line.kanbanCardTemplates?.[dd.code];
+      line.kanbanCardTemplates = { ...line.kanbanCardTemplates ?? {}, [dd.code]: { ...old ?? {}, kanbanFields } };
+      const name = `kanban-${String(bo.code).replace(/[^\w-]/g, "_")}`;
+      const file = writeArchive(import_node_path.join(CACHE, "archives", name, `${name}.mybpm.zip`), lines.filter((l) => l === line || dto(l) === "BoGroupStructDto"));
+      const r = await analyzeFile(s, file);
+      const bad = r.status !== "ANALYZED" || r.errors.length || r.conflicts.length || r.error;
+      if (bad || a.dryRun) {
+        await s.call("import-structure/cancel-import", { importId: r.importId });
+        await s.call("import-structure/remove-import", { importId: r.importId }).catch(() => {});
+        if (bad)
+          return { stopped: "the stand's analysis of the card archive is not clean — nothing written, the import cancelled", file, report: r };
+        return { dryRun: true, file, was: old?.kanbanFields ?? null, kanbanFields, report: { status: r.status, bos: r.bos }, next: "analysis clean, import cancelled; run again without dryRun after the user agreed" };
+      }
+      const applied = await applyImport(s, r.importId, a.description || `Карточка канбана ${bo.code} по ${dd.code}`);
+      const t = await s.call("v2/kanban/load-kanban-template", { boId, fieldId: dd.fieldId }).catch((e) => ({ error: e.message }));
+      const named = (x) => {
+        const id = String(x?.kanbanFieldId ?? x).replace(/^[DN]-/, "");
+        return x?.nativeFieldType ?? nameOf(fields.find((f) => f.fieldId === id) ?? { code: id });
+      };
+      const c = t?.cardTemplate;
+      const card = c ? { header: (c.header ?? []).map(named), content: (c.content ?? []).map(named), footer: (c.footer ?? []).map(named) } : t;
+      return clean({
+        boId,
+        dropdown: dd.code,
+        was: old?.kanbanFields ?? null,
+        set: kanbanFields,
+        card,
+        import: { importId: applied.importId, status: applied.status, error: applied.error, canRollback: applied.log?.canRollback },
+        next: "notifications_read + notifications_clear (the import left «Анализ импорта завершен»)"
+      });
+    }
+  },
+  {
+    name: "record_participants",
+    write: true,
+    description: "The participants («Участники») of one record (R5): read them, add users, remove them. A participant sees the record when the BO's rights grant «Участники» (rights_save participants:true); the author is a participant from the start. Each added user gets a bell event «Вас добавили». Users by e-mail, name or id (persons_find). No add / remove → only the list. Ask the user first before a change.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string", description: "The BO code instead of boId" },
+      id: { type: "string", description: "The record id (records_find)" },
+      add: { type: "array", items: { type: "string" } },
+      remove: { type: "array", items: { type: "string" } }
+    },
+    required: ["id"],
+    run: async (a) => {
+      const s = stand(a), boId = await boById(s, a);
+      const P = { businessObjectId: boId, boInstanceId: a.id, draftId: null };
+      const read = async () => await s.call(BOI_ + "members-of-instance", P) ?? [];
+      const row = (m) => clean({ id: m.id, type: m.type, name: m.name, email: m.email });
+      const lc = (v) => String(v ?? "").trim().toLowerCase();
+      const before = await read(), add = [], del = [];
+      for (const k of a.add ?? []) {
+        const u = await orgUnit(s, "PERSON", k);
+        if (!before.some((m) => m.id === u.id) && !add.some((m) => m.id === u.id))
+          add.push({ id: u.id, type: "PERSON", name: u.name });
+      }
+      for (const k of a.remove ?? []) {
+        const m = before.find((x) => x.id === k || lc(x.email) === lc(k) || lc(x.name) === lc(k));
+        if (!m)
+          throw new Error(`remove «${k}»: not a participant — ${before.map((x) => x.email || x.name).join(", ") || "none"}`);
+        del.push({ id: m.id, type: m.type ?? "PERSON", name: m.name });
+      }
+      if (add.length)
+        await s.call(BOI_ + "add-members-to-instance", P, add);
+      if (del.length)
+        await s.call(BOI_ + "delete-members-from-instance", P, del);
+      const after = add.length || del.length ? await read() : before;
+      const mismatch = [
+        ...add.filter((m) => !after.some((x) => x.id === m.id)).map((m) => `${m.name}: not added`),
+        ...del.filter((m) => after.some((x) => x.id === m.id)).map((m) => `${m.name}: still a participant`)
+      ];
+      return clean({ boId, id: a.id, participants: after.map(row), added: add.map((m) => m.name), removed: del.map((m) => m.name), mismatch });
+    }
+  },
+  {
+    name: "person_invite",
+    write: true,
+    description: "E-mail a user of the company the invitation again — «Выслать приглашение» under a «Пользователи» record's Email (§3, v2/invitation/send-to-person): a link where they set their password and can log in. It sends a REAL e-mail to the address of that record: ask the user first, naming the person and the address. A NEW user created with record_save (scripts:true) is already invited — no need to call this. User by e-mail, name or id (persons_find).",
+    props: { person: { type: "string", description: "E-mail, name or id" } },
+    required: ["person"],
+    run: async (a) => {
+      const s = stand(a), u = await orgUnit(s, "PERSON", a.person);
+      const answer = await s.call("v2/invitation/send-to-person", { personId: u.id });
+      return clean({ personId: u.id, name: u.name, answer, note: "the stand answers null; the UI shows a toast «link sent» that is not kept in the bell — the person's mailbox is the proof" });
+    }
+  },
+  {
     name: "notifications_read",
     description: "The bell (header «События»): counters and the latest entries with ids. `newThisSession` marks what appeared after this server first looked — the ones your work raised (every import leaves «Анализ импорта завершен»).",
     props: { limit: { type: "number" } },
@@ -4172,7 +4367,7 @@ var tools = [
   {
     name: "stand_call",
     write: true,
-    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (kanban card, participants, company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
+    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } },
     required: ["path"],
     run: async (a) => {
@@ -4235,7 +4430,7 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }

@@ -838,6 +838,8 @@ columns), the inner keys are the fields shown on the card:
 - The outer key is the code of a `DROPDOWN_*` field of THIS BO; one entry per field you want to offer as
   a kanban (a BO may carry several). Never a text, number or `BO` field — and a BO with no dropdown keeps
   `"kanbanCardTemplates": {}`.
+- A constructor-made BO exports `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` — an empty card; fill
+  `kanbanFields` in that line and re-import the one-BO archive: the BO is updated in place (same id, records kept) `[C]`.
 - The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
   `archetype: "DYNAMIC"`, or a key of `nativeFields` (the native type itself) with `archetype: "NATIVE"`.
   Ids never appear here, exactly like everywhere else in a `BoStructDto`.
