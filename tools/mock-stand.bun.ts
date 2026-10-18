@@ -35,7 +35,7 @@ function answer(path: string, params: any, body: any): any {
 }
 
 // ── the MCP server's routes: a stateful import, export and bell ──────────────────────────────────────────
-type Bo = { id: string; code: string; name: string; boCategory: string; fields?: any[]; deleted?: boolean; co?: Co; window?: unknown };
+type Bo = { id: string; code: string; name: string; boCategory: string; fields?: any[]; deleted?: boolean; co?: Co; window?: unknown; kanban?: Record<string, any> };
 type CoField = { coFieldId: string; label: string; code: string; links: { boId: string; fieldId: string }[] };
 type Co = { sources: string[]; fields: CoField[] };
 const bos = new Map<string, Bo>(); // id → BO present on the stand
@@ -44,7 +44,8 @@ const byCode = (code: string) => live().find((b) => b.code === code);
 const parts = new Map<string, string>(); // portion-save accumulator id → the JSON so far
 const drafts = new Map<string, { coId: string } & Co>();
 const copyCo = (c: Co): Co => JSON.parse(JSON.stringify(c));
-const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null }>();
+const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null; conflicts?: Record<string, any> }>();
+const members = new Map<string, any[]>(); // boiId → participants (the author from the start)
 let bell: { id: string; header: string; body: string; happenedAt: number }[] = [{ id: "NOTE_OLD_0000001", header: "Старое", body: "не наше", happenedAt: 1 }];
 let seq = 0;
 const nextId = (p: string) => `${p}${String(++seq).padStart(16 - p.length, "0")}`;
@@ -94,7 +95,7 @@ function bosOf(file: Uint8Array): Bo[] {
   const jsonl = unzip(file).find((e) => e.name.endsWith("/0000001.mybpm"));
   return new TextDecoder().decode(jsonl?.data).split("\n").filter(Boolean).map((l) => JSON.parse(l))
     .filter((o) => String(o["@class"]).endsWith(".BoStructDto"))
-    .map((o) => ({ id: nextId("BO"), code: o.code, name: o.name?.rus ?? o.code, boCategory: o.category }));
+    .map((o) => ({ id: nextId("BO"), code: o.code, name: o.name?.rus ?? o.code, boCategory: o.category, kanban: o.kanbanCardTemplates }));
 }
 
 const unb64 = (s: unknown) => Buffer.from(String(s ?? ""), "base64").toString("utf8");
@@ -418,7 +419,19 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return filters.get(m.bracketFilterId);
     }
     case "v2/bracket-filter/save": filters.set(body.id, structuredClone(body)); return "";
-    case "v2/kanban/load-kanban-template": return null;
+    case "v2/kanban/load-kanban-template": {
+      const b = bos.get(params.boId), dd = b?.fields?.find((x) => x.fieldId === params.fieldId), kf = b?.kanban?.[dd?.code]?.kanbanFields ?? {};
+      const at = (loc: string) => Object.entries(kf).filter(([, v]: any) => v.locationType === loc).sort(([, x]: any, [, y]: any) => x.cardOrderIndex - y.cardOrderIndex)
+        .map(([k, v]: any) => v.archetype === "NATIVE" ? { kanbanFieldId: `N-${k}`, fieldKind: "NATIVE", nativeFieldType: k }
+          : { kanbanFieldId: `D-${b!.fields!.find((x) => x.code === k)?.fieldId}`, fieldKind: "DYNAMIC" });
+      return { boId: params.boId, kanbanFieldId: params.fieldId, cardTemplate: { header: at("HEADER"), content: at("CONTENT"), footer: at("FOOTER") }, options: dd?.options ?? [] };
+    }
+    case "v2/business-object-instance/members-of-instance":
+      if (!members.has(params.boInstanceId)) members.set(params.boInstanceId, [{ id: "PERSON0000000001", type: "PERSON", name: "Mock Admin", email: "admin@mock" }]);
+      return members.get(params.boInstanceId);
+    case "v2/business-object-instance/add-members-to-instance": members.get(params.boInstanceId)!.push(...body); return "";
+    case "v2/business-object-instance/delete-members-from-instance": members.set(params.boInstanceId, members.get(params.boInstanceId)!.filter((m) => !body.some((d: any) => d.id === m.id))); return "";
+    case "v2/invitation/send-to-person": return ORG.some((u) => u.id === params.personId) ? "" : fail("no person");
     case "v2/menu-item/load-access-group": return accessOf(`m:${params.menuItemId}`);
     case "v2/menu-item/save-access-group": return saveAccess(`m:${params.menuItemId}`, body);
     case "v2/menu-item/save-menu-item-chosen-access-right": chosen.set(`m:${params.menuItemId}`, params.chosenAccessRight); { const m = NAV.find((x) => x.id === params.menuItemId); if (m) m.chosenAccessRight = params.chosenAccessRight; } return "";
@@ -429,7 +442,10 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "import-structure/import-file": {
       if (openImport()) return fail("an import is already open");
       const id = nextId("IMP");
-      imports.set(id, { status: "UPLOADED", fileName: "upload.mybpm.zip", bos: bosOf(file!), description: null });
+      const got = bosOf(file!); // a BO code Conflict_* stands for an archive naming a group the stand lacks (§5 «Conflicts»)
+      const conflicts = got.some((b) => b.code.startsWith("Conflict_")) ? { CONFLICT00000001: { isResolved: false, selectInstance: { boId: "GROUPBO000000001",
+        exportedOrgUnitType: "GROUP", exportedOrgUnitName: "Архивная группа", exportedOrgUnitId: "GARCHIVE00000001", selectFromIds: [] } } } : {};
+      imports.set(id, { status: "UPLOADED", fileName: "upload.mybpm.zip", bos: got, description: null, conflicts });
       return id;
     }
     case "import-structure/insert-file-data": return nextId("PROC");
@@ -438,7 +454,9 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       bell.unshift({ id: nextId("NOTE"), header: "Анализ импорта завершен", body: "Перейдите к настройкам импорта/экспорта структуры", happenedAt: Date.now() });
       return nextId("PROC");
     }
-    case "import-structure/load-import-data": return { status: imports.get(params.importId)?.status, error: null, conflicts: {} };
+    case "import-structure/load-import-data": return { status: imports.get(params.importId)?.status, error: null, conflicts: imports.get(params.importId)?.conflicts ?? {} };
+    case "v2/struct/conflict/load-select-instance-table": return { records: ORG.filter((u) => u.type === "GROUP").map((u) => ({ instanceId: u.id, values: [{ fieldId: "F_name", value: u.name, displayValue: u.name }], state: "ALL" })) };
+    case "v2/struct/conflict/resolve-conflicts": for (const r of body) imports.get(params.importId)!.conflicts![r.conflictId].isResolved = true; return null;
     case "import-structure/load-import-errors": return { errorRecords: [], nextPageId: null };
     case "import-structure/load-import-bo-infos":
       return imports.get(body.importId)?.bos.map((b) => ({ importRecordId: `REC${b.id}`, name: b.name, boCategory: b.boCategory, structTypes: ["STRUCTURE"] }));
@@ -446,7 +464,8 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "import-structure/save-import-description": imports.get(params.importId)!.description = params.value; return null;
     case "import-structure/apply-import": {
       const i = imports.get(params.importId)!;
-      for (const b of i.bos) bos.set(b.id, b);
+      if (Object.values(i.conflicts ?? {}).some((c: any) => !c.isResolved)) return fail("Conflicts have to be resolved before applying");
+      for (const b of i.bos) { const old = byCode(b.code); if (old) old.kanban = b.kanban; else bos.set(b.id, b); } // the same code updates in place
       i.status = "APPLIED";
       return { type: "APPLIED" };
     }
@@ -627,7 +646,8 @@ function scriptsAndProcesses(route: string, params: any, body: any): any {
 function exportZip(): Uint8Array {
   const enc = new TextEncoder();
   const lines = live().map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
-    code: b.code, category: b.boCategory, name: { rus: b.name }, dynamicFields: {} }));
+    code: b.code, category: b.boCategory, name: { rus: b.name }, nativeFields: {}, kanbanCardTemplates: b.kanban ?? {},
+    dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [x.code, { type: x.type }])) }));
   return zip([{ name: "data-mock/0000001.mybpm", data: enc.encode(lines.join("\n") + "\n") },
     { name: "data-mock/metadata.mybpm", data: enc.encode(`objectCount-${lines.length}`) }]);
 }
