@@ -50,7 +50,7 @@
  *                             scriptSpec), watch(built, {values?, state?, everyMs?, maxMs?})}` over an in-page
  *                             fetch that reads the token from localStorage — the token never leaves the page.
  *
- * Token: Chrome → localStorage.LOCAL_PRIVATE_SwebToken, quotes stripped; pass it as --token-file.
+ * Token: the browser → localStorage.LOCAL_PRIVATE_SwebToken, quotes stripped; pass it as --token-file.
  */
 
 const argv = Bun.argv.slice(2);

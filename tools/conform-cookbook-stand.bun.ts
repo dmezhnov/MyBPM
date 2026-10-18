@@ -22,7 +22,7 @@ for (const m of sec.matchAll(/\/web\/(v2\/[a-z0-9\-/]+|[a-z\-]+\/[a-z0-9\-/]+)/g
 // keys used in payloads
 const keys = new Set([...sec.matchAll(/"([a-zA-Z_][a-zA-Z0-9_]{2,})"\s*:/g)].map((m) => m[1]));
 
-const skipNames = new Set(["mybpm-zip", "claude-in-chrome", "load-state-short"]);  // handled separately
+const skipNames = new Set(["mybpm-zip", "load-state-short"]);  // handled separately
 const bad = [...names].sort().filter((n) => !skipNames.has(n) && !blob.includes(n));
 console.log("endpoint-ish tokens in §0U:", names.size, "| not found in bundle:", JSON.stringify(bad));
 

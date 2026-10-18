@@ -37,7 +37,7 @@
  *   --list-bos                 every BO of the company as «id  category  group  name»
  *   --list-fields "<BO name>"  the source fields as `load-bo-fields-for-co` returns them
  *
- * Token: Chrome → localStorage.LOCAL_PRIVATE_SwebToken, quotes stripped; pass it as --token-file.
+ * Token: the browser → localStorage.LOCAL_PRIVATE_SwebToken, quotes stripped; pass it as --token-file.
  */
 
 const argv = Bun.argv.slice(2);
