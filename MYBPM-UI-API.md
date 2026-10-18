@@ -640,7 +640,9 @@ route below is for items on BOs that are already on the stand, and for access ri
    missing → `POST /web/v2/bracket-filter/save` — `B {"id":…,"boId":…,"brackets":[<root>]}`. A bracket is
    `{id,parentId,parentTreeIds,connectionType,notType,dynamicFilters,nativeFilters,brackets}`.
    Semantics: filters inside ONE bracket are AND-ed; **a bracket's own filters
-   are IGNORED if it has sub-brackets**; siblings combine by the EARLIER sibling's `connectionType`.
+   are IGNORED if it has sub-brackets**; siblings combine by the EARLIER sibling's `connectionType`. The
+   value of each filter type (a local dropdown takes the option ID, a user field takes field REFS) and «пусто
+   does not filter»: §4 «Record filters».
 6. **Verify a filter without saving it**: `POST /web/v2/business-object-instance/load-bo-instance-bracket-table`
    — `B {"boId":…,"dynamicFilters":[],"nativeFilters":[],"search":"","paging":…,"ordering":null,"state":"ALL","brackets":[…]}`
    → read `totalHits`. `state` takes the `BoiState` values `ALL|ARCHIVED|REMOVED|OFFLINE|DEV` (the registry tabs) `[I]`.
@@ -1066,8 +1068,8 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `rights_save`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
-  `import_rollback`, `bo_delete` and `record_delete` without `confirm: true` only return the preview.
+  `bo_delete`, `co_build`, `rights_save`, `menu_save`, `menu_delete`, `filter_save`, `record_save`, `record_delete`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `import_rollback`, `bo_delete`, `menu_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
   `TAB_GROUP` `tabs` for the tabbed fields, the first field the registry column, the record window, then every
@@ -1082,6 +1084,18 @@ written.** This document stays the spec either way: what a tool cannot do is pla
   given: groups and users go in through `orgUnitToAdd` / `orgUnitToDelete` (trap 3), the null author block is
   built (trap 2), users are found by e-mail, name or id, «выборочно» follows, the rights are read back with a
   retry and compared (`mismatch`). A BO's lock stays on once set (R5 step 5).
+- **The menu tools make R6 whole.** `menu_read` gives the whole sidebar tree (every GROUP level): id, code, type,
+  name, icon, BO, parent, order, the views on (`kanban` / `timeline` by the field's CODE), whether the item is
+  selective and carries a filter. `menu_save` creates GROUP / BO items (an icon by meaning is required and checked
+  against the catalogue — `menu_icons` lists the meaning table or searches the 1153 names; a parent may be an item
+  of the same call) and changes an item's icon or views (merged; `false` switches one off; a kanban without the
+  BO's card template comes back as a note — the card is archive-only, §7). Rename, move and the item code are not
+  offered (§4: the code is the stand's own transliteration). `menu_delete` deletes a BO / GROUP item you made — a
+  GROUP with items inside is refused; built-in items always. `filter_try` counts a BO's records under a filter
+  without saving it — `{field, eq}` / `{field, currentUser: true}` / `{native: "CREATED_BY", currentUser: true}`,
+  groups `{all | any: […], not?}` nested, each value sent in the shape of §4 «Record filters» (an «пусто»
+  condition is refused: the stand ignores it); `filter_save` stores the same filter on a BO menu item and reads back
+  the count, `clear: true` removes it. Menu rights: `rights_save {menu}`.
 - **The record tools make §6a / §6b whole.** `record_save` takes values by field code, fieldId or label in
   plain form (text, number, `true`/`false`, an ISO date, the option label or code, a record id or an array of
   them, `{RUS, KAZ, ENG}` …) and converts each by the §6b value table. `scripts: true` (the default) = the
@@ -1159,6 +1173,12 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
 | `rights_read` | who may do what on a BO, a field, a tab or a menu item; `subjects` = groups, users, Person fields | R5; `load-access-group`, `load-field-access-group`, `load-field-tab-access-group`, `v2/menu-item/load-access-group` |
 | `rights_save` ✎ | the actions passed → exactly these subjects (or all / nobody), «выборочно» follows, read back | R5 steps 1–6, R6 rights |
+| `menu_read` | the sidebar tree: items, icons, BOs, views (kanban / timeline by field code), selective, filter | R6; `load-nav-items` per level |
+| `menu_save` ✎ | create GROUP / BO items (icon by meaning, checked), change an item's icon or views | R6 steps 1–3; `create-menu-item`, `save-menu-item-icon-name`, `save-menu-item-bo-pages` |
+| `menu_delete` ✎ | the preview; with `confirm` the delete (a GROUP with items refused) | R6 step 7 |
+| `menu_icons` | the «Icons by meaning» table, or catalogue names holding a piece | §4 «Menu icon catalogue» |
+| `filter_try` | a BO's records under a filter, not saved: the count, the first rows, the built brackets | R6 step 6, §4 «Record filters» |
+| `filter_save` ✎ | a record filter on a BO menu item (or `clear`), read back with the count | R6 step 5 |
 | `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
 | `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
 | `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
@@ -1179,7 +1199,7 @@ written.** This document stays the spec either way: what a tool cannot do is pla
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
-| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R6 menu items, R9 kanban settings, R10, scripts, processes) | §0U.4 |
+| `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R9 kanban card, R10, participants, company settings) | §0U.4 |
 
 ✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
 the model.
@@ -1400,7 +1420,12 @@ Everything in this section is `[C]`.
 
 - `create-menu-item` body = the item itself:
   `{id, type: GROUP|BO, displayName, displayNameMap{RUS}, boId, iconName, orderIndex, isPanel:false,
-  boPages{…}, chosenAccessRight:false, parentId}`; `id` comes from `v2/id-loader/load-portion`.
+  boPages{…}, chosenAccessRight:false, parentId}`; `id` comes from `v2/id-loader/load-portion`. It answers
+  `null` and keeps that id `[C]`; the `boPages` of the body hold — list, kanban and timeline come on at once, no
+  `save-menu-item-bo-pages` after it `[C]`.
+- **The stand makes the item's CODE itself, by transliterating the name** `[C]`: «MCP группа» → `MCP_gruppa`
+  — not rule 12. The API call behind «Изменить код» is not known `[U]`; an item with a code of your own comes
+  through the archive (`MenuItemStructDto.code`, `MYBPM-IMPORTS.md` §5e).
 - **The UI creates only `BO` and `GROUP` items** `[C]`. The client enum also has `ANALYTIC`,
   `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` (the built-in items, one of each per company), `REPORT`
   (operative reports, their own export basket, R4a) and `PROCEDURES` — none is created by hand.
@@ -1427,7 +1452,7 @@ Everything in this section is `[C]`.
   | reports, analytics | `phosphor:chart-bar`, `phosphor:chart-pie`, `phosphor:chart-line-up`, `phosphor:trend-up` |
   | medicine, education, food, hotel | `phosphor:first-aid`, `phosphor:heartbeat`, `phosphor:pill`, `phosphor:graduation-cap`, `phosphor:student`, `phosphor:fork-knife`, `phosphor:bed` |
   | IT, equipment, quality, risks | `phosphor:desktop`, `phosphor:database`, `phosphor:shield-check`, `phosphor:star`, `phosphor:warning` |
-- `delete-menu-item {menuItemId}`; `load-nav-items {parentId}` → the children with their ids
+- `delete-menu-item {menuItemId}` → `null`, the item leaves `load-nav-items` `[C]`; `load-nav-items {parentId}` → the children with their ids
   (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
   archive addresses it (`MYBPM-IMPORTS.md` §5e); the kebab's «Изменить код» edits it.
 - **Menu items also travel in a structure archive** `[C]` — `MenuItemStructDto`, parent /
@@ -1530,8 +1555,9 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 ### Record filters (bracket filters)
 
 - `load-bracket-filter {menuItemId}` **creates** the item's filter record if it is missing
-  (`bracketFilterId` is null until then) → then `v2/bracket-filter/save` body
-  `{id:<filter id>, boId, brackets:[root]}`.
+  (`bracketFilterId` is null until then) and answers it whole: `{id, companyId, boId, fieldId:null, type:"MENU_ITEM",
+  actual, brackets}` `[C]` → then `v2/bracket-filter/save` body `{id:<filter id>, boId, brackets:[root]}` → `null`
+  `[C]`. `brackets: []` clears the conditions — the item lists every record again `[C]`.
 - **An archive can carry the filter instead** `[C]`: a menu line's `bracketFilter.brackets` (maps keyed by
   8-char ids, `fieldCode` instead of `fieldId`) imports whole — `MYBPM-IMPORTS.md` §5e; a dictionary
   dropdown entry there takes `value` = the row's `code`, no `businessObjectId` `[C]`. One BO may have several
@@ -1541,10 +1567,21 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 - **Semantics** `[C]`: filters inside ONE bracket are AND-ed; a bracket's own
   filters are **IGNORED if it has sub-brackets**; siblings combine by the EARLIER sibling's
   `connectionType` — so put the OR on the first sibling.
-- Dynamic filter types: person link `type:"BO"`, `businessObjectId` = the company's `personBoId`,
-  `businessFields` = the Person Фамилия/Имя field ids, `isCurrentUser:true` («текущий пользователь» —
-  works); dropdown `type:"DROPDOWN_SINGLE"`, `businessObjectId` = the dictionary BO, `value` = the option
-  CODE (from `load-dictionary-bo-field-options {boId}`); checkbox `type:"CHECKBOX"`, value `"true"`/`"false"`.
+- A dynamic filter: `{id (8 chars), fieldId, label, type, value, options:[], businessFields:[], businessObjectId:null,
+  chipsMode:false, numberFrom:0, numberTo:0, selectedBois:[], boiIds:[], isCurrentUser:false, isEmptyValue:false,
+  fromFields:[]}`. By type `[C]`:
+  - a user field (`BO` → Person) «текущий пользователь»: `type:"BO"`, `businessObjectId` = the company's
+    `personBoId`, `isCurrentUser:true`, `businessFields` = REFS of the Person Фамилия / Имя fields
+    `{fieldId, orderIndex, label, toShow:true, type}` — bare field ids answer HTTP 400 «Failed to read request»;
+  - a LOCAL dropdown (`DROPDOWN_SINGLE`, options on the field): `value` = the option's ID — its code matches nothing;
+  - a DICTIONARY dropdown: `businessObjectId` = the dictionary BO, `value` = the option CODE (from
+    `load-dictionary-bo-field-options {boId}`);
+  - `CHECKBOX`: `value` `"true"` / `"false"`; `INPUT_TEXT`: `value` = the exact text;
+  - the records the viewer created: `nativeFilters: [{type:"CREATED_BY", isCurrentUser:true}]`;
+  - other types: the value shape is not known `[U]`.
+- **«Пусто» does not filter** `[C]`: `isEmptyValue:true` is IGNORED by `load-bo-instance-bracket-table` —
+  every record matches (BO, INPUT_TEXT, DROPDOWN alike), and its NOT matches none. Whether a SAVED filter honours
+  it `[U]`. A `notType:"NOT"` bracket and an OR between sibling brackets work `[C]`.
 - **Test a filter without saving it**: `v2/business-object-instance/load-bo-instance-bracket-table` body
   `{boId, dynamicFilters:[], nativeFilters:[], search:"", paging, ordering:null, state:"ALL", brackets}`
   → read `totalHits`.
@@ -1982,7 +2019,7 @@ unless marked — re-read the BO (`load-business-object-by-id`) after each write
 | Print forms | rail → «Печатные формы» → panel: list + a draft dialog (add / edit) | §5i «Print forms» `[C]` |
 | Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
 | BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
-| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog, then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
+| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
 | BO groups | group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» | the group lifecycle calls of §5 «Verifying an import» `[C]`; a non-empty group's delete: §12 |
 | Composite attributes | «Связи» view of the composite | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
 
@@ -4903,6 +4940,9 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   store that `load-kanban-template` does NOT read. There is **no API that fills `kanbanCardTemplates`** —
   the constructor UI and the archive are the only writers. `save-business-object-portion` does not carry
   the key either (a full-DTO re-save changes nothing).
+- `v2/kanban/load-kanban-template` answers `{boId, label, kanbanFieldId, cardTemplate:{header, content, footer,
+  *DelFieldIds}, hasRights, options:[{id, label, code, color, orderIndex, hiddenInKanban}]}` `[C]`; no card on the
+  BO for that dropdown = empty `header` / `content` / `footer` arrays (or a null `cardTemplate`).
 - Runtime shape of a template item (what the kanban endpoints return, ids not codes):
   `{type:"KanbanCardFieldDynamic"|"KanbanCardFieldNative", coKanbanFieldId:null,
   kanbanFieldId:"D-<fieldId>"|"N-<NATIVE_TYPE>", label, cardOrderIndex, fieldKind:"DYNAMIC"|"NATIVE",

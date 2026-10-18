@@ -86,6 +86,31 @@ function zip(entries, now = new Date) {
   }
   return out;
 }
+// tools/menu-icons.json
+var menu_icons_default = {
+  chunk: "956.1e3677ced41740f7.js",
+  offPicker: ["phosphor:pause-slash"],
+  tabs: [
+    { tab: 1, key: "arrowIcons", headIcon: "phosphor:recycle", names: ["phosphor:arrow-arc-left", "phosphor:arrow-arc-right", "phosphor:arrow-bend-double-up-left", "phosphor:arrow-bend-double-up-right", "phosphor:arrow-bend-down-left", "phosphor:arrow-bend-down-right", "phosphor:arrow-bend-left-down", "phosphor:arrow-bend-left-up", "phosphor:arrow-bend-right-down", "phosphor:arrow-bend-right-up", "phosphor:arrow-bend-up-left", "phosphor:arrow-bend-up-right", "phosphor:arrow-circle-down", "phosphor:arrow-circle-down-left", "phosphor:arrow-circle-down-right", "phosphor:arrow-circle-left", "phosphor:arrow-circle-right", "phosphor:arrow-circle-up", "phosphor:arrow-circle-up-left", "phosphor:arrow-circle-up-right", "phosphor:arrow-clockwise", "phosphor:arrow-counter-clockwise", "phosphor:arrow-down", "phosphor:arrow-down-left", "phosphor:arrow-down-right", "phosphor:arrow-elbow-down-left", "phosphor:arrow-elbow-down-right", "phosphor:arrow-elbow-left", "phosphor:arrow-elbow-left-down", "phosphor:arrow-elbow-left-up", "phosphor:arrow-elbow-right", "phosphor:arrow-elbow-right-down", "phosphor:arrow-elbow-right-up", "phosphor:arrow-elbow-up-left", "phosphor:arrow-elbow-up-right", "phosphor:arrow-fat-down", "phosphor:arrow-fat-left", "phosphor:arrow-fat-line-down", "phosphor:arrow-fat-line-left", "phosphor:arrow-fat-line-right", "phosphor:arrow-fat-line-up", "phosphor:arrow-fat-lines-down", "phosphor:arrow-fat-lines-left", "phosphor:arrow-fat-lines-right", "phosphor:arrow-fat-lines-up", "phosphor:arrow-fat-right", "phosphor:arrow-fat-up", "phosphor:arrow-left", "phosphor:arrow-line-down", "phosphor:arrow-line-down-left", "phosphor:arrow-line-down-right", "phosphor:arrow-line-left", "phosphor:arrow-line-right", "phosphor:arrow-line-up", "phosphor:arrow-line-up-left", "phosphor:arrow-line-up-right", "phosphor:arrow-right", "phosphor:arrow-square-down", "phosphor:arrow-square-down-left", "phosphor:arrow-square-down-right", "phosphor:arrow-square-in", "phosphor:arrow-square-left", "phosphor:arrow-square-out", "phosphor:arrow-square-right", "phosphor:arrow-square-up", "phosphor:arrow-square-up-left", "phosphor:arrow-square-up-right", "phosphor:arrow-u-down-left", "phosphor:arrow-u-down-right", "phosphor:arrow-u-left-down", "phosphor:arrow-u-left-up", "phosphor:arrow-u-right-down", "phosphor:arrow-u-right-up", "phosphor:arrow-u-up-left", "phosphor:arrow-u-up-right", "phosphor:arrow-up", "phosphor:arrow-up-left", "phosphor:arrow-up-right", "phosphor:arrows-clockwise", "phosphor:arrows-counter-clockwise", "phosphor:arrows-down-up", "phosphor:arrows-horizontal", "phosphor:arrows-in", "phosphor:arrows-in-cardinal", "phosphor:arrows-in-line-horizontal", "phosphor:arrows-in-line-vertical", "phosphor:arrows-in-simple", "phosphor:arrows-left-right", "phosphor:arrows-out", "phosphor:arrows-out-cardinal", "phosphor:arrows-out-line-horizontal", "phosphor:arrows-out-line-vertical", "phosphor:arrows-out-simple", "phosphor:arrows-vertical", "phosphor:caret-circle-double-down", "phosphor:caret-circle-double-left", "phosphor:caret-circle-double-right", "phosphor:caret-circle-double-up", "phosphor:caret-circle-down", "phosphor:caret-circle-left", "phosphor:caret-circle-right", "phosphor:caret-circle-up", "phosphor:caret-double-down", "phosphor:caret-double-left", "phosphor:caret-double-right", "phosphor:caret-double-up", "phosphor:caret-down", "phosphor:caret-left", "phosphor:caret-right", "phosphor:caret-up", "phosphor:recycle"] },
+    { tab: 2, key: "communicationIcons", headIcon: "phosphor:radio", names: ["phosphor:address-book", "phosphor:asterisk", "phosphor:asterisk-simple", "phosphor:at", "phosphor:broadcast", "phosphor:chat", "phosphor:chat-centered", "phosphor:chat-centered-dots", "phosphor:chat-centered-text", "phosphor:chat-circle", "phosphor:chat-circle-dots", "phosphor:chat-circle-text", "phosphor:chat-dots", "phosphor:chat-teardrop", "phosphor:chat-teardrop-dots", "phosphor:chat-teardrop-text", "phosphor:chat-text", "phosphor:chats", "phosphor:chats-circle", "phosphor:chats-teardrop", "phosphor:envelope", "phosphor:envelope-open", "phosphor:envelope-simple", "phosphor:envelope-simple-open", "phosphor:export", "phosphor:hash", "phosphor:hash-straight", "phosphor:megaphone", "phosphor:megaphone-simple", "phosphor:paper-plane", "phosphor:paper-plane-right", "phosphor:paper-plane-tilt", "phosphor:peace", "phosphor:phone", "phosphor:phone-call", "phosphor:phone-disconnect", "phosphor:phone-incoming", "phosphor:phone-outgoing", "phosphor:phone-slash", "phosphor:phone-x", "phosphor:quotes", "phosphor:radio", "phosphor:rss", "phosphor:rss-simple", "phosphor:share", "phosphor:share-network", "phosphor:star", "phosphor:star-half", "phosphor:sticker", "phosphor:thumbs-down", "phosphor:thumbs-up", "phosphor:translate", "phosphor:voicemail", "phosphor:yin-yang"] },
+    { tab: 3, key: "gamesIcons", headIcon: "phosphor:game-controller", names: ["phosphor:alien", "phosphor:baseball", "phosphor:basketball", "phosphor:club", "phosphor:confetti", "phosphor:crown", "phosphor:crown-simple", "phosphor:diamond", "phosphor:dice-five", "phosphor:dice-four", "phosphor:dice-one", "phosphor:dice-six", "phosphor:dice-three", "phosphor:dice-two", "phosphor:finn-the-human", "phosphor:flying-saucer", "phosphor:football", "phosphor:game-controller", "phosphor:ghost", "phosphor:heart", "phosphor:heart-break", "phosphor:heart-straight", "phosphor:heart-straight-break", "phosphor:horse", "phosphor:mask-happy", "phosphor:mask-sad", "phosphor:medal", "phosphor:parachute", "phosphor:pinwheel", "phosphor:poker-chip", "phosphor:puzzle-piece", "phosphor:scroll", "phosphor:skull", "phosphor:soccer-ball", "phosphor:spade", "phosphor:spiral", "phosphor:strategy", "phosphor:sword", "phosphor:target", "phosphor:tennis-ball", "phosphor:trophy", "phosphor:volleyball"] },
+    { tab: 4, key: "mediaIcons", headIcon: "phosphor:microphone-stage", names: ["phosphor:airplay", "phosphor:aperture", "phosphor:article", "phosphor:article-medium", "phosphor:article-ny-times", "phosphor:camera", "phosphor:camera-rotate", "phosphor:camera-slash", "phosphor:closed-captioning", "phosphor:copyleft", "phosphor:copyright", "phosphor:corners-in", "phosphor:corners-out", "phosphor:disc", "phosphor:ear", "phosphor:ear-slash", "phosphor:eject", "phosphor:eject-simple", "phosphor:equalizer", "phosphor:faders", "phosphor:faders-horizontal", "phosphor:fast-forward", "phosphor:fast-forward-circle", "phosphor:film-script", "phosphor:film-slate", "phosphor:film-strip", "phosphor:frame-corners", "phosphor:gif", "phosphor:headphones", "phosphor:headset", "phosphor:image", "phosphor:image-square", "phosphor:microphone", "phosphor:microphone-slash", "phosphor:microphone-stage", "phosphor:music-note", "phosphor:music-note-simple", "phosphor:music-notes", "phosphor:music-notes-plus", "phosphor:music-notes-simple", "phosphor:newspaper", "phosphor:newspaper-clipping", "phosphor:pause", "phosphor:pause-circle", "phosphor:piano-keys", "phosphor:picture-in-picture", "phosphor:play", "phosphor:play-circle", "phosphor:playlist", "phosphor:queue", "phosphor:record", "phosphor:repeat", "phosphor:repeat-once", "phosphor:rewind", "phosphor:rewind-circle", "phosphor:screencast", "phosphor:shuffle", "phosphor:shuffle-angular", "phosphor:shuffle-simple", "phosphor:skip-back", "phosphor:skip-back-circle", "phosphor:skip-forward", "phosphor:skip-forward-circle", "phosphor:sliders", "phosphor:sliders-horizontal", "phosphor:speaker-high", "phosphor:speaker-low", "phosphor:speaker-none", "phosphor:speaker-simple-high", "phosphor:speaker-simple-low", "phosphor:speaker-simple-none", "phosphor:speaker-simple-slash", "phosphor:speaker-simple-x", "phosphor:speaker-slash", "phosphor:speaker-x", "phosphor:stop", "phosphor:stop-circle", "phosphor:television", "phosphor:television-simple", "phosphor:video-camera", "phosphor:video-camera-slash", "phosphor:wave-sawtooth", "phosphor:wave-sine", "phosphor:wave-square", "phosphor:wave-triangle", "phosphor:webcam"] },
+    { tab: 5, key: "securityWarningsIcons", headIcon: "phosphor:lock-key", names: ["phosphor:circle-wavy", "phosphor:circle-wavy-check", "phosphor:circle-wavy-question", "phosphor:circle-wavy-warning", "phosphor:detective", "phosphor:fingerprint", "phosphor:fingerprint-simple", "phosphor:info", "phosphor:key", "phosphor:keyhole", "phosphor:lock", "phosphor:lock-key", "phosphor:lock-key-open", "phosphor:lock-laminated", "phosphor:lock-laminated-open", "phosphor:lock-open", "phosphor:lock-simple", "phosphor:lock-simple-open", "phosphor:password", "phosphor:prohibit", "phosphor:prohibit-inset", "phosphor:question", "phosphor:shield", "phosphor:shield-check", "phosphor:shield-checkered", "phosphor:shield-chevron", "phosphor:shield-plus", "phosphor:shield-slash", "phosphor:shield-star", "phosphor:shield-warning", "phosphor:vault", "phosphor:wall", "phosphor:warning", "phosphor:warning-circle", "phosphor:warning-octagon"] },
+    { tab: 6, key: "brandIcons", headIcon: "phosphor:google-chrome-logo", names: ["phosphor:android-logo", "phosphor:angular-logo", "phosphor:app-store-logo", "phosphor:apple-logo", "phosphor:apple-podcasts-logo", "phosphor:behance-logo", "phosphor:codepen-logo", "phosphor:codesandbox-logo", "phosphor:discord-logo", "phosphor:dribbble-logo", "phosphor:facebook-logo", "phosphor:figma-logo", "phosphor:framer-logo", "phosphor:github-logo", "phosphor:gitlab-logo", "phosphor:gitlab-logo-simple", "phosphor:google-chrome-logo", "phosphor:google-logo", "phosphor:google-photos-logo", "phosphor:google-play-logo", "phosphor:google-podcasts-logo", "phosphor:instagram-logo", "phosphor:linkedin-logo", "phosphor:linux-logo", "phosphor:medium-logo", "phosphor:messenger-logo", "phosphor:microsoft-excel-logo", "phosphor:microsoft-powerpoint-logo", "phosphor:microsoft-teams-logo", "phosphor:microsoft-word-logo", "phosphor:ny-times-logo", "phosphor:phosphor-logo", "phosphor:pinterest-logo", "phosphor:reddit-logo", "phosphor:sketch-logo", "phosphor:slack-logo", "phosphor:snapchat-logo", "phosphor:spotify-logo", "phosphor:square-logo", "phosphor:stack-overflow-logo", "phosphor:stripe-logo", "phosphor:telegram-logo", "phosphor:tiktok-logo", "phosphor:twitch-logo", "phosphor:twitter-logo", "phosphor:whatsapp-logo", "phosphor:windows-logo", "phosphor:youtube-logo"] },
+    { tab: 7, key: "designIcons", headIcon: "phosphor:palette", names: ["phosphor:align-bottom", "phosphor:align-bottom-simple", "phosphor:align-center-horizontal", "phosphor:align-center-horizontal-simple", "phosphor:align-center-vertical", "phosphor:align-center-vertical-simple", "phosphor:align-left", "phosphor:align-left-simple", "phosphor:align-right", "phosphor:align-right-simple", "phosphor:align-top", "phosphor:align-top-simple", "phosphor:bezier-curve", "phosphor:bounding-box", "phosphor:circle", "phosphor:circle-dashed", "phosphor:circle-half", "phosphor:circle-half-tilt", "phosphor:circle-notch", "phosphor:circles-four", "phosphor:circles-three", "phosphor:circles-three-plus", "phosphor:columns", "phosphor:crop", "phosphor:cube", "phosphor:cylinder", "phosphor:diamonds-four", "phosphor:drop-half", "phosphor:drop-half-bottom", "phosphor:eraser", "phosphor:eye", "phosphor:eye-closed", "phosphor:eye-slash", "phosphor:eyedropper", "phosphor:eyedropper-sample", "phosphor:flow-arrow", "phosphor:gradient", "phosphor:grid-four", "phosphor:hexagon", "phosphor:highlighter-circle", "phosphor:intersect", "phosphor:layout", "phosphor:line-segment", "phosphor:line-segments", "phosphor:magic-wand", "phosphor:marker-circle", "phosphor:octagon", "phosphor:paint-brush", "phosphor:paint-brush-broad", "phosphor:paint-brush-household", "phosphor:paint-bucket", "phosphor:paint-roller", "phosphor:palette", "phosphor:pen", "phosphor:pen-nib", "phosphor:pen-nib-straight", "phosphor:pencil", "phosphor:pencil-circle", "phosphor:pencil-line", "phosphor:pencil-simple", "phosphor:pencil-simple-line", "phosphor:perspective", "phosphor:placeholder", "phosphor:polygon", "phosphor:rectangle", "phosphor:rows", "phosphor:ruler", "phosphor:scissors", "phosphor:scribble-loop", "phosphor:selection", "phosphor:selection-all", "phosphor:selection-background", "phosphor:selection-foreground", "phosphor:selection-inverse", "phosphor:selection-plus", "phosphor:selection-slash", "phosphor:sidebar", "phosphor:sidebar-simple", "phosphor:square", "phosphor:square-half", "phosphor:square-half-bottom", "phosphor:squares-four", "phosphor:stack", "phosphor:stack-simple", "phosphor:stamp", "phosphor:swatches", "phosphor:triangle", "phosphor:vignette"] },
+    { tab: 8, key: "healthWellnessIcons", headIcon: "phosphor:heartbeat", names: ["phosphor:activity", "phosphor:bandaids", "phosphor:barbell", "phosphor:bed", "phosphor:brain", "phosphor:face-mask", "phosphor:first-aid", "phosphor:first-aid-kit", "phosphor:flask", "phosphor:hand-soap", "phosphor:heartbeat", "phosphor:lifebuoy", "phosphor:pill", "phosphor:prescription", "phosphor:syringe", "phosphor:test-tube", "phosphor:toilet", "phosphor:toilet-paper"] },
+    { tab: 9, key: "officeEditingIcons", headIcon: "phosphor:paperclip", names: ["phosphor:archive", "phosphor:archive-box", "phosphor:archive-tray", "phosphor:briefcase", "phosphor:briefcase-metal", "phosphor:cards", "phosphor:clipboard", "phosphor:clipboard-text", "phosphor:copy", "phosphor:copy-simple", "phosphor:cursor-text", "phosphor:file", "phosphor:file-arrow-down", "phosphor:file-arrow-up", "phosphor:file-audio", "phosphor:file-cloud", "phosphor:file-code", "phosphor:file-css", "phosphor:file-csv", "phosphor:file-doc", "phosphor:file-dotted", "phosphor:file-html", "phosphor:file-image", "phosphor:file-jpg", "phosphor:file-js", "phosphor:file-jsx", "phosphor:file-lock", "phosphor:file-minus", "phosphor:file-pdf", "phosphor:file-plus", "phosphor:file-png", "phosphor:file-ppt", "phosphor:file-rs", "phosphor:file-search", "phosphor:file-text", "phosphor:file-ts", "phosphor:file-tsx", "phosphor:file-video", "phosphor:file-vue", "phosphor:file-x", "phosphor:file-xls", "phosphor:file-zip", "phosphor:files", "phosphor:floppy-disk", "phosphor:floppy-disk-back", "phosphor:folder", "phosphor:folder-dotted", "phosphor:folder-lock", "phosphor:folder-minus", "phosphor:folder-notch", "phosphor:folder-notch-minus", "phosphor:folder-notch-open", "phosphor:folder-notch-plus", "phosphor:folder-open", "phosphor:folder-plus", "phosphor:folder-simple", "phosphor:folder-simple-dotted", "phosphor:folder-simple-lock", "phosphor:folder-simple-minus", "phosphor:folder-simple-plus", "phosphor:folder-simple-star", "phosphor:folder-simple-user", "phosphor:folder-star", "phosphor:folder-user", "phosphor:folders", "phosphor:funnel", "phosphor:funnel-simple", "phosphor:kanban", "phosphor:list", "phosphor:list-bullets", "phosphor:list-checks", "phosphor:list-dashes", "phosphor:list-numbers", "phosphor:list-plus", "phosphor:note", "phosphor:note-blank", "phosphor:note-pencil", "phosphor:notebook", "phosphor:notepad", "phosphor:paperclip", "phosphor:paperclip-horizontal", "phosphor:presentation", "phosphor:presentation-chart", "phosphor:printer", "phosphor:projector-screen", "phosphor:projector-screen-chart", "phosphor:push-pin", "phosphor:push-pin-simple", "phosphor:push-pin-simple-slash", "phosphor:push-pin-slash", "phosphor:sort-ascending", "phosphor:sort-descending", "phosphor:text-aa", "phosphor:text-align-center", "phosphor:text-align-justify", "phosphor:text-align-left", "phosphor:text-align-right", "phosphor:text-bolder", "phosphor:text-h", "phosphor:text-h-five", "phosphor:text-h-four", "phosphor:text-h-one", "phosphor:text-h-six", "phosphor:text-h-three", "phosphor:text-h-two", "phosphor:text-indent", "phosphor:text-italic", "phosphor:text-outdent", "phosphor:text-strikethrough", "phosphor:text-t", "phosphor:text-underline", "phosphor:textbox", "phosphor:trash", "phosphor:trash-simple", "phosphor:tray"] },
+    { tab: 10, key: "systemDevicesIcons", headIcon: "phosphor:desktop-tower", names: ["phosphor:app-window", "phosphor:backspace", "phosphor:battery-charging", "phosphor:battery-charging-vertical", "phosphor:battery-empty", "phosphor:battery-full", "phosphor:battery-high", "phosphor:battery-low", "phosphor:battery-medium", "phosphor:battery-plus", "phosphor:battery-warning", "phosphor:battery-warning-vertical", "phosphor:bell", "phosphor:bell-ringing", "phosphor:bell-simple", "phosphor:bell-simple-ringing", "phosphor:bell-simple-slash", "phosphor:bell-simple-z", "phosphor:bell-slash", "phosphor:bell-z", "phosphor:bluetooth", "phosphor:bluetooth-connected", "phosphor:bluetooth-slash", "phosphor:bluetooth-x", "phosphor:browser", "phosphor:browsers", "phosphor:cell-signal-full", "phosphor:cell-signal-high", "phosphor:cell-signal-low", "phosphor:cell-signal-medium", "phosphor:cell-signal-none", "phosphor:cell-signal-slash", "phosphor:cell-signal-x", "phosphor:check", "phosphor:check-circle", "phosphor:check-square", "phosphor:check-square-offset", "phosphor:checks", "phosphor:cloud-arrow-down", "phosphor:cloud-arrow-up", "phosphor:cloud-check", "phosphor:cloud-slash", "phosphor:command", "phosphor:computer-tower", "phosphor:cursor", "phosphor:desktop", "phosphor:desktop-tower", "phosphor:device-mobile", "phosphor:device-mobile-camera", "phosphor:device-mobile-speaker", "phosphor:device-tablet", "phosphor:device-tablet-camera", "phosphor:device-tablet-speaker", "phosphor:dots-nine", "phosphor:dots-six", "phosphor:dots-six-vertical", "phosphor:dots-three", "phosphor:dots-three-circle", "phosphor:dots-three-circle-vertical", "phosphor:dots-three-outline", "phosphor:dots-three-outline-vertical", "phosphor:dots-three-vertical", "phosphor:download", "phosphor:download-simple", "phosphor:flashlight", "phosphor:gauge", "phosphor:gear", "phosphor:gear-six", "phosphor:hard-drive", "phosphor:hard-drives", "phosphor:key-return", "phosphor:keyboard", "phosphor:laptop", "phosphor:lightbulb", "phosphor:lightbulb-filament", "phosphor:lightning", "phosphor:lightning-slash", "phosphor:link", "phosphor:link-break", "phosphor:link-simple", "phosphor:link-simple-break", "phosphor:link-simple-horizontal", "phosphor:link-simple-horizontal-break", "phosphor:magnifying-glass", "phosphor:magnifying-glass-minus", "phosphor:magnifying-glass-plus", "phosphor:monitor", "phosphor:monitor-play", "phosphor:mouse", "phosphor:mouse-simple", "phosphor:notification", "phosphor:nut", "phosphor:option", "phosphor:plug", "phosphor:plugs", "phosphor:plugs-connected", "phosphor:power", "phosphor:qr-code", "phosphor:radio-button", "phosphor:scan", "phosphor:sign-in", "phosphor:sign-out", "phosphor:sim-card", "phosphor:spinner", "phosphor:spinner-gap", "phosphor:swap", "phosphor:tabs", "phosphor:toggle-left", "phosphor:toggle-right", "phosphor:upload", "phosphor:upload-simple", "phosphor:vibrate", "phosphor:wifi-high", "phosphor:wifi-low", "phosphor:wifi-medium", "phosphor:wifi-none", "phosphor:wifi-slash", "phosphor:wifi-x", "phosphor:wrench"] },
+    { tab: 11, key: "commerceIcons", headIcon: "phosphor:currency-dollar", names: ["menu-item:001-dollar", "menu-item:001-notebook", "menu-item:002-credit-card", "menu-item:002-price tag", "menu-item:003-auction", "menu-item:003-banknote", "menu-item:004-calculator", "menu-item:004-speech bubble", "menu-item:005-asset management", "menu-item:005-diamond", "menu-item:006-bar graph", "menu-item:006-dollar-symbol", "menu-item:007-coin", "menu-item:007-euro", "menu-item:008-bank", "menu-item:008-bitcoin", "menu-item:009-worker", "menu-item:009-yen", "menu-item:010-partners", "menu-item:010-pound", "menu-item:011-piggy-bank", "menu-item:011-return of investment", "menu-item:012-balance", "menu-item:012-money-bag", "menu-item:013-balance", "menu-item:013-recruitment", "menu-item:014-atm", "menu-item:014-income statement", "menu-item:015-percent", "menu-item:015-startup", "menu-item:016-presentation", "menu-item:016-wallet", "menu-item:017-money-exchange", "menu-item:017-salary", "menu-item:018-briefcase", "menu-item:018-credit card", "menu-item:019-briefcase", "menu-item:019-search", "menu-item:020-contract", "menu-item:020-idea", "menu-item:021-badges", "menu-item:021-pie chart", "menu-item:022-growth", "menu-item:022-presentation", "menu-item:023-money", "menu-item:023-profits", "menu-item:024-oil", "menu-item:024-smartphone", "menu-item:025-building", "menu-item:025-profit", "menu-item:026-moneybox", "menu-item:026-notes", "menu-item:027-finance", "menu-item:027-safebox", "menu-item:028-gold-ingots", "menu-item:028-success", "menu-item:029-euro", "menu-item:029-vision", "menu-item:030-credit-card-1", "menu-item:030-exchange", "menu-item:031-id card", "menu-item:031-target", "menu-item:032-manager", "menu-item:032-planning", "menu-item:033-clipboard", "menu-item:033-pyramid-chart", "menu-item:034-envelope", "menu-item:034-flow chart", "menu-item:035-employee", "menu-item:035-pie-chart", "menu-item:036-bank", "menu-item:036-calculator", "menu-item:037-light-bulb", "menu-item:037-target", "menu-item:038-check", "menu-item:038-deadline", "menu-item:039-digital currency", "menu-item:039-income", "menu-item:040-hierarchical structure", "menu-item:040-point-of-service", "menu-item:041-bar graph", "menu-item:041-currency", "menu-item:042-funnel", "menu-item:042-wallet", "menu-item:043-ipo", "menu-item:043-smartphone", "menu-item:044-analytics", "menu-item:044-certificate", "menu-item:045-businessman", "menu-item:045-ruby", "menu-item:046-atm machine", "menu-item:046-umbrella", "menu-item:047-abacus", "menu-item:047-contract", "menu-item:048-chinese yuan", "menu-item:049-gold bar", "menu-item:049-key", "menu-item:050-security", "menu-item:050-tax", "menu-item:clipboard", "menu-item:office-building", "menu-item:planning", "menu-item:task", "menu-item:to-do-list", "menu-item:to-do", "phosphor:armchair", "phosphor:backpack", "phosphor:bag", "phosphor:bag-simple", "phosphor:balloon", "phosphor:barcode", "phosphor:bathtub", "phosphor:beer-bottle", "phosphor:binoculars", "phosphor:brandy", "phosphor:buildings", "phosphor:cake", "phosphor:cardholder", "phosphor:coat-hanger", "phosphor:coffee", "phosphor:coin", "phosphor:coin-vertical", "phosphor:coins", "phosphor:cookie", "phosphor:cooking-pot", "phosphor:credit-card", "phosphor:currency-btc", "phosphor:currency-circle-dollar", "phosphor:currency-cny", "phosphor:currency-dollar", "phosphor:currency-dollar-simple", "phosphor:currency-eth", "phosphor:currency-eur", "phosphor:currency-gbp", "phosphor:currency-inr", "phosphor:currency-jpy", "phosphor:currency-krw", "phosphor:currency-kzt", "phosphor:currency-ngn", "phosphor:currency-rub", "phosphor:egg", "phosphor:egg-crack", "phosphor:eyeglasses", "phosphor:factory", "phosphor:fork-knife", "phosphor:gift", "phosphor:hamburger", "phosphor:handbag", "phosphor:handbag-simple", "phosphor:knife", "phosphor:ladder", "phosphor:ladder-simple", "phosphor:lamp", "phosphor:martini", "phosphor:money", "phosphor:needle", "phosphor:package", "phosphor:pizza", "phosphor:popcorn", "phosphor:receipt", "phosphor:rug", "phosphor:scales", "phosphor:shopping-bag", "phosphor:shopping-bag-open", "phosphor:shopping-cart", "phosphor:shopping-cart-simple", "phosphor:shower", "phosphor:storefront", "phosphor:sunglasses", "phosphor:t-shirt", "phosphor:tag", "phosphor:tag-chevron", "phosphor:tag-simple", "phosphor:ticket", "phosphor:tote", "phosphor:tote-simple", "phosphor:trademark-registered", "phosphor:wallet", "phosphor:wine"] },
+    { tab: 12, key: "developmentIcons", headIcon: "phosphor:code", names: ["phosphor:brackets-angle", "phosphor:brackets-curly", "phosphor:brackets-round", "phosphor:brackets-square", "phosphor:bug", "phosphor:bug-beetle", "phosphor:bug-droid", "phosphor:code", "phosphor:code-simple", "phosphor:cpu", "phosphor:database", "phosphor:git-branch", "phosphor:git-commit", "phosphor:git-diff", "phosphor:git-fork", "phosphor:git-merge", "phosphor:git-pull-request", "phosphor:magnet", "phosphor:magnet-straight", "phosphor:robot", "phosphor:terminal", "phosphor:terminal-window", "phosphor:tree-structure"] },
+    { tab: 13, key: "mapsTravelIcons", headIcon: "phosphor:map-pin-line", names: ["phosphor:airplane", "phosphor:airplane-in-flight", "phosphor:airplane-landing", "phosphor:airplane-takeoff", "phosphor:airplane-tilt", "phosphor:anchor", "phosphor:anchor-simple", "phosphor:barricade", "phosphor:bicycle", "phosphor:boat", "phosphor:bus", "phosphor:car", "phosphor:car-simple", "phosphor:compass", "phosphor:crosshair", "phosphor:crosshair-simple", "phosphor:door", "phosphor:flag", "phosphor:flag-banner", "phosphor:flag-checkered", "phosphor:gas-pump", "phosphor:globe", "phosphor:globe-hemisphere-east", "phosphor:globe-hemisphere-west", "phosphor:globe-simple", "phosphor:globe-stand", "phosphor:headlights", "phosphor:house", "phosphor:house-line", "phosphor:house-simple", "phosphor:jeep", "phosphor:map-pin", "phosphor:map-pin-line", "phosphor:map-trifold", "phosphor:navigation-arrow", "phosphor:path", "phosphor:police-car", "phosphor:rocket", "phosphor:rocket-launch", "phosphor:signpost", "phosphor:suitcase", "phosphor:suitcase-simple", "phosphor:taxi", "phosphor:traffic-cone", "phosphor:traffic-sign", "phosphor:traffic-signal", "phosphor:train", "phosphor:train-regional", "phosphor:train-simple", "phosphor:truck"] },
+    { tab: 14, key: "peopleIcons", headIcon: "phosphor:person", names: ["phosphor:baby", "phosphor:gender-female", "phosphor:gender-intersex", "phosphor:gender-male", "phosphor:gender-neuter", "phosphor:gender-nonbinary", "phosphor:gender-transgender", "phosphor:hand", "phosphor:hand-eye", "phosphor:hand-fist", "phosphor:hand-grabbing", "phosphor:hand-palm", "phosphor:hand-pointing", "phosphor:hand-waving", "phosphor:hands-clapping", "phosphor:handshake", "phosphor:identification-badge", "phosphor:identification-card", "phosphor:person", "phosphor:person-simple", "phosphor:person-simple-run", "phosphor:person-simple-walk", "phosphor:smiley", "phosphor:smiley-blank", "phosphor:smiley-meh", "phosphor:smiley-nervous", "phosphor:smiley-sad", "phosphor:smiley-sticker", "phosphor:smiley-wink", "phosphor:smiley-x-eyes", "phosphor:user", "phosphor:user-circle", "phosphor:user-circle-gear", "phosphor:user-circle-minus", "phosphor:user-circle-plus", "phosphor:user-focus", "phosphor:user-gear", "phosphor:user-list", "phosphor:user-minus", "phosphor:user-plus", "phosphor:user-rectangle", "phosphor:user-square", "phosphor:user-switch", "phosphor:users", "phosphor:users-four", "phosphor:users-three", "phosphor:wheelchair"] },
+    { tab: 15, key: "timeIcons", headIcon: "phosphor:alarm", names: ["phosphor:alarm", "phosphor:calendar", "phosphor:calendar-blank", "phosphor:calendar-check", "phosphor:calendar-plus", "phosphor:calendar-x", "phosphor:clock", "phosphor:clock-afternoon", "phosphor:clock-clockwise", "phosphor:clock-counter-clockwise", "phosphor:hourglass", "phosphor:hourglass-high", "phosphor:hourglass-low", "phosphor:hourglass-medium", "phosphor:hourglass-simple", "phosphor:hourglass-simple-high", "phosphor:hourglass-simple-low", "phosphor:hourglass-simple-medium", "phosphor:timer", "phosphor:watch"] },
+    { tab: 16, key: "educationIcons", headIcon: "phosphor:graduation-cap", names: ["phosphor:book", "phosphor:book-bookmark", "phosphor:book-open", "phosphor:bookmark", "phosphor:bookmark-simple", "phosphor:bookmarks", "phosphor:bookmarks-simple", "phosphor:books", "phosphor:chalkboard", "phosphor:chalkboard-simple", "phosphor:chalkboard-teacher", "phosphor:exam", "phosphor:graduation-cap", "phosphor:student"] },
+    { tab: 17, key: "mathFinanceIcons", headIcon: "phosphor:calculator", names: ["phosphor:bank", "phosphor:calculator", "phosphor:chart-bar", "phosphor:chart-bar-horizontal", "phosphor:chart-line", "phosphor:chart-line-up", "phosphor:chart-pie", "phosphor:chart-pie-slice", "phosphor:divide", "phosphor:equals", "phosphor:function", "phosphor:graph", "phosphor:infinity", "phosphor:math-operations", "phosphor:minus", "phosphor:minus-circle", "phosphor:number-circle-eight", "phosphor:number-circle-five", "phosphor:number-circle-four", "phosphor:number-circle-nine", "phosphor:number-circle-one", "phosphor:number-circle-seven", "phosphor:number-circle-six", "phosphor:number-circle-three", "phosphor:number-circle-two", "phosphor:number-circle-zero", "phosphor:number-eight", "phosphor:number-five", "phosphor:number-four", "phosphor:number-nine", "phosphor:number-one", "phosphor:number-seven", "phosphor:number-six", "phosphor:number-square-eight", "phosphor:number-square-five", "phosphor:number-square-four", "phosphor:number-square-nine", "phosphor:number-square-one", "phosphor:number-square-seven", "phosphor:number-square-six", "phosphor:number-square-three", "phosphor:number-square-two", "phosphor:number-square-zero", "phosphor:number-three", "phosphor:number-two", "phosphor:number-zero", "phosphor:percent", "phosphor:plus", "phosphor:plus-circle", "phosphor:plus-minus", "phosphor:radical", "phosphor:table", "phosphor:trend-down", "phosphor:trend-up", "phosphor:x", "phosphor:x-circle", "phosphor:x-square"] },
+    { tab: 18, key: "weatherNature", headIcon: "phosphor:bird", names: ["phosphor:atom", "phosphor:bird", "phosphor:butterfly", "phosphor:cactus", "phosphor:campfire", "phosphor:cat", "phosphor:cloud", "phosphor:cloud-fog", "phosphor:cloud-lightning", "phosphor:cloud-moon", "phosphor:cloud-rain", "phosphor:cloud-snow", "phosphor:cloud-sun", "phosphor:dog", "phosphor:drop", "phosphor:fire", "phosphor:fire-simple", "phosphor:fish", "phosphor:fish-simple", "phosphor:flame", "phosphor:flower", "phosphor:flower-lotus", "phosphor:leaf", "phosphor:moon", "phosphor:moon-stars", "phosphor:mountains", "phosphor:paw-print", "phosphor:planet", "phosphor:rainbow", "phosphor:rainbow-cloud", "phosphor:snowflake", "phosphor:sparkle", "phosphor:star-four", "phosphor:sun", "phosphor:sun-dim", "phosphor:sun-horizon", "phosphor:thermometer", "phosphor:thermometer-cold", "phosphor:thermometer-hot", "phosphor:thermometer-simple", "phosphor:tree", "phosphor:tree-evergreen", "phosphor:umbrella", "phosphor:umbrella-simple", "phosphor:waves", "phosphor:wind"] }
+  ]
+};
 
 // mcp/accounts-page.ts
 var PAGE_HTML = `<!doctype html>
@@ -1730,16 +1755,15 @@ async function menuTree(s, parentId = null, depth = 0) {
   }
   return out;
 }
+function menuItem(tree, key) {
+  const hit = tree.filter((m) => m.id === key || m.code === key || m.displayName === key);
+  if (hit.length !== 1)
+    throw new Error(`${hit.length ? "several" : "no"} menu items «${key}» — pass its id: ${tree.map((m) => `${m.displayName} (${m.code ?? m.id})`).join(", ")}`);
+  return hit[0];
+}
 async function rightsAt(s, a) {
   if (a.menuItemId || a.menu) {
-    let id = a.menuItemId;
-    if (!id) {
-      const all = await menuTree(s);
-      const hit = all.filter((m) => m.code === a.menu || m.id === a.menu || m.displayName === a.menu);
-      if (hit.length !== 1)
-        throw new Error(`${hit.length ? "several" : "no"} menu items «${a.menu}» — pass menuItemId: ${all.map((m) => `${m.displayName} (${m.code ?? m.id})`).join(", ")}`);
-      id = hit[0].id;
-    }
+    const id = a.menuItemId ?? menuItem(await menuTree(s), a.menu).id;
     return {
       what: `menu item ${id}`,
       fields: [],
@@ -1947,6 +1971,222 @@ async function rightsSave(s, at, set, dryRun = false) {
     rights: Object.fromEntries(at.actions.map((k) => [k, rightsOf(after[k], at.fields)])),
     mismatch
   };
+}
+var ICON_NAMES = new Set([...menu_icons_default.tabs.flatMap((t) => t.names), ...menu_icons_default.offPicker ?? []]);
+var ICONS_BY_MEANING = [
+  ["people, clients, contacts, staff", ["users", "user", "user-circle", "address-book", "identification-card", "handshake"]],
+  ["vehicles, transport, delivery", ["car", "truck", "bus", "airplane", "gas-pump"]],
+  ["work, service, repair, tasks", ["wrench", "gear", "clipboard-text", "list-checks", "kanban", "note-pencil"]],
+  ["money, payments, invoices", ["money", "wallet", "credit-card", "receipt", "coins", "currency-rub", "bank", "calculator"]],
+  ["goods, stock, purchases, suppliers", ["package", "shopping-cart", "storefront", "archive-box", "barcode", "tag", "factory"]],
+  ["documents, contracts, folders", ["file-text", "files", "folder", "folder-open", "briefcase", "notebook"]],
+  ["dictionaries, catalogues", ["book", "books", "list-bullets"]],
+  ["schedule, appointments, time", ["calendar", "calendar-check", "clock", "timer"]],
+  ["places, branches, objects", ["house", "buildings", "map-pin", "globe"]],
+  ["calls, mail, chats, campaigns", ["phone", "envelope", "chat", "megaphone"]],
+  ["reports, analytics", ["chart-bar", "chart-pie", "chart-line-up", "trend-up"]],
+  ["medicine, education, food, hotel", ["first-aid", "heartbeat", "pill", "graduation-cap", "student", "fork-knife", "bed"]],
+  ["IT, equipment, quality, risks", ["desktop", "database", "shield-check", "star", "warning"]]
+].map(([m, n]) => [m, n.map((x) => `phosphor:${x}`)]);
+function iconOf(name) {
+  const n = /:/.test(name) ? name : `phosphor:${name}`;
+  if (!ICON_NAMES.has(n))
+    throw new Error(`«${name}» is not a sidebar icon (the stand would store it and draw a blank) — pick one with menu_icons`);
+  return n;
+}
+var VIEWS = ["list", "kanban", "calendar", "timeline", "map", "grouping"];
+var up = (k) => k[0].toUpperCase() + k.slice(1);
+function viewsOf(p, fields = []) {
+  if (!p)
+    return;
+  const code = (id) => {
+    const f = fields.find((x) => x.fieldId === id);
+    return f ? nameOf(f) : id;
+  };
+  return Object.fromEntries(VIEWS.filter((k) => p[`is${up(k)}Enabled`]).map((k) => [k, k === "kanban" && p.kanbanFieldId ? code(p.kanbanFieldId) : k === "timeline" && p.timelineFieldId ? code(p.timelineFieldId) : true]));
+}
+async function boPagesOf(s, bo, views, base) {
+  const v = { ...viewsOf(base, bo.formFields) ?? {}, ...views ?? (base ? {} : { list: true }) };
+  if (v.grouping)
+    throw new Error("the grouping view is dead on the server (UI-API §4) — leave it off");
+  const notes = [];
+  const pick = (k, types) => {
+    if (!v[k])
+      return null;
+    const fields = (bo.formFields ?? []).filter((f) => types.includes(f.type));
+    if (v[k] === true) {
+      if (fields.length !== 1)
+        throw new Error(`views.${k}: pass the field code — ${fields.length ? `several ${types.join(" / ")} fields: ${fields.map(nameOf).join(", ")}` : `the BO has no ${types.join(" / ")} field`}`);
+      return fields[0].fieldId;
+    }
+    const f = fieldBy(bo.formFields ?? [], v[k]);
+    if (!types.includes(f.type))
+      throw new Error(`views.${k}: «${v[k]}» is ${f.type}, the ${k} needs ${types.join(" / ")}`);
+    return f.fieldId;
+  };
+  const pages = { kanbanFieldId: pick("kanban", ["DROPDOWN_SINGLE"]), timelineFieldId: pick("timeline", ["PERIOD", "PERIOD_TIME"]) };
+  let n = 0;
+  for (const k of VIEWS) {
+    pages[`is${up(k)}Enabled`] = !!v[k];
+    pages[`${k}Index`] = v[k] ? ++n : 0;
+  }
+  if (!n)
+    throw new Error("views: switch at least one view on (list, kanban, calendar, timeline, map)");
+  if (pages.kanbanFieldId) {
+    const t = await s.call("v2/kanban/load-kanban-template", { boId: bo.id, fieldId: pages.kanbanFieldId }).catch(() => null);
+    const c = t?.cardTemplate;
+    const empty = !c || !["header", "content", "footer"].some((k) => c[k]?.length);
+    if (empty)
+      notes.push(`kanban «${v.kanban}»: the BO has no card template for this dropdown — the board opens with blank cards until a template comes in through the archive (UI-API §7)`);
+  }
+  if (v.calendar && !bo.isCalendarEnabled)
+    notes.push("calendar: the BO's own calendar switch (isCalendarEnabled, §5l) is off — the view stays empty until it is on and a FULL_DATE has needShowToCalendar");
+  if (v.map && !bo.isMapEnabled)
+    notes.push("map: the BO's own map switch (isMapEnabled, §5l) is off");
+  return { pages, notes };
+}
+var pagesKey = (p) => JSON.stringify(VIEWS.flatMap((k) => [p?.[`is${up(k)}Enabled`] ?? false, p?.[`${k}Index`] ?? 0]).concat(p?.kanbanFieldId ?? null, p?.timelineFieldId ?? null));
+var menuRow = (m, fields) => clean({
+  id: m.id,
+  code: m.code,
+  type: m.type,
+  name: m.displayName,
+  icon: m.iconName,
+  boId: m.boId,
+  parentId: m.parentId,
+  order: m.orderIndex,
+  depth: m.depth,
+  views: viewsOf(m.boPages, fields),
+  selectiveRights: m.chosenAccessRight || undefined,
+  filter: m.bracketFilterId ? true : undefined,
+  removed: m.isRemoved || undefined
+});
+async function menuRows(s, items) {
+  const fields = new Map;
+  for (const m of items)
+    if (m.boId && (m.boPages?.kanbanFieldId || m.boPages?.timelineFieldId) && !fields.has(m.boId))
+      fields.set(m.boId, (await loadBo(s, m.boId).catch(() => ({}))).formFields ?? []);
+  return items.map((m) => menuRow(m, fields.get(m.boId)));
+}
+var menuBranch = (tree, id) => [tree.find((m) => m.id === id), ...tree.filter((m) => m.parentId === id).flatMap((c) => menuBranch(tree, c.id))].filter(Boolean);
+var id8 = () => newId().slice(0, 8);
+var isGroup = (n) => Array.isArray(n?.all) || Array.isArray(n?.any);
+async function bracketsOf(s, bo, spec) {
+  const notes = [], fields = valueFields(bo);
+  let person;
+  const personInfo = async () => {
+    if (person)
+      return person;
+    const boId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" });
+    const pf = ((await loadBo(s, boId)).formFields ?? []).filter((f) => /^(Фамилия|Имя)$/i.test(f.label ?? "") || /^(surname|last_?name|name|first_?name)$/i.test(f.code ?? ""));
+    if (!pf.length)
+      notes.push("the Person BO has no Фамилия / Имя field: businessFields left empty [U]");
+    return person = { boId, fields: pf.map((f, i) => ({ fieldId: f.fieldId, orderIndex: i, label: f.label, toShow: true, type: f.type })) };
+  };
+  const cond = async (c) => {
+    if (c.native) {
+      if (!c.currentUser)
+        throw new Error(`a system-field condition takes {native: "CREATED_BY", currentUser: true} only — got ${JSON.stringify(c)}`);
+      return { native: { type: c.native, isCurrentUser: true } };
+    }
+    if (!c.field)
+      throw new Error(`a condition needs field (or native): ${JSON.stringify(c)}`);
+    const f = fieldBy(fields, c.field);
+    const item = {
+      id: id8(),
+      fieldId: f.fieldId,
+      label: f.label,
+      type: f.type,
+      value: null,
+      options: [],
+      businessFields: [],
+      businessObjectId: null,
+      chipsMode: false,
+      numberTo: 0,
+      numberFrom: 0,
+      selectedBois: [],
+      boiIds: [],
+      isCurrentUser: false,
+      isEmptyValue: false,
+      fromFields: []
+    };
+    if (c.empty)
+      throw new Error("an «empty» condition is not offered: the bracket table ignores isEmptyValue (every record matches, any field type)");
+    if (c.currentUser) {
+      const p = await personInfo();
+      if (f.type !== "BO" || f.refBoId !== p.boId)
+        throw new Error(`currentUser needs a user field (BO → Person), «${nameOf(f)}» is ${f.type}${f.refBoId ? ` → ${f.refBoId}` : ""}`);
+      Object.assign(item, { businessObjectId: p.boId, businessFields: p.fields, isCurrentUser: true });
+    } else if (c.eq === undefined)
+      throw new Error(`condition on «${nameOf(f)}»: pass eq, currentUser or empty`);
+    else if (f.type === "DROPDOWN_SINGLE" || f.type === "RADIO_BUTTON_GROUP") {
+      if (f.optionSource === "FROM_BO")
+        Object.assign(item, { value: String(c.eq), businessObjectId: f.refBoId });
+      else {
+        const w = String(c.eq).trim().toLowerCase(), opts = f.options ?? [];
+        const o = opts.find((x) => x.id === c.eq || x.code?.toLowerCase() === w) ?? opts.find((x) => String(x.label).toLowerCase() === w);
+        if (!o)
+          throw new Error(`«${c.eq}» is not an option of «${nameOf(f)}»: ${opts.map((x) => x.label + (x.code ? ` (${x.code})` : "")).join(", ")}`);
+        item.value = o.id;
+      }
+    } else if (f.type === "CHECKBOX")
+      item.value = String(c.eq === true || /^(true|да|yes|1)$/i.test(String(c.eq)));
+    else if (["INPUT_TEXT", "TEXTAREA"].includes(f.type))
+      item.value = String(c.eq);
+    else {
+      item.value = Array.isArray(c.eq) ? undefined : String(c.eq);
+      if (Array.isArray(c.eq))
+        item.boiIds = c.eq;
+      notes.push(`«${nameOf(f)}» (${f.type}): the value shape of this type in a filter is not checked on a stand [U] — compare the count with filter_try before saving`);
+    }
+    return { dynamic: item };
+  };
+  const plain = (n) => !isGroup(n) && !n.not;
+  const build = async (n, parentId, tree) => {
+    const b = { id: id8(), parentId, parentTreeIds: tree, connectionType: "AND", notType: n.not ? "NOT" : "DEFAULT", dynamicFilters: [], nativeFilters: [], brackets: [] };
+    const kids = isGroup(n) ? n.all ?? n.any : [n];
+    if (!kids.length)
+      throw new Error("an empty all / any group");
+    if (!isGroup(n) || kids.every(plain) && (n.all || kids.length === 1)) {
+      for (const k of kids) {
+        const c = await cond(k);
+        if (c.dynamic)
+          b.dynamicFilters.push(c.dynamic);
+        else
+          b.nativeFilters.push(c.native);
+      }
+    } else {
+      for (const k of kids) {
+        const sub = await build(k, b.id, [...tree, b.id]);
+        sub.connectionType = n.any ? "OR" : "AND";
+        b.brackets.push(sub);
+      }
+    }
+    return b;
+  };
+  if (!spec || typeof spec !== "object")
+    throw new Error("pass `filter`: {field, eq} | {all: […]} | {any: […]}");
+  return { root: await build(spec, "", []), notes };
+}
+async function bracketTable(s, boId, brackets, limit = 5) {
+  const t = await esRetry(s).call(BOI_ + "load-bo-instance-bracket-table", {}, {
+    boId,
+    dynamicFilters: [],
+    nativeFilters: [],
+    search: "",
+    paging: { offset: 0, limit },
+    ordering: { archetype: "NATIVE", fieldId: "CREATED_AT", state: "DESC" },
+    state: "ALL",
+    brackets
+  });
+  const heads = t?.heads ?? [];
+  return { total: t?.totalHits, records: (t?.records ?? []).map((r) => ({
+    id: r.instanceId,
+    values: Object.fromEntries((r.values ?? []).map((v) => [
+      v.fieldCode || heads.find((h) => h.fieldId === v.fieldId)?.name || v.fieldId,
+      v.displayValue === undefined || v.displayValue === v.value ? v.value : v.displayValue
+    ]))
+  })) };
 }
 var tools = [
   {
@@ -3669,6 +3909,222 @@ var tools = [
     }
   },
   {
+    name: "menu_read",
+    description: 'The sidebar menu (R6, §4) as a tree, every level (load-nav-items per GROUP): per item id, code, type (GROUP, BO, built-in kinds), name, icon, the BO it opens, parentId, order, depth, the views switched on ({list: true, kanban: "<dropdown code>", calendar, timeline, map}), selectiveRights (rights_read menu:<id> shows who sees it), filter (it carries a record filter). `under` = only the branch of one item (id, code or name).',
+    props: { under: { type: "string" } },
+    run: async (a) => {
+      const s = stand(a), tree = await menuTree(s);
+      const items = a.under ? menuBranch(tree, menuItem(tree, a.under).id) : tree;
+      return { items: await menuRows(s, items) };
+    }
+  },
+  {
+    name: "menu_save",
+    write: true,
+    description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in «Системные»). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off)}]. A kanban view needs the BO's card template for that dropdown (archive only, §7) — a note says when it is missing. Rename, move and the item's code are not offered (calls unknown). Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
+    props: { create: { type: "array", items: { type: "object" } }, change: { type: "array", items: { type: "object" } }, dryRun: { type: "boolean" } },
+    run: async (a) => {
+      const s = stand(a);
+      if (!a.create?.length && !a.change?.length)
+        throw new Error("pass create and / or change");
+      let tree = await menuTree(s);
+      const keys = new Map, out = { created: [], changed: [], notes: [] }, bodies = [];
+      const bos = new Map;
+      const boOf = async (k) => {
+        if (!bos.has(k))
+          bos.set(k, await loadBo(s, await boById(s, { code: k }).catch((e) => {
+            if (ID16.test(k))
+              return k;
+            throw e;
+          })));
+        return bos.get(k);
+      };
+      const ids = a.create?.length ? await freshIds(s, a.create.length) : [];
+      for (const [i, c] of (a.create ?? []).entries()) {
+        const type = c.type ?? (c.bo ? "BO" : undefined);
+        if (type !== "GROUP" && type !== "BO")
+          throw new Error(`create[${i}]: type GROUP or BO (got ${c.type ?? "none"})`);
+        if (!c.name)
+          throw new Error(`create[${i}]: name is required`);
+        if (!c.icon)
+          throw new Error(`create[${i}] «${c.name}»: icon is required — choose one by meaning (menu_icons)`);
+        const iconName = iconOf(c.icon);
+        const parentId = !c.parent ? null : keys.get(c.parent) ?? menuItem(tree, c.parent).id;
+        const parent = parentId && tree.find((m) => m.id === parentId);
+        if (parent && parent.type !== "GROUP")
+          throw new Error(`create[${i}]: the parent «${parent.displayName}» is a ${parent.type}, not a GROUP`);
+        let boId = null, boPages = null;
+        if (type === "BO") {
+          if (!c.bo)
+            throw new Error(`create[${i}] «${c.name}»: bo (id or code) is required for a BO item`);
+          const bo = await boOf(c.bo), p = await boPagesOf(s, bo, c.views);
+          boId = bo.id;
+          boPages = p.pages;
+          out.notes.push(...p.notes.map((n) => `«${c.name}»: ${n}`));
+        }
+        const sib = [...tree, ...bodies].filter((m) => (m.parentId ?? null) === parentId).map((m) => m.orderIndex ?? 0);
+        const orderIndex = c.order ?? (parentId ? sib.length ? Math.max(...sib) + 1e4 : 1e4 : Math.max(1e5, sib.length ? Math.max(...sib) + 1e4 : 0));
+        const body = {
+          id: ids[i],
+          type,
+          displayName: c.name,
+          displayNameMap: { RUS: c.name },
+          boId,
+          iconName,
+          orderIndex,
+          isPanel: false,
+          boPages,
+          chosenAccessRight: false,
+          parentId
+        };
+        bodies.push(body);
+        if (c.key)
+          keys.set(c.key, body.id);
+      }
+      const changes = [];
+      for (const [i, c] of (a.change ?? []).entries()) {
+        if (!c.item)
+          throw new Error(`change[${i}]: item (id, code or name) is required`);
+        const m = menuItem(tree, c.item), ch = { id: m.id, name: m.displayName };
+        if (c.icon)
+          ch.iconName = iconOf(c.icon);
+        if (c.views) {
+          if (m.type !== "BO" || !m.boId)
+            throw new Error(`change[${i}]: «${m.displayName}» is a ${m.type} — only a BO item has views`);
+          const p = await boPagesOf(s, await boOf(m.boId), c.views, m.boPages);
+          ch.boPages = p.pages;
+          out.notes.push(...p.notes.map((n) => `«${m.displayName}»: ${n}`));
+        }
+        if (!ch.iconName && !ch.boPages)
+          throw new Error(`change[${i}]: pass icon and / or views`);
+        changes.push(ch);
+      }
+      if (a.dryRun)
+        return clean({ dryRun: true, create: bodies, change: changes, notes: out.notes });
+      const want = [];
+      for (const b of bodies) {
+        await s.call(MENU_ + "create-menu-item", {}, b);
+        tree = await menuTree(s);
+        const got = tree.find((m) => m.id === b.id) ?? tree.find((m) => m.displayName === b.displayName && (m.parentId ?? null) === b.parentId);
+        if (!got) {
+          out.notes.push(`«${b.displayName}» is not in the menu after create-menu-item — menu_read`);
+          continue;
+        }
+        if (got.id !== b.id) {
+          for (const [k, v] of keys)
+            if (v === b.id)
+              keys.set(k, got.id);
+        }
+        if (got.iconName !== b.iconName)
+          await s.call(MENU_ + "save-menu-item-icon-name", { menuItemId: got.id, iconName: b.iconName });
+        if (b.boPages && pagesKey(got.boPages) !== pagesKey(b.boPages))
+          await s.call(MENU_ + "save-menu-item-bo-pages", { menuItemId: got.id }, b.boPages);
+        out.created.push(got.id);
+        want.push({ id: got.id, iconName: b.iconName, boPages: b.boPages });
+      }
+      for (const ch of changes) {
+        if (ch.iconName)
+          await s.call(MENU_ + "save-menu-item-icon-name", { menuItemId: ch.id, iconName: ch.iconName });
+        if (ch.boPages)
+          await s.call(MENU_ + "save-menu-item-bo-pages", { menuItemId: ch.id }, ch.boPages);
+        out.changed.push(ch.id);
+        want.push(ch);
+      }
+      tree = await menuTree(s);
+      const rows = [...out.created, ...out.changed].map((id) => tree.find((m) => m.id === id)).filter(Boolean);
+      const mismatch = want.map((w) => {
+        const m = tree.find((x) => x.id === w.id);
+        return !m ? { id: w.id, missing: true } : [w.iconName && m.iconName !== w.iconName && "icon", w.boPages && pagesKey(m.boPages) !== pagesKey(w.boPages) && "views"].filter(Boolean).length ? { id: m.id, icon: m.iconName, views: viewsOf(m.boPages) } : null;
+      }).filter(Boolean);
+      return clean({ items: await menuRows(s, rows), keys: Object.fromEntries(keys), mismatch, notes: out.notes });
+    }
+  },
+  {
+    name: "menu_delete",
+    write: true,
+    description: "Delete a sidebar menu item you made (a BO or GROUP item; built-in items are refused). Without `confirm` only the preview: the item and what is under it. A GROUP with items inside is refused — delete those first (whether the stand cascades is unknown). With `confirm: true` — after the user agreed — delete-menu-item, then the menu is read back. The BO and its records are not touched.",
+    props: { item: { type: "string", description: "id, code or name" }, confirm: { type: "boolean" } },
+    required: ["item"],
+    run: async (a) => {
+      const s = stand(a), tree = await menuTree(s), m = menuItem(tree, a.item), branch = menuBranch(tree, m.id), [row] = await menuRows(s, [m]);
+      if (m.type !== "BO" && m.type !== "GROUP")
+        throw new Error(`«${m.displayName}» is a built-in ${m.type} item — refused`);
+      if (branch.length > 1)
+        throw new Error(`«${m.displayName}» holds ${branch.length - 1} items — refused; delete them first: ${branch.slice(1).map((x) => `${x.displayName} (${x.id})`).join(", ")}`);
+      if (!a.confirm)
+        return { preview: row, note: "nothing deleted — call again with confirm: true after the user agreed" };
+      await s.call(MENU_ + "delete-menu-item", { menuItemId: m.id });
+      const left = (await menuTree(s)).find((x) => x.id === m.id && !x.isRemoved);
+      return clean({ deleted: !left, item: row, note: left ? "the item is still in the menu — menu_read" : undefined });
+    }
+  },
+  {
+    name: "menu_icons",
+    description: "Sidebar icon names (UI-API §4): no `query` → the «Icons by meaning» table; `query` → the catalogue names (1153, phosphor:* and menu-item:*) holding that piece, plus the meaning rows it matches. Every item gets an icon by its meaning, unasked; a name off the catalogue draws a blank.",
+    props: { query: { type: "string", description: "A piece of a name (English: «car», «user») or of a meaning («money»)" } },
+    run: async (a) => {
+      const q = String(a.query ?? "").trim().toLowerCase();
+      const meaning = ICONS_BY_MEANING.filter(([m, n]) => !q || m.includes(q) || n.some((x) => x.includes(q))).map(([m, n]) => ({ meaning: m, icons: n }));
+      if (!q)
+        return { byMeaning: meaning, catalogue: ICON_NAMES.size };
+      const names = [...ICON_NAMES].filter((n) => n.toLowerCase().includes(q));
+      return clean({ byMeaning: meaning, names: names.slice(0, 150), more: names.length > 150 ? names.length - 150 : undefined });
+    }
+  },
+  {
+    name: "filter_try",
+    description: "Count a BO's records under a record filter WITHOUT saving it (load-bo-instance-bracket-table with brackets, §4 «Record filters»): the total and the first rows (registry columns). `filter` = a condition {field (code / label), eq | currentUser: true (a user field = the viewer), not?} or {native: \"CREATED_BY\", currentUser: true} (records the viewer created), or a group {all: […]} / {any: […]} with not?, nested freely. eq: a dropdown's option label or code (sent as the option id; a dictionary dropdown: the dictionary record's code), CHECKBOX true / false, a text field its exact text; other types are [U]. «Is empty» is not offered: the stand ignores it here (a note says so — check the count). `brackets` = the raw root bracket list instead. Returns the built brackets too: filter_save stores the same.",
+    props: {
+      boId: { type: "string" },
+      code: { type: "string" },
+      filter: { type: "object" },
+      brackets: { type: "array", items: { type: "object" } },
+      limit: { type: "number", description: "Rows returned, default 5" }
+    },
+    run: async (a) => {
+      const s = stand(a), bo = await loadBo(s, await boById(s, a));
+      const built = a.brackets ? { root: null, notes: [] } : await bracketsOf(s, bo, a.filter);
+      const brackets = a.brackets ?? [built.root];
+      const all = await bracketTable(s, bo.id, [], 1);
+      return clean({ ...await bracketTable(s, bo.id, brackets, Math.min(50, a.limit ?? 5)), of: all.total, brackets, notes: built.notes });
+    }
+  },
+  {
+    name: "filter_save",
+    write: true,
+    description: "Store a record filter on a BO menu item (§4 «Record filters»): the item then lists only the matching records — one BO may have several items, one per user job («Мои …», «… в работе»). load-bracket-filter creates the item's filter record when it has none → bracket-filter/save {id, boId, brackets} → read back and the count. `filter` / `brackets` as in filter_try (try it first); `clear: true` removes the conditions. A filter narrows a list, it is no protection — rights are (rights_save). Ask the user first; dryRun:true = the body only.",
+    props: {
+      item: { type: "string", description: "The BO menu item: id, code or name" },
+      filter: { type: "object" },
+      brackets: { type: "array", items: { type: "object" } },
+      clear: { type: "boolean" },
+      dryRun: { type: "boolean" }
+    },
+    required: ["item"],
+    run: async (a) => {
+      const s = stand(a), m = menuItem(await menuTree(s), a.item);
+      if (m.type !== "BO" || !m.boId)
+        throw new Error(`«${m.displayName}» is a ${m.type} item — a filter goes on a BO item`);
+      if (!a.clear && !a.filter && !a.brackets)
+        throw new Error("pass filter, brackets or clear: true");
+      const bo = await loadBo(s, m.boId);
+      const built = a.clear || a.brackets ? { root: null, notes: [] } : await bracketsOf(s, bo, a.filter);
+      const brackets = a.clear ? [] : a.brackets ?? [built.root];
+      if (a.dryRun)
+        return clean({ dryRun: true, item: menuRow(m, bo.formFields), body: { id: m.bracketFilterId ?? "<created by load-bracket-filter>", boId: bo.id, brackets }, notes: built.notes });
+      const f = await s.call(MENU_ + "load-bracket-filter", { menuItemId: m.id });
+      const id = typeof f === "string" ? f : f?.id;
+      if (!id)
+        throw new Error(`load-bracket-filter returned no filter id: ${JSON.stringify(f)?.slice(0, 200)}`);
+      await s.call("v2/bracket-filter/save", {}, { id, boId: bo.id, brackets });
+      const back = await s.call(MENU_ + "load-bracket-filter", { menuItemId: m.id });
+      const got = typeof back === "object" && back?.brackets || [];
+      const count = (b) => b.reduce((n, x) => n + 1 + count(x.brackets ?? []), 0);
+      const t = await bracketTable(s, bo.id, brackets, 0);
+      return clean({ item: menuRow(m, bo.formFields), filterId: id, saved: typeof back !== "object" || count(got) === count(brackets), brackets: count(got), total: t.total, notes: built.notes });
+    }
+  },
+  {
     name: "notifications_read",
     description: "The bell (header «События»): counters and the latest entries with ids. `newThisSession` marks what appeared after this server first looked — the ones your work raised (every import leaves «Анализ импорта завершен»).",
     props: { limit: { type: "number" } },
@@ -3716,7 +4172,7 @@ var tools = [
   {
     name: "stand_call",
     write: true,
-    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (rights, menu, company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
+    description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (kanban card, participants, company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } },
     required: ["path"],
     run: async (a) => {
@@ -3779,7 +4235,7 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, record_save, record_delete, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for Claude» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 function schema(t) {
   return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
 }

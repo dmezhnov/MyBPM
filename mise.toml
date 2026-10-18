@@ -322,6 +322,29 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["rights_save", { code: "mcp_probe_records", field: "title", set: { edit: "all" } }, (r) => r.chosenAccessRight === false && r.rights.edit === "all"],
   ["rights_read", { menu: "mcp_menu" }, (r) => r.rights.view === "all" && !("edit" in r.rights)],
   ["rights_save", { menu: "mcp_menu", set: { view: { groups: ["Менеджеры"] } }, dryRun: true }, (r) => r.dryRun && r.body.view.orgUnitToAdd.length === 1 && r.body.view.accessForAll === false],
+  // menu (R6) and record filters (§4): a GROUP + a BO item, views, icon check, rights on the item, filters tried and saved, deleted
+  ["menu_icons", {}, (r) => r.byMeaning.length === 13 && r.catalogue > 1000],
+  ["menu_icons", { query: "car" }, (r) => r.names.includes("phosphor:car") && r.byMeaning.some((m: any) => /vehicles/.test(m.meaning))],
+  ["menu_save", { create: [{ name: "MCP плохо", bo: "mcp_probe_records", icon: "no-such" }] }, (r) => /not a sidebar icon/.test(r)],
+  ["menu_save", { create: [{ key: "g", type: "GROUP", name: "MCP группа", icon: "folder" },
+    { key: "i", name: "MCP записи", parent: "g", bo: "mcp_probe_records", icon: "phosphor:list-checks", views: { list: true, kanban: "status" } }] },
+    (r) => r.items.length === 2 && !r.mismatch?.length && r.items[0].order >= 100000 && r.items[1].views.kanban === "status" && r.items[1].views.list && r.notes.some((n: string) => /card template/.test(n))],
+  ["menu_read", { under: "MCP группа" }, (r) => r.items.length === 2 && r.items[1].depth === 1 && r.items[1].icon === "phosphor:list-checks"],
+  ["menu_save", { change: [{ item: "MCP записи", views: { kanban: false, calendar: true }, icon: "calendar" }] },
+    (r) => r.items[0].icon === "phosphor:calendar" && r.items[0].views.list && r.items[0].views.calendar && !r.items[0].views.kanban && !r.mismatch?.length],
+  ["rights_save", { menu: "MCP записи", set: { view: { groups: ["Менеджеры"] } } }, (r) => !r.mismatch?.length && r.rights.view.groups[0] === "Менеджеры" && r.chosenAccessRight === true],
+  ["filter_try", { code: "mcp_probe_records", filter: { field: "done", eq: false } }, (r) => r.total === 1 && r.of === 1 && r.brackets[0].dynamicFilters[0].value === "false"],
+  ["filter_try", { code: "mcp_probe_records", filter: { any: [{ field: "done", eq: true }, { field: "status", eq: "Закрыт" }] } },
+    (r) => r.total === 0 && r.brackets[0].brackets.length === 2 && r.brackets[0].brackets[0].connectionType === "OR" && r.brackets[0].brackets[1].dynamicFilters[0].value !== "closed"],
+  ["filter_try", { code: "mcp_probe_records", filter: { field: "status", eq: "working", not: true } }, (r) => r.total === 0 && r.brackets[0].notType === "NOT"],
+  ["filter_try", { code: "mcp_probe_records", filter: { field: "status", eq: "Нет такого" } }, (r) => /not an option/.test(r)],
+  ["filter_save", { item: "MCP записи", filter: { all: [{ field: "done", eq: false }, { field: "status", eq: "В работе" }] } }, (r) => r.saved && r.total === 1 && r.filterId],
+  ["menu_read", { under: "MCP группа" }, (r) => r.items[1].filter === true && r.items[1].selectiveRights === true],
+  ["menu_delete", { item: "MCP группа" }, (r) => /holds 1 items — refused/.test(r)],
+  ["menu_delete", { item: "MCP записи" }, (r) => r.preview.name === "MCP записи" && r.deleted === undefined],
+  ["menu_delete", { item: "MCP записи", confirm: true }, (r) => r.deleted === true],
+  ["menu_delete", { item: "MCP группа", confirm: true }, (r) => r.deleted === true],
+  ["menu_read", {}, (r) => r.items.length === 1 && r.items[0].code === "mcp_menu"],
   ["bo_create", { group: "Бизнес-объект", name: "MCP probe rights", code: "mcp_probe_rights", window: false, fields: [
     { label: "Название", type: "INPUT_TEXT", code: "title" }, { label: "Служебное", type: "INPUT_TEXT", code: "svc", tab: "Системные" }] },
     (r) => r.notes.some((n: string) => /tab «Системные» closed/.test(n))],
@@ -358,7 +381,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
