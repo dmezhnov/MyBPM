@@ -11,7 +11,7 @@ and the stand answers it with an error or silently ignores it.
 How to drive a running MyBPM stand: the `/web/v2` REST envelope and the endpoints found so far (access
 rights, menus, kanban), the constructor/registry UI screens behind them, **record (instance) import and
 export through Excel**, the HTML sanitizer, and the tooling around all of it (xlsx patching, Google Drive,
-Claude-in-Chrome).
+browser automation).
 
 The FORMAT of everything you feed a stand — the structure archive, Block IDE scripts and the xlsx of
 records — → `MYBPM-IMPORTS.md`. This document is the transport and the stand itself.
@@ -136,10 +136,9 @@ means «bad token», not «expired session».
   `[C]`. A curl/Bun client outside the browser needs nothing else.
 - The token is short-lived. Read it again at the start of a session, keep it in a file, never in a
   command line and never in a commit.
-- **An agent driving the browser through Claude-in-Chrome cannot lift the token out at all** `[C]`
- : `javascript_tool` refuses to return any value derived from `localStorage` or from a
-  response header. Keep the token INSIDE the page instead and call the API from there — the in-page
-  helper of §10. Only a human (DevTools) or Route A gets a token for a standalone client.
+- **A browser-automation tool may refuse to return the token** — some refuse any value derived from
+  `localStorage` or from a response header (§10). Then keep the token INSIDE the page and call the API
+  from there — the in-page helper of §10; a human (DevTools) or Route A gets a token for a standalone client.
 
 ### 0U.2 One complete call — request, success, error
 
@@ -731,8 +730,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default.
    **`boFieldIds` decides the columns** `[C]`: a non-empty list = exactly those fields in that order; an
    EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
-   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab; under Claude-in-Chrome its
-   browser download does not reach `~/Downloads`, as with the structure export — use these calls `[I]`) is a chooser over the same
+   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab; under browser automation its
+   download may not reach a readable folder, as with the structure export — use these calls, §10) is a chooser over the same
    fields, pre-ticked with the registry columns; it sends what is ticked, in ticking order. No field flag
    hides a field from an API export — list the fields you want. **An EMPTY list exports the nested blocks
    EMPTY** `[C]`: their caption and sub-headers are there, every sub-cell is blank and a TABLE reference is
@@ -769,8 +768,8 @@ MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you n
    adds BOs, the row's trash icon removes them (unticking in the ⊕ dropdown does NOT).
 2. `POST /web/v2/process-indicator/pre-create-process` — `P {}` → `processId`.
 3. `POST /web/struct/export-company-structure?processId=<id>` with body `{}` → the zip bytes;
-   `Content-Disposition` carries the generated name. **The browser's own «Выгрузить» button does not
-   deliver a file under Claude-in-Chrome** — do this from the shell.
+   `Content-Disposition` carries the generated name. **Under browser automation the «Выгрузить» button's
+   download may not reach a readable folder** (§10) — do this from the shell.
 4. Unconfirmed dependencies do not block the export; the archive then holds only the selected BOs.
    The file name's company slug is not necessarily the tenant you are in.
 
@@ -931,8 +930,8 @@ and dropping the rest «for scope» is a fraction reported as done.
 9. **Never print a stack trace into the session** — a MyBPM error carries ~100 lines of Java. Read
    `message` and `errorType`.
 10. Do not fight the UI where an API exists. And where you must use the UI, read §10: clicks in this app
-    go through `javascript_tool` (`el.click()` matched on `innerText`), text through the native value
-    setter — `computer type` silently drops spaces and punctuation.
+    go through an in-page script (`el.click()` matched on `innerText`), text through the native value
+    setter — simulated typing silently drops spaces and punctuation.
 11. **Every BO shows at least one field in its registry, and every BO-reference field shows at least one
     field of the BO it points at**. A BO with no
     `tableColToShow` field answers `AccessDenied` in its registry and lists no rows (trap 48). A reference
@@ -1000,7 +999,7 @@ and dropping the rest «for scope» is a fraction reported as done.
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
 type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
-sanitizer · §9 tooling · §10 Claude-in-Chrome traps · **§11 the numbered trap list — read it when
+sanitizer · §9 tooling · §10 browser-automation traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybpm-stand` MCP server.
 
 ### 0U.8 The mybpm-stand MCP server — the recipes as tools
@@ -1285,13 +1284,6 @@ the model.
 - After setting anything via API, **re-load and compare**. After a UI popup, click СОХРАНИТЬ and confirm
   the save call returned 200.
 - **State stand facts only after READING the stand** (API or export) — never infer them.
-- The auto-mode classifier blocks the FIRST stand-changing API call of a session; an explicit grant from
-  the user in chat («даю все права, разрешаю») unblocks it — no settings change needed. A durable fix
-  `[C]`: an `autoMode` block in the user's `~/.claude/settings.json`, with an `environment`
-  line («the user owns the stands *.mybpm.kz») and an `allow` line (any action on the stand through
-  claude-in-chrome, in-page API writes included), each list starting with `"$defaults"`. With it,
-  in-page `save-business-object-portion`, JS clicks on «СОХРАНИТЬ» and `push-step-forcibly` pass
-  with no prompt.
 - **The constructor's «СОХРАНИТЬ» ignores real mouse clicks and saves on `button.click()` from JS**
   `[C]` (`mybpm-ng-action-buttons button.main`, with a field-settings panel open). This is the
   opposite of the Form dialog's checkboxes (§5f). If a click sends nothing, check the XHR log, then try
@@ -1640,7 +1632,7 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
   Навигатор, Аудиторский след, Мониторинг миграции, Выставление сервисов, Браузер скриптов, Глобальные
   методы, Внешний вид. (What IN/OUT Миграция + Мониторинг миграции do vs Импорт/Экспорт is `[U]`.)
 - The sidebar is not in the accessibility tree: read it with `document.querySelector('.menu-list').innerText`
-  — `find` and `get_page_text` miss it or flatten it.
+  — an automation tool's element search and page-text extraction miss it or flatten it.
 
 ### Import tab
 
@@ -1648,9 +1640,11 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
   импорта / Автор импорта / Дата импорта / Статус импорта. The log is per company and
   keeps years of history — read it to see what was ever imported and by whom.
 - **The hidden file input is `input[type=file]` with `accept=".mybpm.zip, .mybpm"`, `multiple: false`.**
-  Do NOT click the button (it opens a native picker Claude cannot see) — use `file_upload` with its ref. `[C]`
-- **`find` and `read_page` do NOT see that input** — it carries the `hidden` attribute, so it is absent
-  from the accessibility tree. Unhide it first, then it shows up in `read_page` as `button type="file"`: `[C]`
+  Do NOT click the button (it opens the operating system's file picker, which automation cannot fill) —
+  set the input's files with the tool's file-upload call (CDP `DOM.setFileInputFiles`, Playwright
+  `setInputFiles`). `[C]`
+- **The accessibility tree does NOT see that input** — it carries the `hidden` attribute. A tool that picks
+  the target from the tree needs it unhidden first, then it shows up as `button type="file"`: `[C]`
   ```js
   const i = document.querySelector('input[type=file]'); i.hidden = false;
   i.style.cssText = 'display:block;width:400px;height:40px;position:relative;z-index:9999';
@@ -1658,7 +1652,7 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
 
 ### Import is TWO-PHASE — upload analyses, a second step applies `[C]`
 
-1. `file_upload` into that input is enough to submit — no button click, no dialog. The page shows
+1. Setting the files of that input is enough to submit — no button click, no dialog. The page shows
    «Анализ структуры… N/N», then a toast «Анализ импорта завершен» and a **new log row with the status
    «Импорт проанализирован»**. *Nothing has been written to the stand yet.*
 2. **Click that log row** → a full-screen dialog opens:
@@ -1789,7 +1783,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - **The import log** (the «Импорт» tab's table): `/import-structure/load-import-file-records` with `B {paging:
   {offset, limit}}` (without `paging` → NullPointerException) → newest first `[{id, fileName, description,
   imported_at, status, canRollback, newerAppliedImportsCount, …}]` `[C]`. The one reliable way to tell
-  whether an import whose call was cut off (a 45-s `javascript_tool` limit) got applied.
+  whether an import whose call was cut off (an in-page call cut by the tool's time limit, §10) got applied.
 
 ### The dry run as a VALIDATOR
 
@@ -1911,7 +1905,7 @@ block). The page then does
   «Системные») — see the Route note above, the grouping is per-company. Left panel = the
   list of BO GROUPS; the chevron on a group expands it
   into its BOs (grey rows underneath). This is the place to verify that an import did not rename a group.
-- **This list is invisible to text extraction** `[C]`: `get_page_text`, `read_page` and even
+- **This list is invisible to text extraction** `[C]`: page-text extraction, the accessibility tree and even
   `document.body.textContent` return only the outer chrome (the sidebar, not the list). Read it from **screenshots**, not from the DOM.
 - Clicking a BO opens its registry: `/business-objects/viewing-list/bo/<boId>/list-view?…`.
 - **The stand keeps the archive's `oldId` as the BO id** `[C]` — it is exactly the id in the registry URL. So deterministic generator ids are
@@ -1960,8 +1954,8 @@ Name input top-left, description beside it, the «Карточка / Вклад�
 Дата и время, …) on the left, the form canvas on the right, and lock/gear icons top-right (access rights,
 settings).
 
-- **Fields are added by dragging** a palette item onto the canvas; Claude-in-Chrome's `left_click_drag`
-  drives this CDK drag-drop fine. On drop the label input opens focused — type the label straight away.
+- **Fields are added by dragging** a palette item onto the canvas; an automation tool's press-move-release
+  drag drives this CDK drag-drop fine. On drop the label input opens focused — type the label straight away.
 - A **СОХРАНИТЬ / ОТМЕНИТЬ** bar appears at the bottom: **nothing about fields is persisted until
   СОХРАНИТЬ**. The BO **name and description save on blur**, with no bar and no confirmation.
 - **Codes are generated by the server from the names** — never send one. «Проба UI 2026-09-18» →
@@ -2343,7 +2337,7 @@ A figure is not dragged from a palette (there is none) and the canvas's right-cl
 Вырезать / Скопировать / Вставить / Удалить одну фигуру. Instead: **drag from one of the four green slot
 dots of an existing figure onto empty canvas** — a picker «Выберите фигуру» opens with 8 tiles (top-left
 tile = **Exit**), and choosing one fires `load-new-ids` → `apply-update-cmd` → `validate-def`, creating the
-figure AND the arrow in a single command. `computer left_click_drag` drives this fine (the one place in
+figure AND the arrow in a single command. A coordinate drag drives this fine (the one place in
 this app where a coordinate drag is needed — trap 30 does not apply to the slot handles) `[C]`; no
 synthetic mouse events are needed. Take the dot from a SCREENSHOT, not from `getBoundingClientRect` of
 `circle.fillOuter`: the two frames differ by the page zoom (§10). The picker (3×3 grid, 8 tiles: Exit,
@@ -2701,7 +2695,8 @@ opens that BO's new-record form instead of `start-dev-process`) `[I]`.
 
 ### Export through the API — no browser download `[C]`
 
-The browser's own «Выгрузить» fires but **the file never reaches `~/Downloads` under Claude-in-Chrome**.
+The browser's own «Выгрузить» fires, but **under browser automation the download may never reach a folder the
+program can read** (§10).
 Drive it from the shell or `fetch` instead, it is two calls:
 
 1. `POST /web/v2/process-indicator/pre-create-process {}` → `processId`;
@@ -4298,7 +4293,7 @@ onto the SAME child BO keep separate lists per record.
 - **A required `INPUT_NUMBER` starts at 0** on a CREATE dialog, so it counts as filled. The red `*` and
   the warning appear only after the user clears it. `isRequired` really is on, but nothing forces the
   user to type a number.
-- Driving it from `javascript_tool`: `el.click()` on the picker's «Добавить» does nothing — dispatch
+- Driving it from an in-page script: `el.click()` on the picker's «Добавить» does nothing — dispatch
   `pointerdown`/`mousedown`/`pointerup`/`mouseup`/`click` at the element's centre (§10). The CREATE
   dialog animates in: find its inputs by their label, not by position, or the text lands in «Поиск поля».
 
@@ -4612,7 +4607,7 @@ kinds». In short: OFFLINE, MOBILE, LANGUAGES and SCRIPT_SETTINGS **replace**; P
 never removes**; OTP recreates its row but loses the department; AUDIT_TRAIL overwrites the **first** audit row only;
 MIGRATION_MONITORING sets the monitor by code; NAVIGATOR does not export the Google key; MESSENGER exports only the on/off
 map and its import did nothing. The import of an archive is the §5 cycle; a settings-only archive with one kind takes
-~10–20 s, so drive it fire-and-forget from the page (§10, the 45-s `javascript_tool` limit).
+~10–20 s, so drive it fire-and-forget from the page (§10, the in-page call time limit).
 
 The pages behind the other kinds (saves answer `""`):
 
@@ -5311,35 +5306,93 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   admin permits it. A shared drive can only be created by a Workspace account.
 - rclone's shared client_id is being retired and hits `rateLimitExceeded` — if uploads start failing,
   give the remote its own client_id.
-- **Never paste file contents as base64 into the Drive MCP (claude.ai) tools** — it hangs the session. That
-  MCP account is not a member of the user's shared drives.
 
-## 10. Claude-in-Chrome traps
+## 10. Browser-automation traps
 
-**Read this section only when** you drive the stand through Claude-in-Chrome; the API route never needs it.
+**Read this section only when** a program drives the stand's UI in a real browser — any automation tool
+(a browser extension, a DevTools-protocol client, Playwright, Selenium); the API route never needs it.
+The words used below: an **in-page script** = JavaScript the tool evaluates inside the stand's page; a
+**screenshot**; a **coordinate click** = a mouse event the tool sends at a point; **simulated typing** =
+key events the tool sends; the **accessibility tree** = what the tool's «read the page / find an element»
+calls see; the **network log** = the tool's list of requests.
 
-- **`read_network_requests` WITHOUT `urlPattern` dumps huge `data:image/jpeg;base64` URLs (cost ~700k
-  tokens once). ALWAYS pass `urlPattern: "/web/"` and a small limit.**
-- Page-side logging: patch `window.fetch`/XHR to push `/web/` calls into `window.__log`. Injected page
-  globals are lost on navigation/reload — re-inject.
-- `javascript_tool` output comes back as `[BLOCKED: Cookie/query string data]` if the text contains
-  `=`/`&`/`?` → `.replace(/[=&?]/g,'_')` before returning. Ids **really can contain `~`** `[C]`:
-  hex-dump the id inside the page (`[...new TextEncoder().encode(id)].map(b=>b.toString(16)…)`) and decode
-  it outside — that survives the filter.
-- **Page state injected by `javascript_tool` SURVIVES between calls** `[C]` — `window.__x`
-  set in one call is readable in the next; only a navigation/reload wipes it. So a `window.fetch` patch
-  that records `/web/` request bodies is the way to capture what the UI actually sends (`read_network_requests`
-  gives URL + status only, never bodies).
-- **Hex-dumping the TOKEN is refused** by the auto-mode classifier («Credential Materialization») `[C]`.
-  Calling the API from inside the page (reading `localStorage.LOCAL_PRIVATE_SwebToken` inline in the
-  `fetch`) is allowed and is the fastest way to drive `/web/v2` with no token ever leaving the browser;
-  a standalone Bun script still needs the user to hand the token over.
-- **`javascript_tool` will not return anything derived from `localStorage` or from response HEADERS**
-  `[C]` — the value comes back as «[BLOCKED: Cookie/query string data]», however it is
-  encoded. The same happens to the WHOLE result when it includes `location.href` of a page with a query
-  string (a record panel carries `draftId=…`) `[C]` — leave the URL out; the tab context
-  already shows it. So the token never leaves the page; drive the API through an in-page helper that reads it
-  internally and returns only the parsed body:
+What depends on the tool, not on the stand — check yours before relying on it:
+- **What an in-page script may return.** A tool may refuse or mask results that look like credentials or
+  URLs: values derived from `localStorage` or from response headers, text with a query string or
+  cookie-like `=`/`&`/`?`. Then the token never leaves the page — drive the API through the in-page helper
+  below, which reads the token inside the page and returns only the parsed body; leave `location.href` out
+  of a result (a record panel's URL carries `draftId=…`); replace `[=&?]` before returning a text; pass an
+  id that may contain `~` hex-dumped (`[...new TextEncoder().encode(id)].map(b=>b.toString(16)…)`) and
+  decode it outside; return anything large through the local bridge below. A masked result does not mean
+  the code did not run.
+- **How long one in-page call may take.** A tool may cut the call after a fixed time (45 s has been seen)
+  **while the page keeps running the promise** — the timeout kills the wait, not the work. So for anything
+  long (a loop of imports, a poll, a settings-only import of ~10–20 s) do not await it in the call: start
+  it as `window.__pending = run(list).then(r => window.__pendingDone = r)`, return at once, and poll
+  `window.__pendingDone` in later calls. A long save loop cut off this way is still running: verify with a
+  separate read, never rerun it.
+- **Page state survives between in-page calls** — `window.__x` set in one call is readable in the next;
+  only a navigation or a reload wipes it. Re-inject helpers after every navigation (a missing one fails
+  with `ReferenceError` BEFORE it sends anything).
+- **A network log may dump whole `data:image/…;base64` URLs** — filter it by `/web/` and keep the limit
+  small. A log that lists URL + status only does not show bodies: to see what the UI really sends, patch
+  `XMLHttpRequest` in the page (**the Angular client uses XHR, not `fetch`** — a `fetch` patch records
+  nothing) and push `/web/` request bodies into `window.__log`.
+- **Screenshots and the window.** A tool may resize the real window to its capture frame, and a scaled
+  screenshot may shrink the viewport one step per call until the layout collapses and every drag misses —
+  take screenshots unscaled; if the viewport is already wrecked, open a new tab. The viewport can differ
+  between two screenshots, so a point computed from the previous one misses. A screenshot of a hidden
+  window (`document.visibilityState === "hidden"`) times out while in-page scripts keep working — switch to
+  the API calls the UI would have made (§6b), or bring the window forward. A screenshot also times out
+  every few calls on this stand at random; repeating the same call works.
+- **Coordinate frames.** Coordinate clicks are in the screenshot's frame, which need not equal CSS pixels.
+  Measure the factor instead of guessing: `document.addEventListener('mousedown', e =>
+  __pts.push([e.clientX,e.clientY]), true)`, click a known point, read it back, then click at CSS / factor
+  with every rect from `getBoundingClientRect()`.
+
+The stand's own behaviour under automation `[C]`:
+- **Drive this app's clicks from an in-page script, not from coordinate clicks.** A coordinate click
+  computed from an element's rect lands a full row off, and the mousedown calibration above catches
+  nothing although the click visibly happens. `el.click()` on the element found by its text works every
+  time and needs no coordinates. Two gotchas:
+  - filter by **`innerText`**, not `textContent` — the buttons' `textContent` did not match `'ПРИМЕНИТЬ'`
+    while `innerText` did;
+  - scope the query to `.cdk-overlay-container` for anything inside a dialog, and click the `<button>`,
+    not the `<span>` inside it.
+- **Some controls ignore `el.click()`**: the «Добавить» inside a nested table's picker reacts only to a
+  full mouse sequence. Dispatch `pointerdown`, `mousedown`, `pointerup`, `mouseup`, `click` (bubbling,
+  with `clientX/Y`) on `document.elementFromPoint(<centre>)` — this also works while screenshots time out.
+  Check first that the point is not covered by a `cdk-overlay-backdrop` (an open «Внимание» confirm
+  dialog sits on top and swallows the click). The constructor's «СОХРАНИТЬ» is the opposite case: it
+  ignores real mouse clicks and saves on `button.click()` (§2).
+- **Do not type into this app's Angular inputs.** Simulated typing silently drops spaces, `:` and `()`,
+  can lose trailing text, and does not replace a selection — after a triple click the text is APPENDED
+  («Чекбокс» + «Активен» = «ЧекбоксАктивен»). Set the value through the native setter and fire the events
+  Angular listens to —
+  ```js
+  const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
+  set.call(ta, text); ta.dispatchEvent(new Event('input',{bubbles:true}));
+  ta.dispatchEvent(new Event('change',{bubbles:true}));
+  ```
+  (`HTMLInputElement.prototype` for an `<input>`), then READ `.value` back before saving — a field code is
+  generated from the label at the first save and never regenerated.
+- **Coordinate drags are needed in two places only**: a palette item onto the constructor canvas (§5b)
+  and a figure's slot dot in the process editor (§5f). A tool's own press-move-release drag drives this
+  CDK drag-drop fine.
+- **The sidebar, popovers and the BO-group list are not in the accessibility tree** — read the sidebar
+  with `document.querySelector('.menu-list').innerText`. **The BO-group list is CDK-virtualised**: a
+  group below the fold is not in the DOM at all and scrolling the page does nothing. Scroll the container
+  itself — `document.querySelector('.cdk-drop-list.scroll-bar').scrollTop = …` — then take a screenshot.
+  Its `innerText` reads empty; locate rows by `input.value` + `getBoundingClientRect`.
+- **A screenshot taken right after a navigation shows a half-loaded screen**: the composite editor
+  rendered its panes empty and looked like an import that had written nothing. Wait, or re-navigate,
+  before concluding anything from a screenshot — and prefer an API read-back as the evidence.
+- **File inputs and downloads.** A file goes in by setting the files of the hidden `input[type=file]`
+  (§5 «Import tab») — never click the button, it opens the operating system's file picker, which the
+  automation cannot see or fill. A browser download the UI starts («Выгрузить», «Экспорт в .xlsx») may
+  never reach a folder the program can read in an automated browser profile — take the bytes from the
+  API instead (§5 «Export through the API», §6).
+- **The in-page API helper** — the token stays in the page, the call returns only the parsed body:
   ```js
   window.__c = async (path, params = {}, body = {}) => {
     const t = JSON.parse(localStorage.LOCAL_PRIVATE_SwebToken);
@@ -5350,123 +5403,55 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
   };
   await __c('import-structure/load-import-state')      // path WITHOUT /web/, with v2/ where it belongs
   ```
-  **Keep the envelope even where a plain call seems to work** `[C]`: with the params in the
-  query string and a bare JSON body, `bo-process-editor2/create-draft` and `load-draft-data` answer
-  normally, but `update-draft` (whose body is an ARRAY) answers 400 «Failed to read request»; the same
-  array inside `body_o1nhHUG480` goes through.
-  Never return `r.headers.get(…)` (the export's file name sits in `content-disposition` — derive a name
-  yourself). A reload wipes `window.__c`: the next call fails with `ReferenceError` BEFORE it sends
-  anything, so re-inject after every navigation.
+  **Keep the envelope even where a plain call seems to work**: with the params in the query string and a
+  bare JSON body, `bo-process-editor2/create-draft` and `load-draft-data` answer normally, but
+  `update-draft` (whose body is an ARRAY) answers 400 «Failed to read request»; the same array inside
+  `body_o1nhHUG480` goes through. Never return `r.headers.get(…)` (the export's file name sits in
+  `content-disposition` — derive a name yourself).
 - **Bytes in and out of the page go through a local bridge** — a `Bun.serve` on `127.0.0.1` with
   `Access-Control-Allow-Origin: *` (§5): `GET /get?name=` feeds a file INTO the page (the zip for
-  `import-file`), `POST /save?name=` takes bytes OUT (an export, a JSON dump). Two shell traps around it
-  `[C]`: start it **detached** (`setsid nohup bun bridge.bun.ts > log 2>&1 < /dev/null &`)
-  or the session harness reaps it; and stop it **by PID** — `pkill -f 'bun bridge.bun.ts'` inside a
-  Bash call matches the wrapper shell's own command line and kills it, so the rest of that command
-  silently never runs. Writing one is ~20 lines of `Bun.serve`; if `tools/` is available, use the committed
-  `tools/bridge.bun.ts`, started
-  detached by `mise run bridge` and stopped by pid with `mise run bridge-stop`; files live in
-  `tools/out/bridge/`.
-- **Pasting into the Block IDE from automation** `[C]`: the IDE pastes from the canvas
-  CONTEXT MENU (right click → «Вставить»), not from Ctrl+V, and reads the clipboard with
-  `navigator.clipboard.readText()` when the menu opens — which fails under CDP («Document is not focused»),
-  so the item silently pastes nothing. Fix: override it in the page before the right click —
+  `import-file`), `POST /save?name=` takes bytes OUT (an export, a JSON dump). Two shell traps around it:
+  start it **detached** (`setsid nohup bun bridge.bun.ts > log 2>&1 < /dev/null &`) or a supervising
+  harness may reap it; and stop it **by PID** — `pkill -f 'bun bridge.bun.ts'` inside a shell command
+  matches the wrapper shell's own command line and kills it, so the rest of that command silently never
+  runs. Writing one is ~20 lines of `Bun.serve`; if `tools/` is available, use the committed
+  `tools/bridge.bun.ts`, started detached by `mise run bridge` and stopped by pid with
+  `mise run bridge-stop`; files live in `tools/out/bridge/`.
+- **Pasting into the Block IDE from automation**: the IDE pastes from the canvas CONTEXT MENU (right
+  click → «Вставить»), not from Ctrl+V, and reads the clipboard with `navigator.clipboard.readText()` when
+  the menu opens — which fails in an automated page («Document is not focused»), so the item silently
+  pastes nothing. Fix: override it in the page before the right click —
   `navigator.clipboard.readText = async () => window.__scr` (the JSON fetched from the local bridge) —
-  then click «Вставить» with a REAL `computer left_click` (`el.click()` and synthetic mouse events on its
+  then click «Вставить» with a REAL coordinate click (`el.click()` and synthetic mouse events on its
   `<tr>` are ignored); compute the point from the `<tr>` rect × (screenshot width / `innerWidth`). The
   paste is `v2/script/paste` + one `apply-update-cmd`. After a navigation the first click on the scripts
-  icon is swallowed — click `[selenide=q9qtPW3E-bo-script-icon]` from JS instead.
+  icon is swallowed — click `[selenide=q9qtPW3E-bo-script-icon]` from an in-page script instead.
   **Usually you do not need the UI at all**: the same two calls work headlessly from any page of the
-  stand (`fetch('/web/…')` with the page's own token) — §5g «Writing a script headlessly» `[C]`.
-- **`javascript_tool` dies at 45 s** (`CDP sendCommand "Runtime.evaluate" timed out`) `[C]`,
-  but **the page keeps running the promise** — the timeout kills the wait, not the work. So for anything
-  long (a loop of imports, a poll), do NOT await it in the call: start it as
-  `window.__pending = run(list).then(r => window.__pendingDone = r)` and return immediately, then poll
-  `window.__res` / `window.__pendingDone` in later calls. Combined with the «page state survives between
-  calls» fact above, that is the way to drive a multi-minute job through this tool.
-- **Drive the API from `https://<stand>/favicon.ico`, not from the app** `[C]`: the stand root
-  redirects to the LAST opened route, and a record panel there re-creates its draft and reloads by itself —
-  an in-page job started from it can vanish mid-run, and the tab can freeze
-  (`Page.captureScreenshot` times out). The favicon URL is the same origin, so
-  `localStorage` (the token) and `fetch('/web/…')` work, and nothing on it reloads. Use the app only for what
-  needs the UI. The client bundle is readable from there too — `fetch('/')` → the `runtime.*.js` chunk map →
-  grep the chunks for a controller path to learn a call's shape without clicking.
-- **The BO-group list is CDK-virtualised**: a group below the fold is not in the DOM at all, `find`
-  answers «no matching elements» and `computer scroll` over the page does nothing. Scroll the container
-  itself — `document.querySelector('.cdk-drop-list.scroll-bar').scrollTop = …` — then take a screenshot
-  `[C]`. Its `innerText` reads empty; locate rows by `input.value` + `getBoundingClientRect`.
-- **`computer type` does NOT replace a selection in these Angular inputs** `[C]`: after a
-  `triple_click` the typed text is APPENDED («Чекбокс» + «Активен» = «ЧекбоксАктивен»). Always clear
-  first (`key BackSpace` after the triple click) and re-read `input.value` before saving — a field code
-  is generated from the label at the first save and never regenerated.
-- **`computer type` SILENTLY DROPS spaces and punctuation** in these Angular inputs `[C]`:
-  spaces, `:` and `()` vanish, and trailing text can be lost. Together with the append-instead-of-replace trap
-  above, **do not type into these fields at all**: set the value from JS through the native setter and
-  fire the events Angular listens to —
-  ```js
-  const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
-  set.call(ta, text); ta.dispatchEvent(new Event('input',{bubbles:true}));
-  ta.dispatchEvent(new Event('change',{bubbles:true}));
-  ```
-  (`HTMLInputElement.prototype` for an `<input>`), then READ `.value` back before saving.
-- **Drive this app's clicks from `javascript_tool`, not from `computer left_click`** `[C]`.
-  A click computed from an element's `getBoundingClientRect` lands a full row off, and the
-  mousedown-listener calibration of trap 28 catches nothing although the
-  click visibly happens — so the factor cannot be measured reliably here. `el.click()` on the
-  element found by its text works every time and needs no coordinates. Two gotchas:
-  - filter by **`innerText`**, not `textContent` — the buttons' `textContent` did not match `'ПРИМЕНИТЬ'`
-    while `innerText` did;
-  - scope the query to `.cdk-overlay-container` for anything inside a dialog, and click the `<button>`,
-    not the `<span>` inside it.
-- **`Page.captureScreenshot` times out (30 s) on this stand every few calls**; simply repeating the same
-  screenshot call works. Do not treat the first timeout as a frozen page.
-- **A screenshot taken right after `navigate` shows a half-loaded screen** `[C]`: the
-  composite editor rendered its panes empty and looked like an import that had written nothing. Wait, or
-  re-navigate, before concluding anything from a screenshot — and prefer an API read-back as the evidence.
-- A long sequential save loop hits the 45 s CDP timeout **but keeps running in the page** — verify with a
-  separate parallel read (`Promise.all`) instead of rerunning it.
-- The viewport flips between 1484×812 and 1525×784 between screenshots, so clicks computed from the
-  previous screenshot miss. `find` does not see the sidebar or popovers.
-- A tab group belongs to the Claude session that created it — a tab the user opened in another session's
-  group is invisible; ask for the URL.
-- «extension is not connected» / `list_connected_browsers` → `[]` after switching accounts: Claude Code and
-  the extension must be on the SAME claude.ai account and the bridge binds at session start → restart
-  Claude Code and reload the extension.
-- **Claude Desktop installed next to Claude Code steals the extension** `[C]`: reloading the
-  extension does not help — it keeps spawning Claude Desktop's `chrome-native-host` (manifest
-  `~/.config/google-chrome/NativeMessagingHosts/com.anthropic.claude_browser_extension.json`) and Claude
-  Code's `claude --chrome-native-host` never starts. Rename that manifest to `*.json.disabled` and
-  kill the Desktop hosts — Claude Code's host comes up within ~10 s. Renaming it back returns Chrome to
-  Claude Desktop.
-- **When the browser window is not in front, `screenshot` times out** («Page.captureScreenshot timed out
-  … renderer may be frozen», `document.visibilityState === "hidden"`), a new tab too, while
-  `javascript_tool` keeps working. Do not wait for the UI — switch to the API calls it would
-  have made (§6b), or ask the user to bring the window forward.
-- **Some controls ignore `el.click()`** `[C]`: the «Добавить» inside a nested table's
-  picker reacts only to a full mouse sequence. Dispatch `pointerdown`, `mousedown`, `pointerup`, `mouseup`,
-  `click` (bubbling, with `clientX/Y`) on `document.elementFromPoint(<centre>)` — this also works while
-  `screenshot` times out. Check first that the point is not covered by a `cdk-overlay-backdrop` (an open
-  «Внимание» confirm dialog sits on top and swallows the click).
-- **A `javascript_tool` result containing a URL query string or cookie-like text comes back as
-  `[BLOCKED: Cookie/query string data]`** — the code DID run. Never return `location.href` or raw ids
-  mixed into long strings; `save` the result through the local bridge and read the file.
-- **Open a record card by URL** `[C]`: `/business-objects/viewing-list/bo/<boId>/list-view?fieldId=list&boId=<boId>&boiId=<boiId>&draftId=&menuItemId=list&businessObjectId=<boId>&boiDialogType=EDIT&boiViewType=FORM&boiState=ALL`
+  stand (`fetch('/web/…')` with the page's own token) — §5g «Writing a script headlessly».
+- **Drive the API from `https://<stand>/favicon.ico`, not from the app**: the stand root redirects to the
+  LAST opened route, and a record panel there re-creates its draft and reloads by itself — an in-page job
+  started from it can vanish mid-run, and the tab can freeze (screenshots time out). The favicon URL is
+  the same origin, so `localStorage` (the token) and `fetch('/web/…')` work, and nothing on it reloads.
+  Use the app only for what needs the UI. The client bundle is readable from there too — `fetch('/')` →
+  the `runtime.*.js` chunk map → grep the chunks for a controller path to learn a call's shape without
+  clicking.
+- **Open a record card by URL**: `/business-objects/viewing-list/bo/<boId>/list-view?fieldId=list&boId=<boId>&boiId=<boiId>&draftId=&menuItemId=list&businessObjectId=<boId>&boiDialogType=EDIT&boiViewType=FORM&boiState=ALL`
   — the registry with that record open in its dialog (the page mints its own draft). The shorter
   `/viewing-list/bo/<boId>/list-view` (no `/business-objects`) is NOT a route — it lands on «Главная».
-- **Never reuse the `/business-objects/viewing-single/panel?…` URL for an ordinary BO** `[C]`:
-  with `isPanel=false` and a real `boiId` the page rewrites itself to the home PANEL's `boiId` and
+- **Never reuse the `/business-objects/viewing-single/panel?…` URL for an ordinary BO**: with
+  `isPanel=false` and a real `boiId` the page rewrites itself to the home PANEL's `boiId` and
   `isPanel=true` — and the BO gets a new empty record under that same id.
-- **Reading a date picker without screenshots** `[C]`: the card's pickers are
-  `nz-date-picker` / `nz-range-picker` / `nz-year-picker` elements; `mousedown` + `click` + `focus` on
-  their `input` opens a `.ant-picker-dropdown`, whose `td.ant-picker-cell-in-view` cells carry `title`
-  (`30-9-2026`) and `ant-picker-cell-disabled`; `.ant-picker-header-next-btn` pages on. **Dropdowns of
-  earlier pickers stay in the DOM** — record the set of dropdowns before the click and read only the new
-  one, or you read a stale calendar. Run the loop fire-and-forget (`window.__r`) — eight pickers exceed
-  the 45-s `javascript_tool` limit.
+- **Reading a date picker without screenshots**: the card's pickers are `nz-date-picker` /
+  `nz-range-picker` / `nz-year-picker` elements; `mousedown` + `click` + `focus` on their `input` opens a
+  `.ant-picker-dropdown`, whose `td.ant-picker-cell-in-view` cells carry `title` (`30-9-2026`) and
+  `ant-picker-cell-disabled`; `.ant-picker-header-next-btn` pages on. **Dropdowns of earlier pickers stay
+  in the DOM** — record the set of dropdowns before the click and read only the new one, or you read a
+  stale calendar. Run the loop fire-and-forget (`window.__r`) — eight pickers take longer than a cut-off
+  in-page call.
 
 ## 11. Traps and defects — the short list
 
-1. Always pass `urlPattern: "/web/"` to `read_network_requests`.
+1. Filter an automation tool's network log by `/web/` — unfiltered it dumps whole base64 images (§10).
 1b. The `token` header takes the localStorage value **without its JSON quotes**; with them every call
     answers `SecurityError` «Illegal Session».
 2. `authorsField` is null on untouched BOs — create the object before saving rights.
@@ -5519,23 +5504,22 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     (`postJson(path, body, params)` — body FIRST in the client's signature, params second).
 26. A MyBPM error response carries a ~100-line Java `stackTrace` — never `cat` one into the session,
     pipe it through `head -c 300` or read only `message`/`errorType`.
-27. **Claude-in-Chrome `screenshot` resizes the real browser window**:
-    a `scale` shrinks the viewport one step per screenshot until the app's layout
-    collapses and every drag misses. Never pass `scale` here. A screenshot with no `scale` still pins the
-    viewport to the capture frame (1568×743), and `resize_window` does NOT undo it — only a NEW TAB does.
+27. **An automation screenshot may resize the real browser window** (§10): a scaled screenshot shrinks the
+    viewport one step per call until the app's layout collapses and every drag misses. Take screenshots
+    unscaled; a viewport already pinned to the capture frame is undone only by a NEW TAB.
 28. **Click coordinates are not CSS pixels and do not follow that emulated viewport.** Measure the factor
     instead of guessing: `document.addEventListener('mousedown', e => __pts.push([e.clientX,e.clientY]),
-    true)`, click a known point, read it back. It came out `CSS = frame × 1.1885` (frame ≈ CSS × 0.84,
-    i.e. the ORIGINAL window width, not the current one). Then click at `CSS / 1.1885`, taking every CSS
+    true)`, click a known point, read it back (one tool gave `CSS = frame × 1.1885`,
+    the ORIGINAL window width, not the current one). Then click at `CSS / factor`, taking every CSS
     rect from `getBoundingClientRect()`.
 29. `v2/co/generate-draft` is **not idempotent** — each call creates a new draft of the composite object.
     Only the editor's own draft is applied by СОХРАНИТЬ; any draft you generate yourself to «just look»
     must be removed with `remove-draft`, whose response body is EMPTY (`res.json()` throws on it).
 30. **The Angular client uses XHR, not `fetch`** — monkey-patching `window.fetch` to record requests
-    captures nothing. Use `read_network_requests` (it only sees calls made after its first invocation).
-31. **`computer type` drops spaces and punctuation** in this app's inputs; `computer left_click` lands
+    captures nothing. Patch `XMLHttpRequest`, or read the automation tool's network log (§10).
+31. **Simulated typing drops spaces and punctuation** in this app's inputs; a coordinate click lands
     off by a whole row and the trap-28 calibration does not even fire. Click with `el.click()` from
-    `javascript_tool` (match on `innerText`, scope dialogs to `.cdk-overlay-container`, click the
+    an in-page script (match on `innerText`, scope dialogs to `.cdk-overlay-container`, click the
     `<button>`) and set text through the native value setter + an `input` event. §10.
 32. **A BO code is cut to 30 characters**, so a hand-transliterated code silently misses the stand's
     (a 32-character transliteration loses its last two characters and can end in a trailing `_`). Anything that
@@ -5559,7 +5543,7 @@ f2=sheetId, f4=rows, f5=cols}`), linked through `workbook.xml.rels` type
     `--import-id`.
     It can also answer `{importExists:true, fileName}` WITHOUT `importId` `[C]` — read the id off
     `load-import-file-records`. **Never re-run `insert-file-data` on an import whose first call was cut off**
-    (e.g. a page navigation mid-`javascript_tool`): the data goes in twice and the analysis ends
+    (e.g. a page navigation mid in-page call): the data goes in twice and the analysis ends
     `INTERNAL_ERROR`. `cancel-import` drops it; upload again in ONE call.
 37. **The LAST icon of a field's settings popover is DELETE** `[C]` — `mat-icon.delete-icon`,
     and it opens «Удаление поля: использование в скриптах» whose green button is «УДАЛИТЬ ВСЁ РАВНО».

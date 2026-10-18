@@ -5897,11 +5897,11 @@ the field and then call this». The same list on a process field also offers `#�
   Never retype JSON the user pasted into chat. **The IDE is the ONLY source of the current script** —
   nothing is on disk. A user copy overwrites the clipboard, so a patch script that reads the clipboard
   while it holds something else dies with `SyntaxError: JSON Parse error` — copy in the IDE first, then
-  run the patch. A copy can also be recovered from a session transcript
-  (`~/.claude/projects/<project>/<session>.jsonl`, the user message containing `"copiedType"`).
+  run the patch. A copy the user pasted into a chat can be recovered from that chat's saved transcript
+  (the message containing `"copiedType"`).
 - **Pasting from browser automation** `[C]`: the IDE pastes from the canvas CONTEXT MENU (right click →
-  «Вставить») and reads the clipboard with `navigator.clipboard.readText()` when the menu opens — under CDP
-  that fails («Document is not focused») and the item silently pastes nothing. Override it in the page first
+  «Вставить») and reads the clipboard with `navigator.clipboard.readText()` when the menu opens — in a page driven by
+  automation that fails («Document is not focused») and the item silently pastes nothing. Override it in the page first
   (`navigator.clipboard.readText = async () => <the JSON as a string>`), then click «Вставить» with a REAL
   mouse click (`el.click()` and synthetic mouse events on its `<tr>` are ignored). After a navigation the first
   click on the scripts icon is swallowed — click `[selenide=q9qtPW3E-bo-script-icon]` from JS. The menu's

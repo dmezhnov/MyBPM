@@ -1,5 +1,5 @@
 /**
- * Page <-> disk bridge for driving a stand from Claude-in-Chrome (MYBPM-UI-API.md §10).
+ * Page <-> disk bridge for driving a stand from browser automation (MYBPM-UI-API.md §10).
  * An https page may fetch http://127.0.0.1, so bytes cross this way instead of through the tool output:
  *   GET  /get?name=<f>   → the bytes of tools/out/bridge/<f>   (e.g. an archive to import)
  *   POST /save?name=<f>  → writes the body to tools/out/bridge/<f> (e.g. an export, a JSON dump)

@@ -57,7 +57,7 @@
  *   `v2/widget-current-user`) AFTER the BO is saved — they are not keys of the field DTO.
  *   Each system field and each CURRENT_* widget (and SIGNATURE) may be placed ONCE per BO.
  *
- * Token: Chrome → localStorage.LOCAL_PRIVATE_SwebToken, strip the surrounding JSON quotes;
+ * Token: the browser → localStorage.LOCAL_PRIVATE_SwebToken, strip the surrounding JSON quotes;
  * pass it as a file (`--token-file`) rather than on the command line.
  * It is short-lived — read it again every session, never commit it.
  */
