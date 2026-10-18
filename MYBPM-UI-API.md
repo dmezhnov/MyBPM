@@ -1004,16 +1004,26 @@ something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybp
 
 ### 0U.8 The mybpm-stand MCP server — the recipes as tools
 
-The plugin this document ships with carries a local MCP server, **`mybpm-stand`**: started by Claude Code from
-the plugin, by Claude Desktop from the plugin on the user's account. It runs on the user's
-machine, talks to the stand itself and makes exactly the calls of the recipes it names below. **Its tools
-connected (`stand_list`, `import_analyze` …) → use them for what they cover; not connected → the recipes as
-written.** This document stays the spec either way: what a tool cannot do is plain HTTP by §0U.4.
+This document ships with a local MCP server, **`mybpm-stand`**: one JavaScript file, `mybpm-stand.cjs`,
+that any MCP client starts as a **stdio** server (`node mybpm-stand.cjs`, Node ≥ 18 or Bun; no arguments, no
+environment, no port). It runs on the user's machine, talks to the stand itself and makes exactly the calls of
+the recipes it names below. **Its tools connected (`stand_list`, `import_analyze` …) → use them for what they
+cover; not connected → the recipes as written.** This document stays the spec either way: what a tool cannot
+do is plain HTTP by §0U.4.
 
 - **Not connected (no `stand_*` tool among yours) and the task touches a stand → say so in your first reply
-  and give the user the install steps for their app; do not work around it silently.** You cannot install it
-  yourself: every install is the app's own dialog the user confirms, and in a claude.ai or Claude Desktop chat
-  your code runs in a cloud sandbox, not on their machine. Give the step for the app you run in:
+  and give the user the install steps for their client; do not work around it silently.** You cannot install
+  it yourself: every install is the client's own dialog or config the user confirms, and in a web or desktop
+  chat your code runs in a cloud sandbox, not on their machine. Give the steps for the client you run in.
+  **The server file, for any client** — two ways to get it [C]:
+  - a checkout: `git clone https://github.com/dmezhnov/MyBPM` → the server is `<checkout>/mcp/mybpm-stand.cjs`;
+    a newer release = `git pull`;
+  - without git: download `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.mcpb` — a
+    zip, whatever the extension says — and unzip it into a folder of its own → the server is
+    `<folder>/server/mybpm-stand.cjs`; a newer release = download and unzip again over the same folder.
+
+  Keep the file where it is: it reads the archive lint beside it (`../skills/…` in a checkout, the same in
+  the unzipped folder). The client needs the **absolute** path of that file. Then, by client:
   - **Claude Desktop (Chat tab, Cowork):** the plugin `mybpm` (both skills + the server) goes on the user's
     claude.ai account, in two steps [C]: Customize → Plugins → «+ Add» → **Add marketplace** → `dmezhnov/MyBPM`
     → «Sync» — this adds only the catalogue, nothing is installed yet; then Plugins → **Discover** → «+» on
@@ -1041,22 +1051,45 @@ written.** This document stays the spec either way: what a tool cannot do is pla
     then restart Claude Code — tools appear only in a session started after the install [C].
   - **claude.ai in a browser or the mobile app:** a local server cannot run there [I] — the Desktop app or
     Claude Code is the way to the tools.
+  - **Codex** (the CLI, the IDE extension and the Codex app share one config) [I]:
+    `codex mcp add mybpm-stand -- node <absolute path>/mybpm-stand.cjs`, or by hand in `~/.codex/config.toml`:
+    `[mcp_servers.mybpm-stand]` with `command = "node"`, `args = ["<absolute path>/mybpm-stand.cjs"]` and
+    `tool_timeout_sec = 300` (an import waits for the stand longer than the default 60 s); in the app or the
+    extension: ⚙ → MCP servers → name, **STDIO**, the same command → Save → Restart. `/mcp` in the CLI lists it.
+  - **ChatGPT** (web, desktop, mobile) never starts a program on the user's machine: it reaches only an MCP
+    server over HTTPS, as a custom connector in **developer mode** — a workspace feature (Business,
+    Enterprise, Edu; the admin turns it on), not on the Free plan [I]. A server on the user's machine gets
+    there through OpenAI's **Secure MCP Tunnel**: the `tunnel-client` daemon (github.com/openai/tunnel-client)
+    starts the stdio server itself and keeps an outbound connection to OpenAI — `tunnel-client init --sample
+    sample_mcp_stdio_local --profile mybpm --tunnel-id <tunnel_…> --mcp-command "node <absolute
+    path>/mybpm-stand.cjs"`, `tunnel-client doctor --profile mybpm --explain`, `tunnel-client run --profile
+    mybpm` (with `CONTROL_PLANE_API_KEY` = a runtime key of the OpenAI Platform organisation the tunnel
+    belongs to); then in ChatGPT Plugins → «+» → add a custom MCP server → Connection: **Tunnel** → that
+    tunnel [I]. The daemon must keep running for every call. No developer mode → no tools in ChatGPT: the
+    skill and the recipes as written, the user carries the files (§5 for the archive, §6 for the xlsx),
+    or Codex on the same machine is the way to the tools.
+  - **Any other MCP client** (Cursor, VS Code, Windsurf, Gemini CLI, …) [I]: a stdio server entry with
+    `command` `node` and `args` `["<absolute path>/mybpm-stand.cjs"]` — e.g. `~/.cursor/mcp.json`:
+    `{"mcpServers": {"mybpm-stand": {"command": "node", "args": ["<absolute path>/mybpm-stand.cjs"]}}}`;
+    VS Code `.vscode/mcp.json` names the list `servers` and adds `"type": "stdio"`. Restart the client.
+  - Stand accounts are the same for every client: the server's own page (`stand_accounts` below) opens on the
+    machine the server runs on; the CLI form `node mybpm-stand.cjs stand_accounts` holds it until Ctrl+C.
 
   Until the user installs it, the recipes as written work wherever your code reaches the stand; a cloud
   sandbox usually does not reach a customer stand — then the install is the way, say so.
 
-- **The same tools from a terminal, without Claude:** in a checkout of the repository `mise run stand` lists
+- **The same tools from a terminal, without an assistant:** in a checkout of the repository `mise run stand` lists
   them, `mise run stand <tool> help` shows a tool's arguments, `mise run stand <tool> --<arg> <value> …` runs
   it on the same accounts (kebab-case flags: `--bo-id`, `--dry-run`; a repeated flag adds to a list; a JSON
   value for an object; `--<arg>-file <path>` reads a value from a file; a `{json}` word passes several). The
   plugin's server file does the same: `node mybpm-stand.cjs <tool> …`. A ✎ tool writes at once — there is no
-  Claude to ask first.
+  assistant to ask first.
 
 - **A newer release: the server says so.** At start it reads `version` of `.claude-plugin/plugin.json` on
   `main` of `dmezhnov/MyBPM` (`main` moves only on a green release); newer than its own → its first answer and
-  every `stand_list` end with an extra text «NOTE for Claude: the mybpm plugin <new> is out, this copy is
+  every `stand_list` end with an extra text «NOTE for the assistant: the mybpm plugin <new> is out, this copy is
   <old> …» naming the update steps of the way it was installed (Desktop account plugin, Upload plugin, `.mcpb`,
-  Claude Code) and the warning block to open the reply with — `> ⚠️ **A new version of the MyBPM plugin is out:
+  Claude Code, a checkout, an unzipped `.mcpb`) and the warning block to open the reply with — `> ⚠️ **A new version of the MyBPM plugin is out:
   <new>** (you have <old>).` + `> To update: …`, in the user's language [C]. Show it, then go on with the task; GitHub out of reach →
   no note, nothing else changes [C].
 

@@ -13,10 +13,10 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.22**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.23**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
-  release, and its first answer (and every `stand_list`) carries a «NOTE for Claude» when a newer one is
+  release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
   out — pass it on with the update steps it names.
 - not connected, and you can fetch a URL (a web fetch tool, or a shell with network) → read
   `https://raw.githubusercontent.com/dmezhnov/MyBPM/main/.claude-plugin/plugin.json`; its `version` higher
@@ -34,6 +34,7 @@ Update steps by how it was installed (unsure → give the user the first two):
 - Claude Code: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart.
 - installed with Upload plugin: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` again.
 - this skill uploaded alone: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.zip` again.
+- the server in another MCP client (Codex, ChatGPT through a tunnel, Cursor, VS Code …): a checkout → `git pull`; unzipped from `mybpm-stand.mcpb` → download it again and unzip over the same folder; then restart that client.
 
 ## Start here
 
@@ -62,7 +63,8 @@ every time. `### 0U.7 Where the rest is` maps the numbered sections behind the c
 
 ## The mybpm-stand MCP server
 
-This plugin also starts an MCP server, `mybpm-stand` (Claude Code and Claude Desktop start it from the plugin).
+This document ships with an MCP server, `mybpm-stand` — one stdio file `mybpm-stand.cjs` any MCP client can start
+(Claude Code and Claude Desktop start it from the plugin; Codex, Cursor, VS Code and others from their MCP config).
 **Its tools connected (`stand_list`, `import_analyze` …) → use them instead of hand-made calls** for
 what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
 it holds the stand accounts (do not ask for a password or a token — `stand_list` names every account with its stand and company;
@@ -89,9 +91,11 @@ company, login and person, no record data). The rule and the prefilled issue URL
 `platform_report` builds the URL and the user presses «Submit new issue».
 
 **Not connected (no `stand_*` tool among yours) and the task touches a stand → tell the user in your first
-reply and give them the install steps — you cannot install it yourself** (the app's own Install dialog, which
-the user confirms; in a Desktop or claude.ai chat your code runs in a cloud sandbox). The steps per app are the
-first bullet of `### 0U.8 The mybpm-stand MCP server`: Claude Desktop (Chat, Cowork) — Customize → Plugins →
+reply and give them the install steps for THEIR client — you cannot install it yourself** (the client's own
+dialog or config, which the user confirms; in a web or desktop chat your code runs in a cloud sandbox). The steps
+per client are the first bullet of `### 0U.8 The mybpm-stand MCP server` — the server file (a checkout of
+`dmezhnov/MyBPM` or the unzipped `mybpm-stand.mcpb`), then Codex (`codex mcp add`), ChatGPT (developer mode +
+Secure MCP Tunnel; none on the Free plan), any other stdio client; for Claude: Claude Desktop (Chat, Cowork) — Customize → Plugins →
 «+ Add» → Add marketplace `dmezhnov/MyBPM` (adds only the catalogue), then Plugins → Discover → «+» on Mybpm →
 Continue, then a new chat (or Upload plugin with
 `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` — a fixed version); the account

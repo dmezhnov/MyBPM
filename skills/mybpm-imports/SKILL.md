@@ -13,10 +13,10 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.22**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.23**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
-  release, and its first answer (and every `stand_list`) carries a «NOTE for Claude» when a newer one is
+  release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
   out — pass it on with the update steps it names.
 - not connected, and you can fetch a URL (a web fetch tool, or a shell with network) → read
   `https://raw.githubusercontent.com/dmezhnov/MyBPM/main/.claude-plugin/plugin.json`; its `version` higher
@@ -34,6 +34,7 @@ Update steps by how it was installed (unsure → give the user the first two):
 - Claude Code: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart.
 - installed with Upload plugin: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` again.
 - this skill uploaded alone: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-imports.zip` again.
+- the server in another MCP client (Codex, ChatGPT through a tunnel, Cursor, VS Code …): a checkout → `git pull`; unzipped from `mybpm-stand.mcpb` → download it again and unzip over the same folder; then restart that client.
 
 ## Pick the cookbook for the job
 
@@ -82,11 +83,11 @@ No Node or Bun in your sandbox → «How to run it» in `### 0.10` (any JavaScri
 ## Handing an archive to the stand MCP
 
 The `mybpm-stand` MCP server connected (tools `archive_put`, `import_analyze` …) and your code runs where
-the user's disk is not (a claude.ai or Claude Desktop chat): **do not zip the archive in your sandbox** —
+the user's disk is not (a web or desktop chat — claude.ai, Claude Desktop, ChatGPT): **do not zip the archive in your sandbox** —
 the server cannot read it there. Send the JSONL lines of `0000001.mybpm` (`### 0.1 The artefact`) to
 `archive_put` in parts of up to ~100 KB (`part: 1, 2 …`, `last: true` on the final one): the server zips
 them on the user's machine and runs this same lint; then `import_analyze` with the same `name`. With a
-local disk (Claude Code) write the zip as usual and pass its `path`. A Block IDE script goes onto a stand by
+local disk (Claude Code, Codex) write the zip as usual and pass its `path`. A Block IDE script goes onto a stand by
 `script_write` (a hook, field script, method or process figure), a process diagram by `process_edit`. Delivering it is the mybpm-stand
 skill — not connected and the user wants the archive on a stand: its skill says how the user installs the
 server.
