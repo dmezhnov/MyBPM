@@ -14,11 +14,17 @@
  * Accounts — a login on a stand host; several may be kept, all equal (none is the default):
  *   ~/.config/mybpm/tokens/<host>/<login>.token  — the session token: added on the accounts page (stand_accounts)
  *                                                  or by `mise run stand-login <host> <login>`
- *   ~/.config/mybpm/accounts.json                — per account its name, the stand's origin, who logged in
+ *   ~/.config/mybpm/accounts.json                — per account its name, the stand's origin, who logged in, remember
+ *   the OS secret store                           — the password of an account saved with «Запомнить пароль» (on by
+ *                                                  default): Linux Secret Service (secret-tool), macOS Keychain
+ *                                                  (security), Windows DPAPI (~/.config/mybpm/secrets/<host>/<login>.dpapi)
  *   MYBPM_STAND + MYBPM_TOKEN (+ MYBPM_LOGIN)     — one more account from the environment (tests, a one-off)
+ *   MYBPM_SECRETS_FILE=<file>                    — tests only: remembered passwords in this plain JSON file, not the OS store
  *   MYBPM_TRACE=<file>                           — append every stand call (path, params, body, answer; cut) as a JSON line
- * No password is stored: the accounts page sends it to the stand and keeps the token; an expired token is renewed
- * by logging in on that page again. Neither a password nor a token is ever a tool argument or a tool result.
+ * The password goes from the accounts page to the stand and, when remembered, to the OS secret store — never to a plain
+ * file. An expired session of a remembered account is renewed by itself: the server logs in again and repeats the call;
+ * otherwise the user logs in on that page again. A password is a tool argument only in stand_account_save, which takes
+ * local stands (localhost) alone; a token is never a tool argument or a tool result.
  */
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -51,7 +57,7 @@ const hostKey = (stand: string) => origin(stand).replace(/^https?:\/\//, "");
 /** The folder of a host's tokens: the `:` of a port is not allowed in a Windows file name. */
 const hostDir = (o: string) => hostKey(o).replace(/:/g, "_");
 
-type Meta = { origin?: string; name?: string; fio?: string; email?: string; companyCode?: string; savedAt?: string };
+type Meta = { origin?: string; name?: string; fio?: string; email?: string; companyCode?: string; savedAt?: string; remember?: boolean };
 type Book = { accounts: Record<string, Meta> }; // key = `<hostDir>/<login>`
 type Cred = { key: string; origin: string; login: string; name?: string; token?: string; file?: string; meta: Meta };
 
@@ -136,8 +142,75 @@ async function authInfo(o: string, token: string): Promise<any> {
 
 const tokenFile = (key: string) => join(TOKENS, `${key}.token`);
 
+// ── remembered passwords: the OS secret store, keyed by the account key `<hostDir>/<login>`
+
+const SERVICE = "mybpm-stand";
+const run = (cmd: string, args: string[], input?: string) =>
+  execFileSync(cmd, args, { input: input ?? "", timeout: 15000, stdio: ["pipe", "pipe", "pipe"] }).toString();
+// Windows: DPAPI through PowerShell — the blob is readable only by this Windows user; UTF-8 both ways, the password on stdin
+const PS_UTF8 = "[Console]::InputEncoding=[Text.Encoding]::UTF8;[Console]::OutputEncoding=[Text.Encoding]::UTF8;";
+const ps = (script: string, input: string) => run("powershell", ["-NoProfile", "-NonInteractive", "-Command", PS_UTF8 + script], input).replace(/\r?\n$/, "");
+const dpapiFile = (key: string) => join(CONFIG, "secrets", `${key}.dpapi`);
+
+const secrets = {
+  /** Keep the password; throws when the store is missing or refuses. */
+  put(key: string, label: string, password: string) {
+    if (env.MYBPM_SECRETS_FILE) {
+      let all: Record<string, string> = {};
+      try { all = JSON.parse(readFileSync(env.MYBPM_SECRETS_FILE, "utf8")); } catch {}
+      all[key] = password;
+      writeFileSync(env.MYBPM_SECRETS_FILE, JSON.stringify(all), { mode: 0o600 });
+    } else if (process.platform === "win32") {
+      const blob = ps("$p=[Console]::In.ReadToEnd(); ConvertTo-SecureString $p -AsPlainText -Force | ConvertFrom-SecureString", password);
+      mkdirSync(dirname(dpapiFile(key)), { recursive: true });
+      writeFileSync(dpapiFile(key), blob, { mode: 0o600 });
+    } else if (process.platform === "darwin") {
+      // `security` takes the password only as an argument (-w without a value reads the terminal, not stdin)
+      run("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", key, "-l", label, "-w", password]);
+    } else run("secret-tool", ["store", "--label", label, "service", SERVICE, "account", key], password);
+  },
+  /** The remembered password, or undefined. */
+  get(key: string): string | undefined {
+    try {
+      if (env.MYBPM_SECRETS_FILE) return JSON.parse(readFileSync(env.MYBPM_SECRETS_FILE, "utf8"))[key];
+      if (process.platform === "win32")
+        return ps("$b=[Console]::In.ReadToEnd().Trim(); $s=ConvertTo-SecureString $b; " +
+          "[Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))", readFileSync(dpapiFile(key), "utf8")) || undefined;
+      if (process.platform === "darwin") return run("security", ["find-generic-password", "-s", SERVICE, "-a", key, "-w"]).replace(/\n$/, "") || undefined;
+      return run("secret-tool", ["lookup", "service", SERVICE, "account", key]) || undefined;
+    } catch { return undefined; }
+  },
+  drop(key: string) {
+    try {
+      if (env.MYBPM_SECRETS_FILE) {
+        const all = JSON.parse(readFileSync(env.MYBPM_SECRETS_FILE, "utf8"));
+        delete all[key];
+        writeFileSync(env.MYBPM_SECRETS_FILE, JSON.stringify(all), { mode: 0o600 });
+      } else if (process.platform === "win32") rmSync(dpapiFile(key), { force: true });
+      else if (process.platform === "darwin") run("security", ["delete-generic-password", "-s", SERVICE, "-a", key]);
+      else run("secret-tool", ["clear", "service", SERVICE, "account", key]);
+    } catch {} // nothing kept is not an error
+  },
+};
+const storeName = () => env.MYBPM_SECRETS_FILE ? "MYBPM_SECRETS_FILE" : process.platform === "win32" ? "Windows DPAPI"
+  : process.platform === "darwin" ? "macOS Keychain" : "Secret Service (secret-tool)";
+
+/** An expired session of a remembered account: log in with the kept password and keep the new token. */
+async function relogin(c: Cred): Promise<{ ok: boolean; error?: string }> {
+  if (!c.file || !c.meta.remember) return { ok: false };
+  const password = secrets.get(c.key);
+  if (!password) return { ok: false, error: `the password is not in the ${storeName()} any more` };
+  try {
+    writeFileSync(c.file, await passwordLogin(c.origin, c.login, password), { mode: 0o600 });
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: `the remembered password did not log in (${e.message})` }; }
+}
+
+/** localhost, 127.x, ::1 — a stand on this machine, where stand_account_save may take a password. */
+const isLocal = (o: string) => /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i.test(hostKey(o));
+
 /** Add an account or change one (`was` = its key): with a password logs in and keeps the new token. */
-async function saveAccount(a: { was?: string; stand?: string; login?: string; password?: string; name?: string }) {
+async function saveAccount(a: { was?: string; stand?: string; login?: string; password?: string; name?: string; remember?: boolean }) {
   const stand = a.stand?.trim() ?? "", login = a.login?.trim() ?? "";
   if (!stand || !login) throw new Error("стенд и логин обязательны");
   if (/[\\/]/.test(login)) throw new Error("логин не может содержать / или \\");
@@ -145,6 +218,8 @@ async function saveAccount(a: { was?: string; stand?: string; login?: string; pa
   if (name && Object.entries(book.accounts).some(([k, m]) => k !== key && k !== a.was && m.name?.toLowerCase() === name.toLowerCase()))
     throw new Error(`название «${name}» уже занято`);
   let meta: Meta = { ...(book.accounts[a.was ?? key] ?? book.accounts[key] ?? {}), origin: o, name };
+  const remember = a.remember !== false; // on by default
+  let rememberError: string | undefined;
   if (a.password) {
     const token = await passwordLogin(o, login, a.password).catch((e) => {
       throw e instanceof StandError && e.errorType === "SecurityError" ? new Error(`стенд не принял логин или пароль (${e.message})`) : e;
@@ -153,16 +228,23 @@ async function saveAccount(a: { was?: string; stand?: string; login?: string; pa
     mkdirSync(join(TOKENS, hostDir(o)), { recursive: true });
     writeFileSync(tokenFile(key), token, { mode: 0o600 });
     meta = { ...meta, fio: me.fio, email: me.email, companyCode: me.companyCode, savedAt: new Date().toISOString() };
+    if (remember)
+      try { secrets.put(key, `MyBPM ${hostKey(o)} / ${login}`, a.password); meta.remember = true; }
+      catch (e: any) { meta.remember = false; rememberError = `пароль не запомнен — ${storeName()} недоступно: ${String(e.message).split("\n")[0]}`; }
   } else if (!existsSync(tokenFile(key))) throw new Error("нужен пароль: такой учётки ещё нет, или изменены стенд или логин");
+  if (!remember) { secrets.drop(key); meta.remember = false; }
+  else if (!a.password && !meta.remember) rememberError = "пароль не запомнен — чтобы запомнить, введите его";
   const before = accounts();
   book.accounts[key] = meta;
   if (a.was && a.was !== key) {
     const old = before.find((c) => c.key === a.was);
     if (old?.file) dropFiles(old);
+    secrets.drop(a.was);
     delete book.accounts[a.was];
   }
   writeBook(book);
-  return { key, name, stand: hostKey(o), login, fio: meta.fio, email: meta.email, companyCode: meta.companyCode };
+  return { key, name, stand: hostKey(o), login, fio: meta.fio, email: meta.email, companyCode: meta.companyCode,
+    remembered: !!meta.remember, ...(rememberError ? { rememberError } : {}) };
 }
 
 function dropFiles(c: Cred) {
@@ -175,29 +257,38 @@ async function removeAccount(c: Cred) {
   // end the session on the stand too (GET v2/auth/logout); an unreachable stand does not block the removal
   await fetch(`${c.origin}/web/v2/auth/logout`, { headers: { token: tokenOf(c) }, signal: AbortSignal.timeout(5000) }).catch(() => {});
   dropFiles(c);
+  secrets.drop(c.key);
   const book = readBook();
   delete book.accounts[c.key];
   writeBook(book);
   return { removed: label(c) };
 }
 
-async function checkAccount(c: Cred, details = false) {
+async function checkAccount(c: Cred, details = false): Promise<{ alive: boolean; error?: string; relogged?: boolean; me?: any; [k: string]: any }> {
+  let relogged = false;
   try {
-    const me = await authInfo(c.origin, tokenOf(c));
+    const me = await authInfo(c.origin, tokenOf(c)).catch(async (e) => {
+      // a dead session of a remembered account: log in again by itself
+      const r = await relogin(c);
+      if (!r.ok) throw r.error ? new Error(`${e.message}; ${r.error}`) : e;
+      relogged = true;
+      return authInfo(c.origin, tokenOf(c));
+    });
     if (c.file) {
       const book = readBook();
       book.accounts[c.key] = { ...(book.accounts[c.key] ?? { origin: c.origin }), fio: me.fio, email: me.email, companyCode: me.companyCode };
       writeBook(book);
     }
-    if (details) return { alive: true, me };
-    return { alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode };
+    const again = relogged ? { relogged } : {};
+    if (details) return { alive: true, me, ...again };
+    return { alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode, ...again };
   } catch (e: any) { return { alive: false, error: e.message }; }
 }
 
 function accountRows() {
   return accounts().map((c) => ({ key: c.key, name: c.name ?? null, stand: hostKey(c.origin), origin: c.origin, login: c.login,
     fio: c.meta.fio ?? null, companyCode: c.meta.companyCode ?? null, savedAt: c.meta.savedAt ?? null,
-    via: c.file ? "token file" : "MYBPM_TOKEN" }));
+    remember: c.meta.remember ?? null, via: c.file ? "token file" : "MYBPM_TOKEN" }));
 }
 
 const byKey = (key: string) => {
@@ -273,17 +364,22 @@ function parse(text: string): any {
 
 const stand = (args: { stand?: string; login?: string }): Stand => standOf(pickStand(args.stand, args.login));
 
+const reloginHow = (c: Cred) => isLocal(c.origin)
+  ? "a local stand: stand_account_save logs in again (ask the user for the password if you do not have it), or stand_accounts"
+  : "call stand_accounts and give the user its link to log in again («Изменить» on that account); the password goes to that page, not to the chat";
+
 function standOf(c: Cred): Stand {
   const url = (p: string) => `${c.origin}/web/${p.replace(/^\/?(web\/)?/, "")}`;
   const envelope = (params: unknown, body: unknown) =>
     JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params ?? {}, body_o1nhHUG480: body ?? {} });
   // a SecurityError is either a missing right or a dead session: the session is asked to tell them apart
+  // a dead session of a remembered account logs in again inside checkAccount, and the call is repeated once
   async function send(make: (token: string) => Promise<Response>): Promise<Response> {
     const r = await make(tokenOf(c));
-    if (/"errorType"\s*:\s*"SecurityError"/.test(await r.clone().text()) && !(await checkAccount(c)).alive)
-      throw new Error(`the session of ${label(c)} has expired — call stand_accounts and give the user its link to log in again ` +
-        "(«Изменить» on that account); the password goes to that page, not to the chat");
-    return r;
+    if (!/"errorType"\s*:\s*"SecurityError"/.test(await r.clone().text())) return r;
+    const chk = await checkAccount(c);
+    if (!chk.alive) throw new Error(`the session of ${label(c)} has expired${chk.error ? ` (${chk.error})` : ""} — ` + reloginHow(c));
+    return chk.relogged ? make(tokenOf(c)) : r;
   }
   const text = async (r: Response) => {
     const t = await r.text();
@@ -1805,20 +1901,22 @@ const tools: Tool[] = [
     props: { functions: { type: "boolean", description: "Also list each user's functionCodes (long)." } },
     run: async (a) => {
       const rows = await Promise.all(accounts().map(async (c) => {
-        const base = { name: c.name ?? null, stand: hostKey(c.origin), login: c.login, via: c.file ? "token file" : "MYBPM_TOKEN" };
+        const base = { name: c.name ?? null, stand: hostKey(c.origin), login: c.login, via: c.file ? "token file" : "MYBPM_TOKEN",
+          passwordRemembered: !!c.meta.remember };
         const r = await checkAccount(c, true);
         if (!r.alive) return { ...base, alive: false, error: r.error, fio: c.meta.fio ?? null, companyCode: c.meta.companyCode ?? null,
-          fix: "the session expired or the stand is unreachable — stand_accounts, the user logs in again on the page" };
+          fix: `the session expired or the stand is unreachable — ${reloginHow(c)}` };
         const me = (r as any).me, s = standOf(c);
         const personBoId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" }).catch(() => null);
-        return { ...base, alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode, companyId: me.companyId, personId: me.personId,
+        return { ...base, alive: true, ...(r.relogged ? { relogged: true } : {}), fio: me.fio, email: me.email, companyCode: me.companyCode, companyId: me.companyId, personId: me.personId,
           personBoId, language: me.language, ...(a.functions ? { functionCodes: me.functionCodes } : {}) };
       }));
       return { accounts: rows,
-        manage: rows.length ? "adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser); stand_remove removes one"
+        manage: rows.length ? "adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser; a local " +
+          "stand — also stand_account_save); stand_remove removes one. A remembered password (passwordRemembered) renews an expired session by itself"
           : NO_ACCOUNTS };
     } },
-  { name: "stand_accounts", description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), or removes one. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
+  { name: "stand_accounts", description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name, «Запомнить пароль» — on by default: kept in the OS secret store, an expired session then logs in again by itself), edits one (rename, another login, log in again when the session expired), or removes one. The password goes from that page straight to the stand: never ask for it in the chat (a local stand — localhost — may also go through stand_account_save). Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
     props: { name: { type: "string", description: "A name to prefill, e.g. «Тестовый core2»." },
       open: { type: "boolean", description: "true = also open the page in the user's browser; only when the user asked for it. Default false: the URL only." } },
     run: async (a) => {
@@ -1828,9 +1926,28 @@ const tools: Tool[] = [
       return { url: link, opened: a.open === true ? openBrowser(link) : false,
         tell: "Give the user the url as a link (opened:true = it is already open in their browser). They log in there; the password never comes to the chat. When they say it is done, call stand_list." };
     } },
-  { name: "stand_remove", write: true, description: "Remove a stand account from this computer: ends its session on the stand (logout) and deletes the saved token. Ask the user first.",
+  { name: "stand_remove", write: true, description: "Remove a stand account from this computer: ends its session on the stand (logout), deletes the saved token and the remembered password. Ask the user first.",
     required: ["stand"],
     run: async (a) => removeAccount(pickStand(a.stand, a.login)) },
+  { name: "stand_account_save", write: true, description: "Add, edit or log in again an account of a LOCAL stand (host localhost / 127.x / [::1]) without the accounts page — the password is an argument here, so any other host is refused: send the user to stand_accounts. A new account or a re-login needs `password`; a rename or `remember:false` alone does not. `was` = the account to change (its name or host, + `login` of it when the host has several — as `stand` elsewhere). `remember` (default true) keeps the password in the OS secret store, so an expired session logs in again by itself. Ask the user before adding, changing or removing an account unless they let you manage local accounts.",
+    props: { stand: { type: "string", description: "The local stand: localhost:8091, http://127.0.0.1:8080 … (a bare host means http:// here — write https:// for a local stand with TLS)." },
+      login: { type: "string", description: "Login on that stand." },
+      password: { type: "string", description: "The password: needed for a new account and to log in again." },
+      name: { type: "string", description: "An optional account name." },
+      remember: { type: "boolean", description: "Keep the password in the OS secret store (default true); false forgets a kept one." },
+      was: { type: "string", description: "Changing an existing account: its name or host." },
+      wasLogin: { type: "string", description: "The login of the account in `was`, when that host has several." } },
+    required: ["stand", "login"],
+    run: async (a) => {
+      // a host without a scheme is http here: a local stand rarely has TLS
+      const o = /^https?:\/\//.test(a.stand.trim()) ? origin(a.stand) : origin(`http://${a.stand.trim()}`);
+      if (!isLocal(o)) throw new Error(`stand_account_save takes local stands only (localhost) — ${hostKey(o)} goes through stand_accounts: give the user its link`);
+      const was = a.was ? pickStand(a.was, a.wasLogin) : undefined;
+      if (was && !isLocal(was.origin)) throw new Error(`${label(was)} is not a local stand — local stands only; use stand_accounts`);
+      // no `name` keeps the account's name (the page always sends its field)
+      const same = was ?? accounts().find((c) => c.key === `${hostDir(o)}/${String(a.login).trim()}`);
+      return saveAccount({ was: was?.key, stand: o, login: a.login, password: a.password, name: a.name ?? same?.name, remember: a.remember });
+    } },
 
   // 2. reading the structure
   { name: "bo_groups", description: "Every BO group of the company with the BOs in it (id, name, boCategory), empty groups included (load-bo-groups forEdit + load-bo-records-by-group-id). Group codes are what an archive's BoGroupStructDto matches.",
@@ -3096,7 +3213,9 @@ const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the
   "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " +
   "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " +
   "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " +
-  "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " +
+  "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat); " +
+  "an account of a LOCAL stand (localhost) may instead be added, changed or logged in again with stand_account_save, which takes the password. " +
+  "An account saved with a remembered password logs in again by itself when its session expires. Before a write, name the account, stand and company in the question. " +
   "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " +
   "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " +
   "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " +
@@ -3104,7 +3223,7 @@ const INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the
   "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 
 function schema(t: Tool) {
-  return { type: "object", properties: { ...(t.props ?? {}), ...STAND_ARGS }, ...(t.required ? { required: t.required } : {}) };
+  return { type: "object", properties: { ...STAND_ARGS, ...(t.props ?? {}) }, ...(t.required ? { required: t.required } : {}) };
 }
 
 async function handle(msg: any): Promise<any> {

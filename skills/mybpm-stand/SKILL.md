@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.23**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.24**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -69,7 +69,8 @@ This document ships with an MCP server, `mybpm-stand` — one stdio file `mybpm-
 what they cover, and read `### 0U.8 The mybpm-stand MCP server` first: which tool makes which recipe, that
 it holds the stand accounts (do not ask for a password or a token — `stand_list` names every account with its stand and company;
 a new account or an expired session → `stand_accounts`, give the user the link to the page where they log in — open their browser
-only when they ask; all accounts are equal — several and the user has not
+only when they ask; a remembered password renews an expired session by itself; a local stand (`localhost`) may also go through
+`stand_account_save`, which takes the password; all accounts are equal — several and the user has not
 said which → ask, then pass `stand` (name or host) on every call),
 that the ✎ tools write and need the user's OK, and how an archive built in a cloud sandbox gets in
 (`archive_put`). BOs and composites in the constructor: `bo_create`, `bo_fields_save`, `bo_code_set`, `bo_delete`, `co_build`.

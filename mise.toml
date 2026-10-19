@@ -111,7 +111,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, rename, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.cjs), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, a dead session renewed by the remembered password, rename, stand_account_save on a local stand only, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -159,7 +159,7 @@ await $`rm -rf dist/mcp-test && mkdir -p dist/mcp-test/home`.quiet();
 const mock = Bun.spawn(["bun", "tools/mock-stand.bun.ts", "dist/mcp-test/requests.jsonl"], { env: { ...Bun.env, PORT: String(port), MOCK_MCP: "1" }, stdout: "ignore" });
 await Bun.sleep(500);
 const env = { ...Bun.env, HOME: `${process.cwd()}/dist/mcp-test/home`, MYBPM_STAND: `http://127.0.0.1:${port}`, MYBPM_TOKEN: "mock-token", MYBPM_LOGIN: "admin@mock",
-  MYBPM_LATEST_URL: `http://127.0.0.1:${port}/latest/plugin.json`, MYBPM_ES_WAIT_MS: "2000" };
+  MYBPM_LATEST_URL: `http://127.0.0.1:${port}/latest/plugin.json`, MYBPM_ES_WAIT_MS: "2000", MYBPM_SECRETS_FILE: `${process.cwd()}/dist/mcp-test/secrets.json` };
 const page = (body: unknown) => ({ url: "@stand_accounts.url", path: "api/save", body });
 const u2 = { stand: env.MYBPM_STAND, login: "u2@mock" };
 const steps: [string, unknown, (r: any) => boolean][] = [
@@ -391,8 +391,21 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["stand_list", {}, (r) => r.accounts.length === 2 && r.accounts.every((a: any) => a.alive && !("default" in a)) && r.accounts.some((a: any) => a.email === "u2@mock")],
   ["bo_find", { code: "Lint_dict" }, (r) => /several accounts/.test(r)],
   ["bo_find", { code: "Lint_dict", stand: "Второй" }, (r) => r.exists === false],
+  // the page remembers the password by default: a dead session logs in again by itself and the call goes through
+  ["stand_call", { stand: "Второй", path: "v2/auth/logout", get: true }, () => true],
+  ["bo_find", { code: "Lint_dict", stand: "Второй" }, (r) => r.exists === false],
+  ["stand_list", {}, (r) => r.accounts.every((a: any) => a.alive) && r.accounts.find((a: any) => a.name === "Второй")?.passwordRemembered === true],
   ["http", page({ ...u2, was: "@http.key", name: "Третий" }), (r) => r.name === "Третий"],
   ["stand_remove", { stand: "Третий" }, (r) => /Третий/.test(r.removed)],
+  // stand_account_save: local stands only; remember:false → a dead session is an error, a re-login with the password remembers it
+  ["stand_account_save", { stand: "mybpm.example.com", login: "x", password: "y" }, (r) => /local stands only/.test(r)],
+  ["stand_account_save", { stand: env.MYBPM_STAND, login: "u3@mock", password: "secret", name: "Локальный", remember: false }, (r) => r.email === "u3@mock" && r.remembered === false],
+  ["stand_call", { stand: "Локальный", path: "v2/auth/logout", get: true }, () => true],
+  ["bo_find", { code: "Lint_dict", stand: "Локальный" }, (r) => /has expired.*stand_account_save/.test(r)],
+  ["stand_account_save", { stand: env.MYBPM_STAND, login: "u3@mock", password: "secret", was: "Локальный" }, (r) => r.remembered === true && r.name === "Локальный"],
+  ["stand_call", { stand: "Локальный", path: "v2/auth/logout", get: true }, () => true],
+  ["bo_find", { code: "Lint_dict", stand: "Локальный" }, (r) => r.exists === false],
+  ["stand_remove", { stand: "Локальный" }, (r) => /Локальный/.test(r.removed)],
   ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].email === "admin@mock"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
 ];
@@ -405,12 +418,15 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
     const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /^> ⚠️ \*\*A new version of the MyBPM plugin is out: 99\.0\.0\*\*/m.test(n)) === (i === 0 || steps[i][0] === "stand_list"));
     if (noted.includes(false)) { bad++; console.error(`mcp (${rt}): the release note sits on the wrong steps: ${noted.map((ok: boolean, i: number) => ok ? "" : i + 1).filter(Boolean)}`); }
+    // a removed account takes its remembered password along
+    const kept = await Bun.file(env.MYBPM_SECRETS_FILE).json().catch(() => ({}));
+    if (Object.keys(kept).length) { bad++; console.error(`mcp (${rt}): remembered passwords left after stand_remove: ${Object.keys(kept)}`); }
     if (report.length !== steps.length) { bad++; console.error(`mcp (${rt}): ${report.length}/${steps.length} steps answered\n${r.stderr}`); }
     // on the latest copy (no release check) the report is a prefilled issue form of the repository
     const rep = await $`bun tools/mcp-client.bun.ts call platform_report ${JSON.stringify({ title: "Поле не сохраняется", document: "MYBPM-UI-API.md", heading: "R1 step 7", mark: "[C]", docSays: "x", standDid: "y" })} --runtime ${rt} --json`

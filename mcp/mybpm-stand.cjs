@@ -128,10 +128,10 @@ button{font:inherit;border:1px solid var(--line);background:var(--card);color:va
 button.primary{background:var(--acc);border-color:var(--acc);color:#fff}button.danger{color:var(--bad)}
 form{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:10px;max-width:460px}
 label{display:grid;gap:4px;font-size:13px;color:var(--mute)}input{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
-.msg{min-height:1.4em}.bad{color:var(--bad)}.ok{color:var(--ok)}.star{color:var(--acc);font-weight:600}
+label.check{display:flex;gap:6px;align-items:center;color:var(--fg)}.msg{min-height:1.4em}.bad{color:var(--bad)}.ok{color:var(--ok)}.star{color:var(--acc);font-weight:600}
 </style></head><body><main>
 <h1>Учётки стендов MyBPM</h1>
-<p class="sub">Хранятся только на этом компьютере. Пароль уходит со страницы прямо на стенд — в чат он не попадает и нигде не сохраняется.</p>
+<p class="sub">Хранятся только на этом компьютере. Пароль уходит со страницы прямо на стенд, в чат он не попадает. С галочкой «Запомнить пароль» он хранится в системном хранилище секретов (Linux — Secret Service, macOS — Связка ключей, Windows — DPAPI), и когда сессия истекает, сервер сам входит заново.</p>
 <table><thead><tr><th>Название</th><th>Стенд / логин</th><th>Кто</th><th></th></tr></thead><tbody id="rows"></tbody></table>
 <button class="primary" id="add">Добавить учётку</button>
 <form id="form" hidden>
@@ -140,6 +140,7 @@ label{display:grid;gap:4px;font-size:13px;color:var(--mute)}input{font:inherit;p
 <label>Стенд<input name="stand" required placeholder="mybpm.example.com"></label>
 <label>Логин<input name="login" required autocomplete="username"></label>
 <label>Пароль<input name="password" type="password" autocomplete="current-password"></label>
+<label class="check"><input name="remember" type="checkbox" checked> Запомнить пароль — входить заново самому, когда сессия истекла</label>
 <div><button class="primary" type="submit">Сохранить</button><button type="button" id="cancel">Отмена</button></div>
 <div class="msg" id="fmsg"></div>
 </form>
@@ -154,7 +155,7 @@ let was = null;
 function edit(a) {
   was = a ? a.key : null; form.hidden = false; say($("fmsg"), "");
   $("ftitle").textContent = a ? "Изменить учётку" : "Новая учётка";
-  form.name.value = a ? a.name || "" : ""; form.stand.value = a ? (a.origin.startsWith("https://") ? a.origin.slice(8) : a.origin) : ""; form.login.value = a ? a.login : ""; form.password.value = "";
+  form.name.value = a ? a.name || "" : ""; form.stand.value = a ? (a.origin.startsWith("https://") ? a.origin.slice(8) : a.origin) : ""; form.login.value = a ? a.login : ""; form.password.value = ""; form.remember.checked = a ? a.remember !== false : true;
   form.password.placeholder = a ? "пусто = не входить заново" : ""; form.password.required = !a;
   (a ? form.password : form.stand).focus();
 }
@@ -164,11 +165,11 @@ async function load() {
   for (const a of rows) {
     const tr = el("tr"), name = el("td"), where = el("td"), who = el("td"), act = el("td");
     name.append(el("span", a.name || "—"));
-    where.append(el("div", a.stand), el("small", a.login));
+    where.append(el("div", a.stand), el("small", a.login + (a.remember ? " · пароль запомнен" : "")));
     who.append(el("div", a.fio || ""), el("small", a.companyCode || "")); const st = el("div"); who.append(st);
     const b = (t, f, cls) => { const x = el("button", t, cls); x.type = "button"; x.onclick = f; act.append(x); };
     b("Проверить", async () => { say(st, "…"); const r = await api("check", { key: a.key });
-      say(st, r.alive ? "сессия жива" : "сессия истекла — «Изменить» и войти заново", r.alive ? "ok" : "bad"); });
+      say(st, r.alive ? (r.relogged ? "сессия истекла — вошёл заново по запомненному паролю" : "сессия жива") : "сессия истекла — «Изменить» и войти заново", r.alive ? "ok" : "bad"); });
     if (a.via === "token file") {
       b("Изменить", () => edit(a));
       // the second click removes: no confirm() dialog
@@ -184,9 +185,9 @@ form.onsubmit = async (ev) => {
   ev.preventDefault(); const btn = form.querySelector("button[type=submit]"); btn.disabled = true;
   say($("fmsg"), form.password.value ? "Вхожу на стенд…" : "Сохраняю…");
   try {
-    const r = await api("save", { was, name: form.name.value, stand: form.stand.value, login: form.login.value, password: form.password.value });
+    const r = await api("save", { was, name: form.name.value, stand: form.stand.value, login: form.login.value, password: form.password.value, remember: form.remember.checked });
     form.password.value = ""; form.hidden = true;
-    say($("msg"), "Готово: " + r.stand + " / " + r.login + (r.fio ? " — " + r.fio + ", " + (r.companyCode || "") : "") + ". Можно вернуться в чат.", "ok");
+    say($("msg"), "Готово: " + r.stand + " / " + r.login + (r.fio ? " — " + r.fio + ", " + (r.companyCode || "") : "") + (r.remembered ? ", пароль запомнен" : "") + "." + (r.rememberError ? " Внимание: " + r.rememberError + "." : "") + " Можно вернуться в чат.", r.rememberError ? "bad" : "ok");
     load();
   } catch (e) { say($("fmsg"), e.message, "bad"); } finally { btn.disabled = false; }
 };
@@ -309,6 +310,72 @@ async function authInfo(o, token) {
   return j;
 }
 var tokenFile = (key) => import_node_path.join(TOKENS, `${key}.token`);
+var SERVICE = "mybpm-stand";
+var run = (cmd, args, input) => import_node_child_process.execFileSync(cmd, args, { input: input ?? "", timeout: 15000, stdio: ["pipe", "pipe", "pipe"] }).toString();
+var PS_UTF8 = "[Console]::InputEncoding=[Text.Encoding]::UTF8;[Console]::OutputEncoding=[Text.Encoding]::UTF8;";
+var ps = (script, input) => run("powershell", ["-NoProfile", "-NonInteractive", "-Command", PS_UTF8 + script], input).replace(/\r?\n$/, "");
+var dpapiFile = (key) => import_node_path.join(CONFIG, "secrets", `${key}.dpapi`);
+var secrets = {
+  put(key, label, password) {
+    if (env.MYBPM_SECRETS_FILE) {
+      let all = {};
+      try {
+        all = JSON.parse(import_node_fs.readFileSync(env.MYBPM_SECRETS_FILE, "utf8"));
+      } catch {}
+      all[key] = password;
+      import_node_fs.writeFileSync(env.MYBPM_SECRETS_FILE, JSON.stringify(all), { mode: 384 });
+    } else if (process.platform === "win32") {
+      const blob = ps("$p=[Console]::In.ReadToEnd(); ConvertTo-SecureString $p -AsPlainText -Force | ConvertFrom-SecureString", password);
+      import_node_fs.mkdirSync(import_node_path.dirname(dpapiFile(key)), { recursive: true });
+      import_node_fs.writeFileSync(dpapiFile(key), blob, { mode: 384 });
+    } else if (process.platform === "darwin") {
+      run("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", key, "-l", label, "-w", password]);
+    } else
+      run("secret-tool", ["store", "--label", label, "service", SERVICE, "account", key], password);
+  },
+  get(key) {
+    try {
+      if (env.MYBPM_SECRETS_FILE)
+        return JSON.parse(import_node_fs.readFileSync(env.MYBPM_SECRETS_FILE, "utf8"))[key];
+      if (process.platform === "win32")
+        return ps("$b=[Console]::In.ReadToEnd().Trim(); $s=ConvertTo-SecureString $b; " + "[Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))", import_node_fs.readFileSync(dpapiFile(key), "utf8")) || undefined;
+      if (process.platform === "darwin")
+        return run("security", ["find-generic-password", "-s", SERVICE, "-a", key, "-w"]).replace(/\n$/, "") || undefined;
+      return run("secret-tool", ["lookup", "service", SERVICE, "account", key]) || undefined;
+    } catch {
+      return;
+    }
+  },
+  drop(key) {
+    try {
+      if (env.MYBPM_SECRETS_FILE) {
+        const all = JSON.parse(import_node_fs.readFileSync(env.MYBPM_SECRETS_FILE, "utf8"));
+        delete all[key];
+        import_node_fs.writeFileSync(env.MYBPM_SECRETS_FILE, JSON.stringify(all), { mode: 384 });
+      } else if (process.platform === "win32")
+        import_node_fs.rmSync(dpapiFile(key), { force: true });
+      else if (process.platform === "darwin")
+        run("security", ["delete-generic-password", "-s", SERVICE, "-a", key]);
+      else
+        run("secret-tool", ["clear", "service", SERVICE, "account", key]);
+    } catch {}
+  }
+};
+var storeName = () => env.MYBPM_SECRETS_FILE ? "MYBPM_SECRETS_FILE" : process.platform === "win32" ? "Windows DPAPI" : process.platform === "darwin" ? "macOS Keychain" : "Secret Service (secret-tool)";
+async function relogin(c) {
+  if (!c.file || !c.meta.remember)
+    return { ok: false };
+  const password = secrets.get(c.key);
+  if (!password)
+    return { ok: false, error: `the password is not in the ${storeName()} any more` };
+  try {
+    import_node_fs.writeFileSync(c.file, await passwordLogin(c.origin, c.login, password), { mode: 384 });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `the remembered password did not log in (${e.message})` };
+  }
+}
+var isLocal = (o) => /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i.test(hostKey(o));
 async function saveAccount(a) {
   const stand = a.stand?.trim() ?? "", login = a.login?.trim() ?? "";
   if (!stand || !login)
@@ -319,6 +386,8 @@ async function saveAccount(a) {
   if (name && Object.entries(book.accounts).some(([k, m]) => k !== key && k !== a.was && m.name?.toLowerCase() === name.toLowerCase()))
     throw new Error(`название «${name}» уже занято`);
   let meta = { ...book.accounts[a.was ?? key] ?? book.accounts[key] ?? {}, origin: o, name };
+  const remember = a.remember !== false;
+  let rememberError;
   if (a.password) {
     const token = await passwordLogin(o, login, a.password).catch((e) => {
       throw e instanceof StandError && e.errorType === "SecurityError" ? new Error(`стенд не принял логин или пароль (${e.message})`) : e;
@@ -327,18 +396,43 @@ async function saveAccount(a) {
     import_node_fs.mkdirSync(import_node_path.join(TOKENS, hostDir(o)), { recursive: true });
     import_node_fs.writeFileSync(tokenFile(key), token, { mode: 384 });
     meta = { ...meta, fio: me.fio, email: me.email, companyCode: me.companyCode, savedAt: new Date().toISOString() };
+    if (remember)
+      try {
+        secrets.put(key, `MyBPM ${hostKey(o)} / ${login}`, a.password);
+        meta.remember = true;
+      } catch (e) {
+        meta.remember = false;
+        rememberError = `пароль не запомнен — ${storeName()} недоступно: ${String(e.message).split(`
+`)[0]}`;
+      }
   } else if (!import_node_fs.existsSync(tokenFile(key)))
     throw new Error("нужен пароль: такой учётки ещё нет, или изменены стенд или логин");
+  if (!remember) {
+    secrets.drop(key);
+    meta.remember = false;
+  } else if (!a.password && !meta.remember)
+    rememberError = "пароль не запомнен — чтобы запомнить, введите его";
   const before = accounts();
   book.accounts[key] = meta;
   if (a.was && a.was !== key) {
     const old = before.find((c) => c.key === a.was);
     if (old?.file)
       dropFiles(old);
+    secrets.drop(a.was);
     delete book.accounts[a.was];
   }
   writeBook(book);
-  return { key, name, stand: hostKey(o), login, fio: meta.fio, email: meta.email, companyCode: meta.companyCode };
+  return {
+    key,
+    name,
+    stand: hostKey(o),
+    login,
+    fio: meta.fio,
+    email: meta.email,
+    companyCode: meta.companyCode,
+    remembered: !!meta.remember,
+    ...rememberError ? { rememberError } : {}
+  };
 }
 function dropFiles(c) {
   import_node_fs.rmSync(c.file, { force: true });
@@ -351,22 +445,31 @@ async function removeAccount(c) {
     throw new Error(`${label(c)} comes from MYBPM_STAND / MYBPM_TOKEN of the server's environment — remove it there`);
   await fetch(`${c.origin}/web/v2/auth/logout`, { headers: { token: tokenOf(c) }, signal: AbortSignal.timeout(5000) }).catch(() => {});
   dropFiles(c);
+  secrets.drop(c.key);
   const book = readBook();
   delete book.accounts[c.key];
   writeBook(book);
   return { removed: label(c) };
 }
 async function checkAccount(c, details = false) {
+  let relogged = false;
   try {
-    const me = await authInfo(c.origin, tokenOf(c));
+    const me = await authInfo(c.origin, tokenOf(c)).catch(async (e) => {
+      const r = await relogin(c);
+      if (!r.ok)
+        throw r.error ? new Error(`${e.message}; ${r.error}`) : e;
+      relogged = true;
+      return authInfo(c.origin, tokenOf(c));
+    });
     if (c.file) {
       const book = readBook();
       book.accounts[c.key] = { ...book.accounts[c.key] ?? { origin: c.origin }, fio: me.fio, email: me.email, companyCode: me.companyCode };
       writeBook(book);
     }
+    const again = relogged ? { relogged } : {};
     if (details)
-      return { alive: true, me };
-    return { alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode };
+      return { alive: true, me, ...again };
+    return { alive: true, fio: me.fio, email: me.email, companyCode: me.companyCode, ...again };
   } catch (e) {
     return { alive: false, error: e.message };
   }
@@ -381,6 +484,7 @@ function accountRows() {
     fio: c.meta.fio ?? null,
     companyCode: c.meta.companyCode ?? null,
     savedAt: c.meta.savedAt ?? null,
+    remember: c.meta.remember ?? null,
     via: c.file ? "token file" : "MYBPM_TOKEN"
   }));
 }
@@ -457,14 +561,18 @@ function parse(text) {
   return out;
 }
 var stand = (args) => standOf(pickStand(args.stand, args.login));
+var reloginHow = (c) => isLocal(c.origin) ? "a local stand: stand_account_save logs in again (ask the user for the password if you do not have it), or stand_accounts" : "call stand_accounts and give the user its link to log in again («Изменить» on that account); the password goes to that page, not to the chat";
 function standOf(c) {
   const url = (p) => `${c.origin}/web/${p.replace(/^\/?(web\/)?/, "")}`;
   const envelope = (params, body) => JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params ?? {}, body_o1nhHUG480: body ?? {} });
   async function send(make) {
     const r = await make(tokenOf(c));
-    if (/"errorType"\s*:\s*"SecurityError"/.test(await r.clone().text()) && !(await checkAccount(c)).alive)
-      throw new Error(`the session of ${label(c)} has expired — call stand_accounts and give the user its link to log in again ` + "(«Изменить» on that account); the password goes to that page, not to the chat");
-    return r;
+    if (!/"errorType"\s*:\s*"SecurityError"/.test(await r.clone().text()))
+      return r;
+    const chk = await checkAccount(c);
+    if (!chk.alive)
+      throw new Error(`the session of ${label(c)} has expired${chk.error ? ` (${chk.error})` : ""} — ` + reloginHow(c));
+    return chk.relogged ? make(tokenOf(c)) : r;
   }
   const text = async (r) => {
     const t = await r.text();
@@ -2294,7 +2402,13 @@ var tools = [
     props: { functions: { type: "boolean", description: "Also list each user's functionCodes (long)." } },
     run: async (a) => {
       const rows = await Promise.all(accounts().map(async (c) => {
-        const base = { name: c.name ?? null, stand: hostKey(c.origin), login: c.login, via: c.file ? "token file" : "MYBPM_TOKEN" };
+        const base = {
+          name: c.name ?? null,
+          stand: hostKey(c.origin),
+          login: c.login,
+          via: c.file ? "token file" : "MYBPM_TOKEN",
+          passwordRemembered: !!c.meta.remember
+        };
         const r = await checkAccount(c, true);
         if (!r.alive)
           return {
@@ -2303,13 +2417,14 @@ var tools = [
             error: r.error,
             fio: c.meta.fio ?? null,
             companyCode: c.meta.companyCode ?? null,
-            fix: "the session expired or the stand is unreachable — stand_accounts, the user logs in again on the page"
+            fix: `the session expired or the stand is unreachable — ${reloginHow(c)}`
           };
         const me = r.me, s = standOf(c);
         const personBoId = await s.call("v2/business-objects/load-bo-id-by-kind", { kind: "PERSON" }).catch(() => null);
         return {
           ...base,
           alive: true,
+          ...r.relogged ? { relogged: true } : {},
           fio: me.fio,
           email: me.email,
           companyCode: me.companyCode,
@@ -2322,13 +2437,13 @@ var tools = [
       }));
       return {
         accounts: rows,
-        manage: rows.length ? "adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser); stand_remove removes one" : NO_ACCOUNTS
+        manage: rows.length ? "adding, renaming, a re-login after an expired session — stand_accounts (a page in the user's browser; a local " + "stand — also stand_account_save); stand_remove removes one. A remembered password (passwordRemembered) renews an expired session by itself" : NO_ACCOUNTS
       };
     }
   },
   {
     name: "stand_accounts",
-    description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name), edits one (rename, another login, log in again when the session expired), or removes one. The password goes from that page straight to the stand: never ask for it in the chat. Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
+    description: "The accounts page — a local page of this server where the user adds a stand account (stand host, login, password, an optional name, «Запомнить пароль» — on by default: kept in the OS secret store, an expired session then logs in again by itself), edits one (rename, another login, log in again when the session expired), or removes one. The password goes from that page straight to the stand: never ask for it in the chat (a local stand — localhost — may also go through stand_account_save). Returns the page URL: give it to the user as a link and wait for them. It opens their browser only with open:true — pass it only when the user asked you to open the page or to add / re-log an account, never just because a question found no account, and stand_list shows the result. `stand` / `login` / `name` prefill the add form.",
     props: {
       name: { type: "string", description: "A name to prefill, e.g. «Тестовый core2»." },
       open: { type: "boolean", description: "true = also open the page in the user's browser; only when the user asked for it. Default false: the URL only." }
@@ -2347,9 +2462,34 @@ var tools = [
   {
     name: "stand_remove",
     write: true,
-    description: "Remove a stand account from this computer: ends its session on the stand (logout) and deletes the saved token. Ask the user first.",
+    description: "Remove a stand account from this computer: ends its session on the stand (logout), deletes the saved token and the remembered password. Ask the user first.",
     required: ["stand"],
     run: async (a) => removeAccount(pickStand(a.stand, a.login))
+  },
+  {
+    name: "stand_account_save",
+    write: true,
+    description: "Add, edit or log in again an account of a LOCAL stand (host localhost / 127.x / [::1]) without the accounts page — the password is an argument here, so any other host is refused: send the user to stand_accounts. A new account or a re-login needs `password`; a rename or `remember:false` alone does not. `was` = the account to change (its name or host, + `login` of it when the host has several — as `stand` elsewhere). `remember` (default true) keeps the password in the OS secret store, so an expired session logs in again by itself. Ask the user before adding, changing or removing an account unless they let you manage local accounts.",
+    props: {
+      stand: { type: "string", description: "The local stand: localhost:8091, http://127.0.0.1:8080 … (a bare host means http:// here — write https:// for a local stand with TLS)." },
+      login: { type: "string", description: "Login on that stand." },
+      password: { type: "string", description: "The password: needed for a new account and to log in again." },
+      name: { type: "string", description: "An optional account name." },
+      remember: { type: "boolean", description: "Keep the password in the OS secret store (default true); false forgets a kept one." },
+      was: { type: "string", description: "Changing an existing account: its name or host." },
+      wasLogin: { type: "string", description: "The login of the account in `was`, when that host has several." }
+    },
+    required: ["stand", "login"],
+    run: async (a) => {
+      const o = /^https?:\/\//.test(a.stand.trim()) ? origin(a.stand) : origin(`http://${a.stand.trim()}`);
+      if (!isLocal(o))
+        throw new Error(`stand_account_save takes local stands only (localhost) — ${hostKey(o)} goes through stand_accounts: give the user its link`);
+      const was = a.was ? pickStand(a.was, a.wasLogin) : undefined;
+      if (was && !isLocal(was.origin))
+        throw new Error(`${label(was)} is not a local stand — local stands only; use stand_accounts`);
+      const same = was ?? accounts().find((c) => c.key === `${hostDir(o)}/${String(a.login).trim()}`);
+      return saveAccount({ was: was?.key, stand: o, login: a.login, password: a.password, name: a.name ?? same?.name, remember: a.remember });
+    }
   },
   {
     name: "bo_groups",
@@ -4430,9 +4570,9 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat). Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for the assistant» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat); " + "an account of a LOCAL stand (localhost) may instead be added, changed or logged in again with stand_account_save, which takes the password. " + "An account saved with a remembered password logs in again by itself when its session expires. Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for the assistant» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
 function schema(t) {
-  return { type: "object", properties: { ...t.props ?? {}, ...STAND_ARGS }, ...t.required ? { required: t.required } : {} };
+  return { type: "object", properties: { ...STAND_ARGS, ...t.props ?? {} }, ...t.required ? { required: t.required } : {} };
 }
 async function handle(msg) {
   switch (msg.method) {

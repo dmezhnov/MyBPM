@@ -18,10 +18,10 @@ button{font:inherit;border:1px solid var(--line);background:var(--card);color:va
 button.primary{background:var(--acc);border-color:var(--acc);color:#fff}button.danger{color:var(--bad)}
 form{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:10px;max-width:460px}
 label{display:grid;gap:4px;font-size:13px;color:var(--mute)}input{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
-.msg{min-height:1.4em}.bad{color:var(--bad)}.ok{color:var(--ok)}.star{color:var(--acc);font-weight:600}
+label.check{display:flex;gap:6px;align-items:center;color:var(--fg)}.msg{min-height:1.4em}.bad{color:var(--bad)}.ok{color:var(--ok)}.star{color:var(--acc);font-weight:600}
 </style></head><body><main>
 <h1>Учётки стендов MyBPM</h1>
-<p class="sub">Хранятся только на этом компьютере. Пароль уходит со страницы прямо на стенд — в чат он не попадает и нигде не сохраняется.</p>
+<p class="sub">Хранятся только на этом компьютере. Пароль уходит со страницы прямо на стенд, в чат он не попадает. С галочкой «Запомнить пароль» он хранится в системном хранилище секретов (Linux — Secret Service, macOS — Связка ключей, Windows — DPAPI), и когда сессия истекает, сервер сам входит заново.</p>
 <table><thead><tr><th>Название</th><th>Стенд / логин</th><th>Кто</th><th></th></tr></thead><tbody id="rows"></tbody></table>
 <button class="primary" id="add">Добавить учётку</button>
 <form id="form" hidden>
@@ -30,6 +30,7 @@ label{display:grid;gap:4px;font-size:13px;color:var(--mute)}input{font:inherit;p
 <label>Стенд<input name="stand" required placeholder="mybpm.example.com"></label>
 <label>Логин<input name="login" required autocomplete="username"></label>
 <label>Пароль<input name="password" type="password" autocomplete="current-password"></label>
+<label class="check"><input name="remember" type="checkbox" checked> Запомнить пароль — входить заново самому, когда сессия истекла</label>
 <div><button class="primary" type="submit">Сохранить</button><button type="button" id="cancel">Отмена</button></div>
 <div class="msg" id="fmsg"></div>
 </form>
@@ -44,7 +45,7 @@ let was = null;
 function edit(a) {
   was = a ? a.key : null; form.hidden = false; say($("fmsg"), "");
   $("ftitle").textContent = a ? "Изменить учётку" : "Новая учётка";
-  form.name.value = a ? a.name || "" : ""; form.stand.value = a ? (a.origin.startsWith("https://") ? a.origin.slice(8) : a.origin) : ""; form.login.value = a ? a.login : ""; form.password.value = "";
+  form.name.value = a ? a.name || "" : ""; form.stand.value = a ? (a.origin.startsWith("https://") ? a.origin.slice(8) : a.origin) : ""; form.login.value = a ? a.login : ""; form.password.value = ""; form.remember.checked = a ? a.remember !== false : true;
   form.password.placeholder = a ? "пусто = не входить заново" : ""; form.password.required = !a;
   (a ? form.password : form.stand).focus();
 }
@@ -54,11 +55,11 @@ async function load() {
   for (const a of rows) {
     const tr = el("tr"), name = el("td"), where = el("td"), who = el("td"), act = el("td");
     name.append(el("span", a.name || "—"));
-    where.append(el("div", a.stand), el("small", a.login));
+    where.append(el("div", a.stand), el("small", a.login + (a.remember ? " · пароль запомнен" : "")));
     who.append(el("div", a.fio || ""), el("small", a.companyCode || "")); const st = el("div"); who.append(st);
     const b = (t, f, cls) => { const x = el("button", t, cls); x.type = "button"; x.onclick = f; act.append(x); };
     b("Проверить", async () => { say(st, "…"); const r = await api("check", { key: a.key });
-      say(st, r.alive ? "сессия жива" : "сессия истекла — «Изменить» и войти заново", r.alive ? "ok" : "bad"); });
+      say(st, r.alive ? (r.relogged ? "сессия истекла — вошёл заново по запомненному паролю" : "сессия жива") : "сессия истекла — «Изменить» и войти заново", r.alive ? "ok" : "bad"); });
     if (a.via === "token file") {
       b("Изменить", () => edit(a));
       // the second click removes: no confirm() dialog
@@ -74,9 +75,9 @@ form.onsubmit = async (ev) => {
   ev.preventDefault(); const btn = form.querySelector("button[type=submit]"); btn.disabled = true;
   say($("fmsg"), form.password.value ? "Вхожу на стенд…" : "Сохраняю…");
   try {
-    const r = await api("save", { was, name: form.name.value, stand: form.stand.value, login: form.login.value, password: form.password.value });
+    const r = await api("save", { was, name: form.name.value, stand: form.stand.value, login: form.login.value, password: form.password.value, remember: form.remember.checked });
     form.password.value = ""; form.hidden = true;
-    say($("msg"), "Готово: " + r.stand + " / " + r.login + (r.fio ? " — " + r.fio + ", " + (r.companyCode || "") : "") + ". Можно вернуться в чат.", "ok");
+    say($("msg"), "Готово: " + r.stand + " / " + r.login + (r.fio ? " — " + r.fio + ", " + (r.companyCode || "") : "") + (r.remembered ? ", пароль запомнен" : "") + "." + (r.rememberError ? " Внимание: " + r.rememberError + "." : "") + " Можно вернуться в чат.", r.rememberError ? "bad" : "ok");
     load();
   } catch (e) { say($("fmsg"), e.message, "bad"); } finally { btn.disabled = false; }
 };

@@ -10,7 +10,8 @@
 // `mise test` drives `mcp/mybpm-stand.cjs` against it (MYBPM_STAND=http://127.0.0.1:$PORT): the import cycle
 // (upload → insert → analyze → apply → rollback, cancel), the structure export, the bell, the accounts. The BOs of an
 // uploaded archive appear on apply and disappear on rollback, so bo_find shows what the stand would. A login with the
-// password «secret» answers the token `mock-token-<login>`, and that token's session is <login>; any other token is admin@mock.
+// password «secret» answers the token `mock-token-<login>~<n>` (n counts the logins), and that token's session is <login>; any other token is admin@mock.
+// A logout kills the token: every later call with it answers SecurityError «Illegal Session», as an expired session does.
 // The constructor is stateful too: create-bo, the portion save (only addedFieldIds / editedFields / deletedFieldIds change
 // the stored fields — a change made only inside formFields is dropped, as on a stand, trap 53), field / widget / BO codes,
 // a soft delete, and the composite draft cycle (`v2/co/load-mock-open-drafts` counts the drafts left open). The records xlsx
@@ -229,14 +230,18 @@ function xexport(e: any): Uint8Array {
 const fileOf = (data: Uint8Array, name: string) => new Response(data, { headers: { "Content-Type": "application/octet-stream",
   "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}` } });
 
+const deadTokens = new Set<string>();
+let logins = 0;
+
 function mcp(path: string, params: any, body: any, token: string, file?: Uint8Array): any {
   const route = path.replace(/^\/web\//, "");
+  if (deadTokens.has(token) && route !== "v2/auth/v3/login") return { errorType: "SecurityError", message: "9hPup1EIc0 :: Illegal Session" };
   switch (route) {
-    case "v2/auth/v3/login": return unb64(body["cGFzc3dvcmQ="]) === "secret" ? `mock-token-${unb64(body["dXNlcm5hbWU="])}`
+    case "v2/auth/v3/login": return unb64(body["cGFzc3dvcmQ="]) === "secret" ? `mock-token-${unb64(body["dXNlcm5hbWU="])}~${++logins}`
       : { errorType: "SecurityError", message: "wrong login or password" };
-    case "v2/auth/logout": return null;
+    case "v2/auth/logout": deadTokens.add(token); return null;
     case "v2/auth/load-auth-info": {
-      const email = token.startsWith("mock-token-") ? token.slice("mock-token-".length) : "admin@mock";
+      const email = token.startsWith("mock-token-") ? token.slice("mock-token-".length).split("~")[0] : "admin@mock";
       return { fio: email === "admin@mock" ? "Mock Admin" : `Mock ${email}`, email, companyCode: "MOCK", companyId: "COMPANY000000001", personId: "PERSON0000000001", language: "RUS", functionCodes: ["A", "B"] };
     }
     case "v2/business-objects/load-bo-id-by-kind": return "PERSONBO00000001";
