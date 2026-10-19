@@ -84,7 +84,8 @@ Ask the user for these, one request at a time, and wait for the answer:
    exists because another company on the same host has it.**
 3. **Authentication**, one of the two routes below. With the `mybpm-stand` MCP server connected there is
    nothing to ask: it holds the accounts (§0U.8) — `stand_list` names each account with its stand and company; an account
-   it does not hold yet is added by the user on its accounts page (`stand_accounts`), never through the chat.
+   it does not hold yet is added by the user on its accounts page (`stand_accounts`), never through the chat
+   (a local stand — `localhost` — may also be added with `stand_account_save`, which takes the password).
 
 #### Route A — log in headlessly (username + password)
 
@@ -1103,15 +1104,23 @@ do is plain HTTP by §0U.4.
   returns the URL of a local page of the server — give it to the user as a link; the page opens in their
   browser only with `open: true`, which you pass only when the user asked to open it or to add / re-log an
   account, never because a question found no account — where they type the stand, the login and the password; the password goes from that page to the stand, the server
-  keeps only the session token (`~/.config/mybpm/tokens/<host>/<login>.token`, the same file
-  `mise run stand-login <host> <login>` writes) — no password is stored. Then wait for the user and call
-  `stand_list`. `stand_remove` ✎ ends the session on the stand and deletes the token. **An expired session**
-  surfaces as an error naming the account: send the user to `stand_accounts` («Изменить», log in again) — a
-  missing right comes back as the stand's own `SecurityError`. With the server connected, never ask for a
-  password or a token (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
+  keeps the session token (`~/.config/mybpm/tokens/<host>/<login>.token`, the same file
+  `mise run stand-login <host> <login>` writes). **«Запомнить пароль»** on that page (on by default) also keeps
+  the password in the OS secret store — Linux Secret Service (`secret-tool`, service `mybpm-stand`), macOS
+  Keychain, Windows DPAPI (`~/.config/mybpm/secrets/<host>/<login>.dpapi`); never in a plain file; the store
+  missing → the account is saved without it and the page says so. Then wait for the user and call
+  `stand_list` (`passwordRemembered` per account). `stand_remove` ✎ ends the session on the stand and deletes
+  the token and the remembered password. **An expired session of a remembered account renews itself:** the
+  server logs in again with the kept password and repeats the call (`stand_list` marks it `relogged`).
+  Otherwise — or when the kept password no longer logs in — it surfaces as an error naming the account: send
+  the user to `stand_accounts` («Изменить», log in again) — a missing right comes back as the stand's own
+  `SecurityError`. **A local stand** (host `localhost`, `127.x`, `[::1]`) may instead be added, changed or
+  logged in again by `stand_account_save` ✎, which takes the password as an argument (`remember` default
+  true; `was` = the account to change; a bare host means `http://`); any other host is refused. With the
+  server connected, never ask for a password or a token of a non-local stand (§0U.1 item 3 is answered). Item 2 still holds: **`stand_list` first** — it names
   the company each account selects.
 - **Writes are marked.** `import_apply`, `import_cancel`, `import_rollback`, `bo_create`, `bo_fields_save`, `bo_code_set`,
-  `bo_delete`, `co_build`, `rights_save`, `menu_save`, `menu_delete`, `filter_save`, `kanban_card_save`, `record_save`, `record_delete`, `record_participants`, `person_invite`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
+  `bo_delete`, `co_build`, `rights_save`, `menu_save`, `menu_delete`, `filter_save`, `kanban_card_save`, `record_save`, `record_delete`, `record_participants`, `person_invite`, `xlsx_import` with `confirm`, `script_write`, `scripts_wire`, `script_version`, `process_edit`, `process_version`, `process_run_ways`, `process_push`, `notifications_clear`, `stand_call` change the stand, `stand_remove` deletes a saved account, `stand_account_save` adds or changes a local one — §0U.5 applies to them as to a hand-made call: say what it changes, get the user's OK.
   `import_rollback`, `bo_delete`, `menu_delete` and `record_delete` without `confirm: true` only return the preview.
 - **The constructor tools make R1 / R2a whole.** `bo_create` takes the fields as a list (label, type, code,
   ref, options, required / unique, `cols`, `tab`) and does R1 steps 1–8 with «Layout»: pairs in one row, one
@@ -1206,7 +1215,8 @@ do is plain HTTP by §0U.4.
 |---|---|---|
 | `stand_list` | every account, each asked live: alive, fio, e-mail, companyCode, companyId, personId, the Person BO id | §0U.1 item 2; `GET v2/auth/load-auth-info`, `load-bo-id-by-kind {kind: PERSON}` |
 | `stand_accounts` | the accounts page URL (`open: true` opens it — only on the user's ask): add, edit, log in again, remove | — |
-| `stand_remove` ✎ | ends an account's session on the stand, deletes its token | `GET v2/auth/logout` |
+| `stand_remove` ✎ | ends an account's session on the stand, deletes its token and remembered password | `GET v2/auth/logout` |
+| `stand_account_save` ✎ | adds, changes or logs in again an account of a LOCAL stand (localhost) with the password as an argument; `remember` keeps it in the OS secret store | `POST v2/auth/v3/login` (Route A) |
 | `bo_groups` | every BO group with its BOs | R4; `load-bo-groups {forEdit}`, `load-bo-records-by-group-id` |
 | `bo_find` | a BO by `code` (`exists: false` when absent) or by a piece of its name | R4; `load-bo-id-by-code` |
 | `bo_read` | one BO: header + a row per field (type, tab, grid, ref, required, column); `raw` = the DTO | R4; `load-business-object-by-id` |
