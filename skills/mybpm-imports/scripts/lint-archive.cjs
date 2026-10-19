@@ -60,6 +60,8 @@ for (const bo of bos) {
     if (op !== undefined && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
       err(`${t}: options — {<code>: {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"}} (0.5)`);
     else for (const [c, o] of all(op)) id(`${t}.${c}`, o.newOptionId);
+    if (ty === "QUESTIONNAIRE" && [true, false].some((col) => !vals(f.questionnaires).some((q) => q.questionnaireDto?.isColumn === col) || vals(f.questionnaires).some((q) => q.questionnaireDto?.isColumn === col && !q.questionnaireDto?.label?.trim())))
+      err(`${t}: a questionnaire needs ≥1 row and ≥1 column, each with a label — an empty one blocks the constructor save (0.5)`);
     if (ty === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) err(`${t}: a local list with no options (0.5)`);
     if (ty === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) err(`${t}: no kanbanCardTemplates.${k}.kanbanFields (0.9 rule 16)`);
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);

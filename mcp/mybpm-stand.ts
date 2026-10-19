@@ -648,7 +648,7 @@ const LOST_ON_ADD = ["useAsKeyInMigration", "needMarkNew", "needAddToParticipant
 type Opt = string | { label: string; code?: string; color?: string };
 type FieldSpec = { label?: string; type: string; code?: string; refBoId?: string; viewType?: "TABLE" | "SINGLE"; options?: Opt[];
   required?: boolean; unique?: boolean; readonly?: boolean; column?: boolean; cols?: number; rows?: number; x?: number; y?: number;
-  tab?: string; heading?: boolean; html?: string; url?: string; set?: Record<string, unknown> };
+  tab?: string; heading?: boolean; html?: string; url?: string; questionnaire?: { rows?: Opt[]; columns?: Opt[] }; set?: Record<string, unknown> };
 
 const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   label: { type: "string", description: "The label — the field's code is NOT derived from it if you pass `code`; get it right the first time (trap 22)." },
@@ -665,6 +665,7 @@ const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   tab: { type: "string", description: "The tab label this field goes on: every field with a `tab` lands in one TAB_GROUP (code `tabs`) placed where the first of them stands; tabs in order of appearance, the first is the default." },
   heading: { type: "boolean", description: "STATIC_TEXT: a section heading (the styled <div> of R1 «Layout», label hidden, no column)." },
   html: { type: "string", description: "STATIC_TEXT: the HTML shown." },
+  questionnaire: { type: "object", description: "QUESTIONNAIRE: {rows, columns} — the question rows and the answer columns, each a string or {label, code}. Default one row «Вопрос 1» and columns «Да», «Нет»: an empty label makes the constructor form invalid, its СОХРАНИТЬ greys out (§5b).", properties: { rows: { type: "array", items: {} }, columns: { type: "array", items: {} } } },
   url: { type: "string", description: "BUTTON / IFRAME: its url (https only for an IFRAME)." },
   set: { type: "object", description: "Any other key of the field DTO, e.g. {\"params\":{\"viewType\":\"TILE\",\"contentType\":\"ALL\"}} for a FILE_UPLOAD (§5h, §5i)." },
 } };
@@ -770,7 +771,9 @@ async function addFields(s: Stand, boId: string, specs: FieldSpec[], window?: bo
   const topPack = own ? { cells: [], bottom: 0 } : pack(top, y0, notes, "form");
   const tabIds = tabLabels.length ? await freshIds(s, tabLabels.length) : [];
 
-  const optIds = await freshIds(s, specs.reduce((n, f) => n + (["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? f.options?.length ?? 0 : 0), 0));
+  const grid = (f: FieldSpec) => ({ rows: f.questionnaire?.rows?.length ? f.questionnaire.rows : ["Вопрос 1"], columns: f.questionnaire?.columns?.length ? f.questionnaire.columns : ["Да", "Нет"] });
+  const optIds = await freshIds(s, specs.reduce((n, f) => n + (["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? f.options?.length ?? 0
+    : f.type === "QUESTIONNAIRE" ? grid(f).rows.length + grid(f).columns.length : 0), 0));
   let column = (bo.formFields ?? []).filter((f: any) => f.tableColToShow).length;
 
   const make = async (f: FieldSpec, cell: Cell | undefined, tabId: string | undefined) => {
@@ -800,6 +803,12 @@ async function addFields(s: Stand, boId: string, specs: FieldSpec[], window?: bo
       set("optionSource", "FROM_FIELD"); set("refBoId", null);
       set("options", f.options.map((o, j) => { const v = typeof o === "string" ? { label: o } : o;
         return { instanceId: null, id: optIds.shift(), label: v.label, color: v.color ?? null, code: v.code ?? null, orderIndex: j, hiddenInKanban: false, labelMap: ru(v.label) }; }));
+    }
+    // the generator returns one row and one column with empty labels — the constructor then cannot save the BO (§5b)
+    if (f.type === "QUESTIONNAIRE") {
+      const { rows, columns } = grid(f), item = (o: Opt, j: number, isColumn: boolean) => { const v = typeof o === "string" ? { label: o } : o;
+        return { id: optIds.shift(), label: v.label, labelMap: ru(v.label), orderIndex: j, isColumn, ...(v.code ? { code: v.code } : {}) }; };
+      set("questionnaires", [...rows.map((o, j) => item(o, j, false)), ...columns.map((o, j) => item(o, j, true))]);
     }
     if (f.type === "CHECKLIST" && f.options?.length) {
       set("defaultValue", JSON.stringify(f.options.map((o) => ({ label: typeof o === "string" ? o : o.label, checked: false })))); set("isAppendable", true);

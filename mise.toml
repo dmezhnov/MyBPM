@@ -209,9 +209,11 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     { label: "Название", type: "INPUT_TEXT", code: "title", required: true },
     { label: "Статус", type: "DROPDOWN_SINGLE", code: "status", options: [{ label: "Новый", code: "new" }, { label: "В работе", code: "in_work" }, "Закрыт"] },
     { label: "Готово", type: "CHECKBOX", code: "done" }, { label: "Срок", type: "DATE", code: "due" },
-    { label: "Клиент", type: "BO", code: "client", refBoId: "@bo_create.id" }, { label: "Описание", type: "TEXTAREA", code: "descr", tab: "Детали" }] },
+    { label: "Клиент", type: "BO", code: "client", refBoId: "@bo_create.id" }, { label: "Описание", type: "TEXTAREA", code: "descr", tab: "Детали" },
+    { label: "Опрос", type: "QUESTIONNAIRE", code: "survey", tab: "Детали", questionnaire: { rows: [{ label: "Доволен?", code: "happy" }] } }] },
     (r) => r.code === "mcp_probe_records" && !r.notes?.some((n: string) => /option codes not kept/.test(n))],
-  ["bo_read", { code: "mcp_probe_records", raw: true }, (r) => r.formFields[1].options.map((o: any) => o.code).join() === "new,in_work,Gen_2"],
+  ["bo_read", { code: "mcp_probe_records", raw: true }, (r) => r.formFields[1].options.map((o: any) => o.code).join() === "new,in_work,Gen_2"
+    && r.formFields.find((f: any) => f.type === "QUESTIONNAIRE")?.questionnaires.map((q: any) => `${q.isColumn ? "c" : "r"}:${q.label}:${q.code ?? ""}`).join() === "r:Доволен?:happy,c:Да:,c:Нет:"],
   ["bo_fields_save", { code: "mcp_probe_records", edit: [{ fieldId: "@bo_read.formFields.1.fieldId", optionCodes: { "В работе": "working", "Gen_2": "closed" } }] }, (r) => r.fields.length >= 7],
   ["bo_read", { code: "mcp_probe_records", raw: true }, (r) => r.formFields[1].options.map((o: any) => o.code).join() === "new,working,closed"],
   ["record_save", { code: "mcp_probe_records", values: { title: "Первая", status: "В работе", done: true, due: "2026-10-17", client: "@record_save.id", "Описание": "Текст" } },
