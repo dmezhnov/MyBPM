@@ -2060,21 +2060,30 @@ settings).
 
 #### The rest of the constructor's controls — where each is and what it sends `[I]` unless marked
 
-Read off the client bundle; the API column is the call the control sends, usable alone. Not run on a stand
-unless marked — re-read the BO (`load-business-object-by-id`) after each write. Open questions: §12.
+The API column is the call the control sends, usable alone. A row marked `[C]` was run on a stand with the
+network log on; the rest is read off the client bundle — re-read the BO (`load-business-object-by-id`) after each
+write. Open questions: §12.
 
 | operation | UI control | API |
 |---|---|---|
-| Rename a field (label) | the field row header: inline input; globe → per-language popover; `_` and `#` are blocked; a label must be unique within its tab | portion save with `editedFields [{fieldId, label, labelMap}]` (`label` applied this way `[C]`, §5i «Tabs») |
-| Change a field code | gear → tab 2 «Инфо» → pencil → dialog «Изменение кода» (not for natives, not when `isCodeReadonly`) | `field/refresh-code` — the same analyse / apply cycle as the BO code (§5j «Changing the code») |
-| Move / resize a field | drag / resize on the grid; a move resets `needFreezeWhenScroll` to false | portion save, `editedFields [{fieldId, gridPosition, needFreezeWhenScroll:false}]` `[C]` (R1) |
-| Default value | the field body editor of its type (CHECKBOX: the checkbox in the header; `*_LANG`: one input per language tab) | `defaultValue` / `defaultValueMap` on the field DTO + `editedFields`; a dropdown / radio stores the chosen option id |
-| List options (`DROPDOWN_SINGLE` with a local list, `RADIO_BUTTON_GROUP`) | the field body: chip selector / item list — add, rename per language, delete, code | `options[]` `{id, label, labelMap, orderIndex, code, color}` on the field DTO; a deleted one also goes into `deletedFieldOptionIds`; an option code is checked by `verify-business-field-code` and set by an EDIT of `options` after the add (§5h «Единичный выбор») |
-| Progress steps (`PROGRESS_BAR`) | gear → tab 1 «Отображение» → «Добавить шаги», label (+ globe), «Изменить код», delete, «Сохранить» | `progressSteps[]` `{id, orderIndex, label, code, labelMap}` (`[C]`, §5i), deleted ones in `deletedFieldProgressStepIds`; a step code: `verify-progress-step-code` then `save-progress-step-code` |
-| Questionnaire rows / columns | the field body `app-questionnaire`: add column / add row, label per language, code, delete; single / multiple in gear → «Отображение» | `questionnaires[]` `{id, label, labelMap, orderIndex, isColumn, code}`, deleted ones in `deletedFieldQuestionnaireIds`; `questionnaireIsMultiple` |
-| `STATIC_TEXT` body | the field body: a summernote editor with language tabs; the type has NO gear | `staticValueMap` via `editedFields` `[C]` (§5b «The same thing through the API») |
+| Rename a field (label) | the field row header: inline input — a SINGLE click focuses it (a double / triple click does not: the row is a drag source) `[C]`; globe → per-language popover (only with more than one company language); `_` and `#` are blocked; a label must be unique within its tab | portion save with `editedFields [{fieldId, label, labelMap}]` (`label` applied this way `[C]`, §5i «Tabs») |
+| Change a field code | gear → tab 2 «Инфо» («Идентификатор», «Системный тип», «Код» + pencil) → pencil → dialog «Изменение кода поля» (not for natives, not when `isCodeReadonly`). Opening it starts the usage analysis; **ИЗМЕНИТЬ КОД stays disabled until `is-analyze-done` answers `done:true` (~8 s) and the new code passes `verify-business-field-code`**; closing the dialog sends `field/refresh-code/cancel {refreshId}` `[C]` | `field/refresh-code/analyze-code-usage` P `{boId, fieldId}` → `{refreshCodeDtoId, …}`, `is-analyze-done` P `{refreshId}` polled, then ONE `field/refresh-code/apply-new-code` P `{refreshId, newFieldCode}` → `""` — live at once, no bottom СОХРАНИТЬ `[C]` (the cycle of §5j «Changing the code») |
+| Move / resize a field | move: the drag handle (cross icon left of the label, on hover); resize: the corner handle at the item's bottom right. The grid compacts upwards: a field too wide for the gap beside another goes above it and pushes the rest down. **Any move or resize RESETS «Фиксировать при скроллинге» on EVERY field of the form** `[C]` — tick it after the last layout change. Adding a field from the palette sends only the new field and resets nothing `[C]` | portion save, `editedFields` = EVERY field `{fieldId, gridPosition, needFreezeWhenScroll:false}` `[C]` (R1); the flag alone: `editedFields [{fieldId, needFreezeWhenScroll:true}]` `[C]` |
+| Default value | the field body on the canvas `[C]`: TEXT / TEXTAREA — type into it; CHECKBOX — the toggle LEFT of the label in the header; DATE — the date picker; a local dropdown — click an option chip; a radio — tick its circle; `*_LANG`: one input per language tab `[I]` | `editedFields [{fieldId, defaultValue}]` `[C]`; the server fills `defaultValueMap.RUS`. Stored as: text as typed (a TEXTAREA typed plainly gets no `<p>`), CHECKBOX the STRING `"true"`, DATE a JSON-QUOTED ISO string with the current time of day in UTC (`"\"2030-01-15T09:41:07.091Z\""`), dropdown / radio the option id. A new record's draft («Добавить», `create-draft-with-boi`) shows every default `[C]` |
+| List options (`DROPDOWN_SINGLE` with a local list, `RADIO_BUTTON_GROUP`) | the field body `[C]`. Dropdown: link «Выберите» → popover, type into «Введите данные» + Enter adds an option; each chip shows `id: …`, its gear → popover «Изменение кода» (Сохранить takes TWO clicks — the first only verifies), × deletes at once with no confirm. Radio: «Добавить» under the list adds a row with a required label; hover icons info (`id`), gear (code, as above), trash. A per-language label pencil appears only with more than one company language `[I]`; with one language an option cannot be renamed — delete + re-add mints a new id. **Colour, «hide» and order are NOT here** — they live in the constructor's «Канбан» view (next row) | `options[]` `{id, label, labelMap, orderIndex, code, color}` on the field DTO, sent as `editedFields [{fieldId, options:[…all options], defaultValue?}]` `[C]`; a new option gets an id, `orderIndex` = last + 10000 and a colour the CLIENT picks `[C]`; a deleted one also goes into `deletedFieldOptionIds`; an option code is checked by `verify-business-field-code {businessObjectId, businessFieldCode}` and set by an EDIT of `options` after the add (§5h «Единичный выбор») |
+| Option colour, «hide», order (`DROPDOWN_SINGLE`) | the constructor's view selector (top right) → «Канбан» (`…/kanban-editing`): one column per option of the dropdown; column header ⋮ → «Изменить цвет» (a colour picker, closes on an outside click) / «Скрыть из списка» (the column greys out); drag a column by its «+» handle to reorder. Each is saved AT ONCE, no СОХРАНИТЬ `[C]` | `v2/kanban/save-business-field-option` P `{boId, fieldId}` B the whole option DTO `{instanceId:null, id, label, color, code, orderIndex, hiddenInKanban, labelMap}` → `""` `[C]`; colour = the picker's hex, hide = `hiddenInKanban:true`; a drag saves ONLY the moved option, `orderIndex` = its new neighbour − 10000 (or + 10000) `[C]` |
+| Progress steps (`PROGRESS_BAR`) | gear → tab 1 «Отображение» → «Добавить шаги»; per step «Названия шага» input + link «Изменить код» (popover «Изменение кода», Сохранить twice); ⊕ on the first step's row adds one, trash per step; then the popover's СОХРАНИТЬ. **Switching to «Поведение» or clicking outside before that drops the unsaved steps** `[C]` | `progressSteps[]` `{id, orderIndex (1-based), label, code ("" if unset), labelMap}` in the portion save `[C]`, deleted ones in `deletedFieldProgressStepIds`; a step code is checked by `verify-progress-step-code {boId, fieldId, progressStepCode}` and travels in `progressSteps[].code` — the constructor sends NO `save-progress-step-code` `[C]` |
+| Questionnaire rows / columns | the field body `app-questionnaire` `[C]`: green ⊕ right of the header row adds a column, «Добавить» under the table adds a row; click a label to edit it inline; hover a column header / a row → gear (popover «Изменение кода», Сохранить twice) + trash (deletes at once, no confirm) — a row's icons sit outside the table, right of the row, and vanish when the pointer leaves it. **An empty row / column label is `required` and makes the whole form invalid → the bottom СОХРАНИТЬ greys out with no message.** Single / multiple: gear → «Отображение» | `questionnaires[]` `{id (client-minted), label:null, labelMap, orderIndex (0-based per rows / columns), isColumn, code}` `[C]` — a column whose code was never set has no `code` key; a row code is checked by `verify-business-field-code`, a column code is not; deleted ones (even never saved) in `deletedFieldQuestionnaireIds`; `questionnaireIsMultiple` |
+| `STATIC_TEXT` body | the field body: a summernote editor with language tabs; the type has NO gear. **At the default height (rows 3) only the toolbar shows — the editing area is clipped to nothing; resize the field taller first** (a resize: the freeze-reset trap above). Toolbar `</>` = code view with the raw HTML; leave code view (`</>` again) before СОХРАНИТЬ — only then is the code copied into the editor `[C]` | `staticValueMap` via `editedFields [{fieldId, staticValueMap:{RUS:"<html>", …}}]` `[C]`; a styled `<div>` with inline `style` is stored byte for byte `[C]` (§5b «The same thing through the API») |
+| Nested table columns (`BO` field, view «Табличный») | the gear at the RIGHT END of the table's header row on the canvas (not the field row's gear) → popover: search + one checkbox per field of the referenced BO, each ticked one with an order badge; **order = tick order** (untick + re-tick moves a column to the end). Ticking writes nothing, it only reloads the preview `[C]` | bottom СОХРАНИТЬ → `editedFields [{fieldId, boFieldRefs:[…]}]` — ticked = `toShow:true` with a 0-based `orderIndex`, unticked = `toShow:false` (its stale `orderIndex` is harmless) `[C]` |
+| Reference field (`BO` / `CO`) settings | gear → tab 1 → sub-tabs «Отображение» («Вид отображения», «Динамическая высота», on a SINGLE field «Выбрать поля для отображения») and «Поведение» («При добавлении/изменении объекта…», «Выбор/Добавление ↔ Только добавление», «Помечать новые», «Связь объектов», «Зависимость полей»); «Добавлять в участники…» sits in the TOP checkbox list, only on a field → the Person BO `[C]` | keys and effects: §5h «Reference fields (`BO` / `CO`)»; set «Зависимость полей» one level per СОХРАНИТЬ (§5h «С фильтром» and «Зависимость полей») |
 | Tabs of a `TAB_GROUP` | the tab strip: label input (+ globe); settings icon → code popover; lock icon (tab rights, R5 step 6); delete icon; «+» adds a tab on the left; the drop zone «Добавить вкладку здесь» adds one on the right; drag reorders | `tabs[]` on the group (§5i «Tabs»); a deleted tab goes into `deletedFieldTabIds` — the client first asks `v2/delete-script-usage/analyze-tab`, and **deleting a tab deletes its fields too**; a tab code edited in the popover: `v2/business-objects/update-tab-code` |
-| A widget's code | every widget popover starts with the code row and a change-code dialog (type WIDGET); hidden for CURRENT_DATE / CURRENT_USER | the separate controllers of §5i «A widget's code and url»; the dialog's own endpoint is unresolved (§12) |
+| A widget's code | the widget's gear popover: «Код: <code>» + pencil → dialog «Изменение кода поля» (ИЗМЕНИТЬ КОД greyed until the code is verified); hidden for CURRENT_DATE / CURRENT_USER `[I]`. Unlike a field code there is NO usage analysis and no bottom СОХРАНИТЬ — the button writes at once; the popover keeps showing the old code until a reload `[C]` | `verify-business-field-code` per keystroke (the widget's own current code answers `false`), then `v2/<widget>/save-<widget>-code` of §5i «A widget's code and url» (e.g. `v2/iframe/save-iframe-code {boId, iframeId, code}`) → `""` `[C]`, asynchronous |
+| Add a widget | palette section «Виджеты» (ЭЦП / СМС, Кнопка, Блок IFrame, Блок captcha, Вкладки, Прогресс-бар) → drag onto the canvas like a field; the label input opens focused `[C]` | `v2/business-objects/generate-business-form-widget` P `{widgetType}` → the DTO (`code: null`); bottom СОХРАНИТЬ = portion save with `addedFieldIds` + `editedFields [{fieldId, gridPosition, needFreezeWhenScroll:false, label, labelMap}]`; the server derives the code from the label (`load-business-object-by-id` shows `code: null` for every widget but BUTTON) `[C]` |
+| IFRAME url; BUTTON url and «Поля для отправки» | the widget's gear popover: «URL» textarea + popover СОХРАНИТЬ / ОТМЕНИТЬ; a BUTTON also has the link «Выбрать поля для отправки на сервер» → picker (search + a checkbox per field of THIS BO, widgets included). **Escape does not close the picker — click a blank part of the popover; a click on СОХРАНИТЬ while it is open only closes it.** Written at once, no bottom СОХРАНИТЬ `[C]` | IFRAME: `v2/iframe/save-iframe-url {boId, iframeId, url}` → `""`, asynchronous (an immediate `load-iframe-url` still answers the old url). BUTTON: one СОХРАНИТЬ sends `v2/button/save-button-url {boId, buttonId, url}` AND `save-button-field-ids {boId, buttonId, fieldIds:[…]}` (PARAMS, body `{}`) → `""` each; read back at once `[C]` |
+| Delete a field | gear → the LAST icon (trash) → at once the script-usage analysis → dialog «Удаление поля: использование в скриптах» («Места использования» or «Использований в скриптах не найдено») with УДАЛИТЬ ВСЁ РАВНО / ОТМЕНИТЬ; the field leaves the canvas, **nothing is written until the bottom СОХРАНИТЬ** `[C]` | `v2/delete-script-usage/analyze-field` P `{boId, fieldId}` → `{analyzeId}`, `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}`; on УДАЛИТЬ ВСЁ РАВНО `v2/business-objects/load-field-usage` P `{boId, fieldId}` → `{isUsedForKanban, menuItemNames}` (a second dialog when either is set `[I]`); СОХРАНИТЬ → portion save `{businessObject, editedFields:[], addedFieldIds:[], deletedFieldIds:[fieldId]}` `[C]` |
+| Field lock (a dynamic or a system field) | the lock icon of the field row → the field's gear popover on its lock tab: «Все операции доступны ВСЕМ / ВЫБОРОЧНО», then per operation (eye = Просмотр, pencil = Редактировать) «ВСЕМ / ВЫБОРОЧНО» + «Выберите» → tree (Выбрать все, Автор (инициатор), users, groups, Еще…; close it by a click on a blank part of the popover). ВЫБОРОЧНО pre-adds an «Автор» chip. A system field (`CREATED_AT` …) shows only eye + pencil. The popover's СОХРАНИТЬ writes AT ONCE, the lock turns orange `[C]` | `save-field-access-group` B `{businessObjectId, fieldId, accessGroup}` (`fieldId: "<NATIVE_TYPE>"` for a system field), then `save-bo-field-chosen-access-right` P `{boId, fieldId, chosenAccessRight:true}` `[C]` (R5). **A reset to ВСЕМ in the UI sends `accessForAll:true` but leaves the subjects in the body** (and the flag `false`) — the field is open again `[C]`; the API reset with `orgUnitToDelete` (R5) leaves no residue |
+| Widget lock (BUTTON, CAPTCHA, CURRENT_USER, SIGNATURE, CURRENT_* dates) | the lock icon of the widget row → a SMALL popover with Просмотр only (ВСЕМ / ВЫБОРОЧНО + Выберите) and СОХРАНИТЬ / ОТМЕНИТЬ; **IFRAME has no lock** `[C]` | `v2/<widget>/load-access-group` / `save-access-group` P `{boId, <widget>Id}` B the access group itself, no wrapper and NO chosen-access-right call (`[C]` for BUTTON, the rest by analogy `[I]`); controllers and id names: §5i «A widget's code and url» |
 | Registry columns | «Список» view → the `app-columns` header row: `+`, drag, resize, trash | `save-business-form-field` (§5b) |
 | Registry default sort | «Список» → the column's sort icon: asc / desc / unset | `save-bo-table-sort` PARAMS `{boId, fieldId, order}` (`ASC`/`DESC`; `fieldId` omitted for unset) `[C]` (§7) |
 | Calendar header titles / hover card | «Календарь» → «Настройка отображения заголовка:» / «Настройка отображения информации при наведении» | `v2/calendar/save-calendar-view-titles` PARAMS `{boId, titles}`; `v2/calendar/save-calendar-card-template` B the template, P `{boId}` (body shape and effect `[U]`, §12) |
@@ -2086,6 +2095,19 @@ unless marked — re-read the BO (`load-business-object-by-id`) after each write
 | Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
 | BO groups | group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» | the group lifecycle calls of §5 «Verifying an import» `[C]`; a non-empty group's delete: §12 |
 | Composite attributes | «Связи» view of the composite | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
+
+Constructor behaviour that every row above runs into `[C]`:
+
+- **The bottom СОХРАНИТЬ greys out with no message while the form is invalid** (the client disables it on
+  `form.invalid`, a pending add or save, or an empty form) — e.g. an empty questionnaire label or an empty radio
+  option label. Look for an orange-bordered input.
+- **With a popover open, the first click on the bottom СОХРАНИТЬ only closes the popover** — click again and check
+  the network log for `save-business-object-portion`.
+- **`editedFields` carries objects** `{fieldId, <changed keys>}`, never a list of key names.
+- Every gear open loads the lock tab's data: `load-field-access-group`, `load-org-unit-record-list`,
+  `load-org-field-record-list`, `load-field-access-author-person-list`.
+- The gear's icon strip (dynamic field): settings, info, lock, puzzle («Интеграция через БД» / «Интеграция по
+  API»), dependency, trash; a widget's popover is its own (code, url, lock).
 
 ### 5c. The matrix «4 routes × 5 object kinds» — column «Справочник» `[C]`
 
@@ -3586,11 +3608,11 @@ appears when the referenced BO has a field pointing back).
 | `isKindAddForSelect` | «Поведение» → «Выбор/Добавление» (`false`) vs «Только добавление» (`true`) | «Добавить» opens the CREATE dialog of the referenced BO instead of the picker |
 | `linkedFieldId` = a field of the REFERENCED BO that points back | «Поведение» → «Связь объектов» → «Заполнить поле "<label>"» (vs «Ничего не заполнять») | adding a record into this field writes the owner record into that back field; removing it from the field clears the back field `[C]` |
 | `removeType` `STRIKETHROUGH` / `HIDE` / `DISCONNECT` | «Поведение» → «При удалении объектов <BO>» «Зачеркнуть / Скрывать из списка / Разорвать связь…» | see below |
-| `needChangeParentBoByLinkedBo` (default `true` on EVERY field) | «При добавлении/изменении объекта(ов)» «Изменить бизнес объект "<BO>"» (`true`) / «Не изменять…» (`false`) | see below |
+| `needChangeParentBoByLinkedBo` (default `true` on EVERY field) | «Поведение» → «При добавлении/изменении объекта(ов)» «Изменить бизнес объект "<BO>"» (`true`) / «Не изменять…» (`false`) | see below |
 | `copyFromFieldId` = another `BO` field of the same BO | «Отображение» → «Логика отображения значения» → «Из другого поля» | the field is filled with a COPY of that field's value on every save of the record (stored, not just shown); emptied when the source is emptied `[C]` |
 | `needMarkNew` | «Поведение» → «Помечать новые» | client code: rows with `isNew` (or state NEW) render in bold and new ones are put on TOP instead of the sort order `[I]` |
-| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» (only when the referenced BO is kind `PERSON`) | the person put into the field becomes a participant of the record and gets the bell event «Вас добавили» `[C]` (also through the script-less §6a cycle); adding yourself raises no notification. What a participant gains: §3 «What each subject opens» |
-| `isHeightDynamic` | «Динамическая высота» (`BO` only) | see «Tables» in `MYBPM-IMPORTS.md` §3 |
+| `needAddToParticipants` | «Добавлять в участники и уведомлять об добавлении» — in the TOP checkbox list of the gear (with «Необходимо заполнить»…), only when the referenced BO is kind `PERSON`; its constructor save also sends `tableColToShow:true` — the field becomes a registry column `[C]` | the person put into the field becomes a participant of the record and gets the bell event «Вас добавили» `[C]` (also through the script-less §6a cycle); adding yourself raises no notification. What a participant gains: §3 «What each subject opens» |
+| `isHeightDynamic` | «Отображение» → «Динамическая высота» (`BO` only) | see «Tables» in `MYBPM-IMPORTS.md` §3 |
 | `linkedCoSettings` (a `CO` field) | «Поведение» → «Связь объектов <BO>/<field>» → «Объект из Составного объекта» → pick a source BO → the same «Заполнить поле» / «При удалении» radios | per source BO of the composite: see below |
 
 - **`removeType` is applied by the SERVER when it reads the field's records**
@@ -3693,7 +3715,14 @@ REFERENCED BO) / «Зависимость от» (`relFieldId`, a `BO` field of 
 (`relInnerFieldId`, a field of the `relFieldId` field's BO). Meaning: offer only the records whose main-inner field
 equals the value of «Зависимость от» (or of that value's inner field).
 - Set through the API as a one-field patch `{fieldId, relMainInnerFieldId, relFieldId, relInnerFieldId}` — the
-  constructor then shows it `[C]`. Clearing goes with `needDeleteRel…FieldId: true` (constructor code).
+  constructor then shows it `[C]`. Clearing goes with `needDeleteRel…FieldId: true`: × on the «Поле зависимого» chip
+  removes all three levels and the save sends `needDeleteRelMainInnerFieldId`, `needDeleteRelFieldId`,
+  `needDeleteRelInnerFieldId` all `true` `[C]`.
+- **Constructor defect — set ONE level per СОХРАНИТЬ** `[C]`: choosing a level sets `needDelete…: true` for every
+  level below it and does not undo it when you then choose that lower level, so «Поле зависимого» + «Зависимость от»
+  chosen before one save send `relFieldId` together with `needDeleteRelFieldId: true` — the server keeps only
+  `relMainInnerFieldId`. Choose «Поле зависимого» → СОХРАНИТЬ → «Зависимость от» → СОХРАНИТЬ → the inner field →
+  СОХРАНИТЬ, then re-read; the API patch above has no such problem.
 - The server builds the filter correctly: `v2/business-object-instance/load-field-relation-bracket-filter` params
   `{boId, boiId, fieldId, draftId}` returns `{brackets:[{dynamicFilters:[{fieldId:<main inner>, type:"BO",
   boiIds:[<value of «Зависимость от» in the DRAFT>]}]}]}`; with an inner field the `boiIds` are that value's inner
@@ -3801,7 +3830,7 @@ cycle (§6b) and the card.
   `refBoId:null`, `options:[{instanceId:null, id, label, labelMap, color, code:null, orderIndex, hiddenInKanban:false}]`
   (ids from `v2/id-loader/load-portion`) and, for an option chosen in advance, `defaultValue: "<option id>"` —
   all stored on ADD; option codes come back generated from the labels (`Da`, `Net`, `Mozhet_byt`) `[C]`. **Set
-  the codes by a later EDIT of `options`** (the same option ids, `code` changed; `editedFields: ["options"]`)
+  the codes by a later EDIT of `options`** (the same option ids, `code` changed; `editedFields: [{fieldId, options}]`)
   and read them back: the stand regenerates the codes a moment after the add, so an EDIT in the very next
   portion save may be overwritten — repeat it after a second until the read-back holds `[C]`. The constructor
   UI sets an option code the same way — a normal portion EDIT of `options`, no setter of its own `[C]`.
@@ -4089,7 +4118,8 @@ is read by its PREFIX:
   `{"<field code>": "<archetype>"}` (`MYBPM-IMPORTS.md` §0.13). An import turns it back into the field
   ids that `load-button-field-ids` returns `[C]`.
 - A button has its own lock: `v2/button/load-access-group {boId, buttonId}` answers
-  `{all, view, edit, create, …}` with `accessForAll: true` by default. `save-access-group` was not tried `[U]`.
+  `{all, view, edit, create, …}` with `accessForAll: true` by default; `save-access-group` P `{boId, buttonId}`
+  B the group itself (only `view` is offered) is stored — no chosen-access-right call follows `[C]` (§5b «Widget lock»).
 
 #### The CURRENT_USER widget («Текущий пользователь») — settings `[C]`
 
@@ -5015,7 +5045,8 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   kanbanFieldId:"D-<fieldId>"|"N-<NATIVE_TYPE>", label, cardOrderIndex, fieldKind:"DYNAMIC"|"NATIVE",
   isNotExistInBo:false, dynamicFieldType|nativeFieldType}`.
 - The rest of `v2/kanban/*` (params `{boId, fieldId}`): `load-kanban-fields {boId}` →
-  the dropdowns usable as columns; `load-kanban-card-fields {boId, fieldId}`; `move-kanban-card`;
+  the dropdowns usable as columns; `load-kanban-card-fields {boId, fieldId}`; `save-business-field-option` (B one
+  option DTO — a column's colour, «Скрыть из списка», order; §5b «Option colour») `[C]`; `move-kanban-card`;
   `load-bracket-kanban-cards` (body `{boId, dynamicFilters, nativeFilters, brackets, search, paging,
   ordering, state, kanbanFieldOptionId, kanbanFieldId}`).
 
@@ -5765,12 +5796,11 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
 - What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet
   («Глобальные методы» is answered in §5g).
-- **Constructor controls read off the bundle** (§5b «The rest of the constructor's controls», all `[U]` until run):
-  confirm each row once with the network log on, then re-read `load-business-object-by-id`. Open within them:
-  the WIDGET change-code dialog's endpoint (rename a button's code in the UI); tab-code change and nested tab
-  groups over the API (`update-tab-code`, a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
+- **Constructor controls read off the bundle** (§5b «The rest of the constructor's controls», the rows not marked
+  `[C]`): confirm each row once with the network log on, then re-read `load-business-object-by-id`. Open within
+  them: the per-language option label (a company with two languages); the second dialog of a field delete when the
+  field feeds a kanban or a menu item (`load-field-usage` not empty); tab-code change and nested tab groups over the API (`update-tab-code`, a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
   `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
-  scalar `defaultValue` (set it, open «Добавить», see the draft value); the field lock icon in the constructor;
   `calendarCardTemplates` body and its effect on the calendar; `timelineTemplates` columns (save, export).
 - Changing a field's TYPE: look for a control in the gear / «Инфо» tab; try `editedFields {fieldId, type}`, re-read.
 - Deleting a BO: what happens to its records, menu items, references from other BOs and composites that use it

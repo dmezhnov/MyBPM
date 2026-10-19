@@ -619,6 +619,8 @@ for (const bo of bos) {
     for (const st of Object.values<any>(f.progressSteps ?? {})) if (st?.code) naming(`${ft}.step`, st.code, "lower");
     if (type === "TAB_GROUP" && !trackedWrapper) for (const k of Object.keys(f.fieldTabs ?? {})) naming(`${ft}.tab`, k, "tab");
     if (type === "QUESTIONNAIRE" && !Object.keys(f.questionnaires ?? {}).length) add("ERROR", "0.5", `${ft}: QUESTIONNAIRE with empty questionnaires`);
+    else if (type === "QUESTIONNAIRE" && Object.values<any>(f.questionnaires).some((q) => !q?.questionnaireDto?.label?.trim()))
+      add("ERROR", "0.5", `${ft}: a questionnaire row / column without a label — the constructor cannot save the BO`);
     if (type === "PROGRESS_BAR" && !Object.keys(f.progressSteps ?? {}).length) add("ERROR", "0.5", `${ft}: PROGRESS_BAR with empty progressSteps`);
     if (type === "TAB_GROUP" && !Object.keys(f.fieldTabs ?? {}).length) add("ERROR", "0.5", `${ft}: TAB_GROUP with empty fieldTabs`);
     if (type === "FILE_UPLOAD") {

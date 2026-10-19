@@ -281,7 +281,9 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return acc;
     }
     case "v2/business-objects/generate-business-form-field":
-      return { fieldId: nextId("FLD"), label: null, labelMap: null, code: null, type: params.fieldType, gridPosition: { x: 0, y: 0, cols: 15, rows: 4 } };
+      return { fieldId: nextId("FLD"), label: null, labelMap: null, code: null, type: params.fieldType, gridPosition: { x: 0, y: 0, cols: 15, rows: 4 },
+        // the stand: a questionnaire comes with one row and one column, both unlabelled
+        ...(params.fieldType === "QUESTIONNAIRE" ? { questionnaires: [false, true].map((isColumn) => ({ id: nextId("QST"), label: null, labelMap: null, orderIndex: 0, isColumn })) } : {}) };
     case "v2/business-objects/generate-business-form-widget": return { fieldId: nextId("WGT"), label: null, code: null, widgetType: params.widgetType };
     case "v2/business-objects/generate-business-form-field-by-native": return { fieldId: nextId("NAT"), label: null, nativeFieldType: params.nativeType };
     case "v2/id-loader/load-portion": return Array.from({ length: 10 }, () => nextId("ID"));

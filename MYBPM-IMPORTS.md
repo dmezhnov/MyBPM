@@ -1334,6 +1334,8 @@ for (const bo of bos) {
     if (op !== undefined && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
       err(`${t}: options — {<code>: {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"}} (0.5)`);
     else for (const [c, o] of all(op)) id(`${t}.${c}`, o.newOptionId);
+    if (ty === "QUESTIONNAIRE" && [true, false].some((col) => !vals(f.questionnaires).some((q) => q.questionnaireDto?.isColumn === col) || vals(f.questionnaires).some((q) => q.questionnaireDto?.isColumn === col && !q.questionnaireDto?.label?.trim())))
+      err(`${t}: a questionnaire needs ≥1 row and ≥1 column, each with a label — an empty one blocks the constructor save (0.5)`);
     if (ty === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) err(`${t}: a local list with no options (0.5)`);
     if (ty === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) err(`${t}: no kanbanCardTemplates.${k}.kanbanFields (0.9 rule 16)`);
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
@@ -2379,7 +2381,8 @@ The core template of 0.5 plus these keys; the type table of 0.5 says which type 
   `<script>` makes the server reject the whole value, `srcdoc` is stripped, while `<iframe src>`, `<img>`,
   `<a>` and inline `style` are kept, and an `<iframe>` renders live on the card `[C]`
   (`MYBPM-UI-API.md` §8).
-- `QUESTIONNAIRE` — columns and rows share ONE map, told apart by `isColumn`, keyed by the option's code:
+- `QUESTIONNAIRE` — columns and rows share ONE map, told apart by `isColumn`, keyed by the option's code; at least
+  one row and one column, each with a non-empty `label` (an empty one leaves the BO unsavable in the constructor):
   `"questionnaires": {"column_1": {"questionnaireDto": {"label":"Колонка 1","isColumn":true,"orderIndex":0,"code":"column_1"}, "newId":"<16 chars>"}, "row_1": {…"isColumn":false…}}`
 - `PROGRESS_BAR` — `"progressSteps"` is keyed by the step's own **id**, not by its code:
   `{"<16-char id>": {"code":"new","label":"Новый","orderIndex":0}, …}`
