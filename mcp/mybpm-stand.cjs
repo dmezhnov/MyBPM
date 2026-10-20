@@ -654,15 +654,15 @@ function summarize(file) {
   return { file, bytes: b.length, lines: lines.length, types, bos };
 }
 function lint(file) {
-  const script = [import_node_path.join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.cjs")].find(import_node_fs.existsSync);
+  const script = [import_node_path.join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.js")].find(import_node_fs.existsSync);
   if (!script)
-    return { ok: true, out: "form lint: NOT RUN (lint-archive.cjs not found beside the server)" };
+    return { ok: true, out: "form lint: NOT RUN (lint-archive.js not found beside the server)" };
   try {
     return { ok: true, out: import_node_child_process.execFileSync(process.execPath, [script, file], { encoding: "utf8" }).trim() };
   } catch (e) {
     if (e.status === 1)
       return { ok: false, out: String(e.stdout).trim() };
-    throw new Error(`lint-archive.cjs failed: ${String(e.stderr || e.message).slice(0, 500)}`);
+    throw new Error(`lint-archive.js failed: ${String(e.stderr || e.message).slice(0, 500)}`);
   }
 }
 function writeArchive(file, objects) {
@@ -2627,7 +2627,7 @@ var tools = [
   },
   {
     name: "archive_lint",
-    description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.cjs) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
+    description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.js) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
     props: { path: { type: "string" }, name: { type: "string" } },
     run: async (a) => {
       const f = archivePath(a);

@@ -466,13 +466,13 @@ function summarize(file: string) {
 
 /** The lint the skill ships (MYBPM-IMPORTS.md 0.10), run as it is — beside this file in the plugin and in the .mcpb. */
 function lint(file: string): { ok: boolean; out: string } {
-  const script = [join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.cjs")].find(existsSync);
-  if (!script) return { ok: true, out: "form lint: NOT RUN (lint-archive.cjs not found beside the server)" };
+  const script = [join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.js")].find(existsSync);
+  if (!script) return { ok: true, out: "form lint: NOT RUN (lint-archive.js not found beside the server)" };
   try {
     return { ok: true, out: execFileSync(process.execPath, [script, file], { encoding: "utf8" }).trim() };
   } catch (e: any) {
     if (e.status === 1) return { ok: false, out: String(e.stdout).trim() };
-    throw new Error(`lint-archive.cjs failed: ${String(e.stderr || e.message).slice(0, 500)}`);
+    throw new Error(`lint-archive.js failed: ${String(e.stderr || e.message).slice(0, 500)}`);
   }
 }
 
@@ -2025,7 +2025,7 @@ const tools: Tool[] = [
       const file = writeArchive(join(dir, `${name}.mybpm.zip`), objects);
       return { ...summarize(file), lint: lint(file).out };
     } },
-  { name: "archive_lint", description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.cjs) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
+  { name: "archive_lint", description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.js) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
     props: { path: { type: "string" }, name: { type: "string" } },
     run: async (a) => { const f = archivePath(a); const l = lint(f); return { ...summarize(f), lintOk: l.ok, lint: l.out }; } },
   { name: "import_analyze", description: "Upload an archive and run the stand's analysis (R3 steps 1-4) — the dry run: NOTHING is written, the import stays ANALYZED. Lints first and stops on a defect unless `skipLint`. Returns importId, status, analysis errors, conflicts and one row per BO. Next: import_apply (writes) or import_cancel. Only one import may be open per company.",
