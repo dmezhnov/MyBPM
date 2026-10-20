@@ -117,7 +117,7 @@ find in this section does not belong in the file.
 
 **How to read it.** The core runs from here to «0.11 Building the zip» — read ALL of it, every archive
 needs it. Behind it, read ONLY the optional blocks your task names: system fields 0.12; widgets 0.13;
-kanban views and the Elasticsearch sort defect 0.14; more menu options (views, icons, rights) 0.15–0.16;
+kanban views 0.14; more menu options (views, icons, rights) 0.15–0.16;
 a panel, a composite or a process 0.17–0.18; the rarer field types (questionnaire, progress bar, file,
 checklist, HTML text) 0.19; predicting a code the stand made itself 0.20.
 
@@ -496,6 +496,31 @@ everything after it on that line — the shipped line must be pure minified JSON
 **`dynamicFields` is an OBJECT keyed by field code, never an array.** The key repeats the field's own
 `code`.
 
+### 0.4a A setting the templates do not carry — find its key, never invent one
+
+The templates of §0 carry what a new object needs. Every other setting (a registry's default sort, a
+field's default value, a BO's calendar view, a tab's rights …) is a key of its own, and **only a key this
+document names exists** — the importer knows nothing else:
+
+1. **Find the setting by its meaning** in the catalogues: BO level — §2 («What an export carries per BO»,
+   «BO header settings», «BO card tabs», «BO views», «BO place in the sidebar»); field level — §3 «Field
+   flags», 0.19 for the rarer types, 0.12 system fields, 0.13 widgets; menu — 0.5d, 0.15; rights — §7;
+   scripts and hooks — §5d, Part II. Copy the key, its place in the object and its values exactly as
+   written there.
+2. **Not found → write no key.** Tell the user that the archive does not carry this setting and that it
+   is set in the constructor after the import. A guessed key (sortType for `sortFieldOrder`, a sort
+   inside `boPages`, childMenuItems in a menu line) is dropped by the importer without a word — the
+   report says success and the setting is not there — or breaks the analysis (§8). Never answer
+   «настроено» for a setting whose key you did not find.
+3. The form lint (0.10) checks every key of the file against this document and prints each one it never
+   names as invented.
+
+Keys a stand export carries that no section here describes — copy them from an export as they are, never
+write them yourself: `accessGroupStruct`, `accessRightsInstanceSource`, `accessSetType`,
+`scriptInstanceSource`, `settingsInstanceSource`, `settingsKind`, `defaultValueEng`, `defaultValueKaz`,
+`defaultValueQaz`, `inSlotsCount`, `outSlotsCount`, `labelDeltaX`, `labelDeltaY`, `needDisableTabs`,
+`showAsStepper`, `columns`, `businessObjectCode`.
+
 > **Reading in chunks? You are NOT done.** The cookbook core runs on to «0.11 Building the zip»
 > (≈ 700 more lines): the field template right below, links 0.5a, dictionary 0.5b, kanban 0.5c, menu 0.5d,
 > ids 0.7, layout 0.8a, hard rules 0.9, self-check
@@ -595,10 +620,9 @@ amount, the main reference) — **6 columns at most**; a 13-column registry cuts
 The template above carries `false`: switch it on per field, never copy `true` onto every field. Put the name field FIRST in `dynamicFields`, so it gets `tableColOrderIndex`
 0 and `y: 0`. The counter follows the ORDER OF ENTRIES, the form follows `y` — they are independent: a
 `PROGRESS_BAR`, heading or `TAB_GROUP` on top of the form takes `y: 0` and the name field moves down, yet it
-still stands AFTER the name field in `dynamicFields` and takes the next counter value. Long texts (`TEXTAREA`), headings, files, tabs and checklists are `false`. Do NOT hide
-string fields from the registry and do NOT move a number or a date to the front «to be safe»: that
-workaround exists for ONE stand defect and is applied **only when the user says the target stand has
-it** (0.14 «The Elasticsearch sort defect»). Without such a statement, ignore that paragraph.
+still stands AFTER the name field in `dynamicFields` and takes the next counter value. Long texts (`TEXTAREA`), headings, files, tabs and checklists are `false`.
+A BO with **no** registry column at all answers «У Вас недостаточно прав на поля, которые выведены в реестр»
+instead of its rows `[C]` — keep at least one.
 A `DROPDOWN_SINGLE` additionally needs `fieldOptionsStruct` (§5) — a dictionary by CODE, or a local list.
 
 **The documented exceptions to «never drop a key»: the composite, and `PROCESS_STATUS` (0.18).** A `BO_COMPOSITE` has no form, so
@@ -1560,6 +1584,18 @@ for (const bo of bos.filter((b) => b.category === "BO" && !b.isCalendarEnabled &
 const asks = out.filter((s) => /^REMINDER .* (looks computed|looks like an approval)/.test(s)).length;
 if (asks && !of("ScriptDefStructDto").length && !of("BoProcessVersionsStructDto").length)
   err(`${asks} fields look computed or like an approval and the file has NO script and NO process — a blanket «пока не реализовано» is no reason (0.2b step 5): the ready sum hook (§5d «A ready sum hook»), the writing Script (0.18)`);
+const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes)$/;
+const named = new Map(), invented = new Map(); // a key this document names as "key" or `key`; the others with where they sit
+const keyOk = (k) => named.get(k) ?? named.set(k, String(doc ?? "").includes(`"${k}"`) || String(doc ?? "").includes("`" + k + "`")).get(k);
+const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data
+  if (Array.isArray(o)) return o.forEach((x) => walk(x, at, p, up));
+  if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
+    if (!MAP.test(p) && up !== "massPrintFormCodes" && !ID.test(k) && !keyOk(k)) invented.set(k, [...(invented.get(k) ?? []), `${at}${p ? "." + p : ""}`]);
+    walk(v, at, k, p);
+  }
+};
+if (doc) L.forEach((o, i) => walk(o, o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? `line ${i + 1}`, "", ""));
+for (const [k, at] of invented) err(`${[...new Set(at)].slice(0, 3).join(", ")}: key "${k}" is not in this document — invented, the importer drops it silently or fails; find the setting by meaning or write no key and say so (0.4a)`);
 return out.length ? out.join("\n") : "form lint: OK";
 }
 ```
@@ -1592,8 +1628,7 @@ return out.length ? out.join("\n") : "form lint: OK";
 - [ ] For every object the request names: if it was NOT said to exist on the stand, it is BUILT in this
       archive (a dictionary for a «из справочника» dropdown, the target BO of a reference) — not degraded to
       text or a local list; if it WAS said to exist, its id / code came from the user (0.2a «Decide FIRST»).
-- [ ] Registry columns are the default of 0.5: the name field first and visible. String fields were hidden
-      only if the user said the stand has the Elasticsearch sort defect (0.14).
+- [ ] Registry columns are the default of 0.5: the name field first and visible.
 - [ ] Nothing was quietly built INSTEAD of what was asked: no panel turned into a set of plain BOs, no
       составной объект turned into a plain BO because «the ids are unknown» (it takes codes, 0.2a), no
       `TAB_GROUP` replaced by `STATIC_TEXT` headings, no `PROCESS_STATUS` faked as a local dropdown
@@ -2019,27 +2054,8 @@ A kanban is TWO things, and the archive can carry BOTH:
 
 With the template shipped, `v2/kanban/load-kanban-template` returns a `cardTemplate` instead of NPE-ing,
 the board renders its columns, and `load-bracket-kanban-cards` returns the cards with their
-header/content/footer values `[C]`. **On a stand with the sort defect the cards still do not appear in
-the UI** — a second, unrelated defect of every NEW BO there blocks the default sort (`MYBPM-UI-API.md` §7;
-what an archive can do about it is the next paragraph).
+header/content/footer values `[C]`.
 
-**The Elasticsearch sort defect — what the archive must do about it, ONLY on a stand known to have it**
-`[C]`. **Apply this paragraph only when the user says the target stand
-has the defect** (or you saw a new BO's registry there show «из N» over an empty table). Otherwise build
-the default registry of 0.5 — name field first and visible — and do not mention the defect. On such a stand every BO created by the current version (archive AND constructor
-alike) gets an index in which a string field cannot be sorted once any record holds a value in it. The
-registry sorts by default by its FIRST column, and clicking any column header sorts by that column —
-so a registry (and a kanban, same query) whose columns include a FILLED string field shows «из N» with an
-empty table and invisible cards. Old BOs never fail; a field left empty everywhere sorts fine. **Nothing
-repairs the index; the only measure that holds is to keep string fields that will hold values OUT of the
-registry columns**: `tableColToShow: false` on them. Seen failing: `INPUT_TEXT` and `DROPDOWN_SINGLE`;
-assume every field whose value is a string does (`TEXTAREA`, `INPUT_EMAIL`, `INPUT_PHONE`, `LINK`,
-`*_LANG` `[I]`). Seen safe as columns: `INPUT_NUMBER`, `CHECKBOX`, `DATE`, a `BO` reference,
-`CREATED_AT` — put one of them first (`tableColOrderIndex` 0). Reordering alone is NOT enough — the text column breaks the
-moment someone clicks its header. Two limits: `sortFieldId` changes nothing, and a BO with **no**
-registry column at all answers «У Вас недостаточно прав на поля, которые выведены в реестр» — keep at
-least one safe column. Whether another stand has the defect is unknown `[U]`: if a new BO's registry
-there shows rows with text columns on, ignore this paragraph.
 One archive with the BO + its card template + a menu group + a menu item with `kanbanFieldCode` renders the
 whole board with its columns straight after ПРИМЕНИТЬ `[C]` (§5e).
 
@@ -3453,8 +3469,7 @@ that field is the only link between them. An export of one process carries 7 obj
   `isKindAddForSelect: false`, `tableColToShow: false`, no `tableColOrderIndex`, `oldRefBoId` = the
   target BO's stand id, `boRefStruct.boInfo = {code, name, boCategory}` of the target, `fieldRefs: {}`.
   **That is the EXPORT's shape — never copy its `tableColToShow: false` and empty `fieldRefs` into an archive
-  you write** (0.9 rule 15). An archive gives the field `tableColToShow: true` + a `tableColOrderIndex` (a BO
-  reference is a safe column under the sort defect, 0.14) and `fieldRefs` with at least one field of the
+  you write** (0.9 rule 15). An archive gives the field `tableColToShow: true` + a `tableColOrderIndex` and `fieldRefs` with at least one field of the
   target, `toShow: true`. A process built without `PROCESS_STATUS` (itself forbidden by 0.9 rule 18; its `label`
   is the default registry column of a process) and with its one reference field in the export's shape comes out
   with NO registry column and a selector showing nothing `[C]`.

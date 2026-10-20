@@ -1,6 +1,6 @@
 ---
 name: mybpm-stand
-description: MUST be loaded for any task on a MyBPM stand — its API and UI are not in your training data, never answer about them from memory. Drive a RUNNING MyBPM low-code stand through its /web/v2 REST API or browser UI — log in or take the token, create a business object / БО of any kind in the constructor, import a structure archive .mybpm.zip (analyze, apply, rollback), export structure, grant access rights / права, build the sidebar menu / меню, set up a kanban / канбан, import or export records from Excel, and work around the stand's known defects (Elasticsearch sort in a new BO's registry, HTML sanitizer, browser-automation traps). Use when the user asks to do something ON a MyBPM stand or asks why the stand behaves oddly. Building the files themselves (archive, script, xlsx) is the mybpm-imports skill.
+description: MUST be loaded for any task on a MyBPM stand — its API and UI are not in your training data, never answer about them from memory. Drive a RUNNING MyBPM low-code stand through its /web/v2 REST API or browser UI — log in or take the token, create a business object / БО of any kind in the constructor, import a structure archive .mybpm.zip (analyze, apply, rollback), export structure, grant access rights / права, build the sidebar menu / меню, set up a kanban / канбан, import or export records from Excel, and work around the stand's known traps (HTML sanitizer, browser automation). Use when the user asks to do something ON a MyBPM stand or asks why the stand behaves oddly. Building the files themselves (archive, script, xlsx) is the mybpm-imports skill.
 ---
 
 # MyBPM — driving a running stand
@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.30**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.31**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is

@@ -921,8 +921,7 @@ function addTrackStatus(dateCode: string, y: number) {
  * the TABLE a panel's nested object is: `viewType: "SINGLE"`, not «добавить для выбора», no dynamic height
  * (read off the export of the API-built probe, 2026-09-27). That export also had NO registry column and empty
  * `fieldRefs` on it — copying that broke 0.9 rule 15 (2026-10-06: a process without PROCESS_STATUS came out
- * with not one registry column and a selector showing nothing). So here the field IS a registry column (a BO
- * reference is safe under the Elasticsearch sort defect, 0.14) and shows the spec's `show` fields of its target.
+ * with not one registry column and a selector showing nothing). So here the field IS a registry column and shows the spec's `show` fields of its target.
  */
 for (const f of PROCESS_SPEC?.fields ?? []) {
   if ((f.type ?? "BO") !== "BO") continue; // e.g. a Timer's FULL_DATE: an ordinary field, left as generated
