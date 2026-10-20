@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Pulls the list of sidebar-menu icons out of a stand's FRONTEND bundle — the names the «Изменить
- * иконку» picker offers — and writes it to `tools/menu-icons.json` (read by validate-archive).
+ * иконку» picker offers — and writes it to `tools/menu-icons.json` (read by the mybpm-stand MCP server).
  *
  * Where the list lives (MYBPM-UI-API.md §4, MYBPM-IMPORTS.md 0.15): the Angular component
  * `app-phosphor-icon-chooser` in a lazy chunk (`956.<hash>.js` on build C4.24.25.264) holds 18 arrays,
