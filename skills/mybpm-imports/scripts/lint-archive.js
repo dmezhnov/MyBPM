@@ -17,7 +17,7 @@ L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|acces
 const groups = of("BoGroupStructDto"), order = new Set();
 for (const g of groups) {
   if (!g.code) err(`group «${g.name}»: no code (0.9 rule 1)`);
-  if (g.kind !== "MANUAL") err(`group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
+  if (g.kind !== (g.code === "General" ? "DEFAULT" : "MANUAL")) err(g.code === "General" ? `group General: kind ${g.kind} — the general group «Общее» keeps DEFAULT, MANUAL demotes it (0.3)` : `group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
   id(`group ${g.code}`, g.oldId); id(`group ${g.code} newId`, g.newId);
 }
 if (bos.length > 6 && groups.length < 2) err(`${bos.length} BOs in one group — 2–4 groups by theme (0.2 step 1)`);

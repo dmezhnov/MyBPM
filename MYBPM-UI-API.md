@@ -1378,7 +1378,7 @@ of one domain — a stand may hold several, each a record of it, and **a record'
 (the one `stand_list` / the session gives). Only the special account with the login `root` sees and edits this BO;
 for an ordinary admin of a company it does not exist at all — not in the BO groups, and `load-bo-id-by-code`
 `Company` answers «not found» — although its own rights (R5 `load-access-group`) say VIEW «всем»: it is hidden by
-the login, not by the rights model. `root` sees it in the group «Системные» next to the other built-in BOs. Its
+the login, not by the rights model. `root` sees it in the general group «Общее» (`kind: DEFAULT`) next to the other built-in BOs: they sit in no group, and only the general group lists them `[C]`. Its
 Email field (`company_email`, kind `COMPANY_EMAIL`) carries the «Выслать приглашение» link to that company's admin
 (below). A change on a record of it changes a live tenant — never touch an existing company's record as a test.
 
@@ -1784,6 +1784,13 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   and the import stays `APPLIED`), `save-business-object-group` with `kind: MANUAL` is ignored, and the group
   now lists every BO that is in no group. An archive's group line carries `kind: "MANUAL"`
   (`MYBPM-IMPORTS.md` 0.3).
+- **…except a line for the general group itself** `[C]`: a matched group takes the line's `kind`, so a line
+  with code `General` and `kind: "MANUAL"` demotes the company's «Общее» (`DEFAULT` → `MANUAL`, `isGeneral:
+  false`). The company then has no general group: the built-in «Пользователи», «Департамент», «Рабочая
+  группа», «Аккаунт» (they sit in no group) vanish from the BO list and from `load-bo-groups`, and the
+  caption-level ⊕ of the constructor creates nothing (§5b). Rolling back that import restores `DEFAULT` and the
+  built-in BOs `[C]`; other repairs `[U]`. A line for «Общее» repeats `"kind": "DEFAULT"` as
+  `load-bo-groups` gives it.
 - **A reference to the built-in `Person` in an archive resolves by `boInfo.code`** `[C]`: `oldRefBoId` may be
   `""` or another company's `personBoId`, with or without the `CompanyMetadataStructDto` line — the imported
   field points at THIS company's `Person` and picks its users. No `personBoId` needs to be read off the stand
