@@ -3,8 +3,17 @@
 "use strict";
 let fs, path, zlib;
 
-function lintArchive(jsonl, doc) { // jsonl = the whole text of data-*/0000001.mybpm, doc = the whole text of THIS document
-const L = jsonl.trimEnd().split("\n").map((l) => JSON.parse(l)), out = [], err = (s) => out.push(s);
+function lintArchive(jsonl, doc, meta, source) { // jsonl = the whole text of data-*/0000001.mybpm, doc = the whole text of THIS document, meta = the text of data-*/metadata.mybpm when you have it, source = the 0000001.mybpm text of the export this file amends
+const out = [], err = (s) => out.push(s), fatal = (s) => err("FATAL " + s), L = []; // FATAL = the import fails outright; every other line but REMINDER builds something other than asked
+String(jsonl).trimEnd().split("\n").forEach((l, i) => {
+  try { const o = JSON.parse(l); o && typeof o === "object" && !Array.isArray(o) ? L.push(o) : fatal(`line ${i + 1}: not a JSON object — no array wrapper (0.9 rule 3)`); }
+  catch { fatal(`line ${i + 1}: does not parse — one minified JSON object per line, no blank line (0.9 rule 3)`); }
+});
+if (out.length) return out.join("\n");
+if (!/[^\n]\n$/.test(String(jsonl))) err(`the payload must end with exactly one newline (0.9 rule 3)`);
+const om = /^objectCount-(\d+)(\s*)$/.exec(meta ?? "");
+if (meta !== undefined && (!om || +om[1] !== L.length)) fatal(`metadata.mybpm is ${JSON.stringify(meta)}, must be "objectCount-${L.length}" (0.9 rule 2)`);
+else if (om?.[2]) err(`metadata.mybpm ends with whitespace — "objectCount-${L.length}" alone (0.11)`);
 const cls = (o) => String(o["@class"]).split(".").pop(), of = (c) => L.filter((o) => cls(o) === c);
 const all = (o) => Object.entries(o ?? {}), vals = (o) => Object.values(o ?? {}), bos = of("BoStructDto");
 const low = (s) => String(s).replace(/<[^>]*>/g, "").trim().toLowerCase(), isRef = (f) => f.type === "BO" || f.type === "CO";
@@ -12,25 +21,101 @@ const ID = /^[A-Za-z0-9@~]{16}$/, CODE = /^[A-Za-z0-9_]{1,30}$/, ids = new Map()
 const id = (t, v) => !ID.test(String(v)) ? err(`${t}: id "${v}" is not 16 of A-Za-z0-9@~ (0.7)`)
   : ids.has(v) ? err(`${t}: id ${v} repeats ${ids.get(v)} (0.7)`) : ids.set(v, t);
 const W = ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"];
+const defs = of("ScriptDefStructDto"), menu = of("MenuItemStructDto"), gm = of("CompanyGlobalMethodsStructDto"), PV = of("BoProcessVersionsStructDto");
+const NAME = [], name = (t, c, re, want) => re.test(String(c)) || NAME.push(`${t} "${c}" (${want})`); // 0.6a, one REMINDER at the end
+const OBJ = [/^[A-Z][a-z0-9]*(_[a-z0-9]+)*$/, "Capitalised snake_case"], LOW = [/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "lower snake_case"];
+const CHK = [/^is_[a-z0-9]+(_[a-z0-9]+)*$/, "is_*"], TABS = [/^tabs(_[a-z0-9]+)*$/, "tabs / tabs_*"], TAB = [/^tab_[a-z0-9]+(_[a-z0-9]+)*$/, "tab_*"];
+const RM = /^(STRIKETHROUGH|HIDE|DISCONNECT)$/, DEF_ICON = [], DV = [];
 L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|access\.AccessStructDto)$/.test(o["@class"])
-  || err(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
-const groups = of("BoGroupStructDto"), order = new Set();
+  || fatal(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
+const groups = of("BoGroupStructDto"), order = new Set(), gcodes = new Set(), noBo = !bos.length && (menu.length || gm.length || of("CompanySettingsStructDto").length); // menu lines, global methods or company settings alone (§5d, §5e)
+if (!noBo && !groups.length) fatal(`no BoGroupStructDto line (0.3)`);
+if (!noBo && !bos.length) fatal(`no BoStructDto line (0.4)`);
 for (const g of groups) {
-  if (!g.code) err(`group «${g.name}»: no code (0.9 rule 1)`);
-  if (g.kind !== (g.code === "General" ? "DEFAULT" : "MANUAL")) err(g.code === "General" ? `group General: kind ${g.kind} — the general group «Общее» keeps DEFAULT, MANUAL demotes it (0.3)` : `group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
+  if (!g.code) fatal(`group «${g.name}»: no code — renames a fixed stand group (0.9 rule 1)`);
+  else if (gcodes.has(g.code)) err(`group ${g.code}: code repeats (0.3)`);
+  else { gcodes.add(g.code); name("group", g.code, ...OBJ); }
+  if (typeof g.name !== "string" || !g.name) fatal(`group ${g.code}: no name (0.3)`);
+  if (g.kind !== (g.code === "General" ? "DEFAULT" : "MANUAL")) (g.code === "General" || g.kind === "DEFAULT" ? fatal : err)(g.code === "General" ? `group General: kind ${g.kind} — the general group «Общее» keeps DEFAULT, MANUAL demotes it (0.3)` : `group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
   id(`group ${g.code}`, g.oldId); id(`group ${g.code} newId`, g.newId);
 }
+if (gm.length > 1) err(`${gm.length} CompanyGlobalMethodsStructDto lines — one; the import replaces the whole list with it (§5d «Company-global methods»)`);
+for (const g of gm) {
+  if (!Array.isArray(g.scriptDefIds)) fatal(`CompanyGlobalMethodsStructDto: no scriptDefIds list (§5d)`);
+  const seen = new Set();
+  for (const c of Array.isArray(g.scriptDefIds) ? g.scriptDefIds : []) {
+    const s = defs.find((x) => x.compositeId === c), hats = vals(s?.blocks).filter((b) => /BlockFixMethodStruct$/.test(b["@class"] ?? "")), n = hats[0]?.methodName;
+    if (!s) err(`global method ${c}: no ScriptDefStructDto with that compositeId (§5d)`);
+    else if (hats.length !== 1 || !n || seen.has(n)) err(`global method ${c}: ${hats.length} BlockFixMethodStruct hat(s), methodName "${n ?? ""}" — one hat with a name of its own (§5d)`);
+    seen.add(n);
+  }
+}
+const acc = of("AccessStructDto");
+for (const a of acc) for (const [k, v] of all(a.fieldAccessStructMap)) for (const t of Object.keys(v?.tabAccessStructMap ?? {})) {
+  const bo = bos.find((b) => b.code === a.boCode), g = bo?.dynamicFields?.[k];
+  if (bo && !(g?.type === "TAB_GROUP" && g.fieldTabs?.[t])) err(`rights of ${a.boCode}: tab rule ${k}.${t} names no tab of a TAB_GROUP of ${a.boCode} (§7)`);
+}
+if (acc.length) err(`REMINDER rights lines of ${acc.map((a) => a.boCode).join(", ")}: name each one's case in the report — an amendment (the source archive's line, changed only where asked), a new BO (always a line; orgUnitIds only ids the user gave), a blind update (only when the user asked to change rights, and the whole set) (0.9 rule 10)`);
+const bare = bos.filter((b) => b.category !== "BO_COMPOSITE" && !acc.some((a) => a.boCode === b.code)).map((b) => b.code);
+if (bare.length) err(`REMINDER ${bare.join(", ")}: no rights line — right only for a blind update of a BO already on the stand; a new BO always carries one, the all-open line of 0.8a step 6 when the task says nothing about rights (0.9 rule 10)`);
 if (bos.length > 6 && groups.length < 2) err(`${bos.length} BOs in one group — 2–4 groups by theme (0.2 step 1)`);
 const NOT_DYN = /^(BUTTON|IFRAME|CAPTCHA|SIGNATURE|CURRENT_.*|CREATED_.*|LAST_MODIFIED_.*|OPEN_COUNT|PARTICIPANTS)$/;
 const SYS = { BO_DICTIONARY: [["code", "INPUT_TEXT", "0.5b"], ["label", "INPUT_TEXT_LANG", "0.5b"]], BO_PROCESS: [["PROCESS_STATUS", "BO", "0.18"]] };
+const TYPES = /^(INPUT_(TEXT|PHONE|EMAIL|NUMBER|TEXT_LANG)|TEXTAREA(_LANG)?|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD(_TIME)?|CHECKBOX|DROPDOWN_SINGLE|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|QUESTIONNAIRE|BO|CO|TAB_GROUP|GEO_POINT|PROGRESS_BAR|LINK|STATIC_TEXT)$/;
+const BOK = ["oldId", "code", "category", "kind", "boGroupOldId", "instanceViewType", "bos", "boTabs", "printForms", "name", "recordName", "staticValue", "description", "orderIndex", "dynamicFields", "nativeFields", "dictionaryFields", "actual", "isCalendarEnabled", "isMapEnabled", "isGroupingEnabled", "isCodeReadonly", "chosenAccessRight", "isTouchEnabled", "hideAddButtonFromRegistry", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W]; // 0.4
+const FK = ["code", "newId", "archetype", "kind", "boRefStruct", "label", "staticValue", "isUnique", "isRequired", "isAppendable", "isRequiredAll", "isReadonly", "isClickable", "isSelectOnly", "isSeparated", "needAddToParticipants", "needShowToCalendar", "dateOnlyFuture", "dateOnlyPast", "needTrackStatus", "tableColToShow", "isHistoryTracking", "isKindAddForSelect", "titleToShow", "questionnaireIsMultiple", "isProgressBarSticky", "hideLabel", "chosenAccessRight", "unacceptableValue", "isSystem", "isCodeReadonly", "needLoadFromInTables", "useAsKeyInMigration", "needUploadToOutTable", "needChangeParentBoByLinkedBo", "needFreezeWhenScroll", "needMarkNew", "textCase", "inMigrationTimezoneMinutes", "type", "groupingInfo", "fieldTabs", "gridPosition", "removeType", "gantTableLocations", "boFieldCodes", "linkedCoSettings", "questionnaires", "progressSteps", "params"]; // 0.5
+const NT = { CREATED_AT: "FULL_DATE", LAST_MODIFIED_AT: "FULL_DATE", CREATED_BY: "BO", LAST_MODIFIED_BY: "BO", OPEN_COUNT: "INPUT_NUMBER", IN_MIGRATION_UPDATED_AT: "FULL_DATE" };
+const WT = { signatures: /^SIGNATURE$/, buttons: /^BUTTON$/, iframes: /^IFRAME$/, captcha: /^CAPTCHA$/, currentDates: /^CURRENT_(DATE|DAY|MONTH|DAY_AND_MONTH|YEAR)$/, currentUser: /^CURRENT_USER$/ };
 for (const bo of bos) {
   const b = bo.code, cat = bo.category, df = bo.dynamicFields ?? {}, fs = all(df), place = `${bo.boGroupOldId} ${bo.orderIndex}`;
-  if (!CODE.test(b ?? "")) err(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+  if (!CODE.test(b ?? "")) fatal(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+  else name("BO", b, ...OBJ);
   id(b, bo.oldId);
-  for (const k of ["bos", "printForms", "dictionaryFields"]) if (!Array.isArray(bo[k])) err(`${b}.${k}: must be a list [] (0.9 rule 5)`);
+  const miss = BOK.filter((k) => !(k in bo) && !(k === "instanceViewType" && cat === "BO_PANEL"));
+  if (miss.length) err(`${b}: keys missing — ${miss.join(", ")}; ship every key of 0.4 (0.9 rule 6)`);
+  if (!/^BO(_DICTIONARY|_PANEL|_COMPOSITE|_PROCESS)?$/.test(cat)) fatal(`${b}: category ${cat} — BO, BO_DICTIONARY, BO_PANEL, BO_COMPOSITE or BO_PROCESS (0.17)`);
+  if (["Person", "Department", "PersonGroup"].includes(b)) fatal(`${b}: a built-in BO's code — the import dies «Несоответствие типов объектов» (0.2a)`);
+  if (typeof bo.name?.rus !== "string") err(`${b}: name is not {"rus": "…"} (0.4)`);
+  for (const k of ["bos", "printForms", "dictionaryFields"]) if (k in bo && !Array.isArray(bo[k])) err(`${b}.${k}: must be a list [] (0.9 rule 5)`);
   for (const k of ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W])
-    if (!bo[k] || typeof bo[k] !== "object" || Array.isArray(bo[k])) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo[k])} — the stand drops the whole BO (0.9 rule 5)`);
-  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) err(`${b}: boGroupOldId names no group line (0.7)`);
+    if (k in bo && (!bo[k] || typeof bo[k] !== "object" || Array.isArray(bo[k]))) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo[k])} — the stand drops the whole BO (0.9 rule 5)`);
+  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
+  for (const [c, t] of all(bo.kanbanCardTemplates)) {
+    if (!t?.kanbanFields || typeof t.kanbanFields !== "object" || Array.isArray(t.kanbanFields)) err(`${b}: kanbanCardTemplates.${c} must be {"kanbanFields": {…}} — without the wrapper the import sets nothing (0.5c)`);
+    else for (const k of Object.keys(t.kanbanFields)) if (!df[k] && !bo.nativeFields?.[k]) err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`);
+  }
+  const bt = bo.boTabs && typeof bo.boTabs === "object" && !Array.isArray(bo.boTabs) ? all(bo.boTabs) : [];
+  for (const [t, n] of bt) if (!/^(CHAT|PEOPLE|FILES|HISTORY|PRINT_FORM|TELEGRAM|WHATSAPP)$/.test(t) || typeof n !== "number") err(`${b}: boTabs.${t} = ${JSON.stringify(n)} — {"CHAT"|"PEOPLE"|"FILES"|"HISTORY"|"PRINT_FORM"|"TELEGRAM"|"WHATSAPP": <orderIndex>} (§2 «BO card tabs»)`);
+  if (new Set(bt.map(([, n]) => n)).size < bt.length) err(`${b}: two boTabs share an orderIndex (§2 «BO card tabs»)`);
+  for (const k of ["messengerFieldCode", "whatsAppFieldCode"]) if (bo[k] != null && !df[bo[k]]) err(`${b}: ${k} "${bo[k]}" is no field of ${b} (§2 «BO card tabs»)`);
+  const mk = fs.filter(([, f]) => f.useAsKeyInMigration).map(([k]) => k);
+  if (mk.length > 1) err(`${b}: useAsKeyInMigration on ${mk.join(", ")} — one per BO (§3)`);
+  for (const [k, n] of all(bo.nativeFields)) { id(`${b}.${k}`, n.newId); if (NT[k] !== n.type || n.archetype !== "NATIVE") err(`${b}.${k}: a native is one of ${Object.keys(NT).join(", ")} with its fixed type and archetype NATIVE (0.12)`); }
+  const pfs = Array.isArray(bo.printForms) ? bo.printForms : [], files = of("ExportStructFileDto").map((x) => x.fileId);
+  pfs.forEach((p, i) => { id(`${b}.printForms[${i}]`, p.newId); if (!p.printFormCode || !/^(PDF|DOCX)$/.test(p.fileType) || !files.includes(p.fileId)) err(`${b}.printForms[${i}]: printFormCode, fileType PDF or DOCX, an ExportStructFileDto line with its fileId (0.13)`); });
+  if (Object.keys(bo.currentUser ?? {}).length > 1) err(`${b}: ${Object.keys(bo.currentUser).length} CURRENT_USER widgets — one per BO (0.13)`);
+  for (const m of W) for (const [k, w] of all(bo[m])) {
+    const t = `${b}.${m}.${k}`, fc = Object.keys(w.fieldCodes ?? {}), wt = w.tabCode, u = String(w.url ?? "").trim(), ur = w.fieldRefs ?? {};
+    name(t, k, ...LOW); id(t, w.newId);
+    if (!WT[m].test(w.type)) err(`${t}: type ${w.type} does not belong in ${m} (0.13)`);
+    if (!w.gridPosition) err(`${t}: no gridPosition (0.13)`);
+    if (w.tabCodePath) err(`${t}: a widget names its tab in "tabCode" — the import ignores tabCodePath (0.13)`);
+    if (wt?.tabGroupCode && !(df[wt.tabGroupCode]?.type === "TAB_GROUP" && df[wt.tabGroupCode].fieldTabs?.[wt.tabCode])) err(`${t}: tabCode ${wt.tabGroupCode}.${wt.tabCode} names no tab of ${b} (0.13)`);
+    if (/^(BUTTON|SIGNATURE)$/.test(w.type) && fc.some((c) => !df[c] && !(w.type === "BUTTON" && bo.nativeFields?.[c]))) err(`${t}: fieldCodes names a code no field of ${b} has (0.13)`);
+    if (/^(BUTTON|IFRAME)$/.test(w.type) && w.url === undefined) err(`${t}: no url key (0.13)`);
+    if (w.type === "BUTTON" && u && !u.startsWith("call/plugin/")) err(`${t}: url "${u}" does nothing — a button never navigates; empty + its field script, or call/plugin/<server plugin> (0.13)`);
+    if (w.type === "IFRAME" && /^http:/i.test(u)) err(`${t}: an http: url is dropped — https: (0.13)`);
+    if (w.type === "SIGNATURE" && (Object.keys(w.massFieldCodes ?? {}).some((c) => df[c]?.type !== "BO") || (w.signingPhoneCode != null && df[w.signingPhoneCode]?.type !== "INPUT_PHONE") || Object.keys(w.printFormCodes ?? {}).some((c) => !pfs.some((p) => p.printFormCode === c))))
+      err(`${t}: massFieldCodes are BO fields of ${b}, signingPhoneCode an INPUT_PHONE of ${b}, printFormCodes its printForms[].printFormCode (0.13)`);
+    if (m === "currentDates" && w.widgetType !== w.type) err(`${t}: widgetType ${w.widgetType} must repeat type ${w.type} (0.13)`);
+    if (w.type === "CURRENT_USER" && ((w.viewType !== undefined && !/^(TABLE|SINGLE)$/.test(w.viewType)) || typeof ur !== "object" || Array.isArray(ur) || vals(ur).some((r) => typeof r?.toShow !== "boolean") || (vals(ur).length && !vals(ur).some((r) => r.toShow))))
+      err(`${t}: CURRENT_USER — viewType TABLE or SINGLE, fieldRefs {} or {<Person field code>: {"toShow": true|false, …}} with one shown (0.13)`);
+  }
+  if (cat === "BO_DICTIONARY" && (Object.keys(df).slice(0, 2).join() !== "code,label" || df.code?.isUnique !== true)) err(`${b}: a dictionary starts with code, label, and code is isUnique (0.5b)`);
+  if (cat === "BO_PANEL") for (const [k, f] of fs) if (f.type !== "BO" || ![undefined, null, true, false].includes(f.readFromRegistry) || (f.readFromRegistry === false ? f.isReadonly === true : f.isReadonly !== true) || !vals(f.boRefStruct?.fieldRefs).some((r) => r?.toShow === true) || f.isKindAddForSelect !== true)
+    err(`${b}.${k}: a panel widget — type BO, isKindAddForSelect true, a fieldRefs entry with toShow true, isReadonly true (false with readFromRegistry false) (§5a)`);
+  if (cat === "BO_COMPOSITE" && (!Array.isArray(bo.bos) || !bo.bos.length || bo.bos.some((s) => !s?.code))) err(`${b}: a composite lists its source BOs in bos: [{"code", "name", "boCategory"}] (§5b)`);
+  if (cat === "BO_PROCESS" && !PV.some((p) => p.oldId === bo.oldId)) fatal(`${b}: no BoProcessVersionsStructDto line with its oldId (0.18)`);
   if (typeof bo.orderIndex !== "number" || order.has(place)) err(`${b}: orderIndex ${bo.orderIndex} — one number per BO in its group (0.9 rule 17)`);
   order.add(place);
   const want = cat === "BO_DICTIONARY" ? '["CODE","LABEL"]' : "[]";
@@ -42,24 +127,29 @@ for (const bo of bos) {
   for (const m of ["nativeFields", ...W]) for (const [k, w] of all(bo[m]))
     if (k !== (w.code ?? w.nativeFieldId)) err(`${b}.${k}: ${m} key differs from its code (0.9 rule 5)`);
   const labels = new Set(fs.filter(([, f]) => f.type !== "STATIC_TEXT").map(([, f]) => low(f.label?.rus)));
-  const tci = fs.filter(([k]) => k !== "PROCESS_STATUS").map(([, f]) => f.tableColOrderIndex);
-  if (cat !== "BO_COMPOSITE" && (tci.some((v) => typeof v !== "number") || new Set(tci).size < tci.length))
-    err(`${b}: tableColOrderIndex missing or repeated — 0, 1, 2… (0.5)`);
-  if (fs.some(([, f]) => f.fieldTabs?.tab_system) && !of("AccessStructDto").some((o) => o.boCode === b))
+  const tci = fs.filter(([, f]) => !f.trackedFieldCode && !(cat === "BO_PROCESS" && f.type === "BO")).map(([, f]) => f.tableColOrderIndex).filter((v) => typeof v === "number");
+  if (cat !== "BO_COMPOSITE" && [...tci].sort((x, y) => x - y).some((v, i) => v !== i)) err(`${b}: tableColOrderIndex [${tci.join(", ")}] — the counter 0, 1, 2 … one per field (0.5)`);
+  if (fs.some(([, f]) => f.fieldTabs?.tab_system) && !acc.some((o) => o.boCode === b))
     err(`${b}: tab_system without its AccessStructDto line (0.8a step 6)`);
+  const lack = new Map(), seenLab = new Set(); // fields by the set of template keys they lack, labels seen
   for (const [k, f] of fs) {
     const t = `${b}.${k}`, ty = f.type, op = f.fieldOptionsStruct?.options, bi = f.boRefStruct?.boInfo;
-    if (k !== f.code) err(`${t}: key differs from code "${f.code}" (0.9 rule 5)`);
-    if (!CODE.test(k)) err(`${t}: field code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
+    if (k !== f.code) fatal(`${t}: key differs from code "${f.code}" (0.9 rule 5)`);
+    if (!CODE.test(k)) fatal(`${t}: field code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
     id(t, f.newId);
-    if (NOT_DYN.test(ty)) err(`${t}: ${ty} is a widget or system field — its own map (0.9 rule 13)`);
+    if (NOT_DYN.test(ty)) fatal(`${t}: ${ty} is a widget or system field — its own map (0.9 rule 13)`);
+    else if (!TYPES.test(ty)) fatal(`${t}: type ${ty} is not a field type (§3 «Field types»)`);
+    const skip = cat === "BO_COMPOSITE" ? /^(gridPosition|removeType)$/ : cat === "BO_PROCESS" && k === "PROCESS_STATUS" ? /^(removeType|inMigrationTimezoneMinutes)$/ : /^$/;
+    const ms = FK.filter((x) => !(x in f) && !skip.test(x)).join(", ");
+    if (ms) lack.set(ms, [...(lack.get(ms) ?? []), k]);
+    if ("oldId" in f && !("newId" in f)) err(`${t}: a field carries oldId — fields take newId (0.7)`);
     if (f.isRequired && f.isReadonly) err(`${t}: isRequired + isReadonly — never saves (0.9 rule 9)`);
     if (ty === "STATIC_TEXT" && f.tableColToShow) err(`${t}: STATIC_TEXT as a registry column (0.8a step 2)`);
     if (ty === "STATIC_TEXT" && labels.has(low(f.staticValue?.rus))) err(`${t}: heading repeats a field label (0.9 rule 12)`);
     if (ty === "STATIC_TEXT" && /^\s*<(h\d|b|strong)>/i.test(f.staticValue?.rus ?? "")) err(`${t}: a bare <h3>/<b> heading renders as a small bold label — the styled <div> of 0.5`);
-    if (op !== undefined && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
+    if (op !== undefined && !f.trackedFieldCode && (Array.isArray(op) || all(op).some(([c, o]) => o.fieldOption?.code !== c || typeof o.fieldOption?.label !== "string")))
       err(`${t}: options — {<code>: {"fieldOption": {"code", "label": "<string>"…}, "newOptionId"}} (0.5)`);
-    else for (const [c, o] of all(op)) id(`${t}.${c}`, o.newOptionId);
+    else if (!f.trackedFieldCode) for (const [c, o] of all(op)) { id(`${t}.${c}`, o.newOptionId); name(`${t} option`, c, ...LOW); }
     if (ty === "QUESTIONNAIRE" && [true, false].some((col) => !vals(f.questionnaires).some((q) => q.questionnaireDto?.isColumn === col) || vals(f.questionnaires).some((q) => q.questionnaireDto?.isColumn === col && !q.questionnaireDto?.label?.trim())))
       err(`${t}: a questionnaire needs ≥1 row and ≥1 column, each with a label — an empty one blocks the constructor save (0.5)`);
     if (ty === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) err(`${t}: a local list with no options (0.5)`);
@@ -77,23 +167,106 @@ for (const bo of bos) {
     if (ty === "DROPDOWN_SINGLE" && f.tabCodePath?.tabCode && (k === "status" || low(f.label?.rus) === "статус")) err(`${t}: the status inside tab ${f.tabCodePath.tabCode} — the header row beside the title field, seen on every tab (0.8a step 3)`);
     if (ty === "FILE_UPLOAD" && /фото|снимк|снимок|photo/i.test(`${k} ${f.label?.rus}`) && f.params?.viewType !== "TILE") err(`${t}: a photo field without params.viewType TILE shows no pictures (0.19)`);
     if (cat === "BO_DICTIONARY" && (k === "code" || k === "label") && f.gridPosition && (f.gridPosition.x !== 0 || f.gridPosition.cols !== 15)) err(`${t}: a dictionary's Код / Значение — x 0, cols 15 each, one width (0.5b, 0.8)`);
-    if (!isRef(f)) continue;
+    for (const [p, v] of all(f.params)) if (typeof v !== "string") err(`${t}: params.${p} = ${JSON.stringify(v)} — every params value is a string (§3)`);
+    if (f.textCase && f.textCase !== "NONE" && ty !== "INPUT_TEXT") err(`${t}: textCase on a ${ty} — INPUT_TEXT only (§3)`);
+    if (f.maxLength && (!/^(INPUT_TEXT(_LANG)?|INPUT_NUMBER|TEXTAREA(_LANG)?)$/.test(ty) || (ty === "INPUT_NUMBER" && f.maxLength > 21))) err(`${t}: maxLength ${f.maxLength} on a ${ty} — text and number types only, a number at most 21 (§3)`);
+    if (f.useAsKeyInMigration && !/^INPUT_(TEXT|EMAIL|PHONE)$/.test(ty)) err(`${t}: useAsKeyInMigration on a ${ty} — INPUT_TEXT, INPUT_EMAIL, INPUT_PHONE only (§3)`);
+    let btn; try { btn = JSON.parse(f.params?.buttonTypes); } catch { btn = null; }
+    if (f.params?.buttonTypes !== undefined && (!/^TEXTAREA/.test(ty) || !Array.isArray(btn) || btn.some((x) => !/^(style|bold|underline|italic|fontsize|color|ul|ol|paragraph|table|link|picture|video|hr|codeview|height)$/.test(x))))
+      err(`${t}: params.buttonTypes — only on TEXTAREA / TEXTAREA_LANG, the JSON text of a list of style bold underline italic fontsize color ul ol paragraph table link picture video hr codeview height (§3)`);
+    if (ty === "CHECKLIST" && f.isSelectOnly === true && f.isAppendable === true) err(`${t}: isSelectOnly and isAppendable — one of the two (§3)`);
+    if (ty === "TAB_GROUP" && f.params?.needDisableTabs === "true" && Object.keys(f.fieldTabs ?? {}).length > 1) err(`${t}: needDisableTabs hides the strip of ${Object.keys(f.fieldTabs).length} tabs — only with one tab (§3)`);
+    if (f.isProgressBarSticky === true && ty !== "PROGRESS_BAR") err(`${t}: isProgressBarSticky on a ${ty} — PROGRESS_BAR only; needFreezeWhenScroll for the rest (§3)`);
+    const tw = ty === "TAB_GROUP" && !!f.trackedFieldCode, lb = f.label?.rus;
+    if (typeof lb !== "string" ? !tw && !(ty === "TAB_GROUP" && f.label && !Object.keys(f.label).length) : lb !== lb.trimStart()) err(`${t}: label must be {"rus": "<text>"} with no leading space (0.5)`);
+    if (typeof lb === "string" && seenLab.has(lb)) err(`${t}: label «${lb}» repeats inside ${b} (0.5)`);
+    seenLab.add(lb);
+    if (!(cat === "BO_DICTIONARY" && /^(code|label)$/.test(k)) && k !== "PROCESS_STATUS" && !tw) name(t, k, ...(ty === "CHECKBOX" ? CHK : ty === "TAB_GROUP" ? TABS : LOW));
+    for (const [c, q] of all(f.questionnaires)) name(`${t} questionnaire`, q?.questionnaireDto?.code ?? c, ...LOW);
+    for (const s of vals(f.progressSteps)) if (s?.code) name(`${t} step`, s.code, ...LOW);
+    if (ty === "TAB_GROUP" && !tw) for (const c of Object.keys(f.fieldTabs ?? {})) if (c !== "tab_system") name(`${t} tab`, c, ...TAB);
+    const fo = f.fieldOptionsStruct, di = fo?.dictionaryBoInfo;
+    if (/^(DROPDOWN_SINGLE|RADIO_BUTTON_GROUP)$/.test(ty)) {
+      if (!fo) err(`${t}: ${ty} without fieldOptionsStruct (0.5)`);
+      else if (fo.optionSource === "FROM_BO") {
+        if (ty === "RADIO_BUTTON_GROUP") err(`${t}: a RADIO_BUTTON_GROUP takes no dictionary — the import drops it; DROPDOWN_SINGLE, or a local list (§3)`);
+        if (!di?.code || (di.boCategory && di.boCategory !== "BO_DICTIONARY") || di.oldRefBoId || di.id) err(`${t}: dictionaryBoInfo — {"code": "<dictionary code>", "boCategory": "BO_DICTIONARY"}, by code, no id (0.5)`);
+      } else if (fo.optionSource !== "FROM_FIELD") err(`${t}: optionSource ${fo.optionSource} — FROM_FIELD or FROM_BO (0.5)`);
+      else if (f.trackedFieldCode) { if (Object.keys(op ?? {}).sort().join() !== "CANCELED,DONE,OVERDUE,PLANNED") err(`${t}: a tracked status list holds exactly PLANNED, OVERDUE, DONE, CANCELED (§3)`); }
+      else if (f.defaultValue != null && f.defaultValue !== "" && !vals(op).some((o) => o.newOptionId === f.defaultValue)) DV.push(t);
+    }
+    if (f.isHistoryTracking === true && (ty === "TAB_GROUP" || bo.boTabs?.HISTORY == null)) err(`${t}: isHistoryTracking ${ty === "TAB_GROUP" ? "on a TAB_GROUP" : "without boTabs.HISTORY — never logged"} (§3)`);
+    if (f.titleToShow === true && (ty === "TAB_GROUP" || typeof f.titleOrderIndex !== "number" || [...vals(df), ...vals(bo.nativeFields)].some((g) => g !== f && g.titleToShow === true && g.titleOrderIndex === f.titleOrderIndex))) err(`${t}: titleToShow needs a titleOrderIndex of its own, never on a TAB_GROUP (§3)`);
+    if (f.needTrackStatus === true) {
+      const w = vals(df).find((g) => g.type === "TAB_GROUP" && g.trackedFieldCode === k), s = vals(df).find((g) => g.type === "DROPDOWN_SINGLE" && g.trackedFieldCode === k);
+      if (!w || !s || f.tabCodePath?.tabGroupCode !== w.code || s.tabCodePath?.tabGroupCode !== w.code) err(`${t}: needTrackStatus — its TAB_GROUP wrapper and «Статус» dropdown (trackedFieldCode ${k}), the date and the status inside the wrapper (§3)`);
+    }
+    if (ty === "STATIC_TEXT" && !f.staticValue?.rus) err(`${t}: STATIC_TEXT without staticValue.rus (0.5)`);
+    if ((ty === "PROGRESS_BAR" && !Object.keys(f.progressSteps ?? {}).length) || (ty === "TAB_GROUP" && !Object.keys(f.fieldTabs ?? {}).length)) err(`${t}: ${ty} with no ${ty === "TAB_GROUP" ? "fieldTabs" : "progressSteps"} (0.5)`);
+    if (ty === "FILE_UPLOAD" && !(/^(SINGLE|MULTIPLE|TILE)$/.test(f.params?.viewType) && /^(ALL|IMAGE|DOCUMENT|FOR_CAMERA)$/.test(f.params?.contentType))) err(`${t}: FILE_UPLOAD needs params.viewType SINGLE / MULTIPLE / TILE and params.contentType ALL / IMAGE / DOCUMENT / FOR_CAMERA (0.19)`);
+    const tp = f.tabCodePath;
+    if (cat === "BO_COMPOSITE") {
+      const bfc = Array.isArray(f.boFieldCodes) ? f.boFieldCodes : [];
+      if (f.gridPosition && Object.keys(f.gridPosition).length) err(`${t}: a composite has no form — no gridPosition (§5b)`);
+      if (!bfc.length || bfc.some((l) => !l?.boCode || !l.fieldCode || (Array.isArray(bo.bos) && !bo.bos.some((s) => s.code === l.boCode)))) err(`${t}: boFieldCodes — [{"boCode", "fieldCode"}…], each boCode in bos[] (§5b)`);
+    } else {
+      if (tp?.tabGroupCode && !(df[tp.tabGroupCode]?.type === "TAB_GROUP" && df[tp.tabGroupCode].fieldTabs?.[tp.tabCode])) err(`${t}: tabCodePath ${tp.tabGroupCode}.${tp.tabCode} names no tab of a TAB_GROUP of ${b} (0.5)`);
+      if (!f.gridPosition && !(cat === "BO_PROCESS" && k === "PROCESS_STATUS" && !tp?.tabGroupCode)) err(`${t}: no gridPosition (0.8)`);
+    }
+    if (!isRef(f)) { if (Object.keys(f.linkedCoSettings ?? {}).length || f.copyFromFieldCode) err(`${t}: linkedCoSettings / copyFromFieldCode on a ${ty} — BO / CO fields only (§3)`); continue; }
     if (!bi?.code) err(`${t}: no boRefStruct.boInfo.code (0.5a)`);
     if (k !== "PROCESS_STATUS" && bi?.boCategory === "BO_DICTIONARY") err(`${t}: dictionary ${bi.code} as a BO reference draws a «Выберите» link — DROPDOWN_SINGLE FROM_BO (0.5)`);
     if (f.oldRefBoId ? !ID.test(f.oldRefBoId) : !["Person", "Department", "PersonGroup"].includes(bi?.code))
       err(`${t}: oldRefBoId "${f.oldRefBoId}" — the target's oldId, "" only for Person (0.5a)`);
     if (cat !== "BO_PANEL" && bi?.code !== "Person" && !vals(f.boRefStruct?.fieldRefs).some((r) => r.toShow))
       err(`${t}: no fieldRefs entry with toShow: true (0.9 rule 15)`);
-    const tg = bos.find((x) => x.oldId === f.oldRefBoId);
-    if (f.linkedFieldCode && tg && tg.dynamicFields?.[f.linkedFieldCode]?.linkedFieldCode !== k)
-      err(`${t}: linkedFieldCode — ${tg.code}.${f.linkedFieldCode} does not name ${k} back (0.5a)`);
+    const rs = f.boRefStruct ?? {}, tg = bos.find((x) => x.code === bi?.code), tf = tg?.dynamicFields ?? {}, back = rs.linkedFieldCode, bk = tf[back];
+    if (ty === "CO" && bi?.boCategory !== "BO_COMPOSITE") err(`${t}: a CO names boInfo.boCategory BO_COMPOSITE (0.5)`);
+    if (!(f.viewType === undefined && bi?.code === "Person") && !/^(TABLE|MULTIPLE|SINGLE|FIELDS)$/.test(f.viewType)) err(`${t}: viewType ${f.viewType} — TABLE, MULTIPLE, SINGLE or FIELDS (§3)`);
+    if (f.removeType && !RM.test(f.removeType)) err(`${t}: removeType ${f.removeType} — STRIKETHROUGH, HIDE or DISCONNECT (§3)`);
+    if (ty === "CO" && f.isHeightDynamic) err(`${t}: isHeightDynamic on a CO — BO only (§3)`);
+    if (rs.relMainInnerFieldCode && tg && !isRef(tf[rs.relMainInnerFieldCode] ?? {})) err(`${t}: relMainInnerFieldCode ${rs.relMainInnerFieldCode} is no BO / CO field of ${tg.code} (§3)`);
+    if ("relFieldCode" in rs || "relInnerFieldCode" in rs || ["relFieldCode", "relInnerFieldCode", "relMainInnerFieldCode"].some((x) => x in f)) err(`${t}: only boRefStruct.relMainInnerFieldCode travels — relFieldCode stores a wrong field, relInnerFieldCode and top-level rel* are ignored (§3)`);
+    const bf = f.bracketFilter;
+    if (bf && (bf.boCode !== bi?.code || bf.fieldCode !== k || Array.isArray(bf.brackets) || vals(bf.brackets).some((x) => vals(x?.dynamicFilters).some((d) => tg && !tf[d?.fieldCode]))))
+      err(`${t}: bracketFilter — {"boCode": "${bi?.code}", "fieldCode": "${k}", "brackets": {<8-char id>: …}} with fields of the target (§3)`);
+    if (back && tg && ty === "BO") {
+      const co = bk?.type === "CO" && bos.find((x) => x.code === bk.boRefStruct?.boInfo?.code);
+      if (!isRef(bk ?? {})) err(`${t}: linkedFieldCode ${back} is no BO / CO field of ${tg.code} (0.5a)`);
+      else if (bk.type === "CO" ? Array.isArray(co?.bos) && !co.bos.some((s) => s.code === b) : bk.boRefStruct?.boInfo?.code !== b || bk.boRefStruct?.linkedFieldCode !== k)
+        err(`${t}: linkedFieldCode — ${tg.code}.${back} does not reference ${b} and name ${k} back (0.5a)`);
+      else if (fs.some(([x, h]) => x !== k && h.type === "BO" && h.boRefStruct?.linkedFieldCode === back && h.boRefStruct?.boInfo?.code === tg.code)) err(`${t}: back field ${tg.code}.${back} serves another field too — one back field serves one field (0.5a)`);
+    }
+    const src = df[f.copyFromFieldCode], lc = f.linkedCoSettings;
+    if (f.copyFromFieldCode && (src?.type !== ty || src.viewType !== f.viewType)) err(`${t}: copyFromFieldCode ${f.copyFromFieldCode} — a field of ${b} of the same type and viewType (§3)`);
+    if (ty === "BO" && Object.keys(lc ?? {}).length) err(`${t}: linkedCoSettings on a BO field — CO only (§3)`);
+    if (ty === "CO" && Array.isArray(lc)) err(`${t}: linkedCoSettings is keyed by source BO code, not a list (§3)`);
+    else if (ty === "CO") for (const [sc, s] of all(lc)) {
+      const sb = bos.find((x) => x.code === sc), g = sb?.dynamicFields?.[s?.linkedFieldCode];
+      if ((Array.isArray(tg?.bos) && !tg.bos.some((x) => x.code === sc)) || (s?.removeType && !RM.test(s.removeType)) || (s?.linkedFieldCode && sb && g?.boRefStruct?.boInfo?.code !== b))
+        err(`${t}: linkedCoSettings.${sc} — a source BO of ${bi?.code}, removeType STRIKETHROUGH / HIDE / DISCONNECT, linkedFieldCode a field of ${sc} that references ${b} (§3)`);
+    }
   }
+  for (const [ms, ks] of lack) err(`${b}.${ks.join(", ")}: keys missing from the field template — ${ms} (0.5, 0.9 rule 6)`);
 }
 const mc = new Set(), MENU = ["menuItemName", "iconName", "orderIndex", "chosenAccessRight", "needCountMenuItem", "isPanel", "needHideInMobApp", "menuItemType"];
-for (const m of of("MenuItemStructDto")) {
+const PAGES = ["isKanbanEnabled", "kanbanIndex", "isCalendarEnabled", "calendarIndex", "isTimelineEnabled", "timelineIndex", "isListEnabled", "listIndex", "isMapEnabled", "mapIndex", "isGroupingEnabled", "groupingIndex"];
+for (const m of menu) {
   const t = `menu ${m.menuItemCode}`, grp = m.menuItemType === "GROUP", bo = bos.find((x) => x.code === m.boCode), kf = m.boPages?.kanbanFieldCode;
   if (!CODE.test(m.menuItemCode ?? "") || mc.has(m.menuItemCode)) err(`${t}: menuItemCode — unique, at most 30 of A-Za-z0-9_ (0.5d)`);
+  else name(t, m.menuItemCode, ...OBJ);
   mc.add(m.menuItemCode);
+  if (!/^(GROUP|BO)$/.test(m.menuItemType)) err(`${t}: menuItemType ${m.menuItemType} — GROUP or BO (0.5d)`);
+  const par = menu.find((x) => x.menuItemCode === m.parentMenuItemCode), bf = m.bracketFilter, bp = m.boPages ?? {};
+  if (par && par.menuItemType !== "GROUP") err(`${t}: parent ${par.menuItemCode} is a ${par.menuItemType} line, not a GROUP (0.5d)`);
+  if (!grp && bf && (bf.boCode !== m.boCode || bf.type !== "MENU_ITEM" || Array.isArray(bf.brackets))) err(`${t}: bracketFilter — {"boCode": "${m.boCode}", "type": "MENU_ITEM", "brackets": {}} (0.5d)`);
+  if (!grp && m.boPages) {
+    const ms = PAGES.filter((k) => !(k in bp)), on = PAGES.filter((k) => /^is/.test(k) && bp[k]).map((k) => bp[k.slice(2).replace(/Enabled$/, "Index").replace(/^./, (c) => c.toLowerCase())]);
+    if (ms.length) err(`${t}: boPages keys missing — ${ms.join(", ")} (0.5d)`);
+    if ("kanbanFieldId" in bp || (bp.isKanbanEnabled && !kf)) err(`${t}: a kanban opens by boPages.kanbanFieldCode — never kanbanFieldId, never enabled without it (0.5d)`);
+    if (new Set(on).size < on.length || on.some((v) => !(v >= 1))) err(`${t}: the *Index of the enabled views — distinct, from 1 (0.5d)`);
+  }
+  if (/^(bo-g-draggable|man-with-company|bo-d-draggable)$/.test(m.iconName)) DEF_ICON.push(m.menuItemCode);
   for (const k of MENU) if (!(k in m)) err(`${t}: key ${k} missing (0.5d)`);
   for (const k of ["oldId", "newId", "id", "boId", "parentId"]) if (k in m) err(`${t}: carries ${k} — name by code (0.9 rule 14)`);
   for (const k of grp ? ["boPages", "bracketFilter"] : ["boCode", "boName", "boPages", "bracketFilter"])
@@ -103,7 +276,7 @@ for (const m of of("MenuItemStructDto")) {
   if (kf && bo?.dynamicFields?.status?.type === "DROPDOWN_SINGLE" && !of("MenuItemStructDto").some((x) => x.boCode === m.boCode && x.boPages?.kanbanFieldCode === "status")) err(`${t}: the kanban opens by ${kf} while ${bo.code} has a status — kanbanFieldCode status (0.15)`);
 }
 const by = (a, f) => a.reduce((m, x) => ((m[f(x)] ??= []).push(x), m), {});
-const menu = of("MenuItemStructDto"), icon = (ms) => Object.entries(by(ms, (m) => m.iconName ?? ""));
+const icon = (ms) => Object.entries(by(ms, (m) => m.iconName ?? ""));
 for (const [ic, ms] of icon(menu.filter((m) => m.menuItemType === "GROUP"))) if (ms.length > 1) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: groups share icon ${ic} — each group by its own theme (0.5d)`);
 for (const g of menu.filter((m) => m.menuItemType === "GROUP")) for (const c of menu.filter((m) => m.parentMenuItemCode === g.menuItemCode && m.iconName === g.iconName))
   err(`menu ${g.menuItemCode}: group icon ${g.iconName} repeats its item ${c.menuItemCode} — the group by its theme, the item by its records (0.5d)`);
@@ -118,6 +291,7 @@ else for (const m of menu) {
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
 const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
+const R6 = /^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$/, R8 = /^(QUESTIONNAIRE|GEO_POINT)$/, FULL = /^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$/;
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
   for (const f of fs) {
@@ -126,11 +300,12 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (f.archetype !== "DYNAMIC" || !f.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
     if (text && f.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
+    if (g && f.type === "TAB_GROUP" && f.trackedFieldCode && g.rows !== 4) err(`${t}: rows ${g.rows}, a tracked-status wrapper takes 4 (§3)`);
     if (!g || f.trackedFieldCode) continue;
     if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
-    if (short && g.rows !== 3) err(`${t}: rows ${g.rows}, must be 3 (0.8)`);
-    if ((table || text) && g.rows < 6) err(`${t}: rows ${g.rows}, must be 6 (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT" });
+    const want = short ? 3 : R8.test(f.type) ? 8 : R6.test(f.type) ? 6 : 0, min = text || (isRef(f) && !short) ? 6 : f.type === "STATIC_TEXT" ? 3 : 0;
+    if (want ? g.rows !== want : g.rows < min) err(`${t}: rows ${g.rows}, a ${f.type} takes ${want || "at least " + min} (0.8)`);
+    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table });
   }
   for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
@@ -142,10 +317,13 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       let x = 0;
       for (const c of row) {
         if (c.g.x < x) err(`${c.t}: overlaps the cell before it in row y ${y} (0.10)`);
+        else if (c.g.x > x && !row.some((d) => d.box)) err(`${c.t}: x ${c.g.x} leaves a gap after column ${x} (0.8)`);
         if (!c.box && c.g.x >= edge) err(`${c.t}: x ${c.g.x} in the free columns ${edge}–14 above — floats up (0.8)`);
         x = Math.max(x, c.g.x + c.g.cols);
       }
-      if (row.length > 1 && x !== 15) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
+      const lone8 = row.length === 1 && row[0].short && row[0].g.x === 0 && row[0].g.cols === 8;
+      if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
+      if (row.filter((c) => !c.box).length > 1) for (const c of row.filter((c) => c.full)) err(`${c.t}: shares row y ${y} — it stands alone, full width (0.8)`);
       if (new Set(row.map((c) => c.g.rows)).size > 1) err(`${r}: row y ${y} mixes heights (0.8)`);
       if (row.length === 1 && row[0].short) {
         lone++;
@@ -190,9 +368,24 @@ for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && /^BO(_PROCESS
 const SZ = { Enter: [30, 30], Exit: [30, 30], Point: [20, 20], Terminator: [40, 40], Script: [80, 50], Timer: [80, 50],
   Form: [100, 50], Switch: [60, 60], SingleToParallel: [39, 64], ParallelToSingle: [39, 64] };
 const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-for (const pv of of("BoProcessVersionsStructDto")) {
-  const pc = bos.find((b) => b.oldId === pv.oldId)?.code ?? pv.oldId;
+for (const pv of PV) {
+  const host = bos.find((b) => b.oldId === pv.oldId), pc = host?.code ?? pv.oldId;
+  if (!host) fatal(`BoProcessVersionsStructDto ${pv.oldId}: no BO line with that oldId (0.18)`);
+  if (!pv.workProcess) err(`${pc}: only processVersions — imports as a TEST version that runs on DEV records only; the diagram goes into workProcess (0.18)`);
   for (const v of [pv.workProcess, ...vals(pv.processVersions)].filter(Boolean)) {
+    if (!all(v.figureStructs).length) { err(`${pc}: no figureStructs (0.18)`); continue; }
+    for (const [fid, f] of all(v.figureStructs)) {
+      const t = /\.Figure(\w+)Struct$/.exec(f["@class"] ?? "")?.[1], fc = host?.dynamicFields?.[f.fieldCode];
+      if (!t) err(`${pc}: figure ${fid} has no Figure<Type>Struct @class (0.18)`);
+      if (t === "Form" && fc?.type !== "BO") err(`${pc}: Form ${fid} fieldCode ${f.fieldCode} — a BO-reference field of the process (0.18)`);
+      if (t === "Timer" && !(/^(FULL_DATE|DATE)$/.test(fc?.type) && f.archetype === "DYNAMIC")) err(`${pc}: Timer ${fid} — fieldCode a date field of the process, archetype DYNAMIC (0.18)`);
+    }
+    if (!all(v.arrows).length) err(`${pc}: no arrows (0.18)`);
+    for (const c of v.scriptsDefIds ?? []) {
+      const s = defs.find((x) => x.compositeId === c);
+      if (!s) err(`${pc}: scriptsDefIds names ${c}, no ScriptDefStructDto (0.18)`);
+      else for (const [bid, x] of all(s.blocks)) if (x.targetArrowId && !v.arrows?.[x.targetArrowId]) err(`${pc}: script ${c} block ${bid} exits by ${x.targetArrowId}, no arrow of the diagram (0.18)`);
+    }
     const F = Object.fromEntries(all(v.figureStructs).map(([id, f]) => {
       const t = cls(f).replace(/^Figure|Struct$/g, ""), [w, h] = SZ[t] ?? [80, 50];
       return [id, { t, x: f.x, y: f.y, b: [f.x - w / 2, f.y - h / 2, f.x + w / 2, f.y + h / 2] }];
@@ -204,7 +397,8 @@ for (const pv of of("BoProcessVersionsStructDto")) {
     const labs = [];
     for (const a of vals(v.arrows)) {
       const st = F[a.startFigureId], fi = F[a.finishFigureId];
-      if (!st || !fi) continue;
+      if (!st || !fi) { err(`${pc} arrow «${a.name ?? ""}»: both ends name figures of the diagram (0.18)`); continue; }
+      if (st.t === "Switch" && !a.name) err(`${pc}: an arrow leaves Switch ${a.startFigureId} without a name — validation fails (0.18)`);
       const [x1, y1] = at(st, a.startSlotName), [x2, y2] = at(fi, a.finishSlotName), n = [...(a.name ?? "")].length;
       const t = `${pc} arrow «${a.name ?? ""}»`, dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
       if (st.t !== "Point" && fi.t !== "Point" && dx && dy) err(`${t}: not straight — both slots on one y or one x (0.18)`);
@@ -276,7 +470,10 @@ for (const bo of bos.filter((b) => b.category === "BO" && !b.isCalendarEnabled &
 const asks = out.filter((s) => /^REMINDER .* (looks computed|looks like an approval)/.test(s)).length;
 if (asks && !of("ScriptDefStructDto").length && !of("BoProcessVersionsStructDto").length)
   err(`${asks} fields look computed or like an approval and the file has NO script and NO process — a blanket «пока не реализовано» is no reason (0.2b step 5): the ready sum hook (§5d «A ready sum hook»), the writing Script (0.18)`);
-const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes)$/;
+if (DEF_ICON.length) err(`REMINDER menu ${DEF_ICON.join(", ")}: the generic default icon — only when the user asked for no icons; else an icon by meaning (0.5d)`);
+if (DV.length) err(`REMINDER defaultValue of ${DV.join(", ")} is no option's newOptionId: right only when the line goes back onto the SAME BO it was exported from; else the newOptionId of the option it meant (§3)`);
+if (NAME.length) err(`REMINDER ${NAME.length} code(s) off the naming convention — ${NAME.slice(0, 8).join("; ")}${NAME.length > 8 ? "; …" : ""}: rename a new code, or say in the report the code is already on the stand — a stand code is never renamed (0.6a)`);
+const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$/;
 const named = new Map(), invented = new Map(); // a key this document names as "key" or `key`; the others with where they sit
 const keyOk = (k) => named.get(k) ?? named.set(k, String(doc ?? "").includes(`"${k}"`) || String(doc ?? "").includes("`" + k + "`")).get(k);
 const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data
@@ -288,29 +485,76 @@ const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it
 };
 if (doc) L.forEach((o, i) => walk(o, o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? `line ${i + 1}`, "", ""));
 for (const [k, at] of invented) err(`${[...new Set(at)].slice(0, 3).join(", ")}: key "${k}" is not in this document — invented, the importer drops it silently or fails; find the setting by meaning or write no key and say so (0.4a)`);
+const KP = new Map(), wrong = new Map(); // 0.4b: "<DtoClass> <place>" → the keys that sit there
+for (const l of (String(doc ?? "").match(/### 0\.4b[\s\S]*?```text\n([\s\S]*?)```/)?.[1] ?? "").split("\n")) { const m = l.match(/^(\S+) (\S+): (.+)$/); if (m) for (const p of m[2].split("|")) KP.set(`${m[1]} ${p === "(top)" ? "" : p}`, new Set(m[3].split(" "))); }
+const place = (o, c, p, at) => { // p = the place of o: the key holding it, "<map>.*" for a member of a map; an unknown place is not checked
+  if (Array.isArray(o)) return o.forEach((x) => place(x, c, p, at));
+  if (!o || typeof o !== "object" || p === "massPrintFormCodes.*") return;
+  if (!p.endsWith(".*") && (MAP.test(p) || (c === "ScriptDefStructDto" && p === "params"))) return Object.values(o).forEach((v) => place(v, c, `${p}.*`, at));
+  const here = KP.get(`${c} ${p}`);
+  for (const [k, v] of Object.entries(o)) {
+    if (here && !here.has(k) && keyOk(k)) { const w = `${k}|${c} ${p || "(top)"}`; wrong.set(w, [...(wrong.get(w) ?? []), at]); }
+    place(v, c, k, at);
+  }
+};
+if (KP.size) L.forEach((o, i) => place(o, cls(o), "", o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? `line ${i + 1}`));
+for (const [w, at] of wrong) { const [k, cp] = w.split("|"), there = [...KP].filter(([, s]) => s.has(k)).map(([p]) => p.endsWith(" ") ? `${p}(top)` : p);
+  err(`${[...new Set(at)].slice(0, 3).join(", ")}: key "${k}" in ${cp} — it sits in ${there.slice(0, 3).join(", ") || "no place of 0.4b"}${there.length > 3 ? ", …" : ""}; the importer drops it there without a word (0.4b)`); }
+if (source) { // the export this file amends (0.7 case 1): a line on a BO header, field, widget, script or process it carries byte-for-byte is left as exported; FATAL lines always stay
+  const canon = (v) => Array.isArray(v) ? `[${v.map(canon)}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k]))}}` : JSON.stringify(v);
+  const S = new Map(), had = new Set(); String(source).trimEnd().split("\n").forEach((l) => { try { const o = JSON.parse(l); had.add(canon(o)); if (cls(o) === "BoStructDto") S.set(o.code, o); } catch {} });
+  const idem = (o) => !!o && had.has(canon(o)), head = (b) => canon(Object.fromEntries(all(b).filter(([k]) => k !== "dynamicFields" && k !== "nativeFields" && !W.includes(k))));
+  const get = (b, seg) => { const [a, c] = seg.split("."); return W.includes(a) ? b?.[a]?.[c] : b?.dynamicFields?.[a] ?? vals(b?.dynamicFields).find((x) => x.code === a) ?? b?.nativeFields?.[a] ?? W.map((w) => b?.[w]?.[a]).find(Boolean); };
+  const same = (b, s, seg) => get(b, seg) != null && canon(get(b, seg)) === canon(get(s, seg)), kept = [], carried = [];
+  const whole = bos.every((x) => S.has(x.code) && head(x) === head(S.get(x.code))), asked = out.filter((r) => /^REMINDER .* (looks computed|looks like an approval)/.test(r)).map((r) => /^REMINDER ([A-Za-z0-9_]+)\.(\w+)/.exec(r));
+  for (const l of out) {
+    const m = /^([A-Za-z0-9_]+)(?:\.([^:]+)| (arrow|tab) [^:]*)?: /.exec(l), sc = /^(script|rights of) (\S+): /.exec(l), b = m && bos.find((x) => x.code === m[1]), s = m && S.get(m[1]);
+    const segs = m?.[2]?.replace(/ «[^»]*»$/, "").split(", ") ?? [], y = segs.length && get(b, segs[0])?.gridPosition?.y;
+    const form = (keep) => [...all(b?.dynamicFields), ...W.flatMap((w) => all(b?.[w]).map(([c, x]) => [`${w}.${c}`, x]))].filter(([, f]) => keep(f)).every(([g]) => same(b, s, g));
+    let as = sc ? idem(sc[1] === "script" ? defs.find((d) => d.compositeId === sc[2]) : acc.find((a) => a.boCode === sc[2])) : /^\d+ BOs in one group/.test(l) ? whole // the grouping of a file that only carries BOs
+      : /^\d+ fields look computed/.test(l) ? asked.every((r) => r && S.has(r[1]) && same(bos.find((x) => x.code === r[1]), S.get(r[1]), r[2])) : !!(b && s) && (/\(0\.18\)/.test(l) ? idem(PV.find((p) => p.oldId === b.oldId)) // a process line: the whole process carried
+      : m[3] === "tab" ? form(() => true) : segs.length ? segs.every((g) => same(b, s, g)) : head(b) === head(s) && (!/\(0\.8\)/.test(l) || form(() => true))); // a form-wide line needs the whole form carried
+    if (as && /: (row y|x \d+ leaves|shares row y)/.test(l)) as = form((f) => f.gridPosition?.y === y); // a row line: its neighbours too
+    if (as && /: y \d+, expected/.test(l)) as = form((f) => f.gridPosition?.y <= y); // a stack line: every field above
+    (as ? carried : kept).push(as ? (sc?.[0] ?? m?.[0] ?? l.split(": ")[0] + ": ").slice(0, -2) : l);
+  }
+  out.splice(0, out.length, ...kept);
+  if (carried.length) err(`REMINDER ${carried.length} line(s) on what the source export carries unchanged — ${[...new Set(carried)].slice(0, 8).join(", ")}${carried.length > 8 ? ", …" : ""}: left as exported; fix one only when the user asked to change it (0.10)`);
+}
 return out.length ? out.join("\n") : "form lint: OK";
 }
 
-// The text of data-*/0000001.mybpm from a .mybpm.zip (STORED or DEFLATED members, no zip64), or the file
-// itself when it is not a zip.
-function archiveText(file) {
+// The members of a .mybpm.zip (STORED or DEFLATED, no zip64): { names, jsonl, meta }; a file that is not a zip
+// is taken as the text of data-*/0000001.mybpm itself (names and meta stay unknown).
+function archive(file) {
   const b = fs.readFileSync(file);
-  if (b.readUInt32LE(0) !== 0x04034b50) return b.toString("utf8");
+  if (b.readUInt32LE(0) !== 0x04034b50) return { names: null, jsonl: b.toString("utf8"), meta: undefined };
   let eocd = b.length - 22;
   while (eocd >= 0 && b.readUInt32LE(eocd) !== 0x06054b50) eocd--;
   if (eocd < 0) throw new Error(`${file}: no end of central directory — not a zip`);
+  const names = [], read = {};
   let p = b.readUInt32LE(eocd + 16);
   for (let i = 0, n = b.readUInt16LE(eocd + 10); i < n; i++) {
     const method = b.readUInt16LE(p + 10), size = b.readUInt32LE(p + 20), nameLen = b.readUInt16LE(p + 28);
     const local = b.readUInt32LE(p + 42), name = b.toString("utf8", p + 46, p + 46 + nameLen);
     p += 46 + nameLen + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
-    if (!/(^|\/)data-[^/]*\/0000001\.mybpm$/.test(name)) continue;
+    names.push(name);
+    const m = /(^|\/)data-[^/]*\/(0000001|metadata)\.mybpm$/.exec(name);
+    if (!m) continue;
     const start = local + 30 + b.readUInt16LE(local + 26) + b.readUInt16LE(local + 28), raw = b.subarray(start, start + size);
-    if (method === 0) return raw.toString("utf8");
-    if (method === 8) return zlib.inflateRawSync(raw).toString("utf8");
-    throw new Error(`${file}: ${name} uses zip method ${method}, only STORED and DEFLATED are read`);
+    if (method !== 0 && method !== 8) throw new Error(`${file}: ${name} uses zip method ${method}, only STORED and DEFLATED are read`);
+    read[m[2]] = (method === 0 ? raw : zlib.inflateRawSync(raw)).toString("utf8");
   }
-  throw new Error(`${file}: no data-*/0000001.mybpm inside (1. Zip layout)`);
+  if (read["0000001"] === undefined) throw new Error(`${file}: no data-*/0000001.mybpm inside (0.1)`);
+  return { names, jsonl: read["0000001"], meta: read.metadata };
+}
+
+// Zip layout (0.1): exactly the two members, both in one data-*/ folder at the top.
+function layout(names) {
+  if (!names) return [];
+  const files = names.filter((n) => !n.endsWith("/")), dir = /^(data-[^/]+)\//.exec(files[0] ?? "")?.[1];
+  const ok = files.length === 2 && dir && files.every((n) => n === `${dir}/0000001.mybpm` || n === `${dir}/metadata.mybpm`) && files[0] !== files[1];
+  return ok ? [] : [`FATAL zip holds ${JSON.stringify(names)} — exactly data-<name>/0000001.mybpm and data-<name>/metadata.mybpm, one folder at the top (0.1)`];
 }
 
 // The document sits beside the skill folder in the claude.ai zip and at the repository root in a checkout
@@ -326,12 +570,14 @@ function docText(given) {
 // import() works in both module kinds; top-level await would not parse as CommonJS.
 (async () => {
   [fs, path, zlib] = await Promise.all([import("node:fs"), import("node:path"), import("node:zlib")]);
-  const [file, doc] = process.argv.slice(2);
-  if (!file) {
-    console.error("usage: node lint-archive.js <archive.mybpm.zip | 0000001.mybpm> [MYBPM-IMPORTS.md]");
+  // --source <export>: the export this archive amends — lines on what it carries unchanged are left as exported (0.10)
+  const args = process.argv.slice(2), at = args.indexOf("--source"), src = at < 0 ? undefined : args.splice(at, 2)[1];
+  const [file, doc] = args;
+  if (!file || (at >= 0 && !src)) {
+    console.error("usage: node lint-archive.js <archive.mybpm.zip | 0000001.mybpm> [MYBPM-IMPORTS.md] [--source <the export it amends>]");
     process.exit(2);
   }
-  const out = lintArchive(archiveText(file), docText(doc));
+  const a = archive(file), out = [...layout(a.names), lintArchive(a.jsonl, docText(doc), a.meta, src && archive(src).jsonl)].join("\n");
   console.log(out);
   // Exit 1 while a defect line is left; REMINDER lines are answered in the report, not fixed in the file (0.10).
   process.exit(out.split("\n").some((l) => l && l !== "form lint: OK" && !l.startsWith("REMINDER")) ? 1 : 0);

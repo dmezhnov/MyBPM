@@ -19,7 +19,7 @@ rebuild by hand in the constructor instead of the file.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.31**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.32**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -58,7 +58,7 @@ there, and an answer from general knowledge is wrong for this platform.
 
 Each cookbook is self-contained for its format: literal templates, the naming and id rules, a hard-rules
 list and a self-check. The archive cookbook is long: read its core (`### 0.1` … `### 0.11`) in parts,
-then only the optional blocks 0.12–0.18 its «How to read it» list names for your task. **Follow it literally and never invent a key, an `actId` or an `opType`** — what
+then only the optional blocks 0.12–0.18 its «How to read it» list names for your task. **Follow it literally and never invent a key, an `actId` or an `opType`, nor move a key out of the place `### 0.4b Where each key sits` gives it** — what
 the cookbook does not show does not belong in the file. Go into the numbered sections (§1–§20) only when
 the cookbook sends you there or the case is exotic.
 
@@ -81,9 +81,11 @@ the cookbook sends you there or the case is exotic.
 command line around it — do not copy the function out of the document, run the file:
 
     node scripts/lint-archive.js <file.mybpm.zip>        # or: bun scripts/lint-archive.js …
+    node scripts/lint-archive.js <file.mybpm.zip> --source <the export it amends>
 
 It finds `MYBPM-IMPORTS.md` itself (pass its path as a second argument if it does not), prints the lint
-output and exits 1 while a defect line is left. Paste that output into the report and follow 0.10 for it:
+output and exits 1 while a defect line is left. `--source` only on an amendment of a given export: what
+the export carries unchanged becomes one `REMINDER`, not defects. Paste that output into the report and follow 0.10 for it:
 fix every defect line and rerun, answer every `REMINDER` by name, and still walk the prose checks of 0.10.
 No Node or Bun in your sandbox → «How to run it» in `### 0.10` (any JavaScript engine, or a port to the
 language you build in, e.g. Python); you cannot run code at all → walk 0.10 by hand and report the lint as
@@ -113,8 +115,8 @@ company, login and person, no record data). The rule and the prefilled issue URL
 
 With a checkout of the MyBPM repository, its `tools/` sits at `../../tools/` (run with Bun). Useful without a stand:
 
-- `bun tools/validate-archive.bun.ts <file.mybpm.zip>` — checks an archive against §0; FATAL means the
-  import will fail. Run it on every archive you build.
+- `bun tools/validate-archive.bun.ts <file.mybpm.zip> [--source <export>]` — the 0.10 form lint graded
+  FATAL / ERROR / WARN (= REMINDER); FATAL means the import will fail. Run it on every archive you build.
 - `bun tools/make-probe-archive.bun.ts …` — a stand-verified archive generator; prefer it over writing a
   builder (`### 0.11 Building the zip` shows the commands).
 

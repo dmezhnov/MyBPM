@@ -653,12 +653,12 @@ function summarize(file) {
   const bos = lines.filter((l) => dto(l) === "BoStructDto").map((l) => ({ code: l.code, name: l.name?.rus ?? l.name, category: l.category, fields: Object.keys(l.dynamicFields ?? {}).length }));
   return { file, bytes: b.length, lines: lines.length, types, bos };
 }
-function lint(file) {
+function lint(file, source) {
   const script = [import_node_path.join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.js")].find(import_node_fs.existsSync);
   if (!script)
     return { ok: true, out: "form lint: NOT RUN (lint-archive.js not found beside the server)" };
   try {
-    return { ok: true, out: import_node_child_process.execFileSync(process.execPath, [script, file], { encoding: "utf8" }).trim() };
+    return { ok: true, out: import_node_child_process.execFileSync(process.execPath, [script, file, ...source ? ["--source", source] : []], { encoding: "utf8" }).trim() };
   } catch (e) {
     if (e.status === 1)
       return { ok: false, out: String(e.stdout).trim() };
@@ -2628,10 +2628,10 @@ var tools = [
   {
     name: "archive_lint",
     description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.js) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
-    props: { path: { type: "string" }, name: { type: "string" } },
+    props: { path: { type: "string" }, name: { type: "string" }, source: { type: "string", description: "On an amendment: path of the export this archive amends (0.7 case 1) — lines on what it carries unchanged become one REMINDER" } },
     run: async (a) => {
       const f = archivePath(a);
-      const l = lint(f);
+      const l = lint(f, a.source && archivePath({ path: a.source }));
       return { ...summarize(f), lintOk: l.ok, lint: l.out };
     }
   },
@@ -2641,12 +2641,13 @@ var tools = [
     props: {
       path: { type: "string", description: "A .mybpm.zip on this machine" },
       name: { type: "string", description: "An archive built with archive_put" },
+      source: { type: "string", description: "On an amendment: path of the export this archive amends (0.7 case 1) — lines on what it carries unchanged become one REMINDER" },
       skipLint: { type: "boolean" }
     },
     run: async (a) => {
       const file = archivePath(a);
       if (!a.skipLint) {
-        const l = lint(file);
+        const l = lint(file, a.source && archivePath({ path: a.source }));
         if (!l.ok)
           return { stopped: "the form lint flags defects — fix the archive (or pass skipLint)", lint: l.out };
       }

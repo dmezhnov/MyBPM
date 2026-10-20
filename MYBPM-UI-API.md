@@ -920,11 +920,13 @@ and dropping the rest «for scope» is a fraction reported as done.
    no dialog to cancel; the only undo is deletion.
 6. **One structure import per company at a time**, and only `apply-import` writes — everything before it
    is a dry run you should read.
-7. **Do not ship an `AccessStructDto` in an archive unless asked**: the import applies it and REPLACES the
-   rights that were set by hand (groups included — `orgUnitIds` of THIS stand arrive, `[C]`).
-   A structure-only archive leaves the stand's rights untouched. The one exception: the «никому» rule of the
-   hidden system tab `tab_system` — on a NEW BO with all actions open, on an existing BO added to its freshly
-   exported `AccessStructDto` (`MYBPM-IMPORTS.md` §0.8a step 6).
+7. **An `AccessStructDto` in an archive REPLACES the BO's rights** set by hand (groups included —
+   `orgUnitIds` of THIS stand arrive, `[C]`); a structure-only archive leaves them untouched. So the line
+   travels by case (`MYBPM-IMPORTS.md` §0.9 rule 10): an amendment of an export carries the exported line,
+   changed only where asked; a blind update (no export with «Права доступа») ships none unless the user asks to
+   change rights — then the whole wanted set; a NEW BO always carries one — the rights the task defines, else
+   the all-open line with the «никому» rule of the hidden system tab `tab_system` (§0.8a step 6). Group and
+   department ids come only from the user.
 8. **Re-read after every write.** The platform answers 200 for `save-business-form-field` used to create
    a field (creates nothing), for an empty kanban template save (writes nothing) and for a rights popup that decided
    nothing changed.
@@ -1207,7 +1209,9 @@ do is plain HTTP by §0U.4.
   ~100 KB (`part: 1, 2 …`, `last: true` on the final one); the server zips them on the user's machine and
   lints them. Code on the user's machine (Claude Code) → `import_analyze {path}` straight away.
 - **`import_analyze` lints first** — the form lint of `MYBPM-IMPORTS.md` §0.10 — and does not upload while a
-  defect line is left; the lint does not replace the rest of the self-check there.
+  defect line is left; the lint does not replace the rest of the self-check there. On an amendment of a given
+  export pass its path as `source` (`archive_lint` too): what the export carries unchanged becomes one
+  `REMINDER` instead of defects.
 - **Finish with the bell:** `notifications_read` flags `newThisSession` what appeared after the server's
   first stand call — the entries your work raised (every analysis leaves one); `notifications_clear` those ids.
 
@@ -1844,7 +1848,7 @@ that is the platform itself `[C]`. A clean archive analyses as `status:"ANALYZED
 - **`load-import-bo-infos` is also an INTENT check, not just a format one** `[C]`. It answers
   `[{importRecordId,name,boCategory,structTypes}]` BEFORE anything is written, so it says in one call
   whether the archive builds a `BO` / `BO_DICTIONARY` / `BO_PANEL` / `BO_COMPOSITE` / `BO_PROCESS` —
-  the one thing `tools/validate-archive.bun.ts` structurally cannot check («the grader checks FORMAT,
+  the one thing the form lint (`MYBPM-IMPORTS.md` 0.10) structurally cannot check («the grader checks FORMAT,
   not INTENT»).
 - **An `errorRecord` looks like this** `[C]` — `load-import-errors {importId,pageId:null}` returns
   `{id,importId,nextPageId,errorRecords:[…]}`, each record:
@@ -1866,8 +1870,8 @@ that is the platform itself `[C]`. A clean archive analyses as `status:"ANALYZED
   reference (by `oldId`, or a `BO_PANEL` plus the BOs it shows) to a line of the SAME archive. APPLY `[C]` too: a TABLE field
   pointing at a BO on an earlier line of its archive applied clean, the target kept its `oldId` as its id and
   the field's `refBoId` read back as that id (`MYBPM-IMPORTS.md` §0.2a).
-- WARNs of `tools/validate-archive.bun.ts` are style only `[C]`: a 0-FATAL/0-ERROR archive
-  analyses clean whatever its WARN count.
+- `REMINDER` lines of the form lint (`MYBPM-IMPORTS.md` 0.10; `WARN` in `tools/validate-archive.bun.ts`) are
+  not import errors `[I]`: an archive with no other line analyses clean whatever their count.
 
 **A composite's sources may travel in the same archive** `[C]`, and it is the
 right way to ship a composite: a `BO_COMPOSITE` plus the plain BOs with the codes it names
@@ -2480,7 +2484,7 @@ A configured process (Enter → Form «Заявка» → Script → Switch on �
 2. **Generate** the archive by `MYBPM-IMPORTS.md` §0.18 / §5c (by hand), or, if `tools/` is available:
    `bun tools/make-probe-archive.bun.ts --group-code <код группы> --group-name "<имя группы>" --group-order <orderIndex группы> --process-spec tools/process-probe.spec.json --code
    <Code> --name "<Имя>"` → group, 2 script
-   defs, BO, versions line; `tools/validate-archive.bun.ts` now checks the process part (Form `fieldCode`
+   defs, BO, versions line; the form lint (`MYBPM-IMPORTS.md` 0.10) checks the process part (Form `fieldCode`
    is a BO field, Switch arrows named, every `scriptsDefIds` entry has its def, every `targetArrowId` is
    an arrow of the diagram, `PROCESS_STATUS` has a `defaultValue`).
 3. **Import** through the §5 API cycle from the page (bridge `GET` → `FormData` → `import-file` → insert →
@@ -2495,7 +2499,7 @@ A configured process (Enter → Form «Заявка» → Script → Switch on �
   `[C]`: analysis clean, apply fine, `validate-def []`; on the first record `load-process-steps`
   shows that figure `FAILED` with «Скрипт не определен» (`script.not.found`, `NoScriptWithId`) and the process
   stops — it does not «run empty». Every Script / Switch needs its def line, even with no acts
-  (`validate-archive` reports it as an ERROR; format in `MYBPM-IMPORTS.md` §5c).
+  (the form lint of `MYBPM-IMPORTS.md` 0.10 reports it; format in §5c there).
 - **`PROCESS_STATUS` without a default blocks every record** `[C]`. The
   field is `isRequired`; the constructor defaults it to the «Статус процесса» row `CREATED`. Imported
   without a default, `validate-apply-remove-draft` on a new process record answers **200** with the form

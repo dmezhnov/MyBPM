@@ -464,12 +464,13 @@ function summarize(file: string) {
   return { file, bytes: b.length, lines: lines.length, types, bos };
 }
 
-/** The lint the skill ships (MYBPM-IMPORTS.md 0.10), run as it is — beside this file in the plugin and in the .mcpb. */
-function lint(file: string): { ok: boolean; out: string } {
+/** The lint the skill ships (MYBPM-IMPORTS.md 0.10), run as it is — beside this file in the plugin and in the .mcpb.
+ *  `source` = the export the archive amends: what it carries unchanged is left as exported (one REMINDER). */
+function lint(file: string, source?: string): { ok: boolean; out: string } {
   const script = [join(HERE, "..", "skills", "mybpm-imports", "scripts", "lint-archive.js")].find(existsSync);
   if (!script) return { ok: true, out: "form lint: NOT RUN (lint-archive.js not found beside the server)" };
   try {
-    return { ok: true, out: execFileSync(process.execPath, [script, file], { encoding: "utf8" }).trim() };
+    return { ok: true, out: execFileSync(process.execPath, [script, file, ...(source ? ["--source", source] : [])], { encoding: "utf8" }).trim() };
   } catch (e: any) {
     if (e.status === 1) return { ok: false, out: String(e.stdout).trim() };
     throw new Error(`lint-archive.js failed: ${String(e.stderr || e.message).slice(0, 500)}`);
@@ -2026,14 +2027,14 @@ const tools: Tool[] = [
       return { ...summarize(file), lint: lint(file).out };
     } },
   { name: "archive_lint", description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.js) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
-    props: { path: { type: "string" }, name: { type: "string" } },
-    run: async (a) => { const f = archivePath(a); const l = lint(f); return { ...summarize(f), lintOk: l.ok, lint: l.out }; } },
+    props: { path: { type: "string" }, name: { type: "string" }, source: { type: "string", description: "On an amendment: path of the export this archive amends (0.7 case 1) — lines on what it carries unchanged become one REMINDER" } },
+    run: async (a) => { const f = archivePath(a); const l = lint(f, a.source && archivePath({ path: a.source })); return { ...summarize(f), lintOk: l.ok, lint: l.out }; } },
   { name: "import_analyze", description: "Upload an archive and run the stand's analysis (R3 steps 1-4) — the dry run: NOTHING is written, the import stays ANALYZED. Lints first and stops on a defect unless `skipLint`. Returns importId, status, analysis errors, conflicts and one row per BO. Next: import_apply (writes) or import_cancel. Only one import may be open per company.",
     props: { path: { type: "string", description: "A .mybpm.zip on this machine" }, name: { type: "string", description: "An archive built with archive_put" },
-      skipLint: { type: "boolean" } },
+      source: { type: "string", description: "On an amendment: path of the export this archive amends (0.7 case 1) — lines on what it carries unchanged become one REMINDER" }, skipLint: { type: "boolean" } },
     run: async (a) => {
       const file = archivePath(a);
-      if (!a.skipLint) { const l = lint(file); if (!l.ok) return { stopped: "the form lint flags defects — fix the archive (or pass skipLint)", lint: l.out }; }
+      if (!a.skipLint) { const l = lint(file, a.source && archivePath({ path: a.source })); if (!l.ok) return { stopped: "the form lint flags defects — fix the archive (or pass skipLint)", lint: l.out }; }
       const r = await analyzeFile(stand(a), file);
       return { ...r, next: r.conflicts.some((c: any) => !c.resolved)
         ? "conflicts: show the user each unit and its candidates, ask which existing unit it maps onto (the apply renames that unit to the archive's name); then import_apply with resolve, or import_cancel"

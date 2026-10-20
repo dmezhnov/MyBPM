@@ -146,7 +146,7 @@ for (const rt of ["node", "bun"].filter((r) => Bun.which(r))) {
   await $`rm -rf dist/lint-esm && mkdir -p dist/lint-esm/scripts && cp skills/mybpm-imports/scripts/lint-archive.js dist/lint-esm/scripts/ && cp MYBPM-IMPORTS.md dist/lint-esm/`.quiet();
   await Bun.write("dist/lint-esm/package.json", '{ "type": "module" }\n');
   const esm = await $`${rt} dist/lint-esm/scripts/lint-archive.js ${zipFile}`.nothrow().quiet();
-  if (esm.exitCode || esm.stdout.toString().trim().split("\n")[0] !== "form lint: OK") { console.error(`lint-archive.js (${rt}) as an ES module, exit ${esm.exitCode}:\n${esm.stdout}${esm.stderr}`); process.exit(1); }
+  if (esm.exitCode || !String(esm.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint-archive.js (${rt}) as an ES module, exit ${esm.exitCode}:\n${esm.stdout}${esm.stderr}`); process.exit(1); }
 }
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
@@ -176,7 +176,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].alive && r.accounts[0].companyCode === "MOCK" && r.accounts[0].personBoId === "PERSONBO00000001"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
   ["archive_put", { name: "lint", part: 1, lines }, (r) => r.linesSoFar > 0],
-  ["archive_put", { name: "lint", part: 2, lines: "", last: true }, (r) => r.lint === "form lint: OK" && r.bos[0].code === "Lint_dict"],
+  ["archive_put", { name: "lint", part: 2, lines: "", last: true }, (r) => String(r.lint).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER ")) && r.bos[0].code === "Lint_dict"],
   ["import_analyze", { name: "lint" }, (r) => r.status === "ANALYZED" && r.bos.length === 1],
   ["import_apply", { importId: "@import_analyze.importId", description: "mcp test" }, (r) => r.status === "APPLIED" && r.log.canRollback],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === true],
@@ -474,7 +474,7 @@ await $`mise run mcp-pack`.quiet();
 await $`rm -rf dist/mcp-test/mcpb && mkdir -p dist/mcp-test/mcpb && unzip -q dist/mcp/mybpm-stand.mcpb -d dist/mcp-test/mcpb`.quiet();
 const packed = await $`bun tools/mcp-client.bun.ts call archive_lint ${JSON.stringify({ path: zipFile })} --server dist/mcp-test/mcpb/server/mybpm-stand.cjs --json`.env(env).nothrow().quiet();
 const lintRow = JSON.parse(packed.stdout.toString() || "[]")[0];
-if (lintRow?.result?.lint !== "form lint: OK") { console.error(`.mcpb server: archive_lint answered ${JSON.stringify(lintRow)}\n${packed.stderr}`); process.exit(1); }
+if (!lintRow?.result?.lint || !String(lintRow.result.lint).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`.mcpb server: archive_lint answered ${JSON.stringify(lintRow)}\n${packed.stderr}`); process.exit(1); }
 // the uploadable plugin zip: one top folder, a valid manifest, each skill with its document, and its server finds the lint
 await $`mise run plugin-zip`.quiet();
 await $`rm -rf dist/mcp-test/plugin && mkdir -p dist/mcp-test/plugin && unzip -q dist/plugin/mybpm-plugin.zip -d dist/mcp-test/plugin`.quiet();
@@ -486,7 +486,7 @@ if ((await $`ls -A dist/mcp-test/plugin`.text()).trim() !== "mybpm") { console.e
 if ((await $`which claude`.nothrow().quiet()).exitCode === 0) await $`claude plugin validate dist/mcp-test/plugin/mybpm`.quiet();
 const fromZip = await $`bun tools/mcp-client.bun.ts call archive_lint ${JSON.stringify({ path: zipFile })} --server dist/mcp-test/plugin/mybpm/mcp/mybpm-stand.cjs --json`.env(env).nothrow().quiet();
 const zipRow = JSON.parse(fromZip.stdout.toString() || "[]")[0];
-if (zipRow?.result?.lint !== "form lint: OK") { console.error(`plugin zip server: archive_lint answered ${JSON.stringify(zipRow)}\n${fromZip.stderr}`); process.exit(1); }
+if (!zipRow?.result?.lint || !String(zipRow.result.lint).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`plugin zip server: archive_lint answered ${JSON.stringify(zipRow)}\n${fromZip.stderr}`); process.exit(1); }
 console.log("all tests passed");
 '''
 
