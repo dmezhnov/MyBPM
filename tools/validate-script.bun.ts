@@ -68,9 +68,16 @@ if (!file) { console.error("usage: bun tools/validate-script.bun.ts <script.json
 const spec: any = specPath ? await Bun.file(specPath).json() : {};
 const docText = await Bun.file(DOC).text();
 const KNOWN_ACTS = new Set(docText.match(/F-[A-Za-z0-9_]+-K-(?:FIX-T-[A-Za-z]+|DYN-[A-Za-z_-]+?(?:boi_fields|bo_fields|TextLang))/g) ?? []);
+// §12a field-type rows list the collection acts short (`F-DELETE`, …, all `-K-DYN-R-D-S-boi_fields`)
+for (const line of docText.split("\n")) if (line.includes("all `-K-DYN-R-D-S-boi_fields`"))
+  for (const m of line.matchAll(/`(F-[A-Z_]+)(?=[` (])/g)) KNOWN_ACTS.add(`${m[1]}-K-DYN-R-D-S-boi_fields`);
 
 let s: any;
-try { s = JSON.parse(await Bun.file(file).text()); }
+const raw = await Bun.file(file).text();
+// §0S.3: the delivered file is pure ASCII, Cyrillic as \uXXXX — raw text read in another code page pastes broken names
+const nonAscii = raw.match(/[^\x00-\x7f]/g);
+if (nonAscii) add("ERROR", "0S.3", `${nonAscii.length} non-ASCII characters (first «${nonAscii[0]}») — write them as \\uXXXX escapes`);
+try { s = JSON.parse(raw); }
 catch (e) { add("FATAL", "0S.3", `not JSON: ${(e as Error).message}`); finish(); }
 
 // ---- 0S.3 envelope

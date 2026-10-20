@@ -3200,11 +3200,18 @@ function updateHow(): string {
       ? `a Claude Desktop extension: download ${RELEASE}/mybpm-stand.mcpb, open it and Install (replaces the old one), then restart Desktop`
       : `the server unzipped from mybpm-stand.mcpb (${dirname(HERE)}): download ${RELEASE}/mybpm-stand.mcpb, unzip it again over that folder, then restart the client that runs it ` +
         "(a Claude Desktop extension instead: open the downloaded file and Install, then restart Desktop)";
-  if (p.includes("/local-agent-mode-sessions/"))
+  if (p.includes("/local-agent-mode-sessions/") || process.env.CLAUDE_CODE_ENTRYPOINT === "local-agent")
     return "the Claude Desktop account plugin: Customize → Plugins → Yours → Mybpm in the plugin list → ⋯ → Check for updates → the «Update» button becomes active → press it (the skills are new at once), then quit Desktop fully and start it again so these tools run the new code " +
       `(installed with Upload plugin instead: upload ${RELEASE}/mybpm-plugin.zip again)`;
-  if (p.includes("/.claude/plugins/"))
-    return "Claude Code: `claude plugin marketplace update mybpm`, then `claude plugin update mybpm@mybpm`, then restart Claude Code";
+  if (p.includes("/.claude/plugins/")) {
+    // the machine registry of Claude Code, shared by the terminal, IDEs and the Code tab of Claude Desktop; Desktop starts
+    // its sessions with CLAUDE_CODE_ENTRYPOINT=claude-desktop (claude-desktop-3p), the terminal with cli
+    const desktop = /^claude-desktop/.test(process.env.CLAUDE_CODE_ENTRYPOINT ?? "");
+    const restart = desktop ? "quit Claude Desktop fully and start it again" : "restart Claude Code";
+    if (latest && existsSync(join(HERE, "..", "..", latest))) return `${latest} is already installed on this computer — only ${restart}`;
+    const cmds = "`claude plugin marketplace update mybpm`, then `claude plugin update mybpm@mybpm`";
+    return desktop ? `Claude Desktop, Code mode: in any terminal on this computer run ${cmds}, then ${restart}` : `Claude Code: ${cmds}, then ${restart}`;
+  }
   return `a checkout of the MyBPM repository (${dirname(HERE)}): \`git pull\` in it, then restart the client that runs the server`;
 }
 
