@@ -11,9 +11,15 @@ folder). It is ~60k tokens: **never read it whole.** Locate the heading you need
 that line to the next heading of the same level — with a shell, `grep -n '^## 0S\.' MYBPM-IMPORTS.md` gives the line;
 without one, search the file for the heading text.
 
+**Nothing in this skill has to run for you to do the task.** The archive, the script JSON and the xlsx are
+text and zip you write yourself; `scripts/lint-archive.js` only speeds up one check. Your chat cannot run it
+(no code execution, or no JavaScript) → still build the file: port the lint to the language you have, or
+report «form lint: NOT RUN» with the reason, and hand the file over. Never answer with a description to
+rebuild by hand in the constructor instead of the file.
+
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.27**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.28**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -78,7 +84,9 @@ command line around it — do not copy the function out of the document, run the
 It finds `MYBPM-IMPORTS.md` itself (pass its path as a second argument if it does not), prints the lint
 output and exits 1 while a defect line is left. Paste that output into the report and follow 0.10 for it:
 fix every defect line and rerun, answer every `REMINDER` by name, and still walk the prose checks of 0.10.
-No Node or Bun in your sandbox → «How to run it» in `### 0.10` (any JavaScript engine, or a port).
+No Node or Bun in your sandbox → «How to run it» in `### 0.10` (any JavaScript engine, or a port to the
+language you build in, e.g. Python); you cannot run code at all → walk 0.10 by hand and report the lint as
+NOT RUN. Either way the archive is still built and handed over (`### 0.11 Building the zip`).
 
 ## Handing an archive to the stand MCP
 
