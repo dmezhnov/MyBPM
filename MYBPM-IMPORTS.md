@@ -4319,6 +4319,13 @@ copy the numbers below.
   the `BlockFixEntryPoint` for a process script.
 - Every block and every expression carries its own `"type"` key (`"BlockNewVar"`, `"ExprOp"`, …). That
   key is what the reader dispatches on — never omit it.
+- **The delivered file is pure ASCII: every non-ASCII character is a JSON `\uXXXX` escape** `[C]` —
+  `"#подписант#"` ships as `"#\u043f\u043e\u0434\u043f\u0438\u0441\u0430\u043d\u0442#"`, and the paste turns it back
+  into `#подписант#`. Raw Cyrillic read on its way to the IDE in another code page (Mac Roman, Windows-1251 …)
+  is pasted as broken names like `#–ø–æ–¥‚Ä¶#`, and nothing warns. Codes: `А`–`Я` = `0410`–`042F`, `а`–`я` =
+  `0430`–`044F`, `Ё` = `0401`, `ё` = `0451`, `№` = `2116`, `«` `»` = `00AB` `00BB`, `—` = `2014`. With code at hand,
+  after `JSON.stringify`: `.replace(/[^\x00-\x7f]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"))`.
+  The examples of this Part show Cyrillic as is for reading; the file you hand over escapes it.
 
 ### 0S.4 Ids
 
@@ -4628,7 +4635,7 @@ one that is in neither place does not exist. There is still no `indexOf` (only
    digit class): word alternatives go into `^(?:or|and)$`.
 10. **Number→text is `BigDecimal.toString()`**: the scale survives (`3.000000000000`) and `0/100` prints
     as `0E-30`. Anything parsing numbers out of text must accept an exponent.
-11. **No `while`**: a bounded loop is `ЦИКЛ #i# : "200"` plus `ВЫЙТИ ИЗ ЦИКЛА` on the exit condition.
+11. **No `while`**: a bounded loop is `ЦИКЛ i : "200"` plus `ВЫЙТИ ИЗ ЦИКЛА` on the exit condition.
     Bind the bound to a value that cannot change inside the loop.
 12. **Paste callees before callers.** A call emitted while the callee did not exist keeps a synthetic
     parameter id and must be re-pasted afterwards — the IDE's «не определён тип» warning hides it.
@@ -4741,6 +4748,8 @@ Run all of it — the IDE will not tell you about any of these:
 8. **House style** (0S.2a): every name carries its decoration, `#…#` is all lower case, an inner twin of an
    outer variable ends in `*`, a boolean ends in `?`, counters are bare, the header precedes the logic, a module's `ЕСЛИ` holds nothing but `|…|`
    and has no other branch, no `ЭТА ИНСТАНЦИЯ` inside a module, every copy of a module is byte-identical.
+9. **Pure ASCII** (0S.3): not one character outside ASCII is left in the file — Cyrillic, `«»`, `—`, `№` are all
+   `\uXXXX` escapes.
 
 ### 0S.12 Delivering the file
 
@@ -4816,7 +4825,7 @@ Sequencing: blocks chain through `downBlockId` (the tail has none); appending = 
   - **`thenBlockId` may be absent** (empty «То» slot) — the IDE emits it and it runs. `[C]`
   - Only ONE branch of an if/elif chain executes (§15).
 - `BlockForeach {elementVarName, srcExprId, bodyBlockId, downBlockId}` — two uses: a **counted loop** over
-  a number (`Цикл #i# : текст.#Длина`, or over a numeric CONST `2` / `"200"` — runs on the stand) and a
+  a number (`Цикл i : текст.#Длина`, or over a numeric CONST `2` / `"200"` — runs on the stand) and a
   **foreach over a collection** (`Цикл #параметр# : ~Параметры~.#Значение`). The counter runs `1, 2, …, n`, and
   `n` is evaluated once on entry: changing the bound variable inside the body does not change the number
   of passes `[C]`.
@@ -5350,7 +5359,7 @@ meta acts exist for widgets as `…-K-DYN-R-M-S-boi_widgets`.
 | GEO_POINT | GeoPoint | — |
 | FILE_UPLOAD | File/MybpmFile | `F-addFile_v2-K-FIX-T-BoiFieldRefCode (file)` |
 | BO (view TABLE or MULTIPLE) / CO | `Bo/BoiRefCode[]` (CO: records of the composite, `boCode` = its code) | `F-ADD (adding)`, `F-DELETE (deleting)`, `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST` («Значения как в реестре» — the same records in the registry's sort order, drafts excluded; `#Значение` has no order and keeps drafts), all `-K-DYN-R-D-S-boi_fields`; CO also `F-SHOWN_BO_IN_CO_FIELD-K-DYN-R-M-S-boi_fields (boRefCode, orgUnit)`; a CO element reads its attributes by `CO_CODE-<composite code>-F-<attr>-K-DYN-S-boi_fields` (0S.7) `[C]` |
-| BO (view SINGLE, and the natives CREATED_BY, LAST_MODIFIED_BY) | `Bo/BoiRefCode` | `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST`, `F-HAS_REF` — **no `F-ADD` / `F-DELETE`** `[C]` — **and every field of the target BO directly**: `rec.CREATED_BY.surname` is `F-surname-K-DYN-S-boi_fields` applied to the field reference, no `#Значение` hop |
+| BO (view SINGLE, and the natives CREATED_BY, LAST_MODIFIED_BY) | `Bo/BoiRefCode` | `F-COUNT`, `F-FIRST`, `F-LAST`, `F-VALUE_FROM_LIST`, `F-HAS_REF`, all `-K-DYN-R-D-S-boi_fields` — **no `F-ADD` / `F-DELETE`** `[C]` — **and every field of the target BO directly**: `rec.CREATED_BY.surname` is `F-surname-K-DYN-S-boi_fields` applied to the field reference, no `#Значение` hop |
 | PROGRESS_BAR | — (no `#Значение`) | one act per step: `F-<field>-K-DYN-PS-<stepCode>-S-boi_fields` → `ProgressBar/ProgressStepRefCode` |
 | CHECKLIST, QUESTIONNAIRE | — (**`#Значение` has no type** — not readable from a script) | — |
 
@@ -6200,7 +6209,7 @@ Number/string facts below without a marker are `[I]`.
 
 ### Idioms
 
-- **Bounded while**: `ЦИКЛ #i# : "200"` + `Выйти из цикла` on the exit condition. `[C]`
+- **Bounded while**: `ЦИКЛ i : "200"` + `Выйти из цикла` on the exit condition. `[C]`
 - **Bool as condition**: a Bool variable (or a Bool-returning act such as `isEmpty`,
   `doesItMatchARegularExpression`) directly as `ifExprId`, no `= Да`; its complement is a bare «Иначе», not
   `Eq(x, Нет)` — shorter, and `Eq` on Bools works too (§15).

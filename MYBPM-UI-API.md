@@ -1090,7 +1090,8 @@ do is plain HTTP by §0U.4.
   `main` of `dmezhnov/MyBPM` (`main` moves only on a green release); newer than its own → its first answer and
   every `stand_list` end with an extra text «NOTE for the assistant: the mybpm plugin <new> is out, this copy is
   <old> …» naming the update steps of the way it was installed (Desktop account plugin, Upload plugin, `.mcpb`,
-  Claude Code, a checkout, an unzipped `.mcpb`) and the warning block to open the reply with — `> ⚠️ **A new version of the MyBPM plugin is out:
+  Claude Code, the Code mode of Claude Desktop — worded for Desktop, told apart by `CLAUDE_CODE_ENTRYPOINT=claude-desktop` [I] —,
+  a checkout, an unzipped `.mcpb`; the new version already installed on the computer → only the restart) and the warning block to open the reply with — `> ⚠️ **A new version of the MyBPM plugin is out:
   <new>** (you have <old>).` + `> To update: …`, in the user's language [C]. Show it, then go on with the task; GitHub out of reach →
   no note, nothing else changes [C].
 
@@ -3360,6 +3361,9 @@ form of §5g «The script language» (`copiedType: "SCRIPT_BLOCKS"`, `startBlock
 2. **Put the JSON on the clipboard as text** `[C]`: on Linux/Wayland `wl-copy --type text/plain < file.json`;
    a bare `wl-copy` advertises `application/json` and the paste is silently ignored. Check with
    `wl-paste -n | md5sum` against the file. `wl-copy` daemonises — never end a piped script with it.
+   The file is **pure ASCII**, every non-ASCII character a JSON `\uXXXX` escape (`MYBPM-IMPORTS.md` §0S.3) `[C]`:
+   raw Cyrillic read in another code page on the way (Mac Roman, Windows-1251 …) pastes as broken names
+   (`#–ø–æ–¥‚Ä¶#`) without a warning; the escapes paste as Cyrillic.
 3. **Hats** `[C]`: a fragment whose `startBlockIds` point at a `BlockFixMethod` is silently NOT pasted, even
    onto an empty canvas — strip the hat (drop it, point `startBlockIds` at its `downBlockId`, copy its
    `x`/`y` onto that block). A hook / process script WITH its `BlockFixEntryPoint` pastes. A pasted body
