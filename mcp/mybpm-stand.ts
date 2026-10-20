@@ -2306,7 +2306,7 @@ const tools: Tool[] = [
     } },
 
   // 6. records (§6a, §6b)
-  { name: "records_find", description: "Records of a BO from its registry (load-bo-instance-bracket-table, explicit CREATED_AT DESC ordering against the ES sort defect §7): id, state and the REGISTRY COLUMNS only (trap 47 — record_read gives every field). `search` = the registry's full-text box; `where` = {field code / label: value} matched exactly (value or shown text, case-insensitive) over up to 2000 records — the way to find a record by its code. A registry with no columns answers AccessDenied (trap 48).",
+  { name: "records_find", description: "Records of a BO from its registry (load-bo-instance-bracket-table, explicit CREATED_AT DESC ordering, §7): id, state and the REGISTRY COLUMNS only (trap 47 — record_read gives every field). `search` = the registry's full-text box; `where` = {field code / label: value} matched exactly (value or shown text, case-insensitive) over up to 2000 records — the way to find a record by its code. A registry with no columns answers AccessDenied (trap 48).",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, search: { type: "string" },
       where: { type: "object", description: "{fieldCodeOrLabel: value}, all must match; the fields must be registry columns" },
       state: { type: "string", enum: ["ALL", "ARCHIVED", "REMOVED", "DEV"], description: "Default ALL (the working records)" },

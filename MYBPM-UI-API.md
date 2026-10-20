@@ -939,8 +939,7 @@ and dropping the rest «for scope» is a fraction reported as done.
     with every `boFieldRefs[].toShow: false` renders an empty selector on the card (trap 53). The API
     creates both states by default, so set a column (`editedFields: [{fieldId, tableColToShow:true,
     tableColOrderIndex:0}]`) and a displayed field of every reference before handing the BO over.
-    The default column is the name field, first. Only on a stand the user says has the search-index
-    sort defect (§7) keep filled string fields out of the columns and put a number / date / reference first.
+    The default column is the name field, first.
 12. **Codes you set follow the naming convention** (the same table as `MYBPM-IMPORTS.md` §0.6a): English,
     snake_case, latin/digits/`_`, ≤ 30 characters shortened by meaning (never cut from the right).
     Field and widget — lower case (`client_name`); `CHECKBOX` — `is_*` (`is_paid`); `TAB_GROUP` — `tabs`,
@@ -3753,7 +3752,7 @@ equals the value of «Зависимость от» (or of that value's inner fi
 - An archive carries only `relMainInnerFieldCode` — set `relFieldId` / `relInnerFieldId` after the import with
   the patch above (`MYBPM-IMPORTS.md` §3).
 - Side effect of the constructor save: the UI also called `save-business-form-field` and made Имя / Регион /
-  Город registry columns (`tableColToShow`) — mind the search-index sort defect (§7) for a filled text column.
+  Город registry columns (`tableColToShow`).
 
 #### «Читать из реестра» (`readFromRegistry`) of a panel's `BO` field `[C]`
 
@@ -5078,216 +5077,24 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   `load-bracket-kanban-cards` (body `{boId, dynamicFilters, nativeFilters, brackets, search, paging,
   ordering, state, kanbanFieldOptionId, kanbanFieldId}`).
 
-### The defect that is still in the way — ES cannot sort a NEW BO's text field `[C]`
+### How the registry and the kanban sort — the request `[C]`
 
-With the template in place the board draws its columns and counts the records («Количество 1 из 1»), but
-the CARDS stay invisible. `load-bracket-kanban-cards` — which the client always sends with
-`ordering: {archetype:null, fieldId:null, state:"UNSET"}` — answers with an search-index error:
-
-```
-illegal_argument_exception: Text fields are not optimised for … sorting …
-Please use a keyword field instead. … set fielddata=true on
-[fields.INPUT_TEXT#<fieldId>.sortValue]            index v1_3_boi18_<hash>
-```
-
-- **It is not a kanban bug**: the plain registry of the same BO
-  (`v2/business-object-instance/load-bo-instance-bracket-table`, `ordering: null`) fails identically.
-- **Pass an explicit `ordering`** (e.g. `{archetype:"NATIVE", fieldId:"CREATED_AT", state:"DESC"}`) and
-  the very same call returns the cards in full. So the data and the template are fine; only the server's
-  default sort is.
-- Long-standing BOs sort by their `INPUT_TEXT` fields fine; only the mapping of a NEW index is broken.
-- Do NOT retry these, none of them helps: `v1/business-object-instance/ensure-index {boId}` (404 — the live route is
-  `v2/business-object-instance/ensure-index`, which answers 200 and changes nothing), a full-DTO
-  `save-business-object-portion` re-save, and `v2/business-objects/save-bo-table-sort {boId, fieldId,
-  order}` (it DOES set `sortFieldId`, read back — the failing sort is a different one).
-### The defect is NOT the import — it is every NEW BO on this stand `[C]`
-
-**A BO built in the CONSTRUCTOR fails identically.**
-
-**All THREE creation routes are equally broken** — the route a BO was born by makes no difference: archive,
-constructor API (§5h) and constructor UI by hand (§5b) all answer `EsException` to `ordering: null` and to
-an explicit `DYNAMIC` text sort, and return the rows to an explicit `CREATED_AT` sort.
-
-An empty BO never errors (ES has nothing to sort), so every 0-record BO looks healthy.
-
-**The stored value does not decide it** `[C]`: a record holding digits fails exactly like one holding
-letters, and the error is the same from the direct `/business-objects/viewing-list/bo/<boId>/list-view`
-URL, from the screen reached by clicking through Бизнес → group → BO, and from the API.
-
-**A screen that renders right after the record was saved is not evidence** `[I]` — the freshly created row
-is on screen while the failing query is not what put it there. Re-open the registry (or F5) before
-concluding that a BO is healthy.
-
-**The exact body the registry sends** `[C]` (the Angular client uses XHR,
-trap 30): `paging` is **`{limit:20, offset:0}`**, not `{page,size}`, and `ordering` is
-**`{archetype:null, fieldId:null, state:"UNSET"}`**, not `null`. Both shapes fail identically on a new BO
-and both succeed on an old one; the client's own shape is the
-one to reproduce. On failure the client keeps paging (`offset` 20, 40, 60…) and each page raises its own
-toast — that is why the errors arrive in threes and fours.
-
-**What it looks like on screen** `[C]`: the table draws its
-headers and then only «Загрузить ещё» — no rows — while the counter top-right still says «из 1», and two
-red toasts «Ошибка / ErrorResponse: {"error":{"phase":"query","failed_shards"… fields are not optimised
-for operations that require per-document field data…» pile up in the corner with a `trace-id`. Nothing
-in the UI hints at sorting, which is why this reads as «канбан/реестр сломан» rather than «ES mapping».
-
-**Reproducing it by hand, no API** (≈2 minutes): `/business-objects/editing` → hover a BO-group row →
-⋮ → «Добавить бизнес-объект» → name it → drag **«Текстовое поле»** (`INPUT_TEXT`) from the palette onto
-the canvas, label it → **СОХРАНИТЬ**. **Not «Текст»** — that one is `STATIC_TEXT`, a static HTML section
-heading (it holds a record value only when a script writes one, §8), and **not «Текстовый блок»** (`TEXTAREA`, untested here); the ES error
-names `INPUT_TEXT` explicitly. Then Системные → **Бизнес** (`/business-objects/viewing-list`) → the group
-→ click the BO → its registry → **«Добавить»** → fill the text field → save.
-
-**The step everyone misses — it is the SECOND visit that fails** `[C]`. Right after saving, the registry shows the new row and «1 из 1» and
-looks perfectly healthy. **Leave the screen and open the registry again (or F5)** — only then the table
-comes back empty with the toasts. `[I]` on the mechanism: most likely the BO's ES index does not exist yet at the first visit
-(nothing to sort, nothing to fail), and the broken mapping is created when the first record is indexed.
-**Before that first record the same screen is clean** — ES has nothing to sort — so a 0-record BO never
-shows it. **There IS a workaround inside the UI**: take every STRING field out
-of the registry columns (`tableColToShow: false`) and the screen works, because the default sort then
-lands on a numeric/boolean/native field (see «The workaround that DOES exist» below). An explicit
-`CREATED_AT` ordering also works but is not reachable from the screen, and `save-bo-table-sort` to
-`CREATED_AT` does not change the default sort either.
-- **No long-standing BO fails** with `ordering: null`; only new BOs that hold a record do.
-- It is not the *default* sort either, it is the text field itself: an **explicit**
-  `ordering {archetype:"DYNAMIC", fieldId:<an INPUT_TEXT field>, state:"ASC"}` returns rows on the old
-  BOs and raises the same ES error on the new one.
-- The record-creation route is not a factor either: a record written by the client's own
-  draft cycle lands in the same broken mapping.
-- The cause is the **search-index mapping of every index created by this platform version**:
-  `fields.INPUT_TEXT#<fieldId>.sortValue` comes out `text` (no `keyword` sub-field, no `fielddata`),
-  while the indexes of the older BOs sort happily. The archive, the constructor and the kanban have
-  nothing to do with it — **this is a backend/infra defect for the platform vendor** `[I]` (the mapping
-  itself cannot be read from the client).
-- **There is no client-side fix**: `ensure-index` is the only index endpoint in the whole bundle
-  and it changes nothing. A full-DTO re-save and `save-bo-table-sort`
-  do not help either — `save-bo-table-sort {fieldId:"CREATED_AT"}` sets `sortFieldId`, yet the default
-  sort still goes to a string column; on a BO with
-  `sortFieldId: null` and a UNIQUE field the server picks the UNIQUE field, not the first one `[I]`.
-  A DYNAMIC numeric target behaves the same: `sortFieldId` is written and ignored — the
-  registry still trips over the first string column. Only `tableColToShow` changes the outcome.
-- **What to do meanwhile**: always send an explicit `ordering` (`{archetype:"NATIVE",
-  fieldId:"CREATED_AT", state:"DESC"}` works everywhere). The stand's own client sends `ordering: null`,
-  so the registry and the kanban of a freshly created BO stay broken in the UI until the mapping is fixed.
-### The defect is the INDEX, not the FIELD — the old-BO experiment `[C]`
-
-A fresh `INPUT_TEXT` field added (constructor API, §5b R1) to a long-standing BO with a healthy index and
-filled with letters **sorts**: `ASC` and `DESC` both order correctly (empty values last in both
-directions), `ordering: null` and the client's `UNSET` shape return all rows, and a re-read later stays
-clean — while new BOs answer `EsException` to the same call.
-
-**The broken mapping is born with the INDEX, not with the field.** An index created by this
-platform version is broken whatever you put in it; an index created earlier swallows a field created
-later and sorts by it correctly. Consequences:
-
-- Adding fields to existing BOs is safe — the vendor defect does not spread to them.
-- The vendor ticket is about **index creation** (the template/mapping used when a BO's index is first
-  built), not about field mapping. Everything a new BO gets is doomed; nothing an old BO gets is.
-
-### The workaround that DOES exist — keep strings out of the registry columns `[C]`
-
-A string column in the registry decides the SYMPTOM, not the cause, and the difference is a usable
-workaround (a new BO with 8 field types and one record):
-
-| registry columns | `ordering: null` / client `UNSET` | explicit sort by a string field |
-|---|---|---|
-| all 8 fields (strings included) | `EsException` | fails |
-| only `INPUT_NUMBER` + `CHECKBOX` + `DATE` | **OK, rows come back** | still fails (even for a field that is NOT a column) |
-
-- The server's default sort picks a field **from the registry columns**: no string among them, no error,
-  and the registry (and by the same query the kanban) works on a broken index.
-- The mapping itself is still broken for every string field of that index — an explicit
-  `DYNAMIC` sort by a non-column `INPUT_TEXT` fails exactly as before. The columns only decide whether the
-  screen's own query steps on it.
-- The change is a one-key `editedFields` patch (`tableColToShow`) and is reversible: switching the string
-  columns back on makes the registry fail again. **This — removing the columns — is the only mitigation
-  that holds**; merely reordering them leaves the failing sort one header-click away. The price is a
-  registry without text columns.
-- The `AccessDenied` trap on the way: a BO with **no** registry columns at all answers
-  `AccessDenied` «У Вас недостаточно прав на поля, которые выведены в реестр» even though every field has
-  `accessForAll: true` — not rights, an empty column set. Trap 48.
-
-### What the registry actually sorts by — the FIRST column `[C]`
-
-- A new BO whose registry starts with a date column and also shows a filled text column answers OK to
-  `ordering: null`, to the client's `UNSET` and to an explicit sort by the date, and **`EsException` to an
-  explicit sort by that text field**. The mapping is broken; the screen is simply not sorting by it.
-- Why the date and not the text: **the default sort follows the FIRST registry column**
-  (`tableColOrderIndex`), not `sortFieldId`: with all columns
-  kept and `INPUT_NUMBER` moved to position 0 the registry returns rows; move `INPUT_TEXT` back to 0 and
-  it fails again. (Exception: on a BO with a UNIQUE field the server picks the unique
-  one, not the first `[I]`.)
-- That is why `save-bo-table-sort` does not help — it writes `sortFieldId`,
-  which this query does not use.
-- **Column ORDER only fixes the FIRST render, it is not a workaround** `[C]`: clicking a column header sorts by that column — the client sends exactly the
-  `ordering {archetype:"DYNAMIC", fieldId:<that field>, state:"ASC"|"DESC"}` that fails — so a text column
-  left in the registry breaks the moment anyone clicks it (and clicking again for the other direction
-  fails too). Reordering only decides whether the screen is broken *on arrival*.
-- **The registry REMEMBERS the clicked sort** `[C]`: after one
-  click on a text header, every later opening of that registry (navigation or F5) arrives empty — only
-  «Загрузить ещё», the counter still «из N», 2–4 «Ошибка» toasts — until a header of a non-string column
-  is clicked. Right after the failing click the screen keeps the OLD rows unchanged plus the toast, so it
-  looks half-alive; it is the next opening that is empty. Whether the remembered sort is per user or
-  shared by everyone was not checked `[U]`. So a registry whose first column is not a string can still
-  arrive broken.
-- **The only reliable UI-side mitigation is to keep filled string fields OUT of the registry columns**
-  (`tableColToShow: false`) — then the failing sort is unreachable from the screen. Everything else is
-  cosmetic, and nothing repairs the mapping itself.
-
-### The precise trigger — a string field that HAS a value `[C]`
-
-On a new BO whose text field is `null` in every record **everything** works — `ordering: null`, the
-client's `UNSET`, an explicit `FULL_DATE` sort and an explicit sort by that very `INPUT_TEXT`.
-
-The broken mapping is not created with the field, it is created **when the first string VALUE of that
-field is indexed**. The three conditions:
-
-1. the index was created by the current platform version (old indexes never fail);
-2. at least one record holds a value in that string field — a field left empty everywhere sorts fine
-   (a value-less `DROPDOWN_SINGLE` behaves the same);
-3. and the screen shows it only when the registry's default sort lands on such a field, i.e. when it is
-   a column — while the API trips over it even when it is not (see the column section above).
-
-That is also why every 0-record BO looks green, and why the same BO turns red after the first record with
-text in it.
-
-### «Просто выбрать другое поле сортировки» does NOT work `[C]`
-
-The obvious alternative to hiding the column — leave the string column in place and point the BO's default
-sort at a healthy field — fails:
-
-- `v2/business-objects/save-bo-table-sort` **takes its arguments in the PARAMS half** (`{boId, fieldId,
-  order}`); sent in the body it answers 200, writes nothing and `sortFieldId` stays `null` — the same
-  half-of-the-envelope trap as `delete-bo-instance` (trap 46).
-- With params it really does write `sortFieldId` (read back from
-  `load-business-object-by-id`). **The registry still fails**, and the error still names the first string
-  column — `fields.INPUT_TEXT#<fieldId>.sortValue`. Passing `fieldId: null` clears it again.
-- `sortFieldId` is not what the registry query sorts by; the server picks a string column regardless.
-  The only lever that works from the outside is **which fields are columns** (`tableColToShow`).
-
-### Every string field of every old BO sorts — the full sweep `[C]`
-
-On a long-standing BO every `INPUT_TEXT` / `TEXTAREA` / `INPUT_EMAIL` / `INPUT_PHONE` /
-`DROPDOWN_SINGLE`, with any set of fields, sorts with an explicit `DYNAMIC` `ASC` ordering; on a new BO a
-filled string field fails. The split «old index healthy / new index broken» holds per field, not only for
-the default sort.
-
-### It is the whole index, and not only `INPUT_TEXT` `[C]`
-
-It is every field of a broken index whose `sortValue` actually holds a string:
-
-| fails | sorts |
-|---|---|
-| every `INPUT_TEXT` with a value; a `DROPDOWN_SINGLE` with a value (`optionSource: FROM_BO` included) | a `BO` reference (e.g. «Автор», `CREATED_BY`); a field with no value in any record (a `DROPDOWN_SINGLE` `FROM_FIELD` included); `NATIVE CREATED_AT` |
-
-- The error always names the field you asked for — `fields.INPUT_TEXT#<fieldId>.sortValue`,
-  `fields.DROPDOWN_SINGLE#<fieldId>.sortValue` — so **`DROPDOWN_SINGLE` is hit too**.
-- What still sorts on a broken index is what carries no indexed string: a field with no value in any
-  record, a `BO` reference, and the `NATIVE` dates `[I]`.
-- The same field kinds on a long-standing BO all sort:
-  `INPUT_TEXT`, `DROPDOWN_SINGLE`, `TEXTAREA` — the split is the INDEX, never the field kind.
-- Side note: `NATIVE UPDATED_AT` is **not** a valid ordering field — `IllegalArgumentException: No enum
-  constant …` on old and new BOs alike. `CREATED_AT` is the safe one.
+- The registry (`v2/business-object-instance/load-bo-instance-bracket-table`) and the kanban
+  (`load-bracket-kanban-cards`) run the same query. The client sends `paging` as **`{limit:20, offset:0}`**,
+  not `{page,size}`, and `ordering` as **`{archetype:null, fieldId:null, state:"UNSET"}`**, not `null`; both
+  shapes are accepted. «Загрузить ещё» pages on with `offset` 20, 40, 60….
+- An explicit `ordering` sorts by that field: `{archetype:"NATIVE", fieldId:"CREATED_AT", state:"DESC"}`, or
+  `{archetype:"DYNAMIC", fieldId:<field id>, state:"ASC"|"DESC"}` — exactly what a click on a column header sends.
+  `NATIVE UPDATED_AT` is **not** a valid ordering field (`IllegalArgumentException: No enum constant …`).
+- **The default sort follows the FIRST registry column** (`tableColOrderIndex` 0), not `sortFieldId` `[C]`; on a
+  BO with a UNIQUE field the server picks the unique one `[I]`.
+- `v2/business-objects/save-bo-table-sort` takes its arguments in the **PARAMS** half (`{boId, fieldId, order}`);
+  sent in the body it answers 200 and writes nothing. With params it writes `sortFieldId` (read back from
+  `load-business-object-by-id`); `fieldId: null` clears it. The ORDER OF A NESTED TABLE does follow it (§5i).
+- **The registry REMEMBERS the sort a header click chose** `[C]`: every later opening (navigation or F5) arrives
+  sorted that way until another header is clicked. Whether it is per user or shared is not checked `[U]`.
+- A BO with **no** registry column answers `AccessDenied` «У Вас недостаточно прав на поля, которые выведены
+  в реестр» even though every field has `accessForAll: true` — not rights, an empty column set. Trap 48.
 
 Two related traps `[C]`:
 
@@ -5671,20 +5478,11 @@ The stand's own behaviour under automation `[C]`:
     string `[{label,checked}]`, written by the constructor together with `isAppendable:true`; it travels in
     an archive. `options` + `FROM_FIELD` on a checklist are dead keys (the form ignores them, the import
     ignores `fieldOptionsStruct`). Reading those keys makes it look like it «loses its items». §5i.
-43. **A newly created BO cannot be sorted by a text field** `[C]` — the
-    search-index mapping makes `INPUT_TEXT#<id>.sortValue` a `text` field, so the registry's own query
-    answers `EsException` «Text fields are not optimised …». It hits the registry AND the kanban, and it
-    hits **new BOs of all three creation routes — archive, constructor API, constructor UI**,
-    while no long-standing BO has it. Send an explicit `ordering`. Do NOT look for the cause in the archive format, in the constructor,
-    in the kanban, or in the VALUE stored (digits and letters fail alike) — §7. **It is the INDEX, not
-    the field** `[C]`: a field created later inside a long-standing BO sorts
-    perfectly, so adding fields to existing BOs is safe and the vendor ticket is about index creation.
-    And inside a broken index it is **not only `INPUT_TEXT`** — every field holding an indexed string
-    fails, `DROPDOWN_SINGLE` included; only value-less fields, `BO` references and `CREATED_AT` survive.
-45. **A registry screen seen right after saving the first record proves nothing** `[C]` —
-    it shows the just-saved row and «1 из 1»; the SECOND visit to the same registry is the one that fails
-    with the error toasts. Re-open or F5 before calling a BO
-    healthy. §7.
+43. **The registry's default sort follows its FIRST column, not `sortFieldId`** `[C]` — `save-bo-table-sort`
+    writes `sortFieldId` (PARAMS half only) and the registry still opens sorted by the column at
+    `tableColOrderIndex` 0. Change the column order to change the default sort. §7.
+45. **A registry remembers the sort a header click chose** `[C]` — the next opening (navigation or F5)
+    arrives in that order, not the default one; click another header to change it. §7.
 46. **`delete-bo-instance` wants `boInstanceIds` in the PARAMS half** `[C]` — with the ids
     in the body the call answers 200 and deletes nothing (the rows are still there on the next read);
     `params {businessObjectId, boInstanceIds}` answers `true` and removes them. The same shape trap as
@@ -5702,7 +5500,7 @@ The stand's own behaviour under automation `[C]`:
 44. **The record controller is `v2/business-object-instance`, not the `v1/…` the bundle shows** `[C]`
     — `/web/v1/business-object-instance/create-draft` is a plain HTTP 404 (a
     `{timestamp,status,error,path}` body, not the usual `errorType` envelope), exactly like
-    `ensure-index`. Whenever a bundle-read controller 404s, retry the same path under `v2`. §6a.
+    `v1/business-object-instance/ensure-index` (its live route is `v2/…`). Whenever a bundle-read controller 404s, retry the same path under `v2`. §6a.
 49. **One unknown enum value in a script def makes ALL scripts of that BO unreadable — for good** `[C]`
    . Once `apply-update-cmd` stores e.g. `"opType":"GreaterEq"`, every script call on that
     BO (read, translate, versions, apply, undo, delete) answers `IllegalArgumentException: No enum
@@ -5869,10 +5667,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - A `STATIC_TEXT`'s HTML sanitizer = the `TEXTAREA` one? Save `text-transform` HTML into `staticValueMap`, read back.
 - The UI login form and the logout control (walk them once with screenshots).
 
-- **The ES mapping defect of §7** — the defect is in the
-  INDEX; a field added later to an old BO sorts fine. What is still open: whether the platform vendor
-  confirms it as a backend regression, and what exactly changed in the index template. Nothing on the
-  client side repairs it, and the creation ROUTE is not the cause — do not re-check it.
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — see trap 42.
 - SIGNATURE: what clears `signFieldUnsupported` for MASS signing — nothing on the stand does (§5i), a
