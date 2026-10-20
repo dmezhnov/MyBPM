@@ -61,7 +61,6 @@ const BO_KEYS = ["@class", "oldId", "code", "category", "kind", "boGroupOldId", 
 // keys newer builds write; older exports lack them. A re-import WITHOUT them resets the stand to the default
 // (verified on <stand> 2026-10-01: isTouchEnabled → true, hideAddButtonFromRegistry → false)
 const BO_KEYS_NEW = ["isTouchEnabled", "hideAddButtonFromRegistry"];
-const BO_KEYS_OPTIONAL = ["sortFieldCode", "sortFieldOrder", "messengerFieldCode", "whatsAppFieldCode", "gridLayoutPosition"];
 // the record card's rail tabs (MYBPM-IMPORTS.md §2 «BO card tabs»)
 const BO_TAB_TYPES = new Set(["CHAT", "PEOPLE", "FILES", "HISTORY", "PRINT_FORM", "TELEGRAM", "WHATSAPP"]);
 
@@ -365,8 +364,6 @@ for (const bo of bos) {
     add("ERROR", "0.4", `${tag}: orderIndex = ${JSON.stringify(bo.orderIndex)} — the BO lands with a null place on top of its group`);
   else if (bo.orderIndex === 47480000)
     add("WARN", "2", `${tag}: orderIndex 47480000 is the template value every archive BO shares — the user cannot drag this BO between two others with it; give it its own place`);
-  const unknownBo = Object.keys(bo).filter(k => ![...BO_KEYS, ...BO_KEYS_NEW, ...BO_KEYS_OPTIONAL].includes(k));
-  if (unknownBo.length) add("WARN", "0.4", `${tag}: keys not in the §0.4 template: ${unknownBo.join(", ")}`);
 
   // 0.14 / §2 «BO views»: every template is {kanbanFields: {...}}, and every DROPDOWN_SINGLE needs one —
   // without it the map, the kanban view and the kanban editor die with «cardTemplate is null»
@@ -1222,6 +1219,26 @@ for (const bo of bos) {
       && vals(bo.dynamicFields).some((x) => x !== f && vals(x.fieldOptionsStruct?.options).some((o) => /согласов|утвержд/i.test(o.fieldOption?.label ?? ""))))
       add("WARN", "0.2b", `${bo.code}.${f.code} «${l}»: an approval field and an approval stage in the status list, no process links them (0.18)`);
   }
+}
+
+// 0.4a: every key of every object must be one MYBPM-IMPORTS.md names as "key" or `key` — any other is invented,
+// the importer drops it silently or fails. The keys of a MAP (field codes, ids, option codes) are data, not keys.
+{
+  const doc = await Bun.file(`${import.meta.dir}/../MYBPM-IMPORTS.md`).text();
+  const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes)$/;
+  const named = new Map<string, boolean>(), invented = new Map<string, Set<string>>();
+  const keyOk = (k: string) => named.get(k) ?? named.set(k, doc.includes(`"${k}"`) || doc.includes("`" + k + "`")).get(k)!;
+  const walk = (o: any, at: string, p: string, up: string): void => {
+    if (Array.isArray(o)) return o.forEach((x) => walk(x, at, p, up));
+    if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
+      if (!MAP.test(p) && up !== "massPrintFormCodes" && !ID_RE.test(k) && !keyOk(k))
+        invented.set(k, (invented.get(k) ?? new Set()).add(`${at}${p ? "." + p : ""}`));
+      walk(v, at, k, p);
+    }
+  };
+  objs.forEach((o, i) => walk(o, o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? `line ${i + 1}`, "", ""));
+  for (const [k, at] of invented)
+    add("ERROR", "0.4a", `${[...at].slice(0, 3).join(", ")}: key "${k}" is not in MYBPM-IMPORTS.md — invented, the importer drops it silently or fails`);
 }
 
 // ---------------------------------------------------------------- report
