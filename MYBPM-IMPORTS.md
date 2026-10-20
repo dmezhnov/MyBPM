@@ -411,7 +411,7 @@ your own.
   (§8): a `code` that exists on the stand puts the BOs into that group;
   a `code` the stand does not have CREATES a new group (its id = the line's `newId`, its name = `name`).
   **A matched group still takes the line's `name` AND `orderIndex`** `[C]` — it is renamed and moved. So for an
-  EXISTING group copy all three — `code`, `name`, `orderIndex` — from `load-bo-groups` (0.2a). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
+  EXISTING group copy all four — `code`, `name`, `orderIndex`, `kind` — from `load-bo-groups` (0.2a). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
   it** — whatever `name` says, even the exact name of another existing group. That is the defect that
   destroys the customer's group list (§8). Never ship a group line without `code`.
 - To put the BOs into an EXISTING group, copy its `code` from `load-bo-groups` (0.2a). Old stand groups
@@ -423,10 +423,18 @@ your own.
 - The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
-- `kind` is always `MANUAL` — **never copy `"kind": "DEFAULT"` from an export** (the general group «Общее»):
-  a group CREATED by import with `kind: DEFAULT` becomes the company's general group, which cannot be
+- `kind` is `MANUAL` — for a NEW group and for an existing `MANUAL` one. **The one exception is the company's
+  general group «Общее»** (`load-bo-groups`: `kind: DEFAULT`, `isGeneral: true`, code `General`): a line that
+  targets it repeats `"kind": "DEFAULT"`. **A matched general group takes the line's `kind` like its `name`
+  and `orderIndex`** `[C]`: `MANUAL` demotes it, the company is left with no general group, and every BO in no
+  group — the built-in «Пользователи», «Департамент», «Рабочая группа», «Аккаунт» — vanishes from the BO list
+  and from `load-bo-groups`. Rolling back that import gives the group `DEFAULT` back and the built-in BOs
+  reappear `[C]`; other repairs: `[U]`.
+- **Never send `"kind": "DEFAULT"` on any other line** (a new group, or one whose code the stand gives another
+  kind): a group CREATED by import with `kind: DEFAULT` becomes a general group of the company, which cannot be
   deleted — not by `delete-business-object-group`, not by the rollback of that import («Can not delete general
   group»), and saving it as `MANUAL` is ignored. It then lists every BO of the company that is in no group `[C]`.
+  So `General` + `DEFAULT` goes only to a stand whose `load-bo-groups` shows exactly that group.
   `orderIndex` is the group's place in the list — a new group takes it, and
   a matched group is MOVED to it `[C]` (above), so repeat the stand's own value.
 - **Several group lines in one archive work** when every one of them has a `code` `[C]`. Without codes they collapse into the one fixed
@@ -1187,6 +1195,8 @@ the BO's category. Count it in `objectCount`.
    RENAMES a fixed stand group (0.3, §8). Several group lines are fine when each has its own `code`.
    A line for an EXISTING group repeats that group's `name` and `orderIndex` exactly — the import
    overwrites both (0.3). `kind` is `MANUAL`: a `DEFAULT` group created by import can never be deleted (0.3).
+   The exception is the stand's general group «Общее» (code `General`, `kind: DEFAULT`): its line repeats
+   `DEFAULT` — `MANUAL` demotes it and the built-in BOs vanish from the BO list (0.3).
 2. `objectCount-<N>` in `metadata.mybpm` equals the line count of `0000001.mybpm`.
 3. JSONL: one minified JSON object per line; no array wrapper; UTF-8; final newline.
 4. Every line carries its `"@class"` with the full package
@@ -1291,7 +1301,7 @@ L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|acces
 const groups = of("BoGroupStructDto"), order = new Set();
 for (const g of groups) {
   if (!g.code) err(`group «${g.name}»: no code (0.9 rule 1)`);
-  if (g.kind !== "MANUAL") err(`group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
+  if (g.kind !== (g.code === "General" ? "DEFAULT" : "MANUAL")) err(g.code === "General" ? `group General: kind ${g.kind} — the general group «Общее» keeps DEFAULT, MANUAL demotes it (0.3)` : `group ${g.code}: kind ${g.kind}, must be MANUAL (0.9 rule 1)`);
   id(`group ${g.code}`, g.oldId); id(`group ${g.code} newId`, g.newId);
 }
 if (bos.length > 6 && groups.length < 2) err(`${bos.length} BOs in one group — 2–4 groups by theme (0.2 step 1)`);
