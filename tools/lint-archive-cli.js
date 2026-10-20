@@ -1,14 +1,16 @@
 /**
- * Template of skills/mybpm-imports/scripts/lint-archive.cjs — `mise run skills-gen` replaces the marker line
+ * Template of skills/mybpm-imports/scripts/lint-archive.js — `mise run skills-gen` replaces the marker line
  * below with the `lintArchive` block of MYBPM-IMPORTS.md 0.10 and writes the result into the skill, so the
  * skill ships the form lint ready to run instead of a snippet a model must copy. Edit the lint in the
  * document, the command-line wrapper here; never edit the generated file.
  *
- * Plain CommonJS on Node built-ins only: it must run under any Node >= 18 (the claude.ai sandbox) and under Bun.
+ * Node built-ins only: it must run under any Node >= 18 (the claude.ai sandbox) and under Bun. The file ships as
+ * .js, not .cjs (the Gemini skill upload refuses .cjs), and a .js runs as an ES module under a package.json with
+ * "type": "module" — so no require, module or __dirname: built-ins come by import(), the folder from argv[1].
  */
 //@@HEADER@@
 "use strict";
-const fs = require("fs"), path = require("path"), zlib = require("zlib");
+let fs, path, zlib;
 
 //@@LINT_ARCHIVE@@
 
@@ -37,18 +39,23 @@ function archiveText(file) {
 // The document sits beside the skill folder in the claude.ai zip and at the repository root in a checkout
 // or the installed plugin.
 function docText(given) {
-  const tries = given ? [given] : [path.join(__dirname, "..", "MYBPM-IMPORTS.md"), path.join(__dirname, "..", "..", "..", "MYBPM-IMPORTS.md")];
+  const here = path.dirname(path.resolve(process.argv[1]));
+  const tries = given ? [given] : [path.join(here, "..", "MYBPM-IMPORTS.md"), path.join(here, "..", "..", "..", "MYBPM-IMPORTS.md")];
   const found = tries.find((f) => fs.existsSync(f));
   if (!found) throw new Error(`MYBPM-IMPORTS.md not found (tried ${tries.join(", ")}) — pass its path as the second argument`);
   return fs.readFileSync(found, "utf8");
 }
 
-const [file, doc] = process.argv.slice(2);
-if (!file) {
-  console.error("usage: node lint-archive.cjs <archive.mybpm.zip | 0000001.mybpm> [MYBPM-IMPORTS.md]");
-  process.exit(2);
-}
-const out = lintArchive(archiveText(file), docText(doc));
-console.log(out);
-// Exit 1 while a defect line is left; REMINDER lines are answered in the report, not fixed in the file (0.10).
-process.exit(out.split("\n").some((l) => l && l !== "form lint: OK" && !l.startsWith("REMINDER")) ? 1 : 0);
+// import() works in both module kinds; top-level await would not parse as CommonJS.
+(async () => {
+  [fs, path, zlib] = await Promise.all([import("node:fs"), import("node:path"), import("node:zlib")]);
+  const [file, doc] = process.argv.slice(2);
+  if (!file) {
+    console.error("usage: node lint-archive.js <archive.mybpm.zip | 0000001.mybpm> [MYBPM-IMPORTS.md]");
+    process.exit(2);
+  }
+  const out = lintArchive(archiveText(file), docText(doc));
+  console.log(out);
+  // Exit 1 while a defect line is left; REMINDER lines are answered in the report, not fixed in the file (0.10).
+  process.exit(out.split("\n").some((l) => l && l !== "form lint: OK" && !l.startsWith("REMINDER")) ? 1 : 0);
+})().catch((e) => { console.error(e && e.message || e); process.exit(2); });

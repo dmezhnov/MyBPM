@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.26**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.27**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -70,10 +70,10 @@ the cookbook sends you there or the case is exotic.
 
 ## The form lint (ships with this skill)
 
-`scripts/lint-archive.cjs` in this skill's folder IS the `lintArchive` function of `### 0.10` with a
+`scripts/lint-archive.js` in this skill's folder IS the `lintArchive` function of `### 0.10` with a
 command line around it — do not copy the function out of the document, run the file:
 
-    node scripts/lint-archive.cjs <file.mybpm.zip>        # or: bun scripts/lint-archive.cjs …
+    node scripts/lint-archive.js <file.mybpm.zip>        # or: bun scripts/lint-archive.js …
 
 It finds `MYBPM-IMPORTS.md` itself (pass its path as a second argument if it does not), prints the lint
 output and exits 1 while a defect line is left. Paste that output into the report and follow 0.10 for it:
