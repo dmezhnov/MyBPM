@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.28**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.29**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -31,7 +31,8 @@ Show it as a warning block at the very top of your reply, in the user's language
 Update steps by how it was installed (unsure → give the user the first two):
 
 - Claude Desktop / claude.ai, plugin from the marketplace (it does not update by itself): Customize → Plugins → Yours → Mybpm in the plugin list → ⋯ → Check for updates → the «Update» button becomes active → press it — the skills are new at once; restart Desktop so the server's tools run the new code too.
-- Claude Code: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart.
+- Claude Code in a terminal or an IDE: `claude plugin marketplace update mybpm`, `claude plugin update mybpm@mybpm`, restart Claude Code.
+- Claude Desktop in Code mode (it uses the same plugins of the computer): run those two commands in any terminal, then quit Desktop fully and start it again — word the steps for Desktop, not for Claude Code.
 - installed with Upload plugin: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-plugin.zip` again.
 - this skill uploaded alone: upload `https://github.com/dmezhnov/MyBPM/releases/latest/download/mybpm-stand.zip` again.
 - the server in another MCP client (Codex, ChatGPT through a tunnel, Cursor, VS Code …): a checkout → `git pull`; unzipped from `mybpm-stand.mcpb` → download it again and unzip over the same folder; then restart that client.
