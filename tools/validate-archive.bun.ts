@@ -213,7 +213,8 @@ for (const g of groups) {
     add("FATAL", "0.9/1", `group "${g.name}" has no code — the importer renames a fixed stand group instead (§8)`);
   else if (groupCodes.has(g.code)) add("ERROR", "0.3", `group code "${g.code}" repeats`);
   else { groupCodes.add(g.code); naming(`group "${g.name}"`, g.code, "object"); }
-  if (g.kind !== "MANUAL") add(g.kind === "DEFAULT" ? "FATAL" : "ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL${g.kind === "DEFAULT" ? " — a DEFAULT group created by import becomes the general group and can never be deleted, not even by rollback" : ""}`);
+  if (g.code === "General") { if (g.kind !== "DEFAULT") add("FATAL", "0.3", `group General is the general group «Общее» — kind ${g.kind} demotes it and the built-in BOs vanish from the BO list; repeat DEFAULT`); }
+  else if (g.kind !== "MANUAL") add(g.kind === "DEFAULT" ? "FATAL" : "ERROR", "0.3", `group kind is ${g.kind}, must be MANUAL${g.kind === "DEFAULT" ? " — a DEFAULT group created by import becomes the general group and can never be deleted, not even by rollback" : ""}`);
   if (!ID_RE.test(String(g.oldId))) add("ERROR", "0.7", `group oldId "${g.oldId}" is not 16 chars over A-Za-z0-9@~`);
   if (!g.newId) add("WARN", "0.3", "group has no newId");
   if (typeof g.name !== "string" || !g.name) add("FATAL", "0.3", "group has no name");
