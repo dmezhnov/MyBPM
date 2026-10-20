@@ -1686,6 +1686,13 @@ return out;
 ```
 
 Check the result with `unzip -l <name>.mybpm.zip`: exactly two members, both under `data-…/` (0.10).
+With Python, `zipfile.ZipFile(name, "w")` + `writestr("data-…/0000001.mybpm", …)` and
+`writestr("data-…/metadata.mybpm", …)` does the same.
+
+**No way to hand over a file at all** (a chat that cannot run code or attach files): the archive is still
+yours to build — print the two members as two code blocks, the full `0000001.mybpm` (one line per object)
+and `metadata.mybpm`, with the folder name and the `zip -r -X` command above, so the user saves and zips
+them. Never replace the archive with a description of what to click in the constructor.
 
 
 **What the user does with it.** An import is TWO-PHASE: the upload only ANALYSES, then one deliberate
