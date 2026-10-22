@@ -971,7 +971,8 @@ columns), the inner keys are the fields shown on the card:
   menu item shows a board is decided by 0.5d «Kanban only by `status`» — a template for a client type or a
   category is written, a menu kanban by it is not.
 - **Only an archive BO depends on this key**: a dropdown added by the stand's portion save (the constructor's own
-  call) gets a default card from the server (header = the first field), a dropdown that arrives in an archive gets nothing but
+  call) to a BO whose other fields are already saved gets a default card from the server (header = the first field), one
+  saved together with the other fields gets an empty card, a dropdown that arrives in an archive gets nothing but
   what the line carries `[C]`.
 - A constructor-made BO exports `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` — an empty card; fill
   `kanbanFields` in that line and re-import the one-BO archive: the BO is updated in place (same id, records kept) `[C]`.
