@@ -1152,10 +1152,10 @@ do is plain HTTP by §0U.4.
   condition is refused: the stand ignores it); `filter_save` stores the same filter on a BO menu item and reads back
   the count, `clear: true` removes it. Menu rights: `rights_save {menu}`.
 - **Kanban card, participants, invitation, import conflicts.** `kanban_card_save` sets a BO's card for one
-  `DROPDOWN_SINGLE` by field codes (header / content / footer; a system field by its type, e.g. `CREATED_BY`):
-  the archive route of §7 — export, the key set in the BO's line, a one-BO import (it leaves a log row, a bell
-  entry and can be rolled back), `load-kanban-template` read back; `dryRun` cancels the import after the
-  analysis. `record_participants` reads, adds and removes a record's participants (§3 «Participants»), users by
+  `DROPDOWN_SINGLE` by field codes or labels (header = ONE field / content / footer; a system field by its type,
+  e.g. `CREATED_BY`, when the form carries it): `save-kanban-card-template` of §7 with the whole card — fields not
+  given are removed — then `load-kanban-template` read back until it shows the card; no log row, no bell entry, no
+  rollback (`was` in the answer is the old card); `dryRun` returns the body only. `record_participants` reads, adds and removes a record's participants (§3 «Participants»), users by
   e-mail, name or id. `person_invite` e-mails a user the invitation again (§3) — a REAL letter to the address
   of that «Пользователи» record: name the person and the address when asking. Conflicts (§5 «Conflicts»):
   `import_analyze` / `import_report` give one row per unknown org unit — `conflictId`, type, the archive's
@@ -1248,7 +1248,7 @@ do is plain HTTP by §0U.4.
 | `menu_icons` | the «Icons by meaning» table, or catalogue names holding a piece | §4 «Menu icon catalogue» |
 | `filter_try` | a BO's records under a filter, not saved: the count, the first rows, the built brackets | R6 step 6, §4 «Record filters» |
 | `filter_save` ✎ | a record filter on a BO menu item (or `clear`), read back with the count | R6 step 5 |
-| `kanban_card_save` ✎ | a BO's kanban card for one dropdown, by field codes, through a one-BO archive; read back | §7 «The template» |
+| `kanban_card_save` ✎ | a BO's kanban card for one dropdown, by field codes, through `save-kanban-card-template`; read back | §7 «Over the API» |
 | `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
 | `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
 | `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
@@ -5147,9 +5147,12 @@ A kanban is two independent pieces:
    A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
    (`MYBPM-IMPORTS.md` 0.5c).
 2. **The card** — per BUSINESS OBJECT and dropdown: `kanbanCardTemplates` on the BO. **Adding a `DROPDOWN_SINGLE`
-   in the constructor or over the API makes the SERVER write a default card** `[C]`: header = the first field,
-   content = the other simple dynamic fields by `y` (not `TAB_GROUP`, `FULL_DATE`, `PERIOD` or the dropdown),
-   footer = `PARTICIPANTS` (left out of the answer while that native is not on the form). **An imported BO gets
+   in the constructor or over the API makes the SERVER write a default card** `[C]` from the fields ALREADY SAVED on
+   the BO: header = the first field, content = the other simple dynamic fields by `y` (not `TAB_GROUP`,
+   `FULL_DATE`, `PERIOD` or the dropdown itself; natives such as `CREATED_BY` neither), footer = `PARTICIPANTS`
+   (left out of the answer while that native is not on the form). **A dropdown saved in the same portion save as
+   the other fields — a new BO built in one save — gets an EMPTY card** `[C]` (`load-kanban-template` answers
+   empty `header` / `content` / `footer`): set it with `save-kanban-card-template`. **An imported BO gets
    none** — it carries `{}` unless the archive ships the template, so `BoDto.toKanbanCardTemplate` NPEs and the
    view shows «cardTemplate is null». Three writers, all `[C]`: `save-kanban-card-template` (below), the
    constructor's card editor (it sends that same call) and the archive (`MYBPM-IMPORTS.md` §0.5c, keyed by the
@@ -5161,8 +5164,11 @@ content, footer, headerDelFieldIds, contentDelFieldIds, footerDelFieldIds}` → 
 below, at least `{kanbanFieldId:"D-<fieldId>"|"N-<NATIVE_TYPE>", cardOrderIndex, fieldKind, type}`; the
 `*DelFieldIds` hold such ids. It is a PARTIAL update: every listed item is set (zone + order), every id of the
 `*DelFieldIds` that is not on the new card is removed, a field in neither stays. It creates the dropdown's entry
-when there is none — the repair of «cardTemplate is null». An EMPTY body returns 200 and does nothing. Read back
-with `load-kanban-template`.
+when there is none — the repair of «cardTemplate is null». An EMPTY body returns 200 and does nothing. The write
+goes through Kafka: `load-kanban-template` shows the new card a moment AFTER the call answered (the first read
+right after it may still return the old one) `[C]` — read back until it matches. To REPLACE a card, list every
+field of the old card that is not on the new one in `*DelFieldIds`; a field moved to another zone is just listed
+in its new zone `[C]`. MCP connected → `kanban_card_save` does this.
 
 **In the constructor** `[C]`: view chooser → «Канбан» (`…/editing/<boId>/kanban-editing`, «Канбан для выпадающего
 списка с названием - <label>»): one column per option, the first one shows a SAMPLE card with a gear. Gear → dialog:
@@ -5204,7 +5210,7 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   map die with «cardTemplate is null», §5l); keep the `kanbanFields` wrapper — without it the import is APPLIED
   and changes nothing. A constructor-made BO's export already carries
   `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` (empty); the one-BO re-import updates the BO in place —
-  same id, records kept `[C]`. MCP connected → `kanban_card_save` does this.
+  same id, records kept `[C]`.
 - `save-business-object-portion` does not carry the key (a full-DTO re-save changes nothing).
 - `v2/kanban/load-kanban-template` answers `{boId, label, kanbanFieldId, cardTemplate:{header, content, footer,
   *DelFieldIds}, hasRights, options:[{id, label, code, color, orderIndex, hiddenInKanban}]}` `[C]`; no card on the
@@ -5513,8 +5519,9 @@ The stand's own behaviour under automation `[C]`:
    sibling's `connectionType`.
 6. A menu icon must come from §4 «Menu icon catalogue» (`phosphor:*` or `menu-item:*`); the server and the
    importer accept any string, and a wrong one leaves the sidebar item without an icon.
-7. A kanban needs `kanbanCardTemplates` ON THE BO. A dropdown added in the constructor or over the API gets a
-   default card from the server; an ARCHIVE BO gets one only from the archive. `save-kanban-card-template` P
+7. A kanban needs `kanbanCardTemplates` ON THE BO. A dropdown added in the constructor or over the API to a BO whose
+   other fields are already saved gets a default card from the server; one saved together with the other fields
+   gets an empty card; an ARCHIVE BO gets one only from the archive. `save-kanban-card-template` P
    `{boId, fieldId}` sets or repairs it (§7). The MAP view needs it too: give every dropdown of an archive BO a
    template (§5l, trap 61).
 8. Excel: every cell must be `inlineStr`; a numeric cell turned `103` into «103.0» and broke a lookup.
