@@ -835,7 +835,7 @@ and dropping the rest «for scope» is a fraction reported as done.
    | structure | BOs, dictionaries AND their values, fields, links, layout, kanban card templates — by an archive (`MYBPM-IMPORTS.md` §0, dictionary values as row lines 0.5b) or the constructor | R3, or R1 / R2 |
    | a hook script | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | §5g |
    | a business process | a path someone RUNS figure by figure, with forms and branches (approval) | R2 / §5f |
-   | the menu | one item per user job (none for line BOs, several for different views or filters) — at the root up to ~5, else one group per theme; kanban by status, an icon by meaning on every line | R6 |
+   | the menu | one item per user job (none for line BOs, several for different views or filters) — at the root up to ~5, else one group per theme; a kanban only on the item of a BO with a status path, by `status` — a type, category, source or priority dropdown opens no board unless the user asked for that board (its card template is no request); an icon by meaning on every line | R6 |
    | rights by role | read the stand's groups, then write the rules | R5 |
    | records | initial records of working BOs; values of a dictionary already on the stand | R7 or R9 |
    | not doable | the last table of this recipe | — |

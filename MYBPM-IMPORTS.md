@@ -27,7 +27,9 @@ gets the names wrong: the importer then rejects the file or silently drops what 
      catalogue it points at — **0.5a**, 0.2c;
    - [ ] a `BO_DICTIONARY` line per open reference list; statuses and short fixed lists as LOCAL dropdowns — **0.5b**, 0.2c;
    - [ ] one kanban card template per `DROPDOWN_SINGLE` of a BO — **0.5c**;
-   - [ ] the sidebar menu: a `GROUP` per theme + one item per user JOB (0.2c step 9), kanban on the status dropdown, every line
+   - [ ] the sidebar menu: a `GROUP` per theme + one item per user JOB (0.2c step 9), a kanban ONLY on the item of a BO
+     with a `status` path and only by `status` — no other dropdown (type, category, source, priority) opens a board
+     unless the user asked for that board, a card template is no such request — **0.5d**; every line
      with an icon BY ITS OWN MEANING — each group by its theme, each dictionary by what it lists, no two
      `GROUP` lines and no three siblings with one icon, never the generic default — **0.5d**, 0.2b step 4;
    - [ ] ids: what the given archive (or your own earlier archive of this chat) already holds keeps its ids and
@@ -68,6 +70,7 @@ table at the top of §0S, records at the top of §0X.
 | References | a `BO` field with `fieldRefs: {}`, no `boInfo`, no `oldRefBoId`; a `linkedFieldCode` naming a field the other BO lacks; header and lines with no back link | `oldRefBoId` + `boInfo` + at least one `toShow: true`; header–lines and child documents = a `SINGLE`↔`TABLE` pair naming each other | 0.5a |
 | Stand data | a reference left out «because it needs a stand id»; a `Person` field dropped or asked for `personBoId` | a reference between the BOs of your own file uses the id you minted; a `Person` reference is resolved by `boInfo.code` (`oldRefBoId: ""`) — build both | 0.2c step 8, 0.5a, §6 «Person reference» |
 | Lists and kanban | dropdown options as an array; a dropdown with no options; `kanbanCardTemplates: {}` beside a dropdown; a template keyed by a text or `BO` field | `fieldOptionsStruct.options` = a map, at least one option; one template per `DROPDOWN_SINGLE`, `{}` when the BO has none; a BO with a `status` opens its kanban by it | 0.5, 0.5c |
+| Menu kanban | a menu item opening a board by a client type, a category, a source or a priority nobody asked to see as a board; a kanban on every item that has a dropdown | a kanban on a menu item only by `status` (a status path, 0.2c step 6); any other dropdown only when the user asked for a board by it; its card template is no request | 0.5d |
 | Dictionaries | a dictionary as `category: "BO"` with no `code` / `label`; a dictionary shipped with no rows while the spec names its values (every dropdown on it opens empty); a status path or a short fixed list as a dictionary; a `FROM_BO` dropdown naming a code that is no `BO_DICTIONARY` line of the file; a dictionary picked through a `BO` reference field (draws a «Выберите» link, not a dropdown); a dictionary no field uses; a local list repeating a dictionary's rows; or a catalogue with its own fields (price list, stock) | `BO_DICTIONARY` + the two system fields + one row line per value (0.5b); statuses and short lists = a local list `FROM_FIELD` with the spec's values; a catalogue = a `BO` + a `BO` field to it | 0.5b, 0.2c steps 5–6 |
 | Layout | `y = index × 3` while a `BO` table and a `TEXTAREA` are 6 rows (fields overlap); every field full width — a builder loop giving each field `x 0, cols 15`, `y += rows`; every field alone at `cols 8` («one per row»); `w: 10` and no tabs on every window; `tableColToShow: true` on every field | rows of 2–3 short fields (same `y`, `cols` sum 15), next `y` = `y` + `rows` — a builder takes the rows as lists of codes; at most 2 lone short fields per form; the status beside the title in the header row, never in a tab; over 12 visible fields → tabs, over 8 → tabs or group headings; registry ≤ 6 columns; `w` / `h` by 0.8a | 0.5, 0.8, 0.8a |
 | Scope | a spec item left «for stage 2», «optional», «needs checking on the stand» | built in the same reply, or a row of the coverage table with a reason from 0.2b step 5 | 0.2b |
@@ -301,7 +304,9 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 4. **The menu counts as ASKED** (0.5d). One item per user job (0.2c step 9). Up to ~5 items → all at
    the root, no group. More → one menu `GROUP` per theme (the same themes as the BO groups, 0.2 step 1),
    each holding its items — never one group holding everything. On the item of every BO with a status
-   path switch the kanban on by its status dropdown; every line carries an icon by ITS OWN meaning — every group a different one, every dictionary by what it
+   path switch the kanban on by its status dropdown — and on no other item: a type, category, source,
+   priority or city dropdown is no status path, its BO's item opens the list only (0.5d «Kanban only by
+   `status`»); every line carries an icon by ITS OWN meaning — every group a different one, every dictionary by what it
    lists (0.5d «Icons by meaning»). The «never added
    unasked» of 0.2 step 7a is about a request for single objects.
 5. **A row you do not build needs a reason from this closed list — nothing else is a reason:**
@@ -354,7 +359,9 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    and the spec gives none, and then the report says «заполнить после импорта».
 6. **A status path?** A record's lifecycle (Новый → В работе → Готов → Выдан) → a `DROPDOWN_SINGLE`
    `status` with a LOCAL list (`FROM_FIELD`) holding the spec's stages as options, its kanban card template
-   (0.5c), and in a system build its menu item shows the kanban by it (0.2b step 4). Never a dictionary for
+   (0.5c), and in a system build its menu item shows the kanban by it (0.2b step 4). Only this field opens
+   a board unasked: a type, a category or any other classifying dropdown gets its card template and nothing
+   more (0.5d «Kanban only by `status`»). Never a dictionary for
    statuses: the stages belong to one field, and the local list fixes their order and colours. A `BO_PROCESS` is for a path someone RUNS figure by figure — forms, a script, a branch
    (approval, 0.18). Do not turn every status into a process, and never fake `PROCESS_STATUS` with a
    dropdown.
@@ -957,9 +964,12 @@ columns), the inner keys are the fields shown on the card:
 }
 ```
 
-- The outer key is the code of a `DROPDOWN_*` field of THIS BO; one entry per field you want to offer as
-  a kanban (a BO may carry several). Never a text, number or `BO` field — and a BO with no dropdown keeps
+- The outer key is the code of a `DROPDOWN_SINGLE` field of THIS BO; one entry per such field, so a BO with
+  several dropdowns carries several. Never a text, number or `BO` field — and a BO with no dropdown keeps
   `"kanbanCardTemplates": {}`.
+- **A template is not a board.** It only keeps the BO drawable; it switches no kanban on anywhere. Whether a
+  menu item shows a board is decided by 0.5d «Kanban only by `status`» — a template for a client type or a
+  category is written, a menu kanban by it is not.
 - A constructor-made BO exports `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` — an empty card; fill
   `kanbanFields` in that line and re-import the one-BO archive: the BO is updated in place (same id, records kept) `[C]`.
 - The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
@@ -1039,6 +1049,13 @@ Rules `[C]`:
 - `kanbanFieldCode` appears ONLY when the kanban is on; it is a `DROPDOWN_SINGLE` of that BO AND a key of
   its `kanbanCardTemplates` (0.5c). **A BO with a `status` dropdown opens its kanban by `status`** — another
   dropdown (a service type, a category) only on a SECOND item of the same BO beside the status one.
+- **Kanban only by `status`.** Unasked, a menu item switches a kanban on ONLY by `status` — the lifecycle field
+  of 0.2c step 6, the stages a record moves through. Most dropdowns are no such path: a client type, a
+  category, a source, a priority, a city, a payment method — a record is CLASSIFIED by them, it does not move
+  along them. Their BO's item keeps `isKanbanEnabled: false` (the list only), and a BO with no `status` gets no
+  kanban on its item at all. A board by such a dropdown only when the user asked for a board by THAT field:
+  on a second item beside the `status` one, or on the BO's only item when the BO has no `status`. Its card
+  template (0.5c) exists either way and is never the reason.
 - `boCode` names a BO of THIS archive, or a BO already on the stand (a stand code — ask, 0.2a). The same for
   `parentMenuItemCode`: a `GROUP` line of this archive, or a group code given by the user — never guessed.
 - Put the `GROUP` line BEFORE its children. `orderIndex`: the built-in root «Системные» is 60000 — put
@@ -1355,7 +1372,8 @@ the BO's category. Count it in `objectCount`.
 14. A menu line (0.5d) names its parent, its BO and — only when a kanban is on — its column field BY
     CODE, and carries no id.
     A `GROUP` line has no `boPages` / `bracketFilter`; a `BO` line has both. A `kanbanFieldCode` whose BO
-    carries no card template for that field gives a kanban that cannot be drawn (0.5c).
+    carries no card template for that field gives a kanban that cannot be drawn (0.5c). A `kanbanFieldCode`
+    other than `status` only when the user asked for a board by that field (0.5d «Kanban only by `status`»).
 15. **Every BO shows at least one field in its registry** (`tableColToShow: true` on at least one
     field) **and every `BO` / `CO` reference field shows at least one field of its target**
     (`boFieldCodes` / `boFieldRefs` with `toShow: true`). Without a column the registry answers `AccessDenied` and lists nothing; without a
@@ -1695,6 +1713,7 @@ for (const m of menu) {
   if (kf && bo && !(bo.dynamicFields?.[kf]?.type === "DROPDOWN_SINGLE" && bo.kanbanCardTemplates?.[kf]))
     err(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
   if (kf && bo?.dynamicFields?.status?.type === "DROPDOWN_SINGLE" && !of("MenuItemStructDto").some((x) => x.boCode === m.boCode && x.boPages?.kanbanFieldCode === "status")) err(`${t}: the kanban opens by ${kf} while ${bo.code} has a status — kanbanFieldCode status (0.15)`);
+  if (kf && kf !== "status") err(`REMINDER ${t}: a kanban by ${kf} — no status path; right only when the user asked for a board by ${kf} (name that request in the report), else isKanbanEnabled false (0.5d «Kanban only by \`status\`»)`);
 }
 const by = (a, f) => a.reduce((m, x) => ((m[f(x)] ??= []).push(x), m), {});
 const icon = (ms) => Object.entries(by(ms, (m) => m.iconName ?? ""));
@@ -2393,7 +2412,8 @@ A kanban is TWO things, and the archive can carry BOTH:
   - a **SIDEBAR MENU ITEM** shows it only when switched on — `boPages.isKanbanEnabled` + the column field; a menu
     line of the SAME archive does it by code, `boPages.kanbanFieldCode` (0.15, §5e), or
     `v2/menu-item/save-menu-item-bo-pages` after the import (`MYBPM-UI-API.md` §4). Give the user a menu item
-    when the board must be one click away.
+    when the board must be one click away — unasked only by `status`, any other dropdown only on request (0.5d
+    «Kanban only by `status`»).
   Nowhere else: the constructor offers a `BO` / `CO` reference field only Табличный / Множественный / Одиночный /
   Карточкой and a panel registry only Табличный / Множественный. The client's `viewType` enum also lists
   `KANBAN` / `CALENDAR` / `MAP` / `TIMELINE`, but no screen sets them — never ship them in a field's `viewType`.

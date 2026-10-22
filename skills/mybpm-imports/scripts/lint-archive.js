@@ -274,6 +274,7 @@ for (const m of menu) {
   if (kf && bo && !(bo.dynamicFields?.[kf]?.type === "DROPDOWN_SINGLE" && bo.kanbanCardTemplates?.[kf]))
     err(`${t}: kanbanFieldCode ${kf} is no DROPDOWN_SINGLE of ${bo.code} with a card template (0.9 rule 14)`);
   if (kf && bo?.dynamicFields?.status?.type === "DROPDOWN_SINGLE" && !of("MenuItemStructDto").some((x) => x.boCode === m.boCode && x.boPages?.kanbanFieldCode === "status")) err(`${t}: the kanban opens by ${kf} while ${bo.code} has a status — kanbanFieldCode status (0.15)`);
+  if (kf && kf !== "status") err(`REMINDER ${t}: a kanban by ${kf} — no status path; right only when the user asked for a board by ${kf} (name that request in the report), else isKanbanEnabled false (0.5d «Kanban only by \`status\`»)`);
 }
 const by = (a, f) => a.reduce((m, x) => ((m[f(x)] ??= []).push(x), m), {});
 const icon = (ms) => Object.entries(by(ms, (m) => m.iconName ?? ""));
