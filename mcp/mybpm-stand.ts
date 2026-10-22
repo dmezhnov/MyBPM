@@ -681,8 +681,12 @@ async function savePortion(s: Stand, payload: object) {
 
 const loadBo = (s: Stand, id: string) => s.call(BO_ + "load-business-object-by-id", { businessObjectId: id });
 
+// Every BO group with its BOs (records) in one call. load-bo-groups leaves out a group that holds no BO the user sees,
+// whatever forEdit says (MYBPM-UI-API.md R1), so it never shows an empty group.
+const boGroups = async (s: Stand): Promise<any[]> => (await s.call(BO_ + "load-business-object-groups", { forEdit: true })) ?? [];
+
 async function groupOf(s: Stand, group: string) {
-  const groups = (await s.call(BO_ + "load-bo-groups", { forEdit: true })) ?? [];
+  const groups = await boGroups(s);
   const g = groups.find((x: any) => x.id === group) ?? groups.filter((x: any) => x.name?.toLowerCase() === group.trim().toLowerCase())[0];
   if (!g) throw new Error(`no BO group «${group}» — the group must exist (bo_groups lists them): ${groups.map((x: any) => x.name).join(", ")}`);
   return g;
@@ -1960,13 +1964,11 @@ const tools: Tool[] = [
     } },
 
   // 2. reading the structure
-  { name: "bo_groups", description: "Every BO group of the company with the BOs in it (id, name, boCategory), empty groups included (load-bo-groups forEdit + load-bo-records-by-group-id). Group codes are what an archive's BoGroupStructDto matches.",
+  { name: "bo_groups", description: "Every BO group of the company with the BOs in it (id, name, boCategory), empty groups included (load-business-object-groups). Group codes are what an archive's BoGroupStructDto matches.",
     run: async (a) => {
       const s = stand(a);
-      const groups = (await s.call("v2/business-objects/load-bo-groups", { forEdit: true })) ?? [];
-      return Promise.all(groups.map(async (g: any) => ({ id: g.id, code: g.code, name: g.name, kind: g.kind, orderIndex: g.orderIndex,
-        bos: ((await s.call("v2/business-objects/load-bo-records-by-group-id", { groupId: g.id })) ?? [])
-          .map((b: any) => ({ id: b.id, name: b.name, boCategory: b.boCategory })) })));
+      return (await boGroups(s)).map((g: any) => ({ id: g.id, code: g.code, name: g.name, kind: g.kind, orderIndex: g.orderIndex,
+        bos: (g.records ?? []).map((b: any) => ({ id: b.id, name: b.name, boCategory: b.boCategory })) }));
     } },
   { name: "bo_find", description: "Find a BO: by `code` (exact, load-bo-id-by-code — also the existence check after a delete or rollback) or by a piece of its `name` (case-insensitive, over every group).",
     props: { code: { type: "string" }, name: { type: "string" } },
@@ -1981,8 +1983,8 @@ const tools: Tool[] = [
       }
       if (!a.name) throw new Error("pass `code` or `name`");
       const q = String(a.name).toLowerCase(), hits: any[] = [];
-      for (const g of (await s.call("v2/business-objects/load-bo-groups", { forEdit: true })) ?? [])
-        for (const b of (await s.call("v2/business-objects/load-bo-records-by-group-id", { groupId: g.id })) ?? [])
+      for (const g of await boGroups(s))
+        for (const b of g.records ?? [])
           if (String(b.name).toLowerCase().includes(q)) hits.push({ id: b.id, name: b.name, boCategory: b.boCategory, group: g.name });
       return hits;
     } },
@@ -2239,8 +2241,8 @@ const tools: Tool[] = [
       const index = new Map<string, string>(); // name → id, read once when a name is used
       const boIdOf = async (ref: string) => {
         if (/^[A-Za-z0-9@_$-]{16}$/.test(ref)) return ref;
-        if (!index.size) for (const g of (await s.call(BO_ + "load-bo-groups", { forEdit: true })) ?? [])
-          for (const b of (await s.call(BO_ + "load-bo-records-by-group-id", { groupId: g.id })) ?? [])
+        if (!index.size) for (const g of await boGroups(s))
+          for (const b of g.records ?? [])
             index.set(b.name, index.has(b.name) ? "" : b.id);
         const id = index.get(ref);
         if (id === undefined) throw new Error(`no BO named «${ref}» (bo_find)`);
@@ -3142,7 +3144,7 @@ const tools: Tool[] = [
 
   // 15. anything else
   { name: "stand_read", description: "Any READ method of the stand API (last path segment load-/count-/verify-/get-/find-/search-) in the standard envelope (MYBPM-UI-API.md 0U.2; which values go to params and which to body is per method — the document's recipes say). For what no other tool covers.",
-    props: { path: { type: "string", description: "After /web/, e.g. v2/business-objects/load-bo-groups" }, params: { type: "object" }, body: {}, get: { type: "boolean", description: "GET without the envelope" },
+    props: { path: { type: "string", description: "After /web/, e.g. v2/business-objects/load-business-object-groups" }, params: { type: "object" }, body: {}, get: { type: "boolean", description: "GET without the envelope" },
       maxChars: { type: "number" } }, required: ["path"],
     run: async (a) => {
       if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session token — refused");

@@ -12,7 +12,7 @@
  * A line WITH an existing code still OVERWRITES that group's name and orderIndex with its own (2026-09-30:
  * the old default «name = code» renamed a stand group «Тест» to its code and moved it), so
  * `--group-code`, `--group-name` and `--group-order` are all required — copy the three from
- * `load-bo-groups` for an existing group, choose them for a new one. Group `oldId` is
+ * `load-business-object-groups` for an existing group, choose them for a new one. Group `oldId` is
  * NOT stable — every export of the same stand group carries a different oldId/newId — so it only has
  * to tie the lines of this archive together.
  *
@@ -601,13 +601,13 @@ function field(o: {
 
 /**
  * `--group-code` — the group is matched BY CODE, and the line then OVERWRITES that group's name and
- * orderIndex, so `--group-name` / `--group-order` must repeat the stand's own values (load-bo-groups).
+ * orderIndex, so `--group-name` / `--group-order` must repeat the stand's own values (load-business-object-groups).
  */
 const GROUP_CODE = flag("group-code", "");
 const GROUP_NAME = flag("group-name", "");
 const GROUP_ORDER = Number(flag("group-order", ""));
 if (!GROUP_CODE || !GROUP_NAME || !Number.isFinite(GROUP_ORDER) || !flag("group-order", ""))
-  throw new Error("--group-code, --group-name and --group-order are all required: copy code, name and orderIndex of an existing group from load-bo-groups (the import overwrites name and orderIndex), or choose them for a new group");
+  throw new Error("--group-code, --group-name and --group-order are all required: copy code, name and orderIndex of an existing group from load-business-object-groups (the import overwrites name and orderIndex), or choose them for a new group");
 const BO_ORDER = Number(flag("bo-order", "47480000"));
 if (!Number.isFinite(BO_ORDER)) throw new Error("--bo-order must be a number");
 const groupOldId = id(`group.${GROUP_CODE}`);
