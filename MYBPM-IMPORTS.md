@@ -419,20 +419,20 @@ your own.
   (§8): a `code` that exists on the stand puts the BOs into that group;
   a `code` the stand does not have CREATES a new group (its id = the line's `newId`, its name = `name`).
   **A matched group still takes the line's `name` AND `orderIndex`** `[C]` — it is renamed and moved. So for an
-  EXISTING group copy all four — `code`, `name`, `orderIndex`, `kind` — from `load-bo-groups` (0.2a). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
+  EXISTING group copy all four — `code`, `name`, `orderIndex`, `kind` — from `load-business-object-groups` (0.2a). **A line WITHOUT `code` is written onto one fixed stand group and RENAMES
   it** — whatever `name` says, even the exact name of another existing group. That is the defect that
   destroys the customer's group list (§8). Never ship a group line without `code`.
-- To put the BOs into an EXISTING group, copy its `code` from `load-bo-groups` (0.2a). Old stand groups
+- To put the BOs into an EXISTING group, copy its `code` from `load-business-object-groups` (0.2a). Old stand groups
   often have `code: null` — such a group cannot be targeted by an archive; ask the user for a group that has a
   code, ship a new group with a new code, or (with the user's yes — it is one-way) give that group a code
   first with `save-business-object-group` (§8 «After the import — the stand-side calls»). A group created on a stand now always
-  gets a code (`Gruppa__N`). Read the list with `load-bo-groups {forEdit: true}` — without it the empty
-  groups are left out.
+  gets a code (`Gruppa__N`). Read the list with `load-business-object-groups {forEdit: true}` — `load-bo-groups`
+  leaves out every group that holds no BO `[C]`.
 - The two ids above are the SAMPLE's, not yours — mint your own by 0.7 (0.2a).
 - `oldId` ties this line to the BO line (`BoStructDto.boGroupOldId` repeats it). It is NOT a stand id —
   every export of the same group carries a different one, so any value of the right shape is fine.
 - `kind` is `MANUAL` — for a NEW group and for an existing `MANUAL` one. **The one exception is the company's
-  general group «Общее»** (`load-bo-groups`: `kind: DEFAULT`, `isGeneral: true`, code `General`): a line that
+  general group «Общее»** (`load-business-object-groups`: `kind: DEFAULT`, `isGeneral: true`, code `General`): a line that
   targets it repeats `"kind": "DEFAULT"`. **A matched general group takes the line's `kind` like its `name`
   and `orderIndex`** `[C]`: `MANUAL` demotes it, the company is left with no general group, and every BO in no
   group — the built-in «Пользователи», «Департамент», «Рабочая группа», «Аккаунт» — vanishes from the BO list
@@ -442,7 +442,7 @@ your own.
   kind): a group CREATED by import with `kind: DEFAULT` becomes a general group of the company, which cannot be
   deleted — not by `delete-business-object-group`, not by the rollback of that import («Can not delete general
   group»), and saving it as `MANUAL` is ignored. It then lists every BO of the company that is in no group `[C]`.
-  So `General` + `DEFAULT` goes only to a stand whose `load-bo-groups` shows exactly that group.
+  So `General` + `DEFAULT` goes only to a stand whose `load-business-object-groups` shows exactly that group.
   `orderIndex` is the group's place in the list — a new group takes it, and
   a matched group is MOVED to it `[C]` (above), so repeat the stand's own value.
 - **Several group lines in one archive work** when every one of them has a `code` `[C]`. Without codes they collapse into the one fixed
@@ -473,7 +473,7 @@ everything after it on that line — the shipped line must be pure minified JSON
   "boTabs": {},                             ← card tabs, e.g. {"CHAT": 1, "FILES": 2} — ADDS only, never removes (§2 «BO card tabs»)
   "printForms": [],
   "name":       {"rus": "Демо из кукбука"}, ← display name
-  "recordName": {"rus": "Демо из кукбука"}, ← same text (shown nowhere; the constructor keeps it = name)
+  "recordName": {"rus": "Демо из кукбука"}, ← same text (the constructor keeps it = name; shown only in the constructor palette's BO list)
   "staticValue": {},
   "description": "",
   "orderIndex": 47480000,                   ← CHANGE IT: the BO's place in its group, a DIFFERENT number per BO — e.g. 100000, 200000, 300000 for three BOs; 47480000 is the sample's (0.9 rule 17)
@@ -2860,7 +2860,7 @@ read the codes off a fresh export instead of transliterating (§3).
 ### 0.21 The generator — more commands (optional, `tools/` only)
 
 `--group-code`, `--group-name` and `--group-order` are required (0.3): for an existing group copy its
-`code`, `name` and `orderIndex` from `load-bo-groups` (the import overwrites the last two), for a new
+`code`, `name` and `orderIndex` from `load-business-object-groups` (the import overwrites the last two), for a new
 group choose a new code, a name and a place:
 
 ```
@@ -4511,7 +4511,7 @@ What a group line of the archive does to the stand's groups:
   own. Only a line that repeats both exactly leaves the group as it was.
 - **Rollback deletes the imported BOs and a group the import CREATED, but does NOT undo a rename** — the
   rollback preview lists no `restoreItems` for the group. Repair by hand: `v2/business-objects/
-  save-business-object-group` with the group object of `load-bo-groups` and the old `name` / `orderIndex`
+  save-business-object-group` with the group object of `load-business-object-groups` and the old `name` / `orderIndex`
   («After the import — the stand-side calls» below).
 - Stand groups made in the UI mostly have `code: null`; an archive can reach only
   a group that has a code. Giving an existing group a code is `save-business-object-group` with `code`

@@ -247,6 +247,11 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/business-objects/load-bo-id-by-kind": return "PERSONBO00000001";
     case "v2/business-objects/load-bo-id-by-code": return byCode(params.boCode)?.id ?? fail(`lKzjTR9WcU :: No bo with code = \`${params.boCode}\``);
     case "v2/business-objects/load-bo-records-by-group-id": return live().map(({ id, name, boCategory }) => ({ id, name, boCategory }));
+    // every BO sits in the one group of load-bo-groups; the empty group is listed only here, as on the stand
+    case "v2/business-objects/load-business-object-groups": return [
+      { id: "N50iWQkw0iySlAKo", name: "Бизнес-объект", code: null, orderIndex: 1110000, isGeneral: false, kind: "MANUAL",
+        records: live().map(({ id, name, boCategory }) => ({ id, name, nameReadonly: false, viewState: null, orderIndex: 0, boCategory })) },
+      { id: "EMPTYGROUP000001", name: "Пустая группа", code: "empty_group", orderIndex: 1120000, isGeneral: false, kind: "MANUAL", records: [] }];
     case "v2/business-objects/load-business-object-by-id": {
       const bo = bos.get(params.businessObjectId);
       if (!bo || bo.deleted) return fail("Cgf5V16VU4 :: данный бизнес-объект не существует");

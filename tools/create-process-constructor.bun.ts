@@ -8,7 +8,7 @@
  * `v2/bo-process-editor2` (versions: dev/test/work, copy, drafts) and `v2/bo-process-editor`
  * (the diagram of ONE version: def, update commands, undo/redo, validation, scripts).
  *
- *   1. v2/business-objects/load-bo-groups                     → resolve the target group
+ *   1. v2/business-objects/load-business-object-groups                     → resolve the target group
  *   2. v2/business-objects/create-bo {boGroupId, boCategory}  → the process exists, «Бизнес-процесс №N»,
  *                                                               with the PROCESS_STATUS field and version 1
  *   3. v2/business-objects/save-business-object-portion       → rename (partial patch; the code FOLLOWS it)
@@ -191,7 +191,7 @@ if (!groupName || !name) {
   process.exit(1);
 }
 
-const groups = await bo<any[]>("load-bo-groups");
+const groups = await bo<any[]>("load-business-object-groups");
 const group = groups.find(g => g.name === groupName || g.id === groupName);
 if (!group) { console.error(`group not found: ${groupName}`); process.exit(1); }
 

@@ -4,7 +4,7 @@
  * no `.mybpm.zip` import, only `/web/v2/business-objects/*` calls.
  *
  * The call sequence (captured from the Angular client, v4.24.25.632):
- *   1. load-bo-groups                      → resolve the target BO group by name
+ *   1. load-business-object-groups                      → resolve the target BO group by name
  *   2. create-bo   {boGroupId, boCategory} → a BO named «Бизнес объект №N» is ALREADY on the stand
  *   3. save-business-object-portion        → rename (partial patch: id + nameMap + recordNameMap + description)
  *   4. generate-business-form-field        → one call per field, returns a ready field DTO with a fresh fieldId
@@ -143,7 +143,7 @@ async function boFieldRefsOf(refBoId: string) {
 }
 
 type BoGroup = { id: string; name: string; code: string | null; orderIndex: number; kind: string };
-const groups = await call<BoGroup[]>("load-bo-groups");
+const groups = await call<BoGroup[]>("load-business-object-groups");
 
 if (has("list-groups")) {
   for (const g of groups) console.log(`${g.id}\t${g.kind}\t${g.name}`);

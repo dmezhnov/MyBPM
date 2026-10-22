@@ -43,7 +43,7 @@ const REQUEST_LOG: Req[] = [];          // every request, in order — what the 
 // Placeholder answers so that --dry-run can walk the whole recipe; they are NOT stand data.
 let dryField = 0;
 function dry(path: string): any {
-  if (path.endsWith("/load-bo-groups")) return [{ id: "<group-id>", name: args.group, kind: "MANUAL" }];
+  if (path.endsWith("/load-business-object-groups")) return [{ id: "<group-id>", name: args.group, kind: "MANUAL" }];
   if (path.endsWith("/create-bo")) return { id: "<bo-id>" };
   if (path.endsWith("/save-business-object-portion")) return "<accumulator-id>";
   if (path.endsWith("/load-business-object-by-id")) return { id: "<bo-id>", name: args.name, formFields: [] };
@@ -98,7 +98,7 @@ async function login() {
 
 /** §0U R1, steps 1-8. */
 async function createBo() {
-  const groups = await call("/v2/business-objects/load-bo-groups", {}, {});                      // 1
+  const groups = await call("/v2/business-objects/load-business-object-groups", {}, {});                      // 1
   const group = groups.find((g: any) => args.group === g.name || args.group === g.id);
   if (!group) { console.error(`group not found: ${args.group}`); process.exit(1); }
 
@@ -162,7 +162,7 @@ if (tokenFile) {
 if (args.login) {
   console.log(await login());
 } else if (has("groups")) {
-  for (const g of await call("/v2/business-objects/load-bo-groups", {}, {})) console.log(`${g.id}\t${g.kind}\t${g.name}`);
+  for (const g of await call("/v2/business-objects/load-business-object-groups", {}, {})) console.log(`${g.id}\t${g.kind}\t${g.name}`);
 } else if (flag("show")) {
   await show(flag("show")!);
 } else if (has("create-bo")) {

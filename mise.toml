@@ -220,6 +220,8 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.count.notifications === 1],
   ["stand_read", { path: "import-structure/cancel-import" }, (r) => /not a read method/.test(r)],
   ["stand_call", { path: "v2/auth/v3/login" }, (r) => /refused/.test(r)],
+  // an empty group is listed (load-bo-groups would hide it); the «dup» bo_create below targets it
+  ["bo_groups", {}, (r) => r.length === 2 && r[1].name === "Пустая группа" && r[1].bos.length === 0],
   // the constructor: a BO with a pair row, a dropdown and two fields on a tab; edit + delete + add; codes; a composite; the delete
   ["bo_create", { group: "Бизнес-объект", name: "MCP probe client", code: "mcp_probe_client", fields: [
     { label: "Наименование", type: "INPUT_TEXT", code: "name", required: true }, { label: "Телефон", type: "INPUT_TEXT", code: "phone", cols: 8 },
@@ -235,7 +237,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
       && r.fields[6].code === "comment" && r.fields[6].grid === "0/21/15/3"],
   ["bo_code_set", { code: "mcp_probe_client", newCode: "mcp_probe_customer" }, (r) => r.was === "mcp_probe_client" && r.code === "mcp_probe_customer"],
   ["bo_code_set", { code: "mcp_probe_customer", fieldId: "@bo_create.fields.0.fieldId", newCode: "title" }, (r) => r.was === "name" && r.code === "title"],
-  ["bo_create", { group: "Бизнес-объект", name: "MCP probe dup", code: "mcp_probe_customer" }, (r) => /taken/.test(r)],
+  ["bo_create", { group: "Пустая группа", name: "MCP probe dup", code: "mcp_probe_customer" }, (r) => /taken/.test(r)],
   ["co_build", { group: "Бизнес-объект", name: "MCP probe composite", code: "mcp_probe_co", attrs: [
     { links: [{ bo: "MCP probe client", field: "Наименование" }] },
     { label: "Контакт", code: "contact", links: [{ bo: "@bo_create.id", field: "Мобильный" }, { bo: "@bo_create.id", field: "E-mail" }] }] },
