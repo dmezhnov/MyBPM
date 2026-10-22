@@ -970,6 +970,9 @@ columns), the inner keys are the fields shown on the card:
 - **A template is not a board.** It only keeps the BO drawable; it switches no kanban on anywhere. Whether a
   menu item shows a board is decided by 0.5d «Kanban only by `status`» — a template for a client type or a
   category is written, a menu kanban by it is not.
+- **Only an archive BO depends on this key**: a dropdown added by the stand's portion save (the constructor's own
+  call) gets a default card from the server (header = the first field), a dropdown that arrives in an archive gets nothing but
+  what the line carries `[C]`.
 - A constructor-made BO exports `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` — an empty card; fill
   `kanbanFields` in that line and re-import the one-BO archive: the BO is updated in place (same id, records kept) `[C]`.
 - The inner key is the CODE of the field shown on the card — a key of `dynamicFields` with
@@ -2389,9 +2392,13 @@ and the archive carries the file itself in a separate line, placed BEFORE the `B
   `ExportStructFileDto` lines) unless the forms changed; delete stray copies with `delete-print-form`
   (§8 «After the import — the stand-side calls»).
 - Generator: `--print-form "Договор:Dogovor:path/to/template.docx[:PDF|DOCX]"`, repeatable. A minimal
-  three-part .docx (`[Content_Types].xml`, `_rels/.rels`, `word/document.xml`) is accepted. Template
-  placeholders were not explored `[U]`. The stand-side API for print forms is `MYBPM-UI-API.md` §5i
-  «Print forms».
+  three-part .docx (`[Content_Types].xml`, `_rels/.rels`, `word/document.xml`) is accepted.
+- **Template placeholders** `[C]`: `${<label>}`. The stand offers as variables every dynamic field label of
+  the BO, `<reference label>_<child field label>` for a field of a referenced BO, and system fields («Автор»,
+  «Дата создания», «Текущая дата» …, also with the `<reference label>_` prefix). A placeholder with no value
+  stays literal in the result. Any other label is still a variable that takes a test value;
+  `${Наименование бизнес объекта}` is NOT a built-in variable. How a real record fills them is not checked `[U]`.
+- The stand-side API and UI for print forms are `MYBPM-UI-API.md` §5i «Print forms».
 
 ### 0.14 Kanban — the card template travels in the archive `[C]`
 
@@ -2401,7 +2408,8 @@ A kanban is TWO things, and the archive can carry BOTH:
   shape and the «cardTemplate is null» failure: 0.5c (the MAP view dies the same way, §2 «BO views»). It
   belongs to the BO, not to any menu item: whatever place shows this BO as a board reads it from here. A
   BO already broken so is repaired by re-importing its line with the template (keep the `kanbanFields` wrapper —
-  without it the import is APPLIED and changes nothing); `save-kanban-card-template` does not repair it.
+  without it the import is APPLIED and changes nothing); the stand call `save-kanban-card-template` repairs it too
+  (`MYBPM-UI-API.md` §7).
 - the **place that shows the board**, with its column field `[C]`. Two exist:
   - the **BO's own registry** (opened from «Бизнес-объекты», not from a menu) needs NO switch: its view chooser
     lists «Канбан по полю: <label>» for every `DROPDOWN_SINGLE` of the BO by itself, and the board renders
@@ -3058,8 +3066,9 @@ The registry views «Календарь», «Карта», «Группиров�
   (`MYBPM-UI-API.md` §5l, trap 62). The flag and `groupingInfo` store and travel; do not promise a user a grouping view.
 - **The calendar's event-title fields do NOT travel** — no key in the export; a re-import leaves the stand's titles,
   a new BO gets a default. Set them on the stand (`v2/calendar/save-calendar-view-titles`, §8 «After the import — the stand-side calls»). The
-  calendar hover card is `calendarCardTemplates` (travels; its shape beyond the empty template of 0.4 and its effect
-  are not known yet `[U]` — §18, as are those of `timelineTemplates`; ship both as 0.4 prints them).
+  calendar hover card is `calendarCardTemplates` (travels), the Gantt columns `timelineTemplates` (what each does on screen:
+  `MYBPM-UI-API.md` §5l); their archive shape beyond the empty templates of 0.4 is not known yet `[U]` — §18; ship
+  both as 0.4 prints them and set them on the stand.
 - Nothing checks that a map has a `GEO_POINT` or a grouping a reference field — the flag is accepted either way.
 - Generator: `tools/make-probe-archive.bun.ts --calendar --map --grouping`, a level by
   `--field "Связь:BO@<boId>@Code!viewType=SINGLE,groupingInfo.nodeTreeActive=true,groupingInfo.nodeTreeLevel=0"`.
@@ -6877,7 +6886,7 @@ here; the rules themselves are §0X.4.
 - `[U]` Whether an import applies `tableWidth` — check: change it in an export, import, read the field back.
 - `[U]` Scalar `defaultValue` / `defaultValueMap` (text, number, date, checkbox) — check: set one in the
   constructor, export, re-import onto a copy, open «Добавить» and read the draft value.
-- `[U]` The shape and effect of `calendarCardTemplates` and `timelineTemplates` — check: set each in the
+- `[U]` The archive shape of `calendarCardTemplates` and `timelineTemplates` — check: set each in the
   constructor («Календарь» hover card, «Диаграмма Ганта» columns), export, re-import onto a copy.
 - `[U]` A field added to a built-in BO (Person) through its archive line — check: on a scratch field, export
   Person's structure if the basket offers it, append a field, import, read `load-business-object-by-id`.

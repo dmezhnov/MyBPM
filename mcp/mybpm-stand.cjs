@@ -2253,7 +2253,7 @@ async function boPagesOf(s, bo, views, base) {
     const c = t?.cardTemplate;
     const empty = !c || !["header", "content", "footer"].some((k) => c[k]?.length);
     if (empty)
-      notes.push(`kanban «${v.kanban}»: the BO has no card template for this dropdown — the board opens with blank cards until kanban_card_save sets one (UI-API §7)`);
+      notes.push(`kanban «${v.kanban}»: the BO has no card template for this dropdown — the board dies with «cardTemplate is null» once a record exists, until kanban_card_save sets one (UI-API §7)`);
   }
   if (v.calendar && !bo.isCalendarEnabled)
     notes.push("calendar: the BO's own calendar switch (isCalendarEnabled, §5l) is off — the view stays empty until it is on and a FULL_DATE has needShowToCalendar");
@@ -4327,7 +4327,7 @@ var tools = [
   {
     name: "kanban_card_save",
     write: true,
-    description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. The stand has no call for it — the card comes only through an archive (§7), so the tool exports the BO's structure, sets kanbanCardTemplates.<dropdown> in its BoStructDto (MYBPM-IMPORTS.md 0.5c), imports that one-BO archive and reads load-kanban-template back. Fields: codes (or labels) of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it. The smallest card is one header field — the BO's name. Without it the BO's kanban dies with «cardTemplate is null» once a record exists; a menu item's kanban view needs it too (menu_save). The import leaves a log row and a bell entry; it can be rolled back (import_rollback) while it is the latest. Ask the user first; dryRun:true = export + analysis only, the import is then cancelled.",
+    description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. The stand's own call is save-kanban-card-template (§7); this tool goes through an archive instead: it exports the BO's structure, sets kanbanCardTemplates.<dropdown> in its BoStructDto (MYBPM-IMPORTS.md 0.5c), imports that one-BO archive and reads load-kanban-template back. Fields: codes (or labels) of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it. The smallest card is one header field — the BO's name. Without it the BO's kanban dies with «cardTemplate is null» once a record exists; a menu item's kanban view needs it too (menu_save). The import leaves a log row and a bell entry; it can be rolled back (import_rollback) while it is the latest. Ask the user first; dryRun:true = export + analysis only, the import is then cancelled.",
     props: {
       boId: { type: "string" },
       code: { type: "string", description: "The BO code instead of boId" },
