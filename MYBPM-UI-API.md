@@ -790,7 +790,8 @@ MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you n
    `{"RUS": "…"}` `[I]`); its xlsx template has the columns «Код» / «Значение» (§6).
 4. **Moving a kanban card = changing the record's column dropdown** `[C]`: §6b `save-field-value` with the
    new option id, then save — it runs the dropdown's «Изменение поля» hook like any form change. The board's
-   own drag call (`v2/kanban/move-kanban-card`) is not mapped yet `[U]` (§12).
+   own drag is `v2/kanban/move-kanban-card` P `{boId, fieldId, optionId, instanceId}` `[C]` (§7); whether it runs
+   that hook is not checked `[U]` (§12).
 5. **Delete / archive / restore / duplicate a record**: the API calls are named in §6a «Related in the same
    controller» (`delete-bo-instance` with `{businessObjectId, boInstanceIds}` in the PARAMS `[C]`, trap 46); the UI controls and the params
    of `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` are not known yet `[U]` (§12).
@@ -2052,13 +2053,22 @@ settings).
 - `generate-business-form-field` returns a ready ~60-key field DTO with a fresh `fieldId` and `code: null`.
   Set `label`, `labelMap` and `gridPosition`, leave the code alone.
 - **`save-business-form-field` `{businessObjectId, fieldList}` does NOT create fields** — it answers 200
-  with an empty body and nothing is written `[C]`. It is the **registry-column writer** `[I]`: the registry
-  editor («Список» → the `app-columns` header row: `+`, drag, resize, trash) sends `B {businessObjectId,
-  fieldList:[{fieldId, archetype, tableColToShow, tableColOrderIndex, tableWidth}]}` — the call §5h saw make
-  fields registry columns. On the FIRST card save of a BO with no columns the client adds the first 3 fields by
-  grid position (not `TAB_GROUP` / `PROGRESS_BAR`) itself `[I]`. Widgets and `PROGRESS_BAR` are never offered as
-  columns; the last column cannot be deleted `[I]`. Setting `tableColToShow` / `tableColOrderIndex` on the field
-  DTO of the portion save does the same `[C]`.
+  with an empty body and nothing is written `[C]`. It is the **registry-column writer** `[C]`: the registry
+  editor («Список» view → the header row of the registry) saves every action AT ONCE, there is no СОХРАНИТЬ.
+  Body `B {businessObjectId, fieldList:[…]}`, each entry carries `fieldId` and `archetype`:
+  - **add** — the blue «+» at the end of the last header cell → a picker (search + a checkbox per field, a
+    ticked row shows its order number); a tick sends `[{fieldId, tableColToShow:true, tableColOrderIndex:<last+1>}]`,
+    then a second call re-indexes ALL columns `{tableColToShow:true, tableColOrderIndex:0..}`. Escape does not
+    close the picker — click a blank part of the page;
+  - **remove** — the trash on a hovered header cell (no confirm) or an untick: `[{fieldId, tableColToShow:false}]`,
+    then the re-index call of the rest. **The last column cannot be removed**: its trash sends nothing, its
+    checkbox is greyed;
+  - **reorder** — drag a header cell by its label: every column `{fieldId, tableColOrderIndex}` in the new order;
+  - **width** — drag the border between two cells: every column with `tableWidth` in px on the resized one,
+    `null` on the others.
+  On the FIRST card save of a BO with no columns the client adds the first 3 fields by grid position (not
+  `TAB_GROUP` / `PROGRESS_BAR`) itself `[I]`. Widgets and `PROGRESS_BAR` are never offered as columns.
+  Setting `tableColToShow` / `tableColOrderIndex` on the field DTO of the portion save does the same `[C]`.
 - The constructor DTO from `load-business-object-by-id`: `id, idLong, name, recordName, nameMap,
   recordNameMap, staticValueMap, instanceViewType, orderIndex, description, code, formFields[], kind,
   boTabs, delBoTabs, isDictionary, hasScript, isCodeReadonly, boCategory, sortFieldId, …`. **`formFields`
@@ -2101,11 +2111,11 @@ write. Open questions: §12.
 | Delete a field | gear → the LAST icon (trash) → at once the script-usage analysis → dialog «Удаление поля: использование в скриптах» («Места использования» or «Использований в скриптах не найдено») with УДАЛИТЬ ВСЁ РАВНО / ОТМЕНИТЬ; the field leaves the canvas, **nothing is written until the bottom СОХРАНИТЬ** `[C]` | `v2/delete-script-usage/analyze-field` P `{boId, fieldId}` → `{analyzeId}`, `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}`; on УДАЛИТЬ ВСЁ РАВНО `v2/business-objects/load-field-usage` P `{boId, fieldId}` → `{isUsedForKanban, menuItemNames}` (a second dialog when either is set `[I]`); СОХРАНИТЬ → portion save `{businessObject, editedFields:[], addedFieldIds:[], deletedFieldIds:[fieldId]}` `[C]` |
 | Field lock (a dynamic or a system field) | the lock icon of the field row → the field's gear popover on its lock tab: «Все операции доступны ВСЕМ / ВЫБОРОЧНО», then per operation (eye = Просмотр, pencil = Редактировать) «ВСЕМ / ВЫБОРОЧНО» + «Выберите» → tree (Выбрать все, Автор (инициатор), users, groups, Еще…; close it by a click on a blank part of the popover). ВЫБОРОЧНО pre-adds an «Автор» chip. A system field (`CREATED_AT` …) shows only eye + pencil. The popover's СОХРАНИТЬ writes AT ONCE, the lock turns orange `[C]` | `save-field-access-group` B `{businessObjectId, fieldId, accessGroup}` (`fieldId: "<NATIVE_TYPE>"` for a system field), then `save-bo-field-chosen-access-right` P `{boId, fieldId, chosenAccessRight:true}` `[C]` (R5). **A reset to ВСЕМ in the UI sends `accessForAll:true` but leaves the subjects in the body** (and the flag `false`) — the field is open again `[C]`; the API reset with `orgUnitToDelete` (R5) leaves no residue |
 | Widget lock (BUTTON, CAPTCHA, CURRENT_USER, SIGNATURE, CURRENT_* dates) | the lock icon of the widget row → a SMALL popover with Просмотр only (ВСЕМ / ВЫБОРОЧНО + Выберите) and СОХРАНИТЬ / ОТМЕНИТЬ; **IFRAME has no lock** `[C]` | `v2/<widget>/load-access-group` / `save-access-group` P `{boId, <widget>Id}` B the access group itself, no wrapper and NO chosen-access-right call (`[C]` for BUTTON, the rest by analogy `[I]`); controllers and id names: §5i «A widget's code and url» |
-| Registry columns | «Список» view → the `app-columns` header row: `+`, drag, resize, trash | `save-business-form-field` (§5b) |
-| Registry default sort | «Список» → the column's sort icon: asc / desc / unset | `save-bo-table-sort` PARAMS `{boId, fieldId, order}` (`ASC`/`DESC`; `fieldId` omitted for unset) `[C]` (§7) |
+| Registry columns | «Список» view → the registry header row: «+» picker, drag, border resize, trash — each AT ONCE; the last column stays `[C]` | `save-business-form-field` (§5b) `[C]` |
+| Registry default sort | «Список» → hover a column → sort icon; a click cycles ASC → DESC → off, each AT ONCE; one sort per BO `[C]` | `save-bo-table-sort` PARAMS `{boId, fieldId, order}` (`ASC`/`DESC`); off = `{boId, order:"UNSET"}` without `fieldId` `[C]` (§7) |
 | Calendar header titles / hover card | «Календарь» → «Настройка отображения заголовка:» / «Настройка отображения информации при наведении» | `v2/calendar/save-calendar-view-titles` PARAMS `{boId, titles}`; `v2/calendar/save-calendar-card-template` B the template, P `{boId}` (body shape and effect `[U]`, §12) |
 | Timeline columns | «Диаграмма Ганта» → one columns table per `PERIOD` / `PERIOD_TIME` field | `v2/timeline/save-columns` B cols, P `{boId, timelineFieldId}`; `remove-column` P `{boId, timelineFieldId, fieldId}`; `save-table-locations-for-timelines` B `[{fieldId, archetype, gantTableLocations}]`, P `{boId}`; the first card save adds the first field as a column of every empty timeline |
-| Record window size | a viewer resizes the record dialog (per user or per BO: §12) | `save-business-object-grid-layout-position` `[C]` (R1 «Layout», §5i) |
+| Record window size | the eye icon of the canvas header → the record preview → corner drag, at once; per BO, a viewer cannot resize (§5j) `[C]` | `save-business-object-grid-layout-position` `[C]` (R1 «Layout», §5i) |
 | Print forms | rail → «Печатные формы» → panel: list + a draft dialog (add / edit) | §5i «Print forms» `[C]` |
 | Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
 | BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
@@ -4338,8 +4348,12 @@ call has its args in the PARAMS:
 | 3 | `save-name {draftId, name}`, `save-type {draftId, type}` | type = the OUTPUT format `PDF` / `DOCX` |
 | 4 | `save-file-Id {draftId, fileId}` | note the capital `I`. → `{fileName, pageCount}` |
 | 5 | `apply-draft {boId, draftId}` | **asynchronous**: `load-print-forms` right after it may still be empty |
-| read | `load-print-forms {boId}` → `[{printFormId, name, fileType, orderIndex}]`; `load-print-form {boId, printFormId}` → `+ fileId, fileInfo`; `get-print-form-code {boId, printFormId}` | the server derives the code from the name («Проба ПФ подпись» → `Proba_PF_podpis`); `save-code` changes it |
-| other | `delete-print-form {boId, printFormId}`, `remove-draft {draftId}`, `save-print-form-order-indexes`, `load/save-access-group {boId, printFormId}`, `load-test-values` / `save-test-value` | `[U]` except delete |
+| read | `load-print-forms {boId}` → `[{printFormId, name, fileType, orderIndex}]`; `load-print-form {boId, printFormId}` → `+ fileId, fileInfo`; `get-print-form-code {boId, printFormId}` | the server derives the code from the name («Проба ПФ подпись» → `Proba_PF_podpis`); the change-code dialog changes it (below) |
+| order | `save-print-form-order-indexes` P `{boId}` B `[{printFormId, orderIndex}]` | ALL rows, `0..n-1` in the new order → `printForms.<id>.orderIndex` |
+| access | `load-access-group {boId, printFormId}` → the generic access DTO (`all, useAll, view, edit, create, delete, archive, export, duplicate, add`); `save-access-group` P `{boId, printFormId}` B the whole DTO | → `printForms.<id>.accessGroupId`. The UI uses only `view` («Просмотр») and `export` (download) |
+| test values | `load-test-values {boId, draftId, type}`, `type` = `TEMPLATE` (the template's placeholders) / `BO` (every dynamic field label) / `NATIVE` (system fields) → `[{label, value, isFound}]`; `save-test-value` P `{draftId}` B `{label, value}` | stored apart from the BO, one set per BO keyed by label (below) |
+| download | `GET v2/print-form/download-test ?boId&draftId` (a draft) or `?boId&printFormId` (a saved form) | the template filled with the test values; file name = the template's, extension of `fileType` |
+| delete | `delete-print-form {boId, printFormId}`, `remove-draft {draftId}` | other rows keep their `orderIndex` |
 
 An export carries the template itself: `printForms[]` on the BO and one `ExportStructFileDto` line per file
 (`MYBPM-IMPORTS.md` §0.13 «Print forms»).
@@ -4349,6 +4363,36 @@ An export carries the template itself: `printForms[]` on the BO and one `ExportS
   (both get the same code). Read `load-print-forms` before retrying. `delete-print-form` is asynchronous as
   well — the form is still listed for a few seconds.
 - **Re-imports and rollbacks multiply forms** (trap 71): a re-import matches forms by `newId`, not by code.
+- **Template placeholders** `[C]`: `${<field label>}` (`MYBPM-IMPORTS.md` §0.13 «Print forms»). A placeholder
+  with no value stays literal in the result.
+
+#### Print forms in the UI `[C]`
+
+- **The panel** exists only after the record-card rail «+» picker ticks «Печатные формы» and the card
+  СОХРАНИТЬ saves it (§5k). Its rail icon opens the list (`load-print-forms`) with «Добавить документ» at the
+  bottom.
+- **«Добавить документ»** → dialog «Добавление печатной формы» = `create-draft`. Typing «Наименование» =
+  `save-name` at once; the radio «Файл при скачивании» DOCX / PDF = `save-type` at once; «Шаблон(*.docx)» takes
+  only a .docx (upload → `save-file-Id` → `load-test-values TEMPLATE`) and shows a page preview. The right pane
+  «Переменные» has tabs «Из шаблона» / «Из объекта» / «Системные» (`TEMPLATE` / `BO` / `NATIVE`) with a test
+  value per row (`save-test-value` on typing). «Скачать с тестовыми значениями» = `download-test` of the
+  draft. СОХРАНИТЬ (grey until name + template) = `apply-draft`; ОТМЕНИТЬ or a backdrop click = `remove-draft`.
+- **A row** carries, left to right: the type icon (pdf/docx — downloads the form with the test values), the
+  gear (the change-code dialog «Изменение кода Печатной формы»: `print-form/refresh-code` →
+  `analyze-code-usage {boId, printFormId}`, `verify-print-form-code {boId, printFormCode}` while typing,
+  «ИЗМЕНИТЬ КОД» = `apply-new-code {newPrintFormCode, refreshId}`, closes silently), the pencil (dialog
+  «Редактирование печатной формы» = `create-draft {boId, printFormId}`), the lock (access popover: «Просмотр» /
+  download, «ВСЕМ / ВЫБОРОЧНО» → `save-access-group`), the trash (confirm «Удаление печатной формы» →
+  `delete-print-form`, the row drops locally). Dragging a row = `save-print-form-order-indexes` for all rows,
+  sent even when the row lands where it was.
+- **Renaming a form regenerates its code** from the new name: a custom code is replaced by the transliterated
+  new name, so whatever names the old code (a SIGNATURE's `printFormCodes`) no longer finds the form `[I]`. An
+  edit that keeps the name keeps the code. Set the code again with the gear dialog after a rename.
+- **Test values are shared by all print forms of the BO**, keyed by label: a new form's dialog opens with them
+  filled, and a form never given a value downloads with them.
+- **A new form is listed FIRST** until an order is saved (every form has `orderIndex` 0).
+- **`apply-draft` and the list reload right after it may show the OLD name** (stale read); reopening the panel
+  shows the new one.
 
 #### A nested table (`type:"BO"`, `viewType:"TABLE"`) on a record card `[C]`
 
@@ -4429,11 +4473,14 @@ The settings of the BO ITSELF that sit in the constructor header and its gear po
 |---|---|---|---|
 | name | header «Наименование:» input | portion `{businessObject:{id, nameMap, recordNameMap, description}}` | `name` |
 | record name | — (no control of its own) | the same portion, `recordNameMap` | `recordName` |
+| fields that name a record | «Карточка» view → gear right of the BO name in the canvas header → popover: search «Найти поля для заголовка карточки» + a checkbox per DYNAMIC field (no system fields, no `TAB_GROUP`), order badges 1, 2 …; tick / untick writes AT ONCE; no drag — a re-tick moves the field to the END | `save-bo-fields-for-bo-name` (§5i «Название записи») | `titleToShow` / `titleOrderIndex` on each field |
 | description | header centre textarea | the same portion, `description` | `description` |
 | code | gear → «Код бизнес - объекта» → pencil → dialog «Изменение кода бизнес объекта» | `save-business-object-code {businessObjectId, businessObjectCode}` — or the dialog's cycle, below | `code` |
 | «Помечать новые (непросмотренные) записи» | gear → checkbox → «Сохранить» | `save-business-object-settings {businessObjectId, businessObjectCode, isTouchEnabled}`; read `load-bo-is-touch-enabled {boId}` | `isTouchEnabled` |
 | «Скрыть кнопку добавить» | gear → checkbox → «Сохранить» | `save-bo-hide-add-button-from-registry {boId, hideAddButtonFromRegistry}` | `hideAddButtonFromRegistry` |
-| Карточка / Вкладка | card editor toolbar switch | `save-boi-view-type {boId, type: "FORM"\|"TAB"}` | `instanceViewType` |
+| Карточка / Вкладка | toggle «Карточка ◯ Вкладка» at the right end of the canvas header, writes AT ONCE | `save-boi-view-type {boId, type: "FORM"\|"TAB"}` | `instanceViewType` |
+| record window size | eye icon right of that toggle → the record preview → drag its bottom-right corner, writes AT ONCE; close = a click outside it | `save-business-object-grid-layout-position` BODY `{boId, gridLayoutPosition}` (§5i «Size of the child's record dialog») | `gridLayoutPosition` |
+| «Список полей» | gear → link → a field chooser (search + every field label, sorted by label) | none — navigation: a label click closes the popovers, opens the tab holding the field and scrolls the canvas to it, highlighted | — |
 
 All of them read back in `load-business-object-by-id` at once. Defaults of a new BO: `isTouchEnabled: true`,
 `hideAddButtonFromRegistry: false`, `instanceViewType: "FORM"`, `description: ""`.
@@ -4455,6 +4502,10 @@ All of them read back in `load-business-object-by-id` at once. Defaults of a new
   to `true` / `false` / `FORM` / `null` — always ship every key.
 - **The popover «Сохранить» re-sends the code** through `save-business-object-settings` (the input there is
   read-only), so that endpoint also changes the code.
+- **The record window size is per BO** `[C]`: one `gridLayoutPosition` on the BO for every user, and only the
+  constructor preview resizes it — the registry's record dialog opens at that size and has no resize handle. The
+  preview re-centres `x = ceil((16 − w) / 2)` and shows `h` capped at `floor(0.9·innerHeight / 30)`; the stored `h`
+  keeps the dragged value.
 
 #### Changing the code — the dialog's cycle, and the two direct calls
 
@@ -4464,6 +4515,13 @@ involvedInAnyMigration}`; poll `is-analyze-done {refreshId}` → `{done, errorMe
 then `apply-new-code {refreshId, newBoCode}` (answers `""` and the new code is live at once `[C]`); `cancel {refreshId}` drops it, though the run on the server goes on to its end `[I]`. The analysis scans the scripts and
 processes that use the code (so the dialog can list them). Fields have the same cycle under `field/refresh-code`
 (`analyze-code-usage {boId, fieldId}`, `apply-new-code {refreshId, newFieldCode}`).
+
+- **In the dialog** `[C]`: opening it starts the analysis (`analyze-code-usage` + `load-business-object-code` +
+  `is-analyze-done`); typing runs `verify-business-object-code` (debounced). A TAKEN code shows only an orange
+  border and a warning icon — no text — and «ИЗМЕНИТЬ КОД» stays grey; the button is also grey while the analysis
+  runs, the code is unchanged or invalid. «ИЗМЕНИТЬ КОД» = `apply-new-code`, the dialog closes with no message and
+  the popover shows the new code at once. Each opening is a new analysis. The same dialog changes the code of a
+  field and of a print form.
 
 - `apply-new-code` before `done` answers `""` and changes NOTHING `[C]`.
 - The dialog checks the new code on the client — not empty, no leading digit or one of `- = \` ~ ! @ # $ % ^ & * ( ) +`,
@@ -4488,8 +4546,10 @@ processes that use the code (so the dialog can list them). Fields have the same 
 The icons on the right-hand rail of a record card. Constructor: «Карточка» view → the rail right of the form →
 `+` → a checkbox list «Чат / Люди / Файлы / История / Печатные формы / Telegram / WhatsApp»; a tab is removed by
 its trash icon (confirm «Удаление вкладки бизнес-объекта. Продолжить?») or by unticking it (no confirm); HISTORY and
-WHATSAPP/TELEGRAM carry a gear instead of a trash icon. The list has a search box; Telegram / WhatsApp are greyed
-out while the company has no messenger set up `[I]`. Nothing is written until the card «СОХРАНИТЬ». Format
+WHATSAPP/TELEGRAM carry a gear instead of a trash icon — for a messenger tab the trash sits in the gear's popover
+(below). The list has a search box; Telegram / WhatsApp are disabled there while the company's messenger is not
+connected `[C]` — so is the whole «Использование» tab of Settings → «Мессенджеры» (§5n). Nothing is written until
+the card «СОХРАНИТЬ». Format
 side: `MYBPM-IMPORTS.md` §2 «BO card tabs in the archive».
 
 **Reorder the rail** `[C]`: the rail has no drag. Its order is the order the boxes were ticked — untick a tab and
@@ -4511,8 +4571,15 @@ its participants, FILES = a file list with «Загрузить файл», PRIN
   messenger connected (`messenger/settings/load-messenger-bo-settings {messengerType}` →
   `{isActive:false, isConnected:false, boAllow:[]}`). The card then shows the tab: without a link field a click
   answers the error «no filed with id =null», with one it is disabled. The constructor offers TELEGRAM/WHATSAPP
-  disabled in its list («выберите данный бизнес-объект в меню Настройки»), so a tab put there by the API or an
-  archive cannot be unticked in the UI — remove it with `delBoTabs`.
+  disabled in its list («выберите данный бизнес-объект в меню Настройки»), so only the API or an archive puts the tab
+  on a BO of a company whose messenger is not connected.
+- **Messenger tab in the constructor** `[C]`: the rail tab's gear → popover with a gear (settings) and a trash
+  in its header. Settings: «Выберите метод поиска» → Логин / Телефон, then «Выберите поле» → the fields of the
+  matching type (Логин → `INPUT_TEXT`; Телефон → `INPUT_PHONE` `[I]`); the popover «СОХРАНИТЬ» writes the link field AT
+  ONCE (`save-messenger-link-field-id`, no card save). A click outside an open dropdown only closes it — the first
+  click on «СОХРАНИТЬ» is eaten. Trash → confirm «Удаление вкладки бизнес-объекта. Продолжить?» → the tab leaves the
+  rail, the card «СОХРАНИТЬ» writes `boTabs` without it; **the link field stays set** — clear it with
+  `fieldId: null` (next point).
 - **Link field** (the field whose value — a Telegram login for `INPUT_TEXT`, a phone for `INPUT_PHONE` — ties a
   record to a messenger chat): `save-messenger-link-field-id {boId, fieldId, messengerType: "TELEGRAM"|"WHATSAPP"}`
   (PARAMS half, answers `""`; `fieldId: null` clears it), read back in `load-business-object-by-id` as
@@ -4551,6 +4618,22 @@ reads «Статус : Новый, Дата : 05.10.2026». A new BO starts with
 default is not stable). **The titles do NOT travel in the archive** — no key in the export; a re-import leaves the
 stand's titles alone, a copy gets its own default. The hover card is `calendarCardTemplates` (§5i, travels).
 Which dates place an event: `needShowToCalendar` (§5h).
+- **Titles in the constructor** `[C]`: «Календарь» view → «Настройка отображения заголовка:» = chips + `⋮`. `⋮` →
+  picker (search + every field, `TAB_GROUP` included; loaded by `load-bo-field-records {boId}`): a tick appends
+  the field, an untick or a chip's `×` drops it — each AT ONCE, the whole list. The chips have no drag: the order is
+  the tick order, a re-tick moves a field to the end. The last chip can go too (`titles: []`), then a link
+  «Выберите» opens the same picker.
+- **Hover card** `[C]`: «Настройка отображения информации при наведении:» → gear → dialog: left = search +
+  «Динамические поля» / «Системные поля» (`v2/calendar/load-calendar-card-fields {boId}` → only the fields not on the
+  card yet), right = the card's header / content / footer. Drag a field onto a zone; the header holds ONE field (a
+  second one replaces it), content and footer several; drag it back onto the list to remove it. «СОХРАНИТЬ» =
+  `v2/calendar/save-calendar-card-template` P `{boId}` B `{header, content, footer, headerDelFieldIds,
+  contentDelFieldIds, footerDelFieldIds, alreadySelectedIds: []}`, items `{fieldId, label, orderIndex, kind:"DYNAMIC",
+  native:false, dynamic:true}` → `""`; the server fills `alreadySelectedIds`, the `*DelFieldIds` are loose client
+  bookkeeping. Read back: `load-calendar-view-settings` → `template.cardTemplate`.
+- **Where the card shows** `[C]`: the registry calendar (view chooser → «Календарь», period link Месяц / Неделя / День)
+  shows it on mouse-over of every event in the MONTH view; in the WEEK view only a timed event (`FULL_DATE`, in the hour
+  grid) gets it, an all-day `DATE` event in the top strip has none. The card lists «label: value» per field.
 
 **Map.** The registry «Карта» is a Leaflet map of the BO's `GEO_POINT` values, one marker per record.
 Points come from `v2/geo/load-bracket-boi-points` (body = the registry bracket filter `{boId, dynamicFilters,
@@ -4561,8 +4644,9 @@ fields:[{label, displayValue, …}]}]` — **and the `fields` of a point are the
   the kanban view and the constructor's kanban editor die with the same error. A BO built in the constructor gets
   the template on its own; an ARCHIVE BO gets it only from `kanbanCardTemplates` (`MYBPM-IMPORTS.md` 0.5c), and
   an archive BO with a dropdown imported without one is broken this way (trap 61).
-- `v2/kanban/save-kanban-card-template` does NOT repair it (it fills another store, §7). **A re-import with
-  `kanbanCardTemplates` for that dropdown DOES** — the map, the kanban view and the editor come back, records kept.
+- **Two repairs, both keep the records** `[C]`: `v2/kanban/save-kanban-card-template` P `{boId, fieldId:<dropdown>}`
+  with a header field (§7), or a re-import with `kanbanCardTemplates` for that dropdown — the map, the kanban view and
+  the editor come back.
 - A BO with a GEO_POINT and no dropdown at all needs no template `[C]`: its point carries EVERY form field,
   and the map opened from a menu item with `isMapEnabled` shows the marker.
 
@@ -4580,6 +4664,33 @@ column), saved by `v2/boi-grouping/save-business-object-grouping-fields` with a 
   `v2/boi-grouping/load-bo-instance-grouping-table` and `load-bo-instance-grouping-root` — both **404** on the
   server; only `load-bo-instance-grouping-search` answers (`{nodes: [], hasNext: true}`). The view shows an empty
   tree. Do not offer grouping to a user; the flag and the levels store and travel, nothing renders them.
+- **The editor** `[C]`: without a `SINGLE`/`MULTIPLE` BO field it shows only a text that there is no such attribute.
+  Left: the toggle (at once); when on, its label becomes a link «Включить группировку :» → a level picker (only
+  `SINGLE`/`MULTIPLE` BO fields): a tick writes `groupingInfo {nodeTreeLevel:0, nodeTreeActive:true}` AT ONCE and
+  asks `v2/boi-grouping/load-business-object-grouping-next-candidate` P `{groupingBo:<boId>, currentBoId:<referenced
+  BO>}` for the next level's candidates; an untick writes `{nodeTreeActive:false, nodeTreeLevel:null}`. Right: the
+  columns header `+` → picker of every field but `TAB_GROUP`; a tick writes `{colToShow:true, colOrderIndex:<n>}`, the
+  hover trash `{colToShow:false}` — AT ONCE, the remaining columns are NOT re-indexed.
+
+**Timeline («Диаграмма Ганта»).** One columns table per `PERIOD` / `PERIOD_TIME` field; a BO without one has no
+timeline. Templates: `v2/timeline/load-templates {boId}` → `[{boId, label, timelineFieldId, columns:[{fieldId, label,
+orderIndex}]}]` (archive key `timelineTemplates`, `MYBPM-IMPORTS.md` §2). Constructor view chooser → «Диаграмма Ганта»
+(`…/editing/<boId>/timeline-editing`), every action AT ONCE `[C]`:
+- `+` → picker (every field but `TAB_GROUP`): a tick = `v2/timeline/save-columns` P `{boId, timelineFieldId}` B
+  `[only the new column {fieldId, label, orderIndex:<last+1>}]` (append) + `save-table-locations-for-timelines` P
+  `{boId}` B `[{fieldId, archetype, gantTableLocations:[{timelineFieldId, colOrderIndex, colToShow:true}]}]`.
+- Hover a header cell → only a trash (no sort): `remove-column` P `{boId, timelineFieldId, fieldId}` + table-locations;
+  an untick in the picker does the same. **The LAST column can be removed** (unlike the registry columns).
+- Drag a header cell = `save-columns` with ALL columns in the new order. The fields' own `gantTableLocations` keep
+  stale indexes then — `timelineTemplates` holds the order. No column resize.
+- **The card «СОХРАНИТЬ» fills empty lists on the CLIENT**: it adds the top field (by `y`, then `x`; not `TAB_GROUP` /
+  `PROGRESS_BAR`) to every timeline with no column (`v2/timeline/save-column-for-timelines` P `{boId,
+  timelineFieldIds}` B `{fieldId, label, orderIndex:0}`); the same client step makes the first 3 fields registry
+  columns when the BO has none (`save-business-form-field`) `[I]`. A portion save over the API does neither.
+- Registry: the view chooser lists «Диаграмма Ганта по полю <label>» per `PERIOD` field →
+  `…/viewing-list/bo/<boId>/timeline-view?fieldId=<periodFieldId>…` (without `fieldId` the page is blank); left table
+  = the template columns in their order, right = bars «dd.mm.yyyy – dd.mm.yyyy», link «Масштаб». A licence banner of
+  the Gantt library sits at the bottom (trap 56).
 
 ### 5m. The BO's sidebar row — «Дублировать», «Переименовать», order, «Добавить в группу», the create-record iframe URL `[C]`
 
@@ -4589,6 +4700,10 @@ The left list of the constructor (`/business-objects/editing/<boId>`) shows the 
 `load-business-object-groups {forEdit: true}` (PARAMS) → `[{id, name, code, orderIndex, kind, records: [{id, name,
 orderIndex, boCategory}]}]`, records sorted by `orderIndex`. Format side: `MYBPM-IMPORTS.md` §2 «BO place in the
 sidebar».
+
+**The list search finds BOs by NAME only** `[C]`: «Поиск» above the groups filters on the client (no call) and
+collapses the groups — open a group to see what matched. A BO code finds nothing there; code → BO is
+`load-bo-id-by-code {boCode}` (or the code line of each BO's header gear, §5j).
 
 **«Дублировать» = `clone-business-object {boId}`** (PARAMS) → `{id, name, orderIndex, boCategory}` of the new BO; the UI
 asks nothing and jumps to the clone's editor (its header still shows the source's name until a reload). What the clone
@@ -4659,7 +4774,9 @@ by API or UI. Every save is a BODY, every answer `""`; a loader reflects the sav
 | «Мессенджеры» → chat registry | `messenger/settings/load-messenger-chat-registry-settings` P `{messengerType}` | `messenger/settings/save-messenger-chat-registry-settings` P `{messengerType}` B `{chatRegistryBoRecord:{id,name}\|null, isCreateUnique}` | one BO per messenger, below |
 
 `messengerType` is `TELEGRAM` or `WHATSAPP`. The record `name` you send is cosmetic — the loaders always return the
-BO's current name.
+BO's current name. **While a messenger is not connected** (`load-messenger-bo-settings` → `isConnected: false`; the
+«Подключение» tab asks for the phone, App id and App Hash id) its «Использование» tab is disabled `[C]` — the checkbox
+and «Выбор бизнес-объекта» do not react; only the API above writes `boAllow` then.
 
 **Physical removal** — one entry per BO: `{record:{id,name}, daysAfterCreation, daysAfterCreationEnabled,
 afterChangeFields:[{id, fieldId, fieldLabel, newValue, newDisplayValue}]}`. The page warns «Внимание, актуальные
@@ -5016,7 +5133,7 @@ SINGLE↔TABLE defect, merge/idempotency, the destructive unknowns and the impor
 `MYBPM-IMPORTS.md` **Part III** (§0X is a self-contained cookbook «build me a file for this BO», §19 the
 evidence). This document keeps the transport: the routes above, the registry kebab and the templates.
 
-## 7. Kanban — SOLVED: the card template belongs in the archive `[C]`
+## 7. Kanban — columns, the card template (API, constructor, archive), the board `[C]`
 
 A kanban is two independent pieces:
 
@@ -5029,10 +5146,36 @@ A kanban is two independent pieces:
    `v2/kanban/load-kanban-fields {boId}` lists both and the board shows the local options as columns.
    A reference field (`BO` / `CO`) and a panel registry offer no kanban view in the constructor `[C]`
    (`MYBPM-IMPORTS.md` 0.5c).
-2. **The card** — per BUSINESS OBJECT: `BoStructDto.kanbanCardTemplates`. An imported BO without it carries `{}`,
-   so the server fails and the view shows «cardTemplate is null». **Ship the template
-   inside the archive** and the kanban works — the format is `MYBPM-IMPORTS.md` §0.5c, keyed by the
-   dropdown's CODE, the card fields by CODE with `locationType` + `archetype`.
+2. **The card** — per BUSINESS OBJECT and dropdown: `kanbanCardTemplates` on the BO. **Adding a `DROPDOWN_SINGLE`
+   in the constructor or over the API makes the SERVER write a default card** `[C]`: header = the first field,
+   content = the other simple dynamic fields by `y` (not `TAB_GROUP`, `FULL_DATE`, `PERIOD` or the dropdown),
+   footer = `PARTICIPANTS` (left out of the answer while that native is not on the form). **An imported BO gets
+   none** — it carries `{}` unless the archive ships the template, so the server fails and the
+   view shows «cardTemplate is null». Three writers, all `[C]`: `save-kanban-card-template` (below), the
+   constructor's card editor (it sends that same call) and the archive (`MYBPM-IMPORTS.md` §0.5c, keyed by the
+   dropdown's CODE, the card fields by CODE with `locationType` + `archetype`). The API call and the archive also
+   repair a BO broken so, records kept; the constructor's editor dies on such a BO with the same error (trap 61).
+
+**Over the API** `[C]`: `v2/kanban/save-kanban-card-template` P `{boId, fieldId:<dropdown fieldId>}` B `{header,
+content, footer, headerDelFieldIds, contentDelFieldIds, footerDelFieldIds}` → `""`. Items are the runtime shape
+below, at least `{kanbanFieldId:"D-<fieldId>"|"N-<NATIVE_TYPE>", cardOrderIndex, fieldKind, type}`; the
+`*DelFieldIds` hold such ids. It is a PARTIAL update: every listed item is set (zone + order), every id of the
+`*DelFieldIds` that is not on the new card is removed, a field in neither stays. It creates the dropdown's entry
+when there is none — the repair of «cardTemplate is null». An EMPTY body returns 200 and does nothing. Read back
+with `load-kanban-template`.
+
+**In the constructor** `[C]`: view chooser → «Канбан» (`…/editing/<boId>/kanban-editing`, «Канбан для выпадающего
+списка с названием - <label>»): one column per option, the first one shows a SAMPLE card with a gear. Gear → dialog:
+left = search + «Динамические поля» (the fields NOT on the card) + «Системные поля» (natives on the form), from
+`load-kanban-card-fields {boId, fieldId}`; right = the card's header / content / footer. Drag a field into a zone,
+between zones, inside one, or back onto the LEFT LIST to remove it (a drop on the empty space below the list does
+nothing); the header holds ONE field (a second one pushes the first back). «СОХРАНИТЬ» / «ОТМЕНИТЬ» appear after the
+first change; СОХРАНИТЬ = `save-kanban-card-template` with `cardOrderIndex` re-numbered 0.. per zone. Close = the
+red ⊗.
+
+**On the board** `[C]`: dragging a card into another column = `has-rights` P `{businessObjectId, boInstanceId,
+type:"EDIT", boiPageType:"KANBAN"}`, then `v2/kanban/move-kanban-card` P `{boId, fieldId, optionId, instanceId}` B
+`{}` → `""`, then `load-bracket-total-card-count` per column.
 
 **The template, as it goes into the BO's line of the archive** (`BoStructDto`, next to `dynamicFields`;
 same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
@@ -5061,13 +5204,8 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   map die with «cardTemplate is null», §5l); keep the `kanbanFields` wrapper — without it the import is APPLIED
   and changes nothing. A constructor-made BO's export already carries
   `kanbanCardTemplates.<dropdown code> = {kanbanFields:{}}` (empty); the one-BO re-import updates the BO in place —
-  same id, records kept `[C]`. MCP connected → `kanban_card_save` does this. The other writer is the constructor UI (below).
-
-- The API route is a dead end: `save-kanban-card-template` (body `{header, content, footer,
-  *DelFieldIds}`, `*DelFieldIds = "D-<fieldId>"`; an EMPTY body returns 200 and does nothing) writes a
-  store that `load-kanban-template` does NOT read. There is **no API that fills `kanbanCardTemplates`** —
-  the constructor UI and the archive are the only writers. `save-business-object-portion` does not carry
-  the key either (a full-DTO re-save changes nothing).
+  same id, records kept `[C]`. MCP connected → `kanban_card_save` does this.
+- `save-business-object-portion` does not carry the key (a full-DTO re-save changes nothing).
 - `v2/kanban/load-kanban-template` answers `{boId, label, kanbanFieldId, cardTemplate:{header, content, footer,
   *DelFieldIds}, hasRights, options:[{id, label, code, color, orderIndex, hiddenInKanban}]}` `[C]`; no card on the
   BO for that dropdown = empty `header` / `content` / `footer` arrays (or a null `cardTemplate`).
@@ -5077,7 +5215,7 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   isNotExistInBo:false, dynamicFieldType|nativeFieldType}`.
 - The rest of `v2/kanban/*` (params `{boId, fieldId}`): `load-kanban-fields {boId}` →
   the dropdowns usable as columns; `load-kanban-card-fields {boId, fieldId}`; `save-business-field-option` (B one
-  option DTO — a column's colour, «Скрыть из списка», order; §5b «Option colour») `[C]`; `move-kanban-card`;
+  option DTO — a column's colour, «Скрыть из списка», order; §5b «Option colour») `[C]`; `move-kanban-card` (above);
   `load-bracket-kanban-cards` (body `{boId, dynamicFilters, nativeFilters, brackets, search, paging,
   ordering, state, kanbanFieldOptionId, kanbanFieldId}`).
 
@@ -5094,7 +5232,8 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   BO with a UNIQUE field the server picks the unique one `[I]`.
 - `v2/business-objects/save-bo-table-sort` takes its arguments in the **PARAMS** half (`{boId, fieldId, order}`);
   sent in the body it answers 200 and writes nothing. With params it writes `sortFieldId` (read back from
-  `load-business-object-by-id`); `fieldId: null` clears it. The ORDER OF A NESTED TABLE does follow it (§5i).
+  `load-business-object-by-id`); `fieldId: null` clears it, the constructor clears it with `order: "UNSET"` and no
+  `fieldId` (its «Список» view: the sort icon of a column cycles ASC → DESC → off, §5b). The ORDER OF A NESTED TABLE does follow it (§5i).
 - **The registry REMEMBERS the sort a header click chose** `[C]`: every later opening (navigation or F5) arrives
   sorted that way until another header is clicked. Whether it is per user or shared is not checked `[U]`.
 - A BO with **no** registry column answers `AccessDenied` «У Вас недостаточно прав на поля, которые выведены
@@ -5374,9 +5513,10 @@ The stand's own behaviour under automation `[C]`:
    sibling's `connectionType`.
 6. A menu icon must come from §4 «Menu icon catalogue» (`phosphor:*` or `menu-item:*`); the server and the
    importer accept any string, and a wrong one leaves the sidebar item without an icon.
-7. A kanban needs `kanbanCardTemplates` ON THE BO, and only the archive (or the constructor UI) can
-   write it — `save-kanban-card-template` fills a store the view never reads (§7). The MAP view needs it too:
-   give every dropdown of an archive BO a template (§5l, trap 61).
+7. A kanban needs `kanbanCardTemplates` ON THE BO. A dropdown added in the constructor or over the API gets a
+   default card from the server; an ARCHIVE BO gets one only from the archive. `save-kanban-card-template` P
+   `{boId, fieldId}` sets or repairs it (§7). The MAP view needs it too: give every dropdown of an archive BO a
+   template (§5l, trap 61).
 8. Excel: every cell must be `inlineStr`; a numeric cell turned `103` into «103.0» and broke a lookup.
 9. Excel headers must have frozen rows or a double bottom border in column A, else the whole file is
    rejected.
@@ -5539,8 +5679,9 @@ The stand's own behaviour under automation `[C]`:
     undo the rename. Always ship `code` (§5 «Verifying an import»). Which group it hits is NOT the one
     with the largest `orderIndex` `[C]`; which one it is stays unknown, and it can no longer be probed —
     every group created now gets a code, and a code cannot be set back to `null` (§5 «group lifecycle»).
-56. **The timeline view («Диаграмма Ганта») shows «Your license key is not valid to work with this
-    version»** at its bottom `[C]` — a banner of the Gantt library; the view works.
+56. **The timeline view («Диаграмма Ганта») shows a licence banner of the Gantt library** at its bottom `[C]` —
+    «Your license key is not valid to work with this version» or «Your license key is too old to work with this
+    version», depending on the stand; the view works.
 57. **An import can be `APPLIED` while the BO it should create does not exist** `[C]` — the
     apply process ended `hasError: true, errorState: "ONLY_INTERMEDIATE_ERRORS"` («no field with code: …»
     from `kanbanCardTemplates` naming a removed field), `load-import-errors` was empty, the import record
@@ -5564,7 +5705,7 @@ The stand's own behaviour under automation `[C]`:
     not migrate scripts that use the old code. §5j.
 61. **An archive BO with a dropdown and no kanban card template has no map** `[C]` — once it holds a
     record, `v2/geo/load-bracket-boi-points` (the «Карта» view), the kanban view and the kanban editor all answer
-    NullPointerException «cardTemplate is null». `save-kanban-card-template` does not repair it; a re-import with
+    NullPointerException «cardTemplate is null». `save-kanban-card-template` P `{boId, fieldId}` repairs it (§7), so does a re-import with
     `kanbanCardTemplates.<dropdown code>.kanbanFields` does. §5l.
 62. **The registry «Группировка» is not implemented server-side** `[C]` — its data calls
     `load-bo-instance-grouping-table` / `-root` are 404, the view stays empty whatever is configured. §5l.
@@ -5611,9 +5752,8 @@ The stand's own behaviour under automation `[C]`:
 
 The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` §20.
 
-- `save-business-form-field` as the registry-column writer (§5b, `[I]`): send one `fieldList` entry with
-  `tableColToShow:false`, re-read `load-business-object-by-id`; also the unit of `tableWidth` and whether it travels
-  in an archive.
+- Whether a registry column's `tableWidth` travels in an archive (export a BO with a resized column, re-import
+  onto a copy).
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
 - §5n settings kinds: how to unset a migration monitor BO; what the `languageTag` an import writes
   into every language changes; whether an org unit (`D-<id>` + its record line) resolves on ANOTHER stand; TELEPHONY,
@@ -5631,7 +5771,7 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   them: the per-language option label (a company with two languages); the second dialog of a field delete when the
   field feeds a kanban or a menu item (`load-field-usage` not empty); nested tab groups (a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
   `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
-  `calendarCardTemplates` body and its effect on the calendar; `timelineTemplates` columns (save, export).
+  `calendarCardTemplates` / `timelineTemplates` through an archive (export shape, re-import onto a copy).
 - Changing a field's TYPE: look for a control in the gear / «Инфо» tab; try `editedFields {fieldId, type}`, re-read.
 - Deleting a BO: what happens to its records, menu items, references from other BOs and composites that use it
   (scratch BO with one of each, delete, re-read each); the UI dialog's buttons.
@@ -5639,8 +5779,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   by drag (watch for `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
   field, then delete it.
-- The record window size: whether `save-business-object-grid-layout-position` written by a viewer's resize is
-  per user or per BO (resize as a second user, re-read as the first).
 - Structure import UI: whether the import log has a rollback control (open an applied import's row); what status
   «ПРЕКРАТИТЬ» leaves on a dry run (`load-import-data`).
 - Script and process versions: the UI control that publishes a version (open the version selector, capture
@@ -5657,8 +5795,7 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - Menu items: the calls behind rename, reorder, «Изменить код», move into another group and
   «Отображать в моб. приложении» / `needCountMenuItem` (click each kebab action with the network log on);
   where a menu item's views (timeline, list) are switched in the UI.
-- Kanban: the card-template editor's save in the constructor and a card drag between columns (capture both;
-  check whether the drag fires the dropdown's «Изменение поля» hook) — `move-kanban-card` params.
+- Kanban: whether a card drag (`move-kanban-card`, §7) fires the dropdown's «Изменение поля» hook.
 - Records: the registry / card controls for Удалить / Архивировать / Восстановить / Дублировать and the params of
   `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` (tick a row, open both kebabs with the
   network log on, replay, re-read with `state:"ARCHIVED"`/`"REMOVED"`); the empty value for non-date types in
