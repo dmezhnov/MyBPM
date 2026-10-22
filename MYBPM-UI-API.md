@@ -4581,7 +4581,7 @@ its participants, FILES = a file list with «Загрузить файл», PRIN
   rail, the card «СОХРАНИТЬ» writes `boTabs` without it; **the link field stays set** — clear it with
   `fieldId: null` (next point).
 - **Link field** (the field whose value — a Telegram login for `INPUT_TEXT`, a phone for `INPUT_PHONE` — ties a
-  record to a messenger chat): `save-messenger-link-field-id {boId, fieldId, messengerType: "TELEGRAM"|"WHATSAPP"}`
+  record to a messenger chat): `v2/business-objects/save-messenger-link-field-id {boId, fieldId, messengerType: "TELEGRAM"|"WHATSAPP"}`
   (PARAMS half, answers `""`; `fieldId: null` clears it), read back in `load-business-object-by-id` as
   `tgLinkFieldId` / `waLinkFieldId`. `get-messenger-link-field-id {boId, messengerType}` →
   `{userSearchType: "LOGIN"|"PHONE", linkFieldId}` LAGS: right after the save it still answered `null`, a few
