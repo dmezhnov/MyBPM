@@ -3038,63 +3038,59 @@ const tools: Tool[] = [
     } },
 
   // 13c. the kanban card (§7; MYBPM-IMPORTS.md 0.5c), participants (R5), the invitation (§3)
-  { name: "kanban_card_save", write: true, description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. The stand's own call is save-kanban-card-template (§7); this tool goes through an archive instead: it exports the BO's structure, sets kanbanCardTemplates.<dropdown> in its BoStructDto (MYBPM-IMPORTS.md 0.5c), imports that one-BO archive and reads load-kanban-template back. Fields: codes (or labels) of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it. The smallest card is one header field — the BO's name. Without it the BO's kanban dies with «cardTemplate is null» once a record exists; a menu item's kanban view needs it too (menu_save). The import leaves a log row and a bell entry; it can be rolled back (import_rollback) while it is the latest. Ask the user first; dryRun:true = export + analysis only, the import is then cancelled.",
+  { name: "kanban_card_save", write: true, description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. Calls the stand's own save-kanban-card-template (§7) — the call the constructor's card editor sends — with the whole card: every field given is placed, every field of the old card not given is removed; then reads load-kanban-template back. Fields: codes, labels or fieldIds of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it — the list the constructor offers (load-kanban-card-fields). The header holds ONE field, as in the constructor; the smallest card is the BO's name in the header. Without a card the BO's kanban dies with «cardTemplate is null» once a record exists (an archive BO without kanbanCardTemplates) and a dropdown saved together with the other fields (e.g. by bo_create) starts with an empty card; a menu item's kanban view needs it too (menu_save). No import log row, no bell entry, no rollback: run it again with the old card (`was`) to undo. Ask the user first; dryRun:true = the body only.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       dropdown: { type: "string", description: "The DROPDOWN_SINGLE (code / label) whose options are the columns" },
       header: { type: "array", items: { type: "string" } }, content: { type: "array", items: { type: "string" } }, footer: { type: "array", items: { type: "string" } },
-      description: { type: "string", description: "The import's description (default: what it sets)" }, dryRun: { type: "boolean" } },
+      dryRun: { type: "boolean" } },
     required: ["dropdown", "header"],
     run: async (a) => {
       const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), fields = bo.formFields ?? [];
       const dd = fieldBy(fields, a.dropdown);
       if (dd.type !== "DROPDOWN_SINGLE") throw new Error(`«${a.dropdown}» is ${dd.type || dd.widgetType || dd.nativeFieldType} — a kanban runs on a DROPDOWN_SINGLE (MYBPM-IMPORTS.md 0.5c)`);
-      const { data } = await exportBos(s, [boId]);
-      const main = unzip(Buffer.from(data)).find((e) => /(^|\/)0000001\.mybpm$/.test(e.name));
-      if (!main) throw new Error("the export holds no 0000001.mybpm");
-      const lines = main.data.toString("utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
-      const dto = (l: any) => String(l["@class"] ?? "").split(".").pop();
-      const line = lines.find((l) => dto(l) === "BoStructDto" && l.code === bo.code);
-      if (!line) throw new Error(`the export has no BoStructDto «${bo.code}»: ${lines.map(dto).join(", ")}`);
-      if (!line.dynamicFields?.[dd.code]) throw new Error(`the dropdown's code «${dd.code}» is not a key of the exported dynamicFields — set its code first (bo_code_set)`);
-      const natives = Object.keys(line.nativeFields ?? {});
-      const kanbanFields: Record<string, any> = {};
-      for (const [loc, keys] of [["HEADER", a.header], ["CONTENT", a.content], ["FOOTER", a.footer]] as const) {
-        (keys ?? []).forEach((key: string, i: number) => {
-          let code = line.dynamicFields?.[key] ? key : undefined, archetype = "DYNAMIC";
-          if (!code && natives.includes(String(key).toUpperCase())) { code = String(key).toUpperCase(); archetype = "NATIVE"; }
-          if (!code) {
-            const f = fields.find((x: any) => x.fieldId === key || x.label === key);
-            if (f?.code && line.dynamicFields?.[f.code]) code = f.code;
-            else if (f?.nativeFieldType && natives.includes(f.nativeFieldType)) { code = f.nativeFieldType; archetype = "NATIVE"; }
-          }
-          if (!code) throw new Error(`card field «${key}»: not a field of the BO — dynamic: ${Object.keys(line.dynamicFields ?? {}).join(", ")}; system on the form: ${natives.join(", ") || "none"}`);
-          if (kanbanFields[code]) throw new Error(`card field «${key}» is placed twice`);
-          kanbanFields[code] = { cardOrderIndex: i, locationType: loc, archetype };
-        });
-      }
-      if (!Object.keys(kanbanFields).length) throw new Error("header: at least one field (the BO's name field)");
-      const old = line.kanbanCardTemplates?.[dd.code];
-      line.kanbanCardTemplates = { ...(line.kanbanCardTemplates ?? {}), [dd.code]: { ...(old ?? {}), kanbanFields } };
-      const name = `kanban-${String(bo.code).replace(/[^\w-]/g, "_")}`;
-      const file = writeArchive(join(CACHE, "archives", name, `${name}.mybpm.zip`), lines.filter((l) => l === line || dto(l) === "BoGroupStructDto"));
-      const r = await analyzeFile(s, file);
-      const bad = r.status !== "ANALYZED" || r.errors.length || r.conflicts.length || r.error;
-      if (bad || a.dryRun) {
-        await s.call("import-structure/cancel-import", { importId: r.importId });
-        await s.call("import-structure/remove-import", { importId: r.importId }).catch(() => {});
-        if (bad) return { stopped: "the stand's analysis of the card archive is not clean — nothing written, the import cancelled", file, report: r };
-        return { dryRun: true, file, was: old?.kanbanFields ?? null, kanbanFields, report: { status: r.status, bos: r.bos }, next: "analysis clean, import cancelled; run again without dryRun after the user agreed" };
-      }
-      const applied = await applyImport(s, r.importId, a.description || `Карточка канбана ${bo.code} по ${dd.code}`);
-      const t = await s.call("v2/kanban/load-kanban-template", { boId, fieldId: dd.fieldId }).catch((e: any) => ({ error: e.message }));
+      if ((a.header ?? []).length !== 1) throw new Error("header: exactly one field (the constructor's card has room for one) — usually the BO's name field");
+      const p = { boId, fieldId: dd.fieldId };
+      const [t, offered] = await Promise.all([s.call("v2/kanban/load-kanban-template", p), s.call("v2/kanban/load-kanban-card-fields", p)]);
+      const ZONES = ["header", "content", "footer"] as const;
+      const old = t?.cardTemplate ?? {};
+      // what may go on the card = the stand's own list: the fields on the card now + the ones the constructor offers
+      const items: any[] = [...ZONES.flatMap((z) => old[z] ?? []), ...(offered?.dynamicFields ?? []), ...(offered?.nativeFields ?? [])];
       const named = (x: any) => { // kanbanFieldId = "D-<fieldId>" | "N-<native type>"
         const id = String(x?.kanbanFieldId ?? x).replace(/^[DN]-/, "");
         return x?.nativeFieldType ?? nameOf(fields.find((f: any) => f.fieldId === id) ?? { code: id });
       };
-      const c = t?.cardTemplate;
-      const card = c ? { header: (c.header ?? []).map(named), content: (c.content ?? []).map(named), footer: (c.footer ?? []).map(named) } : t;
-      return clean({ boId, dropdown: dd.code, was: old?.kanbanFields ?? null, set: kanbanFields, card, import: { importId: applied.importId, status: applied.status, error: applied.error, canRollback: applied.log?.canRollback },
-        next: "notifications_read + notifications_clear (the import left «Анализ импорта завершен»)" });
+      const cardOf = (c: any) => Object.fromEntries(ZONES.map((z) => [z, (c?.[z] ?? []).map(named)]));
+      const itemFor = (key: string) => {
+        const f = fields.find((x: any) => x.code === key || x.fieldId === key) ?? fields.find((x: any) => x.label === key);
+        const ids = [f?.nativeFieldType ? `N-${f.nativeFieldType}` : f ? `D-${f.fieldId}` : null, `N-${String(key).toUpperCase()}`];
+        const it = items.find((x) => ids.includes(x.kanbanFieldId)) ?? items.find((x) => x.label === key);
+        if (!it) throw new Error(`card field «${key}»: not a field the card can show — offered: ${[...new Set(items.map(named))].join(", ") || "none"}`);
+        return it;
+      };
+      const body: any = {}, placed = new Set<string>();
+      for (const z of ZONES) body[z] = (a[z] ?? []).map((key: string, i: number) => {
+        const it = itemFor(key);
+        if (placed.has(it.kanbanFieldId)) throw new Error(`card field «${key}» is placed twice`);
+        placed.add(it.kanbanFieldId);
+        const { label, ...item } = it;
+        return { ...item, cardOrderIndex: i };
+      });
+      // a partial update on the stand: an old field is removed only when its id is listed here and not placed
+      for (const z of ZONES) body[`${z}DelFieldIds`] = (old[z] ?? []).map((x: any) => x.kanbanFieldId).filter((id: string) => !placed.has(id));
+      const was = cardOf(old);
+      if (a.dryRun) return { dryRun: true, boId, dropdown: dd.code, was, body, next: "run again without dryRun after the user agreed" };
+      await s.call("v2/kanban/save-kanban-card-template", p, body);
+      // the stand writes the card with a delay: it shows up in load-kanban-template a moment after the call answered
+      const asked = Object.fromEntries(ZONES.map((z) => [z, body[z].map(named)]));
+      const differ = (c: any) => ZONES.filter((z) => JSON.stringify(c[z]) !== JSON.stringify(asked[z]));
+      let card: any;
+      for (let i = 0; i < 20; i++) {
+        card = cardOf((await s.call("v2/kanban/load-kanban-template", p))?.cardTemplate);
+        if (!differ(card).length) break;
+        await sleep(500);
+      }
+      const mismatch = differ(card).map((z) => `${z}: asked ${asked[z].join(", ") || "—"}, the stand has ${card[z].join(", ") || "—"} after 10 s`);
+      return clean({ boId, dropdown: dd.code, was, card, mismatch });
     } },
   { name: "record_participants", write: true, description: "The participants («Участники») of one record (R5): read them, add users, remove them. A participant sees the record when the BO's rights grant «Участники» (rights_save participants:true); the author is a participant from the start. Each added user gets a bell event «Вас добавили». Users by e-mail, name or id (persons_find). No add / remove → only the list. Ask the user first before a change.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, id: { type: "string", description: "The record id (records_find)" },

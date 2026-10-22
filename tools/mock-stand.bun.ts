@@ -433,6 +433,24 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
           : { kanbanFieldId: `D-${b!.fields!.find((x) => x.code === k)?.fieldId}`, fieldKind: "DYNAMIC" });
       return { boId: params.boId, kanbanFieldId: params.fieldId, cardTemplate: { header: at("HEADER"), content: at("CONTENT"), footer: at("FOOTER") }, options: dd?.options ?? [] };
     }
+    case "v2/kanban/load-kanban-card-fields": { // the fields NOT on the card yet
+      const b = bos.get(params.boId)!, dd = b.fields!.find((x) => x.fieldId === params.fieldId), kf = b.kanban?.[dd?.code]?.kanbanFields ?? {};
+      const free = (b.fields ?? []).filter((f) => !kf[f.nativeFieldType ?? f.code]);
+      return { dynamicFields: free.filter((f) => f.type && !f.widgetType && !f.nativeFieldType)
+          .map((f) => ({ type: "KanbanCardFieldDynamic", kanbanFieldId: `D-${f.fieldId}`, label: f.label, fieldKind: "DYNAMIC", dynamicFieldType: f.type })),
+        nativeFields: free.filter((f) => f.nativeFieldType)
+          .map((f) => ({ type: "KanbanCardFieldNative", kanbanFieldId: `N-${f.nativeFieldType}`, label: f.label, fieldKind: "NATIVE", nativeFieldType: f.nativeFieldType })) };
+    }
+    case "v2/kanban/save-kanban-card-template": { // a partial update: listed items set, an id of *DelFieldIds not on the card removed
+      const b = bos.get(params.boId)!, dd = b.fields!.find((x) => x.fieldId === params.fieldId)!;
+      const codeOf = (id: string) => id.startsWith("N-") ? id.slice(2) : b.fields!.find((x) => x.fieldId === id.slice(2))!.code;
+      const kf = { ...(b.kanban?.[dd.code]?.kanbanFields ?? {}) }, kept = new Set<string>();
+      for (const [loc, z] of [["HEADER", "header"], ["CONTENT", "content"], ["FOOTER", "footer"]])
+        for (const it of body[z] ?? []) { kept.add(it.kanbanFieldId); kf[codeOf(it.kanbanFieldId)] = { cardOrderIndex: it.cardOrderIndex, locationType: loc, archetype: it.fieldKind }; }
+      for (const id of ["header", "content", "footer"].flatMap((z) => body[`${z}DelFieldIds`] ?? [])) if (!kept.has(id)) delete kf[codeOf(id)];
+      setTimeout(() => { b.kanban = { ...(b.kanban ?? {}), [dd.code]: { kanbanFields: kf } }; }, 700); // a stand shows it a moment later
+      return "";
+    }
     case "v2/business-object-instance/members-of-instance":
       if (!members.has(params.boInstanceId)) members.set(params.boInstanceId, [{ id: "PERSON0000000001", type: "PERSON", name: "Mock Admin", email: "admin@mock" }]);
       return members.get(params.boInstanceId);
