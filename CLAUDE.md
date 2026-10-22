@@ -41,6 +41,14 @@ NOT copied into the skills — each `SKILL.md` routes to headings by their liter
 renaming or renumbering a heading run `mise run skills-check`**. `mise run skills-zip` packs
 `dist/skills/<name>.zip` (skill + its document) for upload to claude.ai.
 
+The skill ships the form lint twice: `scripts/lint-archive.js` is GENERATED from the `lintArchive` block of
+`MYBPM-IMPORTS.md` 0.10 (`mise run skills-gen`), `scripts/lint_archive.py` is a HAND port for chats with Python
+but no JavaScript. **After any change of `lintArchive` port it into `lint_archive.py`, run
+`mise run lint-parity` (both lints on fuzzed archives, outputs must be equal) and set the
+`# lintArchive sha256:` marker to the hash `mise test` prints** — `mise test` fails while the marker is stale.
+JS behaviour that differs between engines (a sort whose comparator may return NaN) is made deterministic in
+the document first, then ported.
+
 **Releases go through `mise publish <version> "<message>"`, never a direct push to `main`**: it runs
 `mise test`, writes the version into `.claude-plugin/plugin.json`, commits everything and pushes to
 `test`; `.github/workflows/publish.yml` reruns `mise test` there and, only if green, fast-forwards

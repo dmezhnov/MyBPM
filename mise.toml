@@ -33,6 +33,21 @@ await Bun.write("skills/mybpm-imports/scripts/lint-archive.js", body);
 console.log("skills/mybpm-imports/scripts/lint-archive.js");
 '''
 
+[tasks.lint-parity]
+description = "The Python port skills/mybpm-imports/scripts/lint_archive.py against the lintArchive block of MYBPM-IMPORTS.md 0.10 on fuzzed archives (tools/lint-parity.bun.ts): every output must be equal"
+usage = '''
+flag "--cases <n>" default="400" help="Mutated archives on top of the bases"
+flag "--seed <s>" default="1" help="Seed of the mutations; another seed = other cases"
+flag "--corpus <dir>" help="Also take every *.mybpm.zip under this folder as a base, e.g. tools/out"
+'''
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+const corpus = Bun.env.usage_corpus ? ["--corpus", Bun.env.usage_corpus] : [];
+const r = await $`bun tools/lint-parity.bun.ts --cases ${Bun.env.usage_cases} --seed ${Bun.env.usage_seed} ${corpus}`.nothrow();
+process.exit(r.exitCode);
+'''
+
 [tasks.mcp-build]
 description = "Bundle the mybpm-stand MCP server mcp/mybpm-stand.ts into one CommonJS file mcp/mybpm-stand.cjs (runs under Node >= 18 and Bun; committed — the plugin starts it from the repository)"
 shell = "bun -e"
@@ -111,7 +126,7 @@ for (const [name, doc] of skills) {
 '''
 
 [tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.js), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun; the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, a dead session renewed by the remembered password, rename, stand_account_save on a local stand only, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.js and lint_archive.py), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun, the Python port carries the hash of the block it was ported from, runs clean too and prints what the JS lint prints on fuzzed archives (lint-parity); the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, a dead session renewed by the remembered password, rename, stand_account_save on a local stand only, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
@@ -127,7 +142,7 @@ for (const f of new Bun.Glob("tools/*.ts").scanSync()) await $`bun build --targe
 await $`mise run skills-zip`;
 for (const [name, doc] of [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]]) {
   const list = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name);
-  for (const want of [`${name}/SKILL.md`, `${name}/${doc}`, ...(name === "mybpm-imports" ? [`${name}/scripts/lint-archive.js`] : [])]) {
+  for (const want of [`${name}/SKILL.md`, `${name}/${doc}`, ...(name === "mybpm-imports" ? [`${name}/scripts/lint-archive.js`, `${name}/scripts/lint_archive.py`] : [])]) {
     if (!list.includes(want)) { console.error(`dist/skills/${name}.zip: no ${want}`); process.exit(1); }
   }
 }
@@ -148,10 +163,27 @@ for (const rt of ["node", "bun"].filter((r) => Bun.which(r))) {
   const esm = await $`${rt} dist/lint-esm/scripts/lint-archive.js ${zipFile}`.nothrow().quiet();
   if (esm.exitCode || !String(esm.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint-archive.js (${rt}) as an ES module, exit ${esm.exitCode}:\n${esm.stdout}${esm.stderr}`); process.exit(1); }
 }
+// the Python port of the lint follows lintArchive by hand: its marker names the hash of the block it was ported from
+const lintBlock = (await Bun.file("MYBPM-IMPORTS.md").text()).match(/```js\n(function lintArchive[\s\S]*?\n)```/)![1];
+const lintHash = new Bun.CryptoHasher("sha256").update(lintBlock).digest("hex").slice(0, 12);
+const ported = (await Bun.file("skills/mybpm-imports/scripts/lint_archive.py").text()).match(/^# lintArchive sha256: (\w+)$/m)?.[1];
+if (ported !== lintHash) {
+  console.error(`lint_archive.py is ported from lintArchive ${ported}, MYBPM-IMPORTS.md 0.10 holds ${lintHash} — port the change, run mise run lint-parity, set the marker to ${lintHash}`);
+  process.exit(1);
+}
+// ... runs clean on the generated dictionary, finds the document from the claude.ai zip layout, and prints what the JS lint prints
+if (Bun.which("python3")) {
+  await $`cp skills/mybpm-imports/scripts/lint_archive.py dist/lint-esm/scripts/`.quiet();
+  const r = await $`python3 dist/lint-esm/scripts/lint_archive.py ${zipFile}`.nothrow().quiet();
+  if (r.exitCode || !String(r.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint_archive.py on a generated dictionary, exit ${r.exitCode}:\n${r.stdout}${r.stderr}`); process.exit(1); }
+  await $`mise run lint-parity`;
+} else if (Bun.env.CI) { console.error("no python3 — the Python port of the lint is untested"); process.exit(1); }
+else console.warn("WARNING: no python3 here — lint_archive.py and lint-parity skipped (CI runs them)");
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
+// (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
-  const odd = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name).filter((n) => !/\.(md|js)$/.test(n));
-  if (odd.length) { console.error(`dist/skills/${name}.zip: ${odd.join(", ")} — only .md and .js are known to pass the Gemini skill upload`); process.exit(1); }
+  const odd = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name).filter((n) => !/\.(md|js|py)$/.test(n));
+  if (odd.length) { console.error(`dist/skills/${name}.zip: ${odd.join(", ")} — only .md, .js and .py may ship in a skill`); process.exit(1); }
 }
 // the MCP server is built in sync with its source and runs the v1 cycle against the mock stand under every runtime at hand
 await $`mise run mcp-build`.quiet();
