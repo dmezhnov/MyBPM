@@ -1817,7 +1817,8 @@ const pagesKey = (p: any) => JSON.stringify(VIEWS.flatMap((k) => [p?.[`is${up(k)
 
 const menuRow = (m: any, fields?: any[]) => clean({ id: m.id, code: m.code, type: m.type, name: m.displayName, icon: m.iconName, boId: m.boId,
   parentId: m.parentId, order: m.orderIndex, depth: m.depth, views: viewsOf(m.boPages, fields), selectiveRights: m.chosenAccessRight || undefined,
-  filter: m.bracketFilterId ? true : undefined, removed: m.isRemoved || undefined });
+  filter: m.bracketFilterId ? true : undefined, count: m.needCountMenuItem || undefined, hiddenInMobApp: m.needHideInMobApp || undefined,
+  removed: m.isRemoved || undefined });
 
 /** menuRow of each item, a kanban / timeline field shown by its code. */
 async function menuRows(s: Stand, items: any[]) {
@@ -2912,7 +2913,7 @@ const tools: Tool[] = [
       const items = a.under ? menuBranch(tree, menuItem(tree, a.under).id) : tree;
       return { items: await menuRows(s, items) };
     } },
-  { name: "menu_save", write: true, description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in «Системные»). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off)}]. A kanban view needs the BO's card template for that dropdown (kanban_card_save) — a note says when it is missing. Rename, move and the item's code are not offered (calls unknown). Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
+  { name: "menu_save", write: true, description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in roots, 30000–60000). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off), name?, code? (free — checked by verify-menu-item-code), parent? (a GROUP's id / code / name; null = the root; a GROUP is never put into a group, as in the UI), order?, count? (the unread counter, BO items), mobile? (false hides it in the mobile app), ungroup? (GROUP: its items go to the root, the group stays)}] — one stand call per property (UI-API §4). A kanban view needs the BO's card template for that dropdown (kanban_card_save) — a note says when it is missing. Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
     props: { create: { type: "array", items: { type: "object" } }, change: { type: "array", items: { type: "object" } }, dryRun: { type: "boolean" } },
     run: async (a) => {
       const s = stand(a);
@@ -2957,7 +2958,30 @@ const tools: Tool[] = [
           const p = await boPagesOf(s, await boOf(m.boId), c.views, m.boPages);
           ch.boPages = p.pages; out.notes.push(...p.notes.map((n) => `«${m.displayName}»: ${n}`));
         }
-        if (!ch.iconName && !ch.boPages) throw new Error(`change[${i}]: pass icon and / or views`);
+        if (c.name !== undefined) { if (!String(c.name).trim()) throw new Error(`change[${i}]: name is empty`); ch.displayName = String(c.name); }
+        if (c.code !== undefined) {
+          if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(c.code)) throw new Error(`change[${i}]: code «${c.code}» — Latin letters, digits and _ only, a letter first (the stand checks only that it is free)`);
+          if (c.code !== m.code) ch.code = c.code;
+        }
+        if (c.count !== undefined) { if (m.type !== "BO") throw new Error(`change[${i}]: «${m.displayName}» is a ${m.type} — only a BO item has the counter`); ch.needCountMenuItem = !!c.count; }
+        if (c.mobile !== undefined) ch.needHideInMobApp = !c.mobile;
+        if (c.ungroup) {
+          if (m.type !== "GROUP") throw new Error(`change[${i}]: «${m.displayName}» is a ${m.type} — only a GROUP is ungrouped`);
+          ch.ungroup = tree.filter((x) => x.parentId === m.id).map((x) => x.id);
+        }
+        if (c.parent !== undefined || c.order !== undefined) {
+          const parentId = c.parent === undefined ? m.parentId ?? null : c.parent === null || c.parent === "" ? null : menuItem(tree, c.parent).id;
+          const parent = parentId && tree.find((x) => x.id === parentId);
+          if (parent && parent.type !== "GROUP") throw new Error(`change[${i}]: the parent «${parent.displayName}» is a ${parent.type}, not a GROUP`);
+          if (parentId && m.type === "GROUP") throw new Error(`change[${i}]: «${m.displayName}» is a GROUP — the UI never puts a group into a group`);
+          if (parentId === m.id || (parentId && menuBranch(tree, m.id).some((x) => x.id === parentId))) throw new Error(`change[${i}]: «${m.displayName}» cannot go under itself`);
+          const sib = tree.filter((x) => (x.parentId ?? null) === parentId && x.id !== m.id).map((x) => x.orderIndex ?? 0);
+          const orderIndex = c.order ?? (parentId ? (sib.length ? Math.max(...sib) + 10000 : 10000) : Math.max(100000, sib.length ? Math.max(...sib) + 10000 : 0));
+          const from = m.parentId ?? null;
+          ch.move = { parentId, orderIndex, call: parentId === from ? "save-menu-item-order-index" : parentId ? "move-to-group-menu-item" : "take-out-of-group-menu-item" };
+        }
+        if (!ch.iconName && !ch.boPages && !ch.displayName && !ch.code && ch.needCountMenuItem === undefined && ch.needHideInMobApp === undefined && !ch.ungroup && !ch.move)
+          throw new Error(`change[${i}]: pass icon, views, name, code, parent, order, count, mobile or ungroup`);
         changes.push(ch);
       }
       if (a.dryRun) return clean({ dryRun: true, create: bodies, change: changes, notes: out.notes });
@@ -2975,27 +2999,51 @@ const tools: Tool[] = [
       for (const ch of changes) {
         if (ch.iconName) await s.call(MENU_ + "save-menu-item-icon-name", { menuItemId: ch.id, iconName: ch.iconName });
         if (ch.boPages) await s.call(MENU_ + "save-menu-item-bo-pages", { menuItemId: ch.id }, ch.boPages);
-        out.changed.push(ch.id); want.push(ch);
+        if (ch.displayName) await s.call(MENU_ + "save-menu-item-display-name", {}, { menuItemId: ch.id, languageMap: { RUS: ch.displayName } });
+        if (ch.code) {
+          const free = await s.call(MENU_ + "verify-menu-item-code", { menuItemId: ch.id, code: ch.code });
+          if (free !== true) { out.notes.push(`«${ch.name}»: code «${ch.code}» is taken (verify-menu-item-code answered ${JSON.stringify(free)}) — not changed`); delete ch.code; }
+          else await s.call(MENU_ + "change-menu-item-code", { menuItemId: ch.id, code: ch.code });
+        }
+        if (ch.needCountMenuItem !== undefined) await s.call(MENU_ + "save-menu-item-need-count", { menuItemId: ch.id, needCountMenuItem: ch.needCountMenuItem });
+        if (ch.needHideInMobApp !== undefined) await s.call(MENU_ + "save-menu-item-need-hide-in-mob-app", { menuItemId: ch.id, needHideInMobApp: ch.needHideInMobApp });
+        if (ch.ungroup) await s.call(MENU_ + "take-out-all-of-menu-item-group", { menuItemGroupId: ch.id });
+        if (ch.move) {
+          const { call, parentId, orderIndex } = ch.move;
+          await s.call(MENU_ + call, call === "move-to-group-menu-item" ? { parentId, menuItemId: ch.id, orderIndex } : { menuItemId: ch.id, orderIndex });
+        }
+        out.changed.push(ch.id, ...(ch.ungroup ?? [])); want.push(ch);
       }
       // read back: what holds now
       tree = await menuTree(s);
-      const rows = [...out.created, ...out.changed].map((id) => tree.find((m) => m.id === id)).filter(Boolean);
+      const rows = [...new Set([...out.created, ...out.changed])].map((id) => tree.find((m) => m.id === id)).filter(Boolean);
       const mismatch = want.map((w) => { const m = tree.find((x) => x.id === w.id);
-        return !m ? { id: w.id, missing: true } : [w.iconName && m.iconName !== w.iconName && "icon", w.boPages && pagesKey(m.boPages) !== pagesKey(w.boPages) && "views"].filter(Boolean).length
-          ? { id: m.id, icon: m.iconName, views: viewsOf(m.boPages) } : null; }).filter(Boolean);
+        return !m ? { id: w.id, missing: true } : [w.iconName && m.iconName !== w.iconName && "icon", w.boPages && pagesKey(m.boPages) !== pagesKey(w.boPages) && "views",
+            w.displayName && m.displayName !== w.displayName && "name", w.code && m.code !== w.code && "code",
+            w.needCountMenuItem !== undefined && !!m.needCountMenuItem !== w.needCountMenuItem && "count",
+            w.needHideInMobApp !== undefined && !!m.needHideInMobApp !== w.needHideInMobApp && "mobile",
+            w.move && ((m.parentId ?? null) !== w.move.parentId || m.orderIndex !== w.move.orderIndex) && "place",
+            w.ungroup?.length && tree.some((x) => x.parentId === m.id) && "ungroup"].filter(Boolean).length
+          ? { id: m.id, icon: m.iconName, views: viewsOf(m.boPages), name: m.displayName, code: m.code, parentId: m.parentId, order: m.orderIndex,
+              count: m.needCountMenuItem, hiddenInMobApp: m.needHideInMobApp, inside: tree.filter((x) => x.parentId === m.id).length } : null; }).filter(Boolean);
       return clean({ items: await menuRows(s, rows), keys: Object.fromEntries(keys), mismatch, notes: out.notes });
     } },
-  { name: "menu_delete", write: true, description: "Delete a sidebar menu item you made (a BO or GROUP item; built-in items are refused). Without `confirm` only the preview: the item and what is under it. A GROUP with items inside is refused — delete those first (whether the stand cascades is unknown). With `confirm: true` — after the user agreed — delete-menu-item, then the menu is read back. The BO and its records are not touched.",
+  { name: "menu_delete", write: true, description: "Delete a sidebar menu item you made (a BO or GROUP item; built-in items are refused). Without `confirm` only the preview: the item and what is under it. A GROUP is deleted WITH every item inside (the stand cascades, trap 76) — to keep them, ungroup first (menu_save change {item, ungroup: true}). With `confirm: true` — after the user agreed — delete-menu-item, then the menu is read back (the item and each child gone). The BO and its records are not touched.",
     props: { item: { type: "string", description: "id, code or name" }, confirm: { type: "boolean" } },
     required: ["item"],
     run: async (a) => {
       const s = stand(a), tree = await menuTree(s), m = menuItem(tree, a.item), branch = menuBranch(tree, m.id), [row] = await menuRows(s, [m]);
       if (m.type !== "BO" && m.type !== "GROUP") throw new Error(`«${m.displayName}» is a built-in ${m.type} item — refused`);
-      if (branch.length > 1) throw new Error(`«${m.displayName}» holds ${branch.length - 1} items — refused; delete them first: ${branch.slice(1).map((x) => `${x.displayName} (${x.id})`).join(", ")}`);
-      if (!a.confirm) return { preview: row, note: "nothing deleted — call again with confirm: true after the user agreed" };
+      const inside = branch.length > 1 ? await menuRows(s, branch.slice(1)) : undefined;
+      if (!a.confirm) return clean({ preview: row, inside, note: `nothing deleted${inside ? ` — deleting this GROUP deletes the ${inside.length} items inside too; menu_save change {item, ungroup: true} first keeps them` : ""} — call again with confirm: true after the user agreed` });
       await s.call(MENU_ + "delete-menu-item", { menuItemId: m.id });
-      const left = (await menuTree(s)).find((x) => x.id === m.id && !x.isRemoved);
-      return clean({ deleted: !left, item: row, note: left ? "the item is still in the menu — menu_read" : undefined });
+      // a child of a deleted group is no longer reachable from the root — ask for each one by id
+      const gone = async (id: string) => s.call(MENU_ + "load-menu-item", { menuItemId: id }).then((x: any) => !x || x.isRemoved === true,
+        (e) => { if (e instanceof StandError && /MenuItemNotFound/.test(e.message)) return true; throw e; });
+      const left: any[] = [];
+      for (const b of branch) if (!(await gone(b.id))) left.push(b);
+      return clean({ deleted: !left.some((x) => x.id === m.id), item: row, alsoDeleted: inside?.filter((r: any) => !left.some((x) => x.id === r.id)).map((r: any) => r.name),
+        note: left.length ? `still in the menu: ${left.map((x) => `${x.displayName} (${x.id})`).join(", ")} — menu_read` : undefined });
     } },
   { name: "menu_icons", description: "Sidebar icon names (UI-API §4): no `query` → the «Icons by meaning» table; `query` → the catalogue names (1153, phosphor:* and menu-item:*) holding that piece, plus the meaning rows it matches. Every item gets an icon by its meaning, unasked; a name off the catalogue draws a blank.",
     props: { query: { type: "string", description: "A piece of a name (English: «car», «user») or of a meaning («money»)" } },

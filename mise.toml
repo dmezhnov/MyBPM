@@ -386,10 +386,20 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["filter_try", { code: "mcp_probe_records", filter: { field: "status", eq: "Нет такого" } }, (r) => /not an option/.test(r)],
   ["filter_save", { item: "MCP записи", filter: { all: [{ field: "done", eq: false }, { field: "status", eq: "В работе" }] } }, (r) => r.saved && r.total === 1 && r.filterId],
   ["menu_read", { under: "MCP группа" }, (r) => r.items[1].filter === true && r.items[1].selectiveRights === true],
-  ["menu_delete", { item: "MCP группа" }, (r) => /holds 1 items — refused/.test(r)],
-  ["menu_delete", { item: "MCP записи" }, (r) => r.preview.name === "MCP записи" && r.deleted === undefined],
-  ["menu_delete", { item: "MCP записи", confirm: true }, (r) => r.deleted === true],
-  ["menu_delete", { item: "MCP группа", confirm: true }, (r) => r.deleted === true],
+  // rename, code, counter, mobile flag, moves and ungroup — one call each (§4); a GROUP is deleted with its items
+  ["menu_save", { change: [{ item: "MCP записи", name: "MCP заявки", code: "mcp_zayavki", count: true, mobile: false }] },
+    (r) => !r.mismatch?.length && r.items[0].name === "MCP заявки" && r.items[0].code === "mcp_zayavki" && r.items[0].count === true && r.items[0].hiddenInMobApp === true],
+  ["menu_save", { change: [{ item: "MCP заявки", code: "mcp_menu" }] }, (r) => r.notes.some((n: string) => /mcp_menu» is taken/.test(n)) && r.items[0].code === "mcp_zayavki"],
+  ["menu_save", { change: [{ item: "MCP заявки", code: "с пробелом" }] }, (r) => /Latin letters/.test(r)],
+  ["menu_save", { change: [{ item: "MCP группа", parent: "MCP группа" }] }, (r) => /never puts a group into a group/.test(r)],
+  ["menu_save", { change: [{ item: "MCP группа", count: true }] }, (r) => /only a BO item has the counter/.test(r)],
+  ["menu_save", { change: [{ item: "MCP заявки", parent: null }] }, (r) => !r.mismatch?.length && !r.items[0].parentId && r.items[0].order > 100000],
+  ["menu_save", { change: [{ item: "MCP заявки", order: 105000 }] }, (r) => !r.mismatch?.length && r.items[0].order === 105000],
+  ["menu_save", { change: [{ item: "MCP заявки", parent: "MCP группа" }] }, (r) => !r.mismatch?.length && r.items[0].parentId && r.items[0].order === 10000],
+  ["menu_save", { change: [{ item: "MCP группа", ungroup: true }] }, (r) => !r.mismatch?.length && r.items.some((x: any) => x.name === "MCP заявки" && !x.parentId)],
+  ["menu_save", { change: [{ item: "MCP заявки", parent: "MCP группа" }] }, (r) => !r.mismatch?.length && r.items[0].parentId],
+  ["menu_delete", { item: "MCP группа" }, (r) => r.preview.name === "MCP группа" && r.inside.length === 1 && /deletes the 1 items inside too/.test(r.note) && r.deleted === undefined],
+  ["menu_delete", { item: "MCP группа", confirm: true }, (r) => r.deleted === true && r.alsoDeleted[0] === "MCP заявки" && !r.note],
   // the kanban card by save-kanban-card-template, participants of a record, the invitation; a conflict mapped onto a group
   ["kanban_card_save", { code: "mcp_probe_records", dropdown: "title", header: ["title"] }, (r) => /a kanban runs on a DROPDOWN_SINGLE/.test(r)],
   ["kanban_card_save", { code: "mcp_probe_records", dropdown: "status", header: ["title", "due"] }, (r) => /header: exactly one field/.test(r)],
@@ -471,7 +481,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not

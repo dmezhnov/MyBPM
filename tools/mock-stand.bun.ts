@@ -422,7 +422,23 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/business-objects/save-bo-field-tab-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId)?.tabs?.find((y: any) => y.id === params.tabId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
     case "v2/menu-item/load-nav-items": return NAV.filter((m) => (m.parentId ?? null) === (params.parentId ?? null));
     case "v2/menu-item/create-menu-item": NAV.push({ ...body, code: `menu_${++seq}`, bracketFilterId: null }); return "";
-    case "v2/menu-item/delete-menu-item": NAV.splice(NAV.findIndex((m) => m.id === params.menuItemId), 1); return "";
+    case "v2/menu-item/delete-menu-item": { // a GROUP takes its items with it, as on the stand
+      const drop = (id: string) => { for (const c of NAV.filter((m) => m.parentId === id)) drop(c.id); NAV.splice(NAV.findIndex((m) => m.id === id), 1); };
+      drop(params.menuItemId); return "";
+    }
+    case "v2/menu-item/load-menu-item": return NAV.find((m) => m.id === params.menuItemId) ?? { errorType: "MenuItemNotFound", message: "Не найден или был уже удален элемент меню" };
+    case "v2/menu-item/verify-menu-item-code": return !NAV.some((m) => m.code === params.code && m.id !== params.menuItemId);
+    case "v2/menu-item/change-menu-item-code": NAV.find((m) => m.id === params.menuItemId)!.code = params.code; return "";
+    case "v2/menu-item/save-menu-item-display-name": Object.assign(NAV.find((m) => m.id === body.menuItemId)!, { displayName: body.languageMap.RUS, displayNameMap: body.languageMap }); return "";
+    case "v2/menu-item/save-menu-item-need-count": NAV.find((m) => m.id === params.menuItemId)!.needCountMenuItem = params.needCountMenuItem; return "";
+    case "v2/menu-item/save-menu-item-need-hide-in-mob-app": NAV.find((m) => m.id === params.menuItemId)!.needHideInMobApp = params.needHideInMobApp; return "";
+    case "v2/menu-item/save-menu-item-order-index": NAV.find((m) => m.id === params.menuItemId)!.orderIndex = params.orderIndex; return "";
+    case "v2/menu-item/move-to-group-menu-item": Object.assign(NAV.find((m) => m.id === params.menuItemId)!, { parentId: params.parentId, orderIndex: params.orderIndex }); return "";
+    case "v2/menu-item/take-out-of-group-menu-item": Object.assign(NAV.find((m) => m.id === params.menuItemId)!, { parentId: null, orderIndex: params.orderIndex }); return "";
+    case "v2/menu-item/take-out-all-of-menu-item-group": { // the children land on the root right after the group, the group stays
+      const g = NAV.find((m) => m.id === params.menuItemGroupId)!;
+      NAV.filter((m) => m.parentId === g.id).forEach((m, i) => Object.assign(m, { parentId: null, orderIndex: g.orderIndex + 10000 * (i + 1) })); return "";
+    }
     case "v2/menu-item/save-menu-item-icon-name": NAV.find((m) => m.id === params.menuItemId)!.iconName = params.iconName; return "";
     case "v2/menu-item/save-menu-item-bo-pages": NAV.find((m) => m.id === params.menuItemId)!.boPages = body; return "";
     case "v2/menu-item/load-bracket-filter": {

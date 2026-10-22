@@ -1062,8 +1062,8 @@ Rules `[C]`:
   template (0.5c) exists either way and is never the reason.
 - `boCode` names a BO of THIS archive, or a BO already on the stand (a stand code — ask, 0.2a). The same for
   `parentMenuItemCode`: a `GROUP` line of this archive, or a group code given by the user — never guessed.
-- Put the `GROUP` line BEFORE its children. `orderIndex`: the built-in root «Системные» is 60000 — put
-  your roots after it (950000), children count inside their parent (10000, 20000 …).
+- Put the `GROUP` line BEFORE its children. `orderIndex`: the built-in roots «Бизнес» … «Аналитика» hold
+  30000–60000 — put your roots after them (100000, 200000 …), children count inside their parent (10000, 20000 …).
 - `iconName`: **every line gets an icon BY MEANING, without being asked** — each group by ITS OWN theme
   (Клиенты и авто → `phosphor:address-book`, Работы → `phosphor:briefcase`, Склад → `phosphor:archive`), never the one icon
   of the whole system on every group; each item by what its records are (клиенты → `phosphor:users`,
