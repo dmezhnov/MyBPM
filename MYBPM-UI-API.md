@@ -630,7 +630,7 @@ route below is for items on BOs that are already on the stand, and for access ri
    "orderIndex":100000,"isPanel":false,"boPages":{…},"chosenAccessRight":false,"parentId":…}`.
    `iconName`: an icon BY MEANING for every item, unasked (§4 «Icons by meaning»); the generic defaults
    GROUP `bo-g-draggable`, BO `man-with-company`, dictionary `bo-d-draggable` only when the user wants no icons.
-   The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it.
+   The built-in roots «Бизнес» … «Аналитика» hold `orderIndex` 30000–60000 — put your own roots from 100000.
 3. Icons: `save-menu-item-icon-name` — `P {"menuItemId":…,"iconName":"<namespace>:<name>"}` → empty
    body (or set `iconName` right in `create-menu-item`). **Take the name from §4 «Menu icon catalogue»**
    (`phosphor:*` or `menu-item:*`, 1153 names): the server stores ANY string, and a name outside the
@@ -650,7 +650,9 @@ route below is for items on BOs that are already on the stand, and for access ri
 6. **Verify a filter without saving it**: `POST /web/v2/business-object-instance/load-bo-instance-bracket-table`
    — `B {"boId":…,"dynamicFilters":[],"nativeFilters":[],"search":"","paging":…,"ordering":null,"state":"ALL","brackets":[…]}`
    → read `totalHits`. `state` takes the `BoiState` values `ALL|ARCHIVED|REMOVED|OFFLINE|DEV` (the registry tabs) `[I]`.
-7. `delete-menu-item` — `P {"menuItemId":…}`; `load-nav-items` — `P {"parentId":…}` → the children.
+7. `delete-menu-item` — `P {"menuItemId":…}` (on a `GROUP` it deletes the children too — trap 76);
+   `load-nav-items` — `P {"parentId":…}` → the children. Rename, code, move, the counter and the mobile flag:
+   one call each, §4. The same by hand: §4 «Menu in the UI».
 
 #### R7 — Records (instances) from Excel
 
@@ -778,7 +780,7 @@ MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you n
 
 #### R9 — One record by hand (UI), and the same without the UI
 
-1. **UI** `[C]`: Системные → **«Бизнес»** (`/business-objects/viewing-list`) → the group → the BO → its
+1. **UI** `[C]`: sidebar **«Бизнес»** (`/business-objects/viewing-list`) → the group → the BO → its
    registry → **«Добавить»** → fill the fields → **СОХРАНИТЬ**. A draft is created as soon as the form opens;
    closing it unsaved asks «Несохраненные данные — … Закрыть без сохранения?» → ДА drops it. An existing
    record: click its row, edit, СОХРАНИТЬ. The registry tabs В работе / Архивные / Удаленные / Тестовые
@@ -1000,7 +1002,7 @@ and dropping the rest «for scope» is a fraction reported as done.
 
 ### 0U.7 Where the rest is
 
-§1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
+§1 request conventions · §2 the working method · §3 rights · §4 menus and filters (API and «Menu in the UI») · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
 type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the constructor sidebar: BO groups (create, rename, code, delete) and the BO's row (clone, rename, order, group, export, delete, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
@@ -1143,12 +1145,13 @@ do is plain HTTP by §0U.4.
   retry and compared (`mismatch`). A BO's lock stays on once set (R5 step 5).
 - **The menu tools make R6 whole.** `menu_read` gives the whole sidebar tree (every GROUP level): id, code, type,
   name, icon, BO, parent, order, the views on (`kanban` / `timeline` by the field's CODE), whether the item is
-  selective and carries a filter. `menu_save` creates GROUP / BO items (an icon by meaning is required and checked
+  selective, carries a filter, shows the counter, is hidden in the mobile app. `menu_save` creates GROUP / BO items (an icon by meaning is required and checked
   against the catalogue — `menu_icons` lists the meaning table or searches the 1153 names; a parent may be an item
   of the same call) and changes an item's icon or views (merged; `false` switches one off; a kanban without the
-  BO's card template comes back as a note — `kanban_card_save` sets it, §7). Rename, move and the item code are not
-  offered (§4: the code is the stand's own transliteration). `menu_delete` deletes a BO / GROUP item you made — a
-  GROUP with items inside is refused; built-in items always. `filter_try` counts a BO's records under a filter
+  BO's card template comes back as a note — `kanban_card_save` sets it, §7), its name, code (a taken one comes
+  back as a note), parent / order, the counter, the mobile flag, and ungroups a GROUP — every change read back.
+  `menu_delete` deletes a BO / GROUP item you made — a GROUP together with the items inside (the preview lists
+  them; ungroup first to keep them); built-in items are refused. `filter_try` counts a BO's records under a filter
   without saving it — `{field, eq}` / `{field, currentUser: true}` / `{native: "CREATED_BY", currentUser: true}`,
   groups `{all | any: […], not?}` nested, each value sent in the shape of §4 «Record filters» (an «пусто»
   condition is refused: the stand ignores it); `filter_save` stores the same filter on a BO menu item and reads back
@@ -1245,8 +1248,8 @@ do is plain HTTP by §0U.4.
 | `rights_read` | who may do what on a BO, a field, a tab or a menu item; `subjects` = groups, users, Person fields | R5; `load-access-group`, `load-field-access-group`, `load-field-tab-access-group`, `v2/menu-item/load-access-group` |
 | `rights_save` ✎ | the actions passed → exactly these subjects (or all / nobody), «выборочно» follows, read back | R5 steps 1–6, R6 rights |
 | `menu_read` | the sidebar tree: items, icons, BOs, views (kanban / timeline by field code), selective, filter | R6; `load-nav-items` per level |
-| `menu_save` ✎ | create GROUP / BO items (icon by meaning, checked), change an item's icon or views | R6 steps 1–3; `create-menu-item`, `save-menu-item-icon-name`, `save-menu-item-bo-pages` |
-| `menu_delete` ✎ | the preview; with `confirm` the delete (a GROUP with items refused) | R6 step 7 |
+| `menu_save` ✎ | create GROUP / BO items (icon by meaning, checked), change an item's icon, views, name, code, place, counter, mobile flag; ungroup | R6 steps 1–3, §4; `create-menu-item`, `save-menu-item-icon-name`, `save-menu-item-bo-pages`, `save-menu-item-display-name`, `verify-menu-item-code` + `change-menu-item-code`, `save-menu-item-order-index` / `move-to-group-menu-item` / `take-out-of-group-menu-item`, `save-menu-item-need-count`, `save-menu-item-need-hide-in-mob-app`, `take-out-all-of-menu-item-group` |
+| `menu_delete` ✎ | the preview (a GROUP lists its items); with `confirm` the delete — a GROUP with its items | R6 step 7, trap 76 |
 | `menu_icons` | the «Icons by meaning» table, or catalogue names holding a piece | §4 «Menu icon catalogue» |
 | `filter_try` | a BO's records under a filter, not saved: the count, the first rows, the built brackets | R6 step 6, §4 «Record filters» |
 | `filter_save` ✎ | a record filter on a BO menu item (or `clear`), read back with the count | R6 step 5 |
@@ -1505,8 +1508,20 @@ Everything in this section is `[C]`.
   `null` and keeps that id `[C]`; the `boPages` of the body hold — list, kanban and timeline come on at once, no
   `save-menu-item-bo-pages` after it `[C]`.
 - **The stand makes the item's CODE itself, by transliterating the name** `[C]`: «MCP группа» → `MCP_gruppa`
-  — not rule 12. The API call behind «Изменить код» is not known `[U]`; an item with a code of your own comes
-  through the archive (`MenuItemStructDto.code`, `MYBPM-IMPORTS.md` §5e).
+  — not rule 12. Change it with `verify-menu-item-code {menuItemId, code}` → `true` when the code is free, then
+  `change-menu-item-code {menuItemId, code}` `[C]`; only uniqueness is checked — a code with a space passes, so
+  give it the rule-12 form yourself. An archive carries the code as `MenuItemStructDto.menuItemCode`
+  (`MYBPM-IMPORTS.md` §5e).
+- The rest of an item, one call per property, all `P`, empty answer `[C]`: name —
+  `save-menu-item-display-name` `B {menuItemId, languageMap:{RUS:…}}`; the unread counter —
+  `save-menu-item-need-count {menuItemId, needCountMenuItem}`; hiding in the mobile app —
+  `save-menu-item-need-hide-in-mob-app {menuItemId, needHideInMobApp}`; place — inside one list
+  `save-menu-item-order-index {menuItemId, orderIndex}`, root → group (or group → group)
+  `move-to-group-menu-item {parentId, menuItemId, orderIndex}`, group → root
+  `take-out-of-group-menu-item {menuItemId, orderIndex}`; ungroup — `take-out-all-of-menu-item-group
+  {menuItemGroupId}` (the children go to the root right after the group, the group stays, empty). The UI
+  never moves a `GROUP` into a group. `load-nav-items` returns `needCountMenuItem` and `needHideInMobApp`
+  on every item.
 - **The UI creates only `BO` and `GROUP` items** `[C]`. The client enum also has `ANALYTIC`,
   `BO_MANAGER`, `COMPANY_MANAGER`, `SETTINGS` (the built-in items, one of each per company), `REPORT`
   (operative reports, their own export basket, R4a) and `PROCEDURES` — none is created by hand.
@@ -1533,7 +1548,9 @@ Everything in this section is `[C]`.
   | reports, analytics | `phosphor:chart-bar`, `phosphor:chart-pie`, `phosphor:chart-line-up`, `phosphor:trend-up` |
   | medicine, education, food, hotel | `phosphor:first-aid`, `phosphor:heartbeat`, `phosphor:pill`, `phosphor:graduation-cap`, `phosphor:student`, `phosphor:fork-knife`, `phosphor:bed` |
   | IT, equipment, quality, risks | `phosphor:desktop`, `phosphor:database`, `phosphor:shield-check`, `phosphor:star`, `phosphor:warning` |
-- `delete-menu-item {menuItemId}` → `null`, the item leaves `load-nav-items` `[C]`; `load-nav-items {parentId}` → the children with their ids
+- `delete-menu-item {menuItemId}` → `null`, the item leaves `load-nav-items` `[C]`; **on a `GROUP` it deletes
+  every item inside too** `[C]` (`load-menu-item` of a child then answers `MenuItemNotFound`); to keep the
+  children, ungroup first. `load-nav-items {parentId}` → the children with their ids
   (`{parentId: null}` → the roots). Each item carries a `code` too — the menu CODE by which a structure
   archive addresses it (`MYBPM-IMPORTS.md` §5e); the kebab's «Изменить код» edits it.
 - **Menu items also travel in a structure archive** `[C]` — `MenuItemStructDto`, parent /
@@ -1543,7 +1560,9 @@ Everything in this section is `[C]`.
   goes to `/business-objects/viewing-single/bo/<menuItemId>/kanban-view?businessObjectId=…&fieldId=…&menuItemId=…&boId=…`,
   where the real menu item id is the PATH segment and the `menuItemId` QUERY parameter carries the kanban
   column FIELD id. Read ids off the path, not the query.
-- The built-in root «Системные» has `orderIndex` 60000 — put your own roots after it (100000, 200000, …).
+- The built-in roots are «Бизнес» 30000, «Компания» 40000, «Настройки» 50000, «Аналитика» 60000 (a company
+  may collect them into a group of its own, §5 «Route») — put your own roots after them (100000, 200000, …);
+  the UI's ⊕ puts a new group at the last root + 10000.
 - `save-menu-item-bo-pages` params `{menuItemId}`, body `boPages` = the item's views: list, kanban,
   calendar, timeline, map, grouping, each an `is*Enabled` flag + an `*Index` (tab order, 1-based over the
   enabled views; always send all twelve keys, disabled ones with index 0). What each view needs `[C]`:
@@ -1555,13 +1574,65 @@ Everything in this section is `[C]`.
   the board and its COLUMNS on for THIS item; the CARD lives on the BO and must come from the archive (§7).
 - Icons: `save-menu-item-icon-name` params `{menuItemId, iconName:"<namespace>:<name>"}` (empty 200).
   **Valid names = the catalogue below** (1153 names, `phosphor:*` AND `menu-item:*`); the server accepts
-  anything, so a wrong name is found only as a blank in the sidebar. Built-in items inside «Системные»
-  use system icons (portfolio, no-color-settings, no-color-archive, man-with-company) — leave them alone.
-- UI: the sidebar row kebab (⋮) offers Отображать в моб. приложении / Изменить код / Права доступа /
-  Переименовать / Изменить иконку / Разгруппировать / Удалить. Sidebar names are `<input>` values inside
-  `app-bo-record`; clicking `.container` puts the id into the URL. The calls behind «Переименовать», a
-  reorder / move into another group, «Изменить код» and «Отображать в моб. приложении» (`needHideInMobApp`,
-  `needCountMenuItem`), and where a menu item's views are switched in the UI: not known yet `[U]` — §12.
+  anything, so a wrong name is found only as a blank in the sidebar. The built-in items use system icons
+  (portfolio, no-color-settings, no-color-archive, man-with-company) — leave them alone.
+
+### Menu in the UI `[C]`
+
+Every action below saves at once — there is no overall «Сохранить». Sidebar names are `<input>` values
+inside `app-bo-record`; a click on the row's `.container` opens the item.
+
+- **A group**: ⊕ at the bottom of the sidebar → «Добавить группу в меню» → `create-menu-item` `GROUP`
+  «Группа» (`bo-g-draggable`, last root + 10000). Works on any page. An empty group shows the hint
+  «перетащите бизнес объекты в эту группу».
+- **A BO item**: open the constructor list (`/business-objects/editing` — the pencil next to «Бизнес»; on
+  `/business-objects/viewing-list` the BO rows are greyed and do not drag) and drag a BO row onto the sidebar —
+  between two roots, or onto an EXPANDED group → `create-menu-item` `BO` (name = the BO's name,
+  `man-with-company`, view «Список» on). Dragging a whole BO-group HEADER makes a `GROUP` item of that name
+  plus one BO item per BO of the group, built-in BOs included (`load-bo-records-by-group-id`). The item's
+  editor opens by itself after a create.
+- **Moving**: drag a sidebar row — inside one list `save-menu-item-order-index` with the midpoint of its new
+  neighbours' `orderIndex`; onto an expanded group `move-to-group-menu-item`; out of a group between two roots
+  `take-out-of-group-menu-item`. Sidebar rows drag on any page.
+- **The ⋮ of a BO item** opens its editor: ☑ Список · ☐ Канбан из поля «Выберите» · ☐ Календарь · ☐ Диаграмма
+  Ганта из поля «Выберите» · ☐ Отображать кол-во новых записей · ☑ Отображать в моб. приложении · Изменить код
+  · Права доступа · Переименовать · Изменить иконку · Фильтр · Удалить. Opening it calls `load-bracket-filter`,
+  which creates the filter record when the item has none.
+- **The ⋮ of a GROUP item**: Отображать в моб. приложении · Изменить код · Права доступа · Переименовать ·
+  Изменить иконку · Разгруппировать · Удалить — no views, no counter, no filter.
+- **Views**: each box sends the whole `boPages` (`save-menu-item-bo-pages`) at once. «Выберите» next to «Канбан
+  из поля» lists the BO's dropdowns, next to «Диаграмма Ганта» its `PERIOD` fields; picking one ticks the box
+  too. The grey number right of a ticked view is its tab order = the order in which the boxes were ticked;
+  unticking renumbers the rest — re-tick in the wanted order to reorder. A row is shown only when the BO allows
+  that view: «Канбан» with a dropdown, «Карта» with `isMapEnabled`, «Группировка» with `isGroupingEnabled`,
+  «Календарь» with `isCalendarEnabled` (a new BO has it on; the box does not check for a `FULL_DATE`), Гант with
+  a `PERIOD` / `PERIOD_TIME` field. The kanban still needs the BO's card template (§7).
+- **«Отображать кол-во новых записей»** → `save-menu-item-need-count`; unticking **«Отображать в моб.
+  приложении»** → `save-menu-item-need-hide-in-mob-app {needHideInMobApp:true}`.
+- **«Изменить код»** → popover «Изменение кода пункта меню» with an EMPTY input (the current code is not
+  shown); each pause in typing runs `verify-menu-item-code`, a taken code shows ⚠ and greys СОХРАНИТЬ →
+  СОХРАНИТЬ = `change-menu-item-code`.
+- **«Переименовать»** → popover «Изменение названия» → СОХРАНИТЬ = `save-menu-item-display-name`.
+- **«Изменить иконку»** → an icon grid under a strip of tabs; no search box, no name on hover; one click =
+  `save-menu-item-icon-name`, the picker stays open. Find the name in «Menu icon catalogue» below, the tab
+  first.
+- **«Права доступа»** → ONE tab «Просмотр»: «Операция доступны ВСЕМ ◯ ВЫБОРОЧНО» → «Выберите» → a FLAT
+  chooser of persons and groups with search (no Автор / Участники / Из поля tree as on a BO) → chips →
+  СОХРАНИТЬ = `save-access-group` + `save-menu-item-chosen-access-right`. The lock in the editor turns orange
+  when the item is selective. Semantics: «Menu-item rights» below.
+- **«Фильтр»** → popover «Фильтр:» → funnel-plus → the BO's fields, system ones included → pick one → its
+  «Выберите» → the value (a dropdown: radio list of the options) → a chip; more funnel-plus = more AND
+  conditions → СОХРАНИТЬ = one `bracket-filter/save`. The red funnel-x (shown when a condition exists) clears
+  the conditions in the popover only; СОХРАНИТЬ then stores `brackets: []`. Trap: ОТМЕНИТЬ sends nothing,
+  yet «Фильтр» reopened from the same editor still shows the unsaved state — close the item editor and reopen
+  it to see what is saved.
+- **«Разгруппировать»** → «Подтверждение / Вы разгруппировываете группу» → ДА →
+  `take-out-all-of-menu-item-group`.
+- **«Удалить»** → «Удаление пункта меню / Вы уверены, что хотите удалить данный раздел из главного меню?» →
+  ДА → `delete-menu-item`; on a group it deletes the items inside too.
+- **What a user sees**: a click on the item → `/business-objects/viewing-single/bo/<menuItemId>/list-view?…`;
+  the views are a dropdown at the top right of the registry (Список / Канбан / Диаграмма Ганта / Календарь, in
+  tab order). Popovers do not close on Escape — a click on an empty page area closes the top one.
 
 ### Menu icon catalogue `[C]`
 
@@ -1635,10 +1706,14 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
 
 ### Record filters (bracket filters)
 
-- `load-bracket-filter {menuItemId}` **creates** the item's filter record if it is missing
+- `load-bracket-filter {menuItemId}` (POST — a GET answers 405) **creates** the item's filter record if it is missing
   (`bracketFilterId` is null until then) and answers it whole: `{id, companyId, boId, fieldId:null, type:"MENU_ITEM",
   actual, brackets}` `[C]` → then `v2/bracket-filter/save` body `{id:<filter id>, boId, brackets:[root]}` → `null`
   `[C]`. `brackets: []` clears the conditions — the item lists every record again `[C]`.
+- **The CLIENT applies the filter** `[C]`: opening the item, the registry and the kanban read
+  `load-bracket-filter` and send its brackets in their own calls (`load-bo-instance-bracket-table`,
+  `load-bracket-kanban-cards`) — the server is not told the item. Anyone calling the API without those
+  brackets gets every record the BO rights allow.
 - **An archive can carry the filter instead** `[C]`: a menu line's `bracketFilter.brackets` (maps keyed by
   8-char ids, `fieldCode` instead of `fieldId`) imports whole — `MYBPM-IMPORTS.md` §5e; a dictionary
   dropdown entry there takes `value` = the row's `code`, no `businessObjectId` `[C]`. One BO may have several
@@ -5826,6 +5901,12 @@ The stand's own behaviour under automation `[C]`:
 75. **«Добавить в группу» into a group made on the same page does nothing** `[C]` — the popover closes, no call;
     expand that group once, then move. An empty group disappears from the sidebar after a reload
     (`load-bo-groups` hides it) — fill it first. §5m.
+76. **Deleting a menu GROUP deletes the items in it** `[C]` — `delete-menu-item` on a `GROUP` (and its ⋮
+    «Удалить») removes every child item; the dialog does not say so. «Разгруппировать» first to keep them. §4.
+77. **A menu item's record filter is applied by the client** `[C]` — the registry sends the item's brackets
+    itself; the server never ties records to the item. A filter narrows a screen, it hides nothing — rights do
+    (§3, §4 «Menu-item rights»). And ОТМЕНИТЬ in «Фильтр» leaves the unsaved state on screen until the item
+    editor is reopened. §4.
 
 ## 12. Open questions
 
@@ -5871,9 +5952,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - Rights: the head / employees / department flags of «Из поля» (second non-admin login, one flag at a time,
   `totalHits`); whether a «Пользователи» record created by the §6a draft cycle or by an xlsx sends the invitation (a probe
   user only with the user's OK and an address they own — it mails a real person); switching tenant as a multi-company user (look for a company-selector call).
-- Menu items: the calls behind rename, reorder, «Изменить код», move into another group and
-  «Отображать в моб. приложении» / `needCountMenuItem` (click each kebab action with the network log on);
-  where a menu item's views (timeline, list) are switched in the UI.
 - Kanban: whether a card drag (`move-kanban-card`, §7) fires the dropdown's «Изменение поля» hook.
 - Records: the registry / card controls for Удалить / Архивировать / Восстановить / Дублировать and the params of
   `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` (tick a row, open both kebabs with the
