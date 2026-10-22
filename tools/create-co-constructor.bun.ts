@@ -7,7 +7,7 @@
  * `/business-objects/editing/<coId>/composite-editing`, its controller is `v2/co`, and every edit goes
  * into a DRAFT which СОХРАНИТЬ commits.
  *
- *   1. v2/business-objects/load-bo-groups                        → resolve the target group
+ *   1. v2/business-objects/load-business-object-groups                        → resolve the target group
  *   2. v2/business-objects/create-bo {boGroupId, boCategory}      → the CO exists, named «Составной объект №N»
  *   3. v2/business-objects/save-business-object-portion           → rename (partial patch)
  *   4. v2/co/generate-draft {coId}                                → draftId  (NOT idempotent — trap 29)
@@ -105,7 +105,7 @@ const langMap = (v: string) => ({ KAZ: null, ENG: null, RUS: v, QAZ: null });
 type BoGroup = { id: string; name: string; code: string | null; orderIndex: number; kind: string };
 type BoRecord = { id: string; name: string; boCategory: string; orderIndex: number };
 
-const groups = await bo<BoGroup[]>("load-bo-groups");
+const groups = await bo<BoGroup[]>("load-business-object-groups");
 
 /** Every BO of the company, group by group — the only cheap name → id index we have. */
 async function allBos(): Promise<(BoRecord & { group: string })[]> {

@@ -233,8 +233,10 @@ otherwise. `P` marks values that go into `params_Lr1oSgwPR8`, `B` into `body_o1n
 
 No archive is involved. This is the cheapest way to put a BO on a stand.
 
-1. **Resolve the group.** `load-bo-groups` — `P {"forEdit":true}`, `B {}` → `[{id,name,code,orderIndex,kind}]`
-   (without `forEdit` the groups that hold no BO are left out `[C]`).
+1. **Resolve the group.** `load-business-object-groups` — `P {"forEdit":true}`, `B {}` → `[{id,name,code,orderIndex,kind,
+   isGeneral,records:[{id,name,nameReadonly,orderIndex,boCategory}]}]` — every group, the empty ones included, each with
+   its BOs `[C]`. **Not `load-bo-groups`**: it leaves out every group that holds no BO the user sees, whatever
+   `forEdit` says `[C]` — an empty group is invisible to it.
    Pick the group **by name, from what the stand actually returned**; the group must already exist.
 2. **Create.** `create-bo` — `P {}`, **`B {"boGroupId":"<group id>","boCategory":"BO"}`** →
    `{"id":"…","name":"Бизнес объект №7",…}`. **The BO is on the stand from this moment on**, under a
@@ -507,7 +509,7 @@ All of these but the last are `POST /web/v2/business-objects/<call>` (envelope �
 
 | question | call | params |
 |---|---|---|
-| which BO groups exist? | `load-bo-groups` | `{"forEdit":true}` — **without it the empty groups are missing** `[C]` (optional `searchValue`) |
+| which BO groups exist? | `load-business-object-groups` | `{"forEdit":true}` → every group with its BOs (`records`) `[C]`; **`load-bo-groups` leaves out the empty groups** `[C]` |
 | what is in a group? | `load-bo-records-by-group-id` | `{"groupId":…}` — **`groupId`**, not `boGroupId` |
 | what is this BO? | `load-business-object-by-id` | `{"businessObjectId":…}` |
 | id of a BO whose code I know | `load-bo-id-by-code` | `{"boCode":…}` |
@@ -809,7 +811,7 @@ and dropping the rest «for scope» is a fraction reported as done.
    meaning (автосервис: «Клиенты и автомобили», «Заказы и работы», «Склад и закупки»; a dictionary joins the
    theme whose BOs pick from it), each
    at least 2 BOs; fewer stay in one group named after the system. Then read
-   the rest: the group's `code`, `name`, `orderIndex` by `load-bo-groups {"forEdit":true}` (R4) — copy them
+   the rest: the group's `code`, `name`, `orderIndex` by `load-business-object-groups {"forEdit":true}` (R4) — copy them
    verbatim into the archive; a group whose `code` is `null` cannot be targeted by an archive — build a new
    group and say why, or give it a code (`save-business-object-group`, §«Verifying an import through the
    API» — one-way, ask first). Taken BO codes: `load-bo-id-by-code` for every code you plan — a free code
@@ -1000,7 +1002,7 @@ and dropping the rest «for scope» is a fraction reported as done.
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the sidebar row (clone, rename, order, group, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
+type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the constructor sidebar: BO groups (create, rename, code, delete) and the BO's row (clone, rename, order, group, export, delete, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
 `MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 browser-automation traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybpm-stand` MCP server.
@@ -1222,7 +1224,7 @@ do is plain HTTP by §0U.4.
 | `stand_accounts` | the accounts page URL (`open: true` opens it — only on the user's ask): add, edit, log in again, remove | — |
 | `stand_remove` ✎ | ends an account's session on the stand, deletes its token and remembered password | `GET v2/auth/logout` |
 | `stand_account_save` ✎ | adds, changes or logs in again an account of a LOCAL stand (localhost) with the password as an argument; `remember` keeps it in the OS secret store | `POST v2/auth/v3/login` (Route A) |
-| `bo_groups` | every BO group with its BOs | R4; `load-bo-groups {forEdit}`, `load-bo-records-by-group-id` |
+| `bo_groups` | every BO group with its BOs, empty groups included | R4; `load-business-object-groups {forEdit}` |
 | `bo_find` | a BO by `code` (`exists: false` when absent) or by a piece of its name | R4; `load-bo-id-by-code` |
 | `bo_read` | one BO: header + a row per field (type, tab, grid, ref, required, column); `raw` = the DTO | R4; `load-business-object-by-id` |
 | `persons_find` | users by a piece of name or e-mail (the stand's search does not match an e-mail `[C]` — with «@» the tool reads the whole list): the ids a Person field or a rights subject takes | `v2/org-unit/load-filtered-persons-v2` |
@@ -1344,10 +1346,23 @@ Archive-side shape (`AccessStructDto`) and the import behaviour that wipes group
 ### UI
 
 BO constructor → lock icon (top right) → popup «Права доступа»: a row of action icons (view, create, edit,
-archive, duplicate, delete, export); per action a toggle ВЫБОРОЧНО + «Выберите» opens a tree —
-«Автор (инициатор)», «Из поля "X"» (expand → «Содержимое поля» / Руководитель / Подчиненные / Департамент),
-then groups, then users. Always click СОХРАНИТЬ and check the request returned 200. The field-level lock
-popup **sends nothing when unchanged**.
+archive, duplicate, delete, export); per action a toggle ВСЕМ / ВЫБОРОЧНО. ВЫБОРОЧНО on a fresh BO pre-adds an
+«Автор» chip and «Выберите», which opens the subject tree; once chips exist the tree opens from the ⋮ right of
+them. Each tree item and the flag of the action it sets (`save-access-group`, API below) `[C]`:
+
+| tree item | flag |
+|---|---|
+| «Автор (инициатор)» ▸ «Автор (инициатор)» / «Руководитель» / «Подчиненные» / «Департамент» | `authorsField.accessForAuthor` / `accessForHead` / `accessForEmployees` / `accessForDepartment` |
+| «Из поля "X"» (one per Person field) ▸ «Содержимое поля» / «Руководитель» / «Подчиненные» / «Департамент» | `fromFields[<fieldId>].accessForContent` / `accessForHead` / `accessForEmployees` / `accessForDepartment` |
+| «Участники» (an item of its own) | `participants: true` |
+| groups, users, «Еще...» | org units (R5) |
+
+`accessForChildDepartment` / `accessForParentDepartment` have no visible control — API only. The chips name the
+choice: «Автор», «Участники», «Руководитель (Автор)», «Подчиненные - (Автор)», «Департамент - (Автор)»,
+«Содержимое поля - (X)», «Руководитель - (X)», «Сотрудники - (X)» (= `accessForEmployees`), «Департамент - (X)».
+**The author's sub-items reach the action only when the tree closes** `[C]` — close it (a click outside), check
+the chips, then СОХРАНИТЬ; a script that presses СОХРАНИТЬ with the tree open loses them. Always click СОХРАНИТЬ and
+check the request returned 200. The field-level lock popup **sends nothing when unchanged**.
 
 Simplification the user accepts: when a field's view/edit equals the BO's, just say «Всем».
 
@@ -1403,7 +1418,7 @@ headless call has no trace of it — the person's mailbox is the proof. The rest
 `send-to-person-password` / `v2/send-to-person-password {email, clientType}` (password reset),
 `send-to-admin {companyId}` — the same link on a company card's Email of kind `COMPANY_EMAIL`.
 
-The head / employees / department flags of «Из поля»: not known yet `[U]` — §12.
+What the head / employees / department flags open for a non-admin user: `[U]` — §12.
 
 ### API — `POST /web/v2/business-objects/<method>`
 
@@ -1794,7 +1809,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   группа», «Аккаунт» (they sit in no group) vanish from the BO list and from `load-bo-groups`, and the
   caption-level ⊕ of the constructor creates nothing (§5b). Rolling back that import restores `DEFAULT` and the
   built-in BOs `[C]`; other repairs `[U]`. A line for «Общее» repeats `"kind": "DEFAULT"` as
-  `load-bo-groups` gives it.
+  `load-business-object-groups` gives it.
 - **A reference to the built-in `Person` in an archive resolves by `boInfo.code`** `[C]`: `oldRefBoId` may be
   `""` or another company's `personBoId`, with or without the `CompanyMetadataStructDto` line — the imported
   field points at THIS company's `Person` and picks its users. No `personBoId` needs to be read off the stand
@@ -1903,9 +1918,9 @@ block). The page then does
 
 - `load-bo-id-by-code {boCode}` → the BO id. It returns exactly the archive's
   `oldId` — **the archive's `oldId` becomes the stand's BO id** `[C]`.
-- `load-business-object-name {boId}` → the BO's name; `load-bo-groups {forEdit: true}` (PARAMS) → every group
-  with `{id,name,code,orderIndex,kind}` — **without `forEdit` the groups that hold no BO are silently left out**
-  `[C]`, so a before/after snapshot must take `forEdit: true`
+- `load-business-object-name {boId}` → the BO's name; `load-business-object-groups {forEdit: true}` (PARAMS) → every
+  group with `{id,name,code,orderIndex,kind,records}`, the empty ones included — **`load-bo-groups` silently leaves out
+  a group that holds no BO** `[C]`, so a before/after snapshot takes `load-business-object-groups`
   (the way to prove an import renamed nothing — **groups are matched by
   `code`; a group line without `code` renames one fixed group, and a line WITH an existing code still
   overwrites that group's `name` and `orderIndex` with its own** `[C]`, `MYBPM-IMPORTS.md` §0.3/§8). Undo a rename
@@ -1920,7 +1935,11 @@ block). The page then does
   that is the rename repair above), so **giving a code-less group a code is one-way**: it can never go back
   to `null`. `verify-business-object-group-code {boGroupId, boGroupCode}` → `true` when the code is free —
   it checks only uniqueness (`"плохой код"` with a space answered `true`). `delete-business-object-group
-  {boGroupId}` → `""` deletes an empty group. A code given by `save-business-object-group` is matched by
+  {boGroupId}` → `""` deletes the group — **and every BO the company built in it** (plain, dictionary, panel,
+  composite, process: soft-deleted like `delete-business-object`); only the built-in BOs (kind `COMPANY`, `PERSON`,
+  `DEPARTMENT`, `PERSON_GROUP`) and the «Статус процесса» dictionary (`PROCESS_STATUS`) move to «Общее». The general
+  group is refused («Can not delete general group») `[C]`. Empty a group first (`move-business-object-to-group
+  {boId, boGroupId}`) when only the group should go (trap 74). A code given by `save-business-object-group` is matched by
   the next archive like any other: the BO landed in that group, no group changed;
 - `import-structure/load-import-file-records` — body `{paging:{offset,limit}}` (without `paging`: NPE) → the
   import log, newest first, `{id,fileName,description,imported_at,status,canRollback,…}`;
@@ -1995,10 +2014,12 @@ six `/web/v2/business-objects/*` calls do it headlessly.
   all, and the sidebar ⊕ at the bottom is «Добавить группу в меню» (menu, not BO).
 - **The group's kebab ⋮ is the create button.** It appears **on hover** over a BO-group row, right of the
   expand chevron: «Добавить панель / Добавить бизнес-объект / Добавить составной объект /
-  Добавить справочник / Добавить бизнес-процесс / Изменить код / Переименовать / Удалить».
+  Добавить справочник / Добавить бизнес-процесс / Изменить код / Переименовать / Удалить». **The general group
+  «Общее» (`kind: DEFAULT`) has no ⋮** `[C]` — a BO goes into it through the caption ⊕ below.
 - The caption-level green ⊕ offers the same list plus «Группа», but it creates with `boGroupId: null`;
   the client then looks for a group of `kind: DEFAULT`, and **when no group is `kind: DEFAULT` (e.g. every group is `kind: MANUAL`)**
-  nothing is created and the page is left half-rendered. **Always create from the group's ⋮.**
+  nothing is created and the page is left half-rendered. **Create from the group's ⋮**; the caption ⊕ is
+  the way into «Общее» only. The group controls themselves: §5m «The groups».
 - **There is no dialog and no name prompt**: the click creates the BO immediately as
   «Бизнес объект №N» and routes to its constructor. Created is created — undo means deleting it.
 
@@ -2021,7 +2042,7 @@ settings).
 
 | # | call | params / body | note |
 |---|---|---|---|
-| 1 | `load-bo-groups` | `{forEdit: true}` | resolve the group by name → `{id,name,code,orderIndex,kind}` |
+| 1 | `load-business-object-groups` | `{forEdit: true}` | resolve the group by name → `{id,name,code,orderIndex,kind,records}` |
 | 2 | `create-bo` | **body** `{boGroupId, boCategory}` | the BO exists from here on |
 | 3 | `save-business-object-portion` | body `{jsonPart, orderIndex, isLast, id}` | rename + description |
 | 4 | `generate-business-form-field` | params `{boId, fieldType, fieldBoId}` | one call per field |
@@ -2119,8 +2140,8 @@ write. Open questions: §12.
 | Print forms | rail → «Печатные формы» → panel: list + a draft dialog (add / edit) | §5i «Print forms» `[C]` |
 | Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
 | BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
-| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); what happens to records, menu items, references and composites: §12 |
-| BO groups | group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» | the group lifecycle calls of §5 «Verifying an import» `[C]`; a non-empty group's delete: §12 |
+| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); its records stay readable by the BO id and it leaves the export basket (§5m) `[C]`; what happens to menu items, references and composites: §12 |
+| BO groups | caption ⊕ → «Группа»; group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» (deletes the group's BOs too); «Общее» has no ⋮ | the group lifecycle calls of §5 «Verifying an import»; the UI side: §5m «The groups» `[C]` |
 | Composite attributes | «Связи» view of the composite | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
 
 Constructor behaviour that every row above runs into `[C]`:
@@ -4486,9 +4507,10 @@ All of them read back in `load-business-object-by-id` at once. Defaults of a new
 `hideAddButtonFromRegistry: false`, `instanceViewType: "FORM"`, `description: ""`.
 
 - **The header name input writes BOTH maps** `[C]`: typing in «Наименование» overwrites `recordName`
-  with the same text. A `recordName` different from the name exists only through the API or an
-  archive, and nothing on screen shows it: `load-bo-components` returns it beside `name`, and the record title
-  does NOT use it (next point).
+  with the same text. A `recordName` different from the name comes from the API, an archive or the sidebar
+  «Переименовать» (§5m); the screen shows it in one place only — the constructor palette's list of BOs (the drag
+  source of BO-link fields) `[C]`. `load-bo-components` returns it beside `name`, and the record title does NOT
+  use it (next point).
 - **A record with no `titleToShow` field is named after the BO's `name`, not its `recordName`** `[C]` —
   the record tab carries the BO name.
 - **«Скрыть кнопку добавить»** `[C]`: the registry loses its create button; the `⋮` there then offers only
@@ -4692,7 +4714,7 @@ orderIndex}]}]` (Mongo and archive key `timelineTemplates`, `MYBPM-IMPORTS.md` �
   = the template columns in their order, right = bars «dd.mm.yyyy – dd.mm.yyyy», link «Масштаб». A licence banner of
   the Gantt library sits at the bottom (trap 56).
 
-### 5m. The BO's sidebar row — «Дублировать», «Переименовать», order, «Добавить в группу», the create-record iframe URL `[C]`
+### 5m. The constructor sidebar — BO groups and the BO's row: «Дублировать», «Переименовать», order, «Добавить в группу», «Экспортировать», «Удалить», the create-record iframe URL `[C]`
 
 The left list of the constructor (`/business-objects/editing/<boId>`) shows the BOs by group; the row's ⋮ menu has
 «Права доступа» (menu rights, known), «Переименовать», «Добавить в группу», «Дублировать», «Экспортировать»,
@@ -4700,6 +4722,31 @@ The left list of the constructor (`/business-objects/editing/<boId>`) shows the 
 `load-business-object-groups {forEdit: true}` (PARAMS) → `[{id, name, code, orderIndex, kind, records: [{id, name,
 orderIndex, boCategory}]}]`, records sorted by `orderIndex`. Format side: `MYBPM-IMPORTS.md` §2 «BO place in the
 sidebar».
+
+**The groups** `[C]` (their calls: §5 «Verifying an import through the API», the group lifecycle):
+- **The sidebar lists only the groups that hold a BO** — it reads `load-bo-groups {forEdit: true}`, which leaves out
+  a group with no BO the user sees. A new empty group stays on screen only until the page reloads; then it is gone
+  from the list and from «Добавить в группу», and only the API (`move-business-object-to-group`,
+  `save-business-object-group`, `delete-business-object-group`) or an archive reaches it. Fill a new group before
+  leaving the page.
+- **Create** — caption ⊕ → «Группа» → `create-business-object-group {orderIndex, kind: "MANUAL"}` at once, no dialog;
+  the group «Группа №N» (code `Gruppa__N`) opens its name input focused. `orderIndex` = after the last LISTED group,
+  so it can repeat a hidden empty group's value.
+- **Rename** — ⋮ «Переименовать» (or the new group's open input): typing saves by itself after 500 ms —
+  `save-business-object-group` BODY = the whole group with the new name, one call per typing burst; Enter and a
+  click away only end the editing.
+- **Code** — ⋮ «Изменить код» → popover «Изменение кода группы»: a well-formed code is checked while typing with
+  `verify-business-object-group-code {boGroupId, boGroupCode}` (taken → a red icon, no text); СОХРАНИТЬ →
+  `save-business-object-group` with the new code. With no call and no message (СОХРАНИТЬ just stays grey) the
+  popover refuses an empty code, a space, Cyrillic, a leading digit and a hyphen. ОТМЕНИТЬ returns to the ⋮ menu.
+- **Delete** — ⋮ «Удалить» → `v2/delete-script-usage/analyze-bo-group {boGroupId}` → `is-analyze-done {analyzeId}`
+  → dialog «Удаление группы БО: использование в скриптах» (the script usages; УДАЛИТЬ ВСЁ РАВНО / ОТМЕНИТЬ) →
+  `delete-business-object-group {boGroupId}`. **It deletes the BOs in the group too** — the dialog speaks only of
+  scripts; which BOs survive: §5 (the group lifecycle). Trap 74.
+- **«Общее» (`kind: DEFAULT`) has no ⋮** — it is not renamed, recoded or deleted in the UI.
+- **Groups cannot be reordered by drag** `[I]`: the dragged group falls into the BO list of the group it crosses
+  and the drop sends nothing. Move a group with `save-business-object-group` (`orderIndex`) or the archive's group
+  line.
 
 **The list search finds BOs by NAME only** `[C]`: «Поиск» above the groups filters on the client (no call) and
 collapses the groups — open a group to see what matched. A BO code finds nothing there; code → BO is
@@ -4724,7 +4771,8 @@ gets:
 A record saved into a clone through §6a is an ordinary record of the clone.
 
 **«Переименовать» = `save-bo-record`** BODY `{id, name}` — and on this build it writes **`recordName` only**: `name`,
-`nameMap`, the sidebar row and the header keep the old name, also after a reload and a 10-s wait (UI and API alike). The working rename is the header «Наименование» input (§5j), which writes `name` and
+`nameMap`, the sidebar row and the header keep the old name, also after a reload and a 10-s wait (UI and API alike);
+the new text shows only in the constructor palette's list of BOs (§5j). The working rename is the header «Наименование» input (§5j), which writes `name` and
 `recordName` together. Trap 63.
 
 **Order inside a group = `save-bo-record`** BODY `{id, orderIndex}`. Dragging a row sends it with the midpoint of the
@@ -4737,7 +4785,23 @@ of the block of equal values — the drag is lost. Give such BOs distinct values
 **«Добавить в группу» MOVES the BO** — the submenu is a radio list of the groups, one choice, and it calls
 `move-business-object-to-group {boId, boGroupId}` (PARAMS); the BO leaves its old group and keeps its `orderIndex`.
 Works on clones, archive BOs and constructor BOs alike. Dragging a row into another group does the same plus a
-`save-bo-record` for the place.
+`save-bo-record` for the place. **A group created on this page takes no BO until it has been expanded once**
+`[C]`: picking it closes the popover and sends nothing (the client fails before the call). Expand the new group (its
+arrow → `load-bo-records-by-group-id {groupId, forEdit: true, searchValue: ""}`), then move; the rows may not redraw
+until a reload. Trap 75.
+
+**«Экспортировать» downloads nothing** `[C]`: it opens the export screen
+(`/settings?formType=export&settingsOpenPageUrl=import_export`) and puts the BO into the export basket —
+`struct/save-bo-export-records` BODY `[{boId, boName: <its recordName>, boCategory, hasScript, isStructureExport: true,
+isAccessRightsExport: true, isScriptsExport: false}]`: structure and access rights, no scripts. The export itself is
+that screen's button (§5 «Export tab»).
+
+**«Удалить»** `[C]` → `load-bo-usage {boId}` → `{menuItemNames, refBoNames}` and `v2/delete-script-usage/analyze-bo
+{boId}` (+ `is-analyze-done`) → dialog «Удаление бизнес-объекта»: «Последствия удаления» (menu items and BOs that
+reference it), «Места использования» (scripts), УДАЛИТЬ ВСЁ РАВНО / ОТМЕНИТЬ → `delete-business-object
+{businessObjectId}` → `""`. The page stays on the deleted BO's editor, with no message. The delete is soft (§5 «A
+deleted BO comes back»): **its records stay readable by the BO id** (`load-bo-instance-bracket-table`), and **the BO
+leaves the export basket**.
 
 **The create-record iframe URL** — header gear → «Сгенерировать встраиваемый URL на создание» → «Пользователь:
 Выберите» (a person chooser, `v2/org-unit/load-filtered-persons-v2`) → «Сформировать»:
@@ -5717,8 +5781,9 @@ The stand's own behaviour under automation `[C]`:
     `kanbanCardTemplates.<dropdown code>.kanbanFields` does. §5l.
 62. **The registry «Группировка» is not implemented server-side** `[C]` — its data calls
     `load-bo-instance-grouping-table` / `-root` are 404, the view stays empty whatever is configured. §5l.
-63. **The sidebar «Переименовать» renames nothing you can see** `[C]` — `save-bo-record {id, name}`
-    writes `recordName` only; `name` and the sidebar row stay. Rename through the header input (§5j). §5m.
+63. **The sidebar «Переименовать» renames almost nothing you can see** `[C]` — `save-bo-record {id, name}`
+    writes `recordName` only; `name`, the sidebar row and the header stay, only the constructor palette's BO list
+    changes. Rename through the header input (§5j). §5m.
 64. **Archive BOs share `orderIndex` 47480000, so a drag between two of them is lost** `[C]` — the
     dragged row gets the neighbours' midpoint (the same value) and falls back to the end of the block on reload. Give
     each BO its own value. §5m.
@@ -5755,6 +5820,12 @@ The stand's own behaviour under automation `[C]`:
 73. **`EsDataTooLargeException` on a save or an import step is transient** `[C]` — the stand's Elasticsearch
     breaker, not the payload: repeat the same call every few seconds until it passes (it may take minutes), and
     before repeating a CREATE read whether the first one already stored the record (§5b «Data too large»).
+74. **Deleting a BO group deletes the BOs in it** `[C]` — `delete-business-object-group` (and the group's ⋮
+    «Удалить») soft-deletes every BO the company built in the group; only the built-in BOs and «Статус процесса»
+    move to «Общее». The dialog warns about scripts only. Move the BOs out first. §5, §5m.
+75. **«Добавить в группу» into a group made on the same page does nothing** `[C]` — the popover closes, no call;
+    expand that group once, then move. An empty group disappears from the sidebar after a reload
+    (`load-bo-groups` hides it) — fill it first. §5m.
 
 ## 12. Open questions
 
@@ -5781,10 +5852,10 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
   `calendarCardTemplates` / `timelineTemplates` through an archive (export shape, re-import onto a copy).
 - Changing a field's TYPE: look for a control in the gear / «Инфо» tab; try `editedFields {fieldId, type}`, re-read.
-- Deleting a BO: what happens to its records, menu items, references from other BOs and composites that use it
-  (scratch BO with one of each, delete, re-read each); the UI dialog's buttons.
-- BO groups: `delete-business-object-group` on a group holding a BO (answer, `load-bo-groups`); reordering groups
-  by drag (watch for `save-business-object-group`).
+- Deleting a BO: what happens to its menu items, references from other BOs and composites that use it
+  (scratch BO with one of each, delete, re-read each).
+- BO groups: reordering by a real mouse drag (a synthetic drag sends nothing, §5m; watch for
+  `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
   field, then delete it.
 - Structure import UI: whether the import log has a rollback control (open an applied import's row); what status

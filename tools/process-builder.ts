@@ -219,7 +219,7 @@ export async function writeScript(api: Api, b: Pick<BuiltProcess, "boProcessId" 
 }
 
 export async function buildProcess(api: Api, spec: ProcessSpec, log: (s: string) => void = () => {}): Promise<BuiltProcess> {
-  const groups = await api<any[]>("business-objects", "load-bo-groups");
+  const groups = await api<any[]>("business-objects", "load-business-object-groups");
   const group = groups.find(g => g.name === spec.group || g.id === spec.group);
   if (!group) throw new Error(`group not found: ${spec.group}`);
 

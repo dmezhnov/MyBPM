@@ -861,8 +861,9 @@ async function savePortion(s, payload) {
     id = await s.call(BO_ + "save-business-object-portion", {}, { jsonPart: json.slice(i * 80000, (i + 1) * 80000), orderIndex: i, isLast: i === n - 1, id });
 }
 var loadBo = (s, id) => s.call(BO_ + "load-business-object-by-id", { businessObjectId: id });
+var boGroups = async (s) => await s.call(BO_ + "load-business-object-groups", { forEdit: true }) ?? [];
 async function groupOf(s, group) {
-  const groups = await s.call(BO_ + "load-bo-groups", { forEdit: true }) ?? [];
+  const groups = await boGroups(s);
   const g = groups.find((x) => x.id === group) ?? groups.filter((x) => x.name?.toLowerCase() === group.trim().toLowerCase())[0];
   if (!g)
     throw new Error(`no BO group «${group}» — the group must exist (bo_groups lists them): ${groups.map((x) => x.name).join(", ")}`);
@@ -2502,18 +2503,17 @@ var tools = [
   },
   {
     name: "bo_groups",
-    description: "Every BO group of the company with the BOs in it (id, name, boCategory), empty groups included (load-bo-groups forEdit + load-bo-records-by-group-id). Group codes are what an archive's BoGroupStructDto matches.",
+    description: "Every BO group of the company with the BOs in it (id, name, boCategory), empty groups included (load-business-object-groups). Group codes are what an archive's BoGroupStructDto matches.",
     run: async (a) => {
       const s = stand(a);
-      const groups = await s.call("v2/business-objects/load-bo-groups", { forEdit: true }) ?? [];
-      return Promise.all(groups.map(async (g) => ({
+      return (await boGroups(s)).map((g) => ({
         id: g.id,
         code: g.code,
         name: g.name,
         kind: g.kind,
         orderIndex: g.orderIndex,
-        bos: (await s.call("v2/business-objects/load-bo-records-by-group-id", { groupId: g.id }) ?? []).map((b) => ({ id: b.id, name: b.name, boCategory: b.boCategory }))
-      })));
+        bos: (g.records ?? []).map((b) => ({ id: b.id, name: b.name, boCategory: b.boCategory }))
+      }));
     }
   },
   {
@@ -2537,8 +2537,8 @@ var tools = [
       if (!a.name)
         throw new Error("pass `code` or `name`");
       const q = String(a.name).toLowerCase(), hits = [];
-      for (const g of await s.call("v2/business-objects/load-bo-groups", { forEdit: true }) ?? [])
-        for (const b of await s.call("v2/business-objects/load-bo-records-by-group-id", { groupId: g.id }) ?? [])
+      for (const g of await boGroups(s))
+        for (const b of g.records ?? [])
           if (String(b.name).toLowerCase().includes(q))
             hits.push({ id: b.id, name: b.name, boCategory: b.boCategory, group: g.name });
       return hits;
@@ -2997,8 +2997,8 @@ var tools = [
         if (/^[A-Za-z0-9@_$-]{16}$/.test(ref))
           return ref;
         if (!index.size)
-          for (const g of await s.call(BO_ + "load-bo-groups", { forEdit: true }) ?? [])
-            for (const b of await s.call(BO_ + "load-bo-records-by-group-id", { groupId: g.id }) ?? [])
+          for (const g of await boGroups(s))
+            for (const b of g.records ?? [])
               index.set(b.name, index.has(b.name) ? "" : b.id);
         const id = index.get(ref);
         if (id === undefined)
@@ -4475,7 +4475,7 @@ var tools = [
     name: "stand_read",
     description: "Any READ method of the stand API (last path segment load-/count-/verify-/get-/find-/search-) in the standard envelope (MYBPM-UI-API.md 0U.2; which values go to params and which to body is per method — the document's recipes say). For what no other tool covers.",
     props: {
-      path: { type: "string", description: "After /web/, e.g. v2/business-objects/load-bo-groups" },
+      path: { type: "string", description: "After /web/, e.g. v2/business-objects/load-business-object-groups" },
       params: { type: "object" },
       body: {},
       get: { type: "boolean", description: "GET without the envelope" },
