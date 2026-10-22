@@ -19,7 +19,7 @@ hand the file over. Never answer with a description to rebuild by hand in the co
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.34**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.35**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
