@@ -312,8 +312,8 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
   for (const [tab, cells] of forms) {
     let next = 0, edge = 15, lone = 0;
-    for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => a - b)) {
-      const row = cells.filter((c) => c.g.y === y).sort((a, b) => a.g.x - b.g.x), r = row[0].t;
+    for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => (+a || 0) - (+b || 0))) { // a y that is no number sorts as 0: one order under every engine
+      const row = cells.filter((c) => c.g.y === y).sort((a, b) => (+a.g.x || 0) - (+b.g.x || 0)), r = row[0].t;
       if (y !== next) err(`${r}: y ${y}, expected ${next} (0.8)`);
       let x = 0;
       for (const c of row) {
