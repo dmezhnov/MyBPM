@@ -832,6 +832,18 @@ var WIDGET_CODE = {
   ...Object.fromEntries(["CURRENT_DATE", "CURRENT_DAY", "CURRENT_MONTH", "CURRENT_DAY_AND_MONTH", "CURRENT_YEAR"].map((t) => [t, ["current-date", "save-current-date-code", "currentDateId"]]))
 };
 var LOST_ON_ADD = ["useAsKeyInMigration", "needMarkNew", "needAddToParticipants"];
+function onlyKeys(what, o, known) {
+  const bad = Object.keys(o).filter((k) => !known.includes(k));
+  if (bad.length)
+    throw new Error(`${what}: unknown key${bad.length > 1 ? "s" : ""} ${bad.map((k) => `«${k}»`).join(", ")} — known: ${known.join(", ")}; any other key of the field DTO goes inside set:{…}`);
+}
+var EDIT_KEYS = ["fieldId", "label", "required", "unique", "readonly", "column", "x", "y", "cols", "rows", "html", "optionCodes", "steps", "set"];
+async function progressSteps(s, steps, old = []) {
+  const items = steps.map((o) => typeof o === "string" ? { label: o } : o);
+  const kept = items.map((v) => old.find((x) => v.code && x.code === v.code || x.label === v.label)?.id);
+  const ids = await freshIds(s, kept.filter((x) => !x).length);
+  return items.map((v, j) => ({ id: kept[j] ?? ids.shift(), orderIndex: j, label: v.label, code: v.code ?? null, labelMap: ru(v.label) }));
+}
 var FIELD_SPEC = { type: "object", required: ["type"], properties: {
   label: { type: "string", description: "The label — the field's code is NOT derived from it if you pass `code`; get it right the first time (trap 22)." },
   type: { type: "string", description: "A field type of UI-API §5i (INPUT_TEXT, INPUT_NUMBER, DATE, FULL_DATE, DROPDOWN_SINGLE, BO, CO, TEXTAREA, STATIC_TEXT, …), a widget (BUTTON, IFRAME, SIGNATURE, CAPTCHA, CURRENT_DATE…, CURRENT_USER) or a system field (CREATED_AT, CREATED_BY, LAST_MODIFIED_AT, LAST_MODIFIED_BY, OPEN_COUNT, IN_MIGRATION_UPDATED_AT)." },
@@ -852,6 +864,7 @@ var FIELD_SPEC = { type: "object", required: ["type"], properties: {
   html: { type: "string", description: "STATIC_TEXT: the HTML shown." },
   questionnaire: { type: "object", description: "QUESTIONNAIRE: {rows, columns} — the question rows and the answer columns, each a string or {label, code}. Default one row «Вопрос 1» and columns «Да», «Нет»: an empty label makes the constructor form invalid, its СОХРАНИТЬ greys out (§5b).", properties: { rows: { type: "array", items: {} }, columns: { type: "array", items: {} } } },
   url: { type: "string", description: "BUTTON / IFRAME: its url (https only for an IFRAME)." },
+  steps: { type: "array", items: {}, description: "PROGRESS_BAR: its steps in order, each a string or {label, code}; the step ids are minted (a step without one breaks the save, §5i)." },
   set: { type: "object", description: 'Any other key of the field DTO, e.g. {"params":{"viewType":"TILE","contentType":"ALL"}} for a FILE_UPLOAD (§5h, §5i).' }
 } };
 async function savePortion(s, payload) {
@@ -930,6 +943,7 @@ function pack(specs, y0, notes, where) {
 var bottomOf = (fields) => Math.max(0, ...fields.filter((f) => !f.tabId).map((f) => (f.gridPosition?.y ?? 0) + (f.gridPosition?.rows ?? 0)));
 async function addFields(s, boId, specs, window) {
   const notes = [];
+  specs.forEach((f, i) => onlyKeys(`field ${i} («${f.label ?? f.type}»)`, f, Object.keys(FIELD_SPEC.properties)));
   const bo = await loadBo(s, boId);
   const own = specs.every((f) => f.x !== undefined && f.y !== undefined);
   const plain = specs.filter((f) => !f.tab), tabbed = specs.filter((f) => f.tab);
@@ -1004,6 +1018,11 @@ async function addFields(s, boId, specs, window) {
         return { id: optIds.shift(), label: v.label, labelMap: ru(v.label), orderIndex: j, isColumn, ...v.code ? { code: v.code } : {} };
       };
       set("questionnaires", [...rows.map((o, j) => item(o, j, false)), ...columns.map((o, j) => item(o, j, true))]);
+    }
+    if (f.steps?.length) {
+      if (f.type !== "PROGRESS_BAR")
+        throw new Error(`«${f.label ?? f.type}»: steps belong to a PROGRESS_BAR`);
+      set("progressSteps", await progressSteps(s, f.steps));
     }
     if (f.type === "CHECKLIST" && f.options?.length) {
       set("defaultValue", JSON.stringify(f.options.map((o) => ({ label: typeof o === "string" ? o : o.label, checked: false }))));
@@ -2827,7 +2846,8 @@ var tools = [
         rows: { type: "number" },
         html: { type: "string", description: "STATIC_TEXT: the new HTML" },
         optionCodes: { type: "object", description: 'DROPDOWN_SINGLE / RADIO_BUTTON_GROUP: {"<option label or current code>": "new_code"}' },
-        set: { type: "object", description: 'Any other key of the field DTO (a move to another tab: {"tabId": …})' }
+        steps: { type: "array", items: {}, description: "PROGRESS_BAR: the whole new step list (string or {label, code}); a step with an old one's code or label keeps its id, new ones get minted ids" },
+        set: { type: "object", description: 'Any other key of the field DTO (a move to another tab: {"tabId": …}; the toolbar of a TEXTAREA: {"params": {"buttonTypes": …}})' }
       } } },
       delete: { type: "array", items: { type: "string" }, description: "fieldIds" },
       window: { description: "As in bo_create; applies with `add`." }
@@ -2843,7 +2863,8 @@ var tools = [
         for (const id of drop)
           if (!fields.some((f) => f.fieldId === id))
             throw new Error(`no field ${id} on this BO (bo_read lists them)`);
-        for (const e of a.edit ?? []) {
+        for (const [i, e] of (a.edit ?? []).entries()) {
+          onlyKeys(`edit[${i}]`, e, EDIT_KEYS);
           const f = fields.find((x) => x.fieldId === e.fieldId);
           if (!f)
             throw new Error(`no field ${e.fieldId} on this BO (bo_read lists them)`);
@@ -2893,6 +2914,11 @@ var tools = [
               return c ? { ...o, code: c } : o;
             }));
           }
+          if (e.steps !== undefined) {
+            if (f.type !== "PROGRESS_BAR")
+              throw new Error(`${f.label ?? f.fieldId}: steps belong to a PROGRESS_BAR`);
+            set("progressSteps", await progressSteps(s, e.steps, f.progressSteps ?? []));
+          }
           for (const [k, v] of Object.entries(e.set ?? {}))
             set(k, v);
           edits.push(edit);
@@ -2907,6 +2933,12 @@ var tools = [
       const lost = (a.delete ?? []).filter((id) => (bo.formFields ?? []).some((f) => f.fieldId === id));
       if (lost.length)
         notes.push(`still on the BO after the delete: ${lost.join(", ")}`);
+      for (const e of (a.edit ?? []).filter((x) => x.steps)) {
+        const got = ((bo.formFields ?? []).find((f) => f.fieldId === e.fieldId)?.progressSteps ?? []).map((x) => x.label);
+        const want = e.steps.map((o) => typeof o === "string" ? o : o.label);
+        if (got.join("\x01") !== want.join("\x01"))
+          notes.push(`steps of ${e.fieldId} read back as ${got.join(", ") || "none"}, not ${want.join(", ")}`);
+      }
       return clean({ boId, code: bo.code, added: added?.added, window: added?.window, notes: [...notes, ...added?.notes ?? []], fields: fieldRows(bo) });
     }
   },
@@ -2996,7 +3028,7 @@ var tools = [
         throw new Error("pass `group` + `name` for a new composite, or `coId`");
       const index = new Map;
       const boIdOf = async (ref) => {
-        if (/^[A-Za-z0-9@_$-]{16}$/.test(ref))
+        if (ID16.test(ref))
           return ref;
         if (!index.size)
           for (const g of await boGroups(s))
@@ -3009,6 +3041,12 @@ var tools = [
           throw new Error(`several BOs are named «${ref}» — pass its id`);
         return id;
       };
+      const srcIds = [];
+      for (const r of [...a.sources ?? [], ...(a.attrs ?? []).flatMap((x) => x.links.map((l) => l.bo))]) {
+        const id = await boIdOf(r);
+        if (!srcIds.includes(id))
+          srcIds.push(id);
+      }
       let coId = a.coId, created = false;
       if (!coId) {
         const g = await groupOf(s, a.group);
@@ -3027,12 +3065,6 @@ var tools = [
       const attrsOut = [];
       try {
         const have = new Set((await s.call("v2/co/load-bo-records-for-co", { coId, draftId }) ?? []).map((b) => b.id ?? b.boId));
-        const srcIds = [];
-        for (const r of [...a.sources ?? [], ...(a.attrs ?? []).flatMap((x) => x.links.map((l) => l.bo))]) {
-          const id = await boIdOf(r);
-          if (!srcIds.includes(id))
-            srcIds.push(id);
-        }
         const fieldsOf = new Map;
         for (const id of srcIds) {
           if (!have.has(id))

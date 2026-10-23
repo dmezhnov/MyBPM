@@ -735,9 +735,10 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    is the «Внутренний айди» checkbox of «Экспорт в .xlsx» — administrators only, off by default.
    **`boFieldIds` decides the columns** `[C]`: a non-empty list = exactly those fields in that order; an
    EMPTY list = every field except `TAB_GROUP`, including `STATIC_TEXT` (its text in every row) and fields
-   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (registry kebab; under browser automation its
+   with `tableColToShow: false`. The UI's «Экспорт в .xlsx» (the registry's ⋮; under browser automation its
    download may not reach a readable folder, as with the structure export — use these calls, §10) is a chooser over the same
-   fields, pre-ticked with the registry columns; it sends what is ticked, in ticking order. No field flag
+   fields, pre-ticked with this person's last choice for the BO (shared with the template chooser, §6 «The import and
+   export dialogs in the UI»); it sends what is ticked, in the order of the numbers shown. No field flag
    hides a field from an API export — list the fields you want. **An EMPTY list exports the nested blocks
    EMPTY** `[C]`: their caption and sub-headers are there, every sub-cell is blank and a TABLE reference is
    not expanded into repeated rows, although the links exist. To read links back from a file, always list the fields.
@@ -784,8 +785,9 @@ MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you n
    registry → **«Добавить»** → fill the fields → **СОХРАНИТЬ**. A draft is created as soon as the form opens;
    closing it unsaved asks «Несохраненные данные — … Закрыть без сохранения?» → ДА drops it. An existing
    record: click its row, edit, СОХРАНИТЬ. The registry tabs В работе / Архивные / Удаленные / Тестовые
-   are the record states. A registry column header's sort icon sets the BO's default sort
-   (`save-bo-table-sort`, §5b «The rest of the constructor's controls»).
+   are the record states. A registry column header sorts for THIS person only (remembered, §6c); the BO's
+   default sort is the constructor's «Список» view (`save-bo-table-sort`, §5b «The rest of the constructor's
+   controls»). Search, conditions, row actions, mass change and every field type's control on the card: §6c.
 2. **API, scripts run** — the form cycle of §6b (what the UI's own dialog sends). **API, no script runs** —
    the draft cycle of §6a. Read back with `load-boi-values` (§6b table) or `load-bo-instance-bracket-table` (R6
    step 6; its `state` is the `BoiState` `ALL|ARCHIVED|REMOVED|OFFLINE|DEV` — the registry tab `[I]`).
@@ -794,11 +796,13 @@ MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you n
    `{"RUS": "…"}` `[I]`); its xlsx template has the columns «Код» / «Значение» (§6).
 4. **Moving a kanban card = changing the record's column dropdown** `[C]`: §6b `save-field-value` with the
    new option id, then save — it runs the dropdown's «Изменение поля» hook like any form change. The board's
-   own drag is `v2/kanban/move-kanban-card` P `{boId, fieldId, optionId, instanceId}` `[C]` (§7); whether it runs
-   that hook is not checked `[U]` (§12).
-5. **Delete / archive / restore / duplicate a record**: the API calls are named in §6a «Related in the same
-   controller» (`delete-bo-instance` with `{businessObjectId, boInstanceIds}` in the PARAMS `[C]`, trap 46); the UI controls and the params
-   of `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` are not known yet `[U]` (§12).
+   own drag is `v2/kanban/move-kanban-card` P `{boId, fieldId, optionId, instanceId}` (§7), and **every such call runs
+   the dropdown's «Изменение поля» hook** — a move into the column the card already is in included — and stores the
+   value at once, no draft `[C]`.
+5. **Delete / archive / restore / duplicate a record** `[C]`: the API calls and their params are §6a «Related in
+   the same controller» (all in the PARAMS half, trap 46; `restore-bo-instance` takes an ARRAY in `boInstanceId`); the
+   UI controls — the registry toolbar, the row icons, the card's ⋮ — are §6c. A duplicate is stored at once; the UI
+   has no permanent delete.
 
 #### R10 — A whole system from a spec — build everything the stand can take
 
@@ -1004,8 +1008,8 @@ and dropping the rest «for scope» is a fraction reported as done.
 
 §1 request conventions · §2 the working method · §3 rights · §4 menus and filters (API and «Menu in the UI») · §5 archive import and
 export, §5b–5f one section per object kind, §5g the script API, §5h field settings, **§5i every field
-type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the constructor sidebar: BO groups (create, rename, code, delete) and the BO's row (clone, rename, order, group, export, delete, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes (the FILE FORMAT is
-`MYBPM-IMPORTS.md` Part III) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
+type, widget and system field**, §5j BO header settings, §5k card tabs, §5l BO views (calendar / map / grouping), §5m the constructor sidebar: BO groups (create, rename, code, delete) and the BO's row (clone, rename, order, group, export, delete, create-record iframe URL), §5n company settings that name a BO (physical removal, offline, messengers), §5o «Выставление сервисов» (a BO as a public HTTP endpoint, its archive line) · §6 Excel records: the routes and the import / export dialogs (the FILE FORMAT is
+`MYBPM-IMPORTS.md` Part III), §6a/§6b a record without the UI, **§6c the registry and the record card in the UI** (search, conditions, row actions, mass change, every field type's control) · §7 kanban (solved — the card template ships in the archive) · §8 the HTML
 sanitizer · §9 tooling · §10 browser-automation traps · **§11 the numbered trap list — read it when
 something behaves impossibly** · §12 what is still unknown · §0U.8 the `mybpm-stand` MCP server.
 
@@ -1135,7 +1139,8 @@ do is plain HTTP by §0U.4.
   code by its setter (rule 4 + 12) and a read-back; a BO code the rename race overwrote (trap 24) is set again.
   Tab codes stay derived from the labels (§5k by hand); a «Системные» tab is closed with VIEW «никому» (R5 step 6). Option codes (`options[].code`, `bo_fields_save` edit
   `optionCodes`) are set by a later EDIT of `options` and read back, because the stand regenerates them after
-  the add (§5h «Единичный выбор»). `co_build` runs the R2a draft cycle and removes the draft on any failure, so
+  the add (§5h «Единичный выбор»). `PROGRESS_BAR` `steps` get ids from `v2/id-loader` (§5i); an edit keeps the id
+  of a step with the same code or label. `co_build` runs the R2a draft cycle and removes the draft on any failure, so
   nothing half-built stays.
 - **The rights tools make R5 whole.** `rights_read` / `rights_save` take one target — a BO, a field, a tab, a
   menu item (by id, code or name) — and read every action as `"all"`, `"nobody"` or its subjects (groups,
@@ -1241,7 +1246,7 @@ do is plain HTTP by §0U.4.
 | `import_log` | the import log and the open import | `load-import-file-records`, `load-import-state` |
 | `structure_export` | exactly these BOs into the export basket, the file to the user's disk, the user's basket put back | R4a, R8 |
 | `bo_create` ✎ | a BO / dictionary / panel / process BO with its fields laid out, coded, window set, read back | R1 steps 1–8 + «Layout», rule 4 + 12 |
-| `bo_fields_save` ✎ | add, edit (any field key), delete fields of an existing BO in one save | R1 step 7, §5h |
+| `bo_fields_save` ✎ | add, edit, delete fields of an existing BO in one save; a key the tool does not name goes inside `set`, an unknown one is refused | R1 step 7, §5h |
 | `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
 | `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs); with `confirm` the delete | «Delete a BO» in §5b |
 | `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
@@ -4105,7 +4110,7 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
 | `RADIO_BUTTON_GROUP` | `optionSource: "FROM_FIELD"` + `options[]` only — a dictionary is stored but never shown (§5h «Единичный выбор») |
 | `CHECKLIST` | **`defaultValue`** = the items as a JSON STRING `[{"label":"Пункт","checked":false},…]` + `isAppendable: true`, both mirrored into `editedFields` — that is what the constructor sends when an item is typed under the field; `options` are not read |
 | `QUESTIONNAIRE` | `questionnaires[]` — the generator already returns two rows, one `isColumn: true`, one `false`; set their `label`/`labelMap` |
-| `PROGRESS_BAR` | `progressSteps[]` = `{id (v2/id-loader), orderIndex, label, code, labelMap}` |
+| `PROGRESS_BAR` | `progressSteps[]` = `{id (v2/id-loader), orderIndex, label, code, labelMap}`; a step without `id` fails the whole save with `NullPointerException … "progressStepId" is null` `[C]` |
 | `TAB_GROUP` | `tabs[]` = `{id, label, isActive, chosenAccessRight, orderIndex, isInvalid, isRight, isDefault, labelMap}` |
 | `FILE_UPLOAD` | `params` `{viewType: SINGLE/MULTIPLE/TILE, contentType: ALL/FOR_CAMERA/IMAGE/DOCUMENT}` (both keys inside `params`, §5i) |
 | `STATIC_TEXT` | `staticValueMap.RUS` = the HTML |
@@ -4655,9 +4660,30 @@ rail order with `orderIndex` 1, 2 …; an untick + re-tick of a saved tab nets o
 
 On the record card: CHAT = the record's chat («N собеседников», message box), PEOPLE =
 its participants, FILES = a file list with «Загрузить файл», PRINT_FORM = the print forms, HISTORY = the journal
-(§5h «История»). The rail follows `orderIndex`.
+(§5h «История»). The rail follows `orderIndex`; a click puts `boTabType=<TYPE>` into the URL.
 
-**API** — `save-business-object-portion` with a PARTIAL BO, nothing else of the BO changes:
+**CHAT and PEOPLE on the card** `[C]`:
+- Opening a card sends `v2/chat/ensure-room` (the controller also has `load-room-type {businessObjectId}` and
+  `load-persons-for-mention {searchValue, chosenMembers}`). CHAT = «N собеседников» + ⊕, the message list, a box
+  «Введите сообщение» with @-mention, attachment and microphone; Enter sends.
+- **The messages do not go through `/web/v2`**: a WebSocket `ws://<stand>/websocket` carries JSON frames
+  `{service, params}` — `chat/message-list/send-message {roomId, text, replyMessageId:null, imageFileId:null,
+  appealToUserIds:[]}`, `user-read-message {messageId, chatType:"BOI"}`, `user-started-edit-text` /
+  `user-stopped-edit-text {roomId}`; `roomId` = the record id. The rest of that service is read off the client
+  `[I]`: `load-page {roomId, pageId}`, `load-writing-users`, `watch-room` / `unwatch-room`, `load-message-by-id`,
+  `delete-message {messageId}`, `chat/reply-message`; the server pushes `page`, `new-message`, `deleted-message-id`,
+  `set-writing-text-users`.
+- PEOPLE = «Участники: N», a row per member (initials, name, e-mail, trash) and «⊕ Пригласить сотрудника». It and the
+  chat's ⊕ open the SAME person picker (company tree, a checkbox per person, `v2/org-unit/load-filtered-persons-v2`);
+  ticking and closing it → `v2/business-object-instance/add-members-to-instance` P `{businessObjectId, boInstanceId}`
+  B `[{id, type:"PERSON", name, avatar, parentGroupNames, email}]`. Trash → «Исключение из участников» ДА / НЕТ →
+  `delete-members-from-instance` B `[{id, type}]`. Read with `members-of-instance {businessObjectId, boInstanceId,
+  draftId}`.
+- **The current user is never listed nor counted** — the author is a member from the start, so «Участники: 1»
+  means one OTHER person.
+
+**API** — `save-business-object-portion` with a PARTIAL BO inside `jsonPart` (R1), nothing else of the BO changes —
+**a bare body `{businessObject:…}` without `jsonPart` answers an id too and changes NOTHING** `[C]`:
 ```js
 {businessObject: {id, boTabs: [{type: "CHAT", orderIndex: 1}, {type: "FILES", orderIndex: 2}], delBoTabs: ["PEOPLE"]}}
 ```
@@ -5100,25 +5126,25 @@ between calls.
 
 ## 6. Records: Excel import and export
 
-Records (instances) are imported as **Excel files into a BO registry** (registry kebab → импорт/экспорт
-xlsx), never through the structure archive.
+Records (instances) are imported as **Excel files into a BO registry** (the registry's ⋮ at the bottom right →
+«Импорт из .xlsx» / «Экспорт в .xlsx»), never through the structure archive.
 
 ### Import and export through the API — controller `v2/bo-transfer` `[C]`
 
-The registry kebab's «импорт/экспорт xlsx» is an ordinary controller, and it is **two-phase like the
+The registry ⋮'s «Импорт из .xlsx» / «Экспорт в .xlsx» is an ordinary controller, and it is **two-phase like the
 structure import**: the upload builds an "act" you can read, and a second call applies it. The exact bodies are §0U R7.
 
 | # | call | params | note |
 |---|---|---|---|
 | 0 | `load-bo-import-details` | `{businessObjectId}` | what the importer expects of this BO |
-| 1 | `download-template` | `{businessObjectId, selectedFieldIds}` | a plain **GET** with query params, no envelope → the xlsx; ONE `selectedFieldIds=` per field (a comma list → `NullPointerException … colHeader is null`) `[C]` |
+| 1 | `download-template` | `{businessObjectId, selectedFieldIds}` | a plain **GET** with query params, no envelope → the xlsx; `selectedFieldIds` either ONE param holding a JSON array (`selectedFieldIds=["<id>",…]` — what the UI sends) or one `selectedFieldIds=` per field, same file; a comma list → `NullPointerException … colHeader is null` `[C]` |
 | 2 | `import-from-file` | multipart: file under **`file`**, plus the form field `businessObjectId` | → a bare `"<actId>"` |
 | 3 | `is-import-file-finished` | `{actId}` | poll |
 | 4 | `load-import-file` | `{actId}` | the act `{importId, total, newRecords, updatedRecords, errorRecords, fileError}` — **nothing written yet**; a blank cell shows up only as «updated» |
 |   | `load-bo-import-table` | **B** `{importId, paging:{offset:0,limit:10}}` (params → NPE «strId is marked non-null») | the act's rows `{heads, records:[{hasError, errorText, values}]}` — the per-row error text, before apply `[C]` |
 | 5 | `apply-imported` | `{importId}` | **writes** |
 |   | `cancel-imported` / `imported-ok` | `{importId}` | drop / close |
-|   | `watch-import-finished` | `{importId}` | poll the apply |
+|   | `watch-import-finished` | `{importId}` | poll the apply; it also answers `true` after a `cancel-imported` — `true` does not mean written `[C]` |
 | 6 | `download-errors` | GET `?importId=` with the `token` header (POST → 405) | the «Ошибки при загрузке …» xlsx — after an apply it comes back with the header only, no rows, even when the act had an error row `[C]`; read `load-bo-import-table` instead |
 
 Export: `export-bo` (raw body, params `boInstanceIds`, `boFieldIds`; `[U]`) and `export-bracket-bo`
@@ -5132,6 +5158,39 @@ with 0 errors; **a column missing from the file KEEPS the field**. To update a f
 those columns plus the key. A date cell is parsed leniently — `31.02.2026` → 03.03.2026, `00.00.0000` →
 30.11.0002, `1.1.26` → year 0026, no error `[C]`. After removing columns re-letter the cells contiguously — a header with
 skipped letters misread the next column `[C]` (`MYBPM-IMPORTS.md` §19.6).
+
+### The import and export dialogs in the UI `[C]`
+
+- **Where**: the registry's ⋮ at the bottom right → «Импорт из .xlsx» / «Экспорт в .xlsx». The toolbar's download
+  icon (rows ticked, §6c) opens the same export dialog for the ticked rows only.
+- **«Импорт данных»** (opening it asks `has-rights` `{type:"CREATE", boiPageType:"LIST"}`): «Скачать шаблон» link at
+  the top right · «Файл» · «Выберите файл» · ЗАГРУЗИТЬ · ОТМЕНИТЬ. Choosing a file only shows its name; ЗАГРУЗИТЬ
+  runs rows 2–4 of the table above.
+- **«Скачать шаблон»** → a field chooser: search, every field of the BO except the system ones (`STATIC_TEXT`,
+  `CO`, nested tables included), each ticked row numbered; a new tick takes the next number, and the template's
+  columns follow those numbers. СКАЧАТЬ = `download-template` with the JSON-array form; the chooser stays open
+  after it. **The ticks are remembered per person per (BO, menu item)** — every close of the chooser posts
+  `v2/transfer-filter/save-person-filter` B `{id, companyId, boId, actual, fieldIds}`, the next opening reads
+  `v2/transfer-filter/load-from-person-filter` P `{boId, menuItemId}` — **and the export chooser shares that
+  list**. So the pre-ticks are what this person ticked last, not the registry columns, and the remembered order
+  can come back different from the ticking order: check the numbers before СКАЧАТЬ. The file is
+  `Шаблон+<BO name>+<yyyy-MM-dd>+<HH:mm>+(<TZ>).xlsx`: header row only, bold, row 1 frozen, no data validation.
+- **The act** replaces the dialog's body: the file's header and rows, an error row starting with ⚠ — HOVER it to
+  read «Ошибка» + the error text; footer «Количество записей · Новые · Ошибок · Обновлений», «Скачать файл с
+  ошибками», ПРИМЕНИТЬ, ОТМЕНИТЬ; no ×. **Only the first 10 rows ever show** — the table pages on scroll, but ten
+  rows fit its box, so nothing scrolls: read the rest from `load-bo-import-table` with a larger `offset`, or from
+  the error file.
+- **ПРИМЕНИТЬ** → `apply-imported`, `watch-import-finished` every 3.5 s until `true`, a «data was imported
+  successfully» popup, `imported-ok`, the dialog closes — and **the registry page reloads itself two seconds later**.
+  The error rows are skipped, the valid ones written. **ОТМЕНИТЬ** on the act → `cancel-imported`, the dialog closes,
+  nothing written; before ЗАГРУЗИТЬ it only closes.
+- **«Скачать файл с ошибками»** = `download-errors` → `Ошибки+при+загрузке+бизнес-объекта+<BO name>+….xlsx`: columns
+  «Строка в файле | Код ошибки | Класс ошибки | Сообщение об ошибке» (the Excel row number, e.g. `NotFoundOptionLabel`
+  with its message), then «Кем загружен» / «Когда загружен». It is filled only BEFORE ПРИМЕНИТЬ (row 6 above).
+- **«Экспорт в .xlsx»**: search · «Учитывать настроенный фильтр» (ticked by default = the registry's current search,
+  conditions and column ordering go into `export-bracket-bo`; unticked = the whole BO) · «Внутренний айди» (off,
+  `needBoiId`) · the field list (the shared remembered ticks) · ЭКСПОРТ / ОТМЕНИТЬ → `export-bracket-bo`, then
+  `is-bo-export-file-ready` polled and `load-bo-export-file` (R7 step 6).
 
 ### 6a. Creating a record WITHOUT the UI — the draft cycle `[C]`
 
@@ -5171,8 +5230,12 @@ The value DTO (the client's class `M`, built by `M.of(draftId, boId, boiId, isDe
   **It does NOT store a `DROPDOWN_SINGLE`**: the call answers `[]` and the record's dropdown stays empty
   `[C]`. Set a dropdown through the form cycle instead (§6b `save-field-value` with the bare option id as
   `value`) `[C]`; whether `save-boi-value` takes the bare option id in `value` is `[U]`.
-- Related in the same controller: `copy-bo-instance {boId,boiId}`, `delete-bo-instance
-  {businessObjectId, boInstanceIds}`, `archive-bo-instance`, `restore-bo-instance`,
+- Related in the same controller, all in the PARAMS half `[C]`: `copy-bo-instance {boId, boiId}` → the bare id of
+  a copy that is STORED at once (same state and values, the same file ids), `delete-bo-instance` and
+  `archive-bo-instance` `{businessObjectId, boInstanceIds:[…]}` → `true`, `restore-bo-instance {businessObjectId,
+  boInstanceId:[…]}` — an ARRAY under the singular name, from ARCHIVED or REMOVED back to its state before
+  (`load-restore-conflict-fields` with the same params is what the UI asks first), `unzip-bo-instance
+  {businessObjectId, boInstanceId}` (the kanban views' un-archive `[I]`); the UI of each is §6c. Also there:
   `is-field-value-unique {boId,boiId,fieldId,value}`, `load-boi-id-by-unique-field
   {boId,fieldCode,fieldValue}` (body, not params; both
   `v2/business-object-instance/load-boi-id-by-unique-field` and `…/v2/load-boi-id-by-unique-field` answer 404 —
@@ -5239,20 +5302,119 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `INPUT_NUMBER` | `"42"` | `[C]` |
 | `CHECKBOX` | `"true"` / `"false"` | `[C]` |
 | `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""` | `[C]` |
-| `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}`; `PERIOD_TIME` reads back with both ends as epoch milliseconds | `[C]` |
+| `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}`; `PERIOD_TIME` reads back with both ends as epoch milliseconds; `"{}"` clears it | `[C]` |
 | `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare. A dictionary dropdown (`optionSource:"FROM_BO"`): send the dictionary record's CODE — it is stored as that record's id and the card shows it; the bare record id is stored too, but the card shows the field empty | `[C]` |
 | `BO` | a JSON array of record ids `["<boiId>"]` | `[C]` |
-| `CO` | a JSON array of `"<source BO id>-<boiId>"` — rows of DIFFERENT sources in one array, the whole set in one call, no `saveType` needed (bare ids → `IllegalStoredValue … Value_CO`); the UI adds one row with `saveType:"ADD"`. **`load-boi-values` answers `value:""` for a `CO` field even when it holds rows** — read it back from `load-field-data` of an existing-record draft, then `remove-draft` | `[C]` fires the script |
+| `CO` | a JSON array of `"<source BO id>-<boiId>"` — rows of DIFFERENT sources in one array, the whole set in one call, no `saveType` needed (bare ids → `IllegalStoredValue … Value_CO`); the UI sends all rows ticked in its picker in one call with `saveType:"ADD"`, a removed row with `saveType:"REMOVE"`. **`load-boi-values` answers `value:""` for a `CO` field even when it holds rows** — read it back from `load-field-data` of an existing-record draft, then `remove-draft` | `[C]` fires the script |
 | `QUESTIONNAIRE` | `[{"rowId":"…","columnId":"…"}]` | `[C]` |
 | `GEO_POINT` | `{"lat":43.238,"lon":76.945}` | `[C]` |
 | `INPUT_TEXT_LANG` `TEXTAREA_LANG` `STATIC_TEXT` | `{"RUS":"…"}` (stored with all four languages; for `TEXTAREA_LANG` / `STATIC_TEXT` each language may be HTML, §8) | `[C]` |
 | `TAB_GROUP` | `""` | `[C]` fires the script |
-| `FILE_UPLOAD` | a JSON array of file ids `["<fileId>"]`; the UI first uploads with `POST /web/v2/file/upload?draftId=…&boId=…&boiId=…&fieldId=…` (multipart `file`, `token` header → the 24-hex fileId as a JSON string), then `file-meta-info-list` `B {fileIds}`; an upload without the query parameters works the same | `[C]` fires the script |
+| `FILE_UPLOAD` | a JSON array of file ids `["<fileId>"]`; the UI first uploads with `POST /web/v2/file/upload?param=draftId:<draftId>-boId:<boId>-boiId:<boiId>-fieldId:<fieldId>` — ONE query parameter `param`, the parts joined by `-` (multipart `file`, `token` header → the 24-hex fileId as a JSON string), then `file-meta-info-list` `B {fileIds}` → `[{fileId, fileName, mimeType, createdAt}]`, then the WHOLE id list; an upload without the query parameter works the same | `[C]` fires the script |
 | `CHECKLIST` | the whole item list as JSON text: `[{"label":"Пункт 1","checked":true},…]` (also on a field whose constructor list is empty) | `[C]` fires the script |
 | `PROGRESS_BAR` | a MAP `{"<step code>":"GREEN"}` (`RED GREEN YELLOW BLUE ORANGE PURPLE`); it reads back as `[{stepCode, color}]`, and THAT array, `["<stepId>"]` or `"[]"` sent as a value break the draft (trap 50) — §5h «Per-type settings»; the registry column shows a stored bar empty | `[C]` |
 
 **The server does not validate the value** — a wrong shape (`"10:30"` for `TIME`, an array for `PERIOD`)
 is stored as is; most shapes still read back, but see trap 50.
+
+### 6c. The registry and the record card in the UI `[C]`
+
+The registry: sidebar «Бизнес» → the group → the BO (`/business-objects/viewing-list/bo/<boId>/list-view?…`), or a
+menu item. It reads with `load-bo-instance-bracket-table` + `load-bo-instance-count` (§7 «How the registry and the
+kanban sort»).
+
+**Header row**: «<BO name>» · ⊕ «Добавить» · tabs В работе / Архивные / Удаленные / Тестовые (`state` `ALL` /
+`ARCHIVED` / `REMOVED` / `DEV`) · the counter · «Фильтр ▲/▼» · the view chooser («Список», «Канбан по полю: …», §7,
+§5l). **Second row**: «Поиск» (× clears it) · a funnel-plus that adds a condition · the conditions · at the far right a
+red funnel-x that removes every condition. «Фильтр ▲/▼» only collapses and expands the second row.
+
+- **Search**: every pause in typing re-reads the registry with `search:"<text>"` in the body.
+- **Conditions**: the funnel-plus → «Какой элемент хотите найти?» = a search box and EVERY field of the BO, registry
+  column or not, system fields included. A pick adds a chip «<label>: Выберите»; «Выберите» (or the chip's ⋮) opens
+  the value chooser of that type (a dropdown = a radio list with a search, a number = «От» / «До»). **A change applies
+  AT ONCE** — no apply button: the body gets one bracket per condition, `{id, parentId:"", parentTreeIds:[],
+  connectionType:"AND", notType:"DEFAULT", dynamicFilters:[{fieldId, label, type, value:"<optionId>", numberFrom,
+  numberTo, boiIds, isCurrentUser, isEmptyValue, …}], nativeFilters:[], brackets:[]}` (the shape of §4 «Record
+  filters»). The broken-link icon left of a condition toggles «не» (`notType:"NOT"`); the «И» between two conditions
+  toggles «ИЛИ» = `connectionType:"OR"` on the EARLIER bracket — the server reads the connector from the earlier
+  bracket, an `OR` on the later one acts as AND.
+- **Any NOT bracket turns every ИЛИ into И on the server** while the UI still shows «ИЛИ» (`NOT A ИЛИ B` returns
+  `NOT A AND B`). Trap 78.
+- **A number range needs both ends**: an untouched «До» is `0` and IS a bound — «От 200» alone finds nothing.
+- **A column header** cycles ASC → DESC → off (`ordering {archetype, fieldId, state}`).
+- **Search, conditions and column ordering are remembered per person per (BO, menu item)**:
+  `v2/bracket-filter/save-person-search` P `{search, boId, menuItemId}`, `save-person-filter` P `{menuItemId}` B
+  `{boId, type:"PERSON", brackets}`, `save-person-ordering` P `{boId, menuItemId}` B = the ordering; the next opening
+  (navigation or F5) arrives searched, filtered and sorted so. Before reading a registry as «everything», clear the
+  search and press the red funnel-x.
+- **Counter** = «<ticked> / <rows loaded> из <filteredCount>» («3 из 3» with nothing ticked) — the count after the
+  filter; the BO's total is not shown.
+
+**Row actions.** Ticking rows shows icons right of «Добавить»; hovering a row shows its own icons at its right end. No
+tooltips. Every action asks `has-rights` P `{businessObjectId, boInstanceId, type:"EDIT"|"ARCHIVE"|"DELETE",
+boiPageType:"LIST"}` first.
+
+| tab | toolbar, rows ticked | row hover |
+|---|---|---|
+| В работе | duplicate (one row ticked only) · ⇄ mass change · archive · delete · download | duplicate · archive · delete |
+| Архивные (no «Добавить») | restore · delete | — |
+| Удаленные | restore · archive — **no permanent delete in the UI** | — |
+| Тестовые | delete | duplicate · delete |
+
+- **Duplicate** → `copy-bo-instance` P `{boId, boiId}` → **the copy is stored at once** (same values; a `FILE_UPLOAD`
+  points at the SAME files), then its card opens in EDIT — closing it with × keeps the copy. No confirm.
+- **Archive** → «Архивирование экземпляра … Продолжить?» ДА / НЕТ → `archive-bo-instance` P `{businessObjectId,
+  boInstanceIds:[…]}`. From «Удаленные» it moves a deleted record to ARCHIVED.
+- **Delete** → «Удаление экземпляра …» ДА / НЕТ → `delete-bo-instance` (same params, trap 46).
+- **Restore** → `load-restore-conflict-fields` → «Восстановление экземпляра … Продолжить?» → `restore-bo-instance` P
+  `{businessObjectId, boInstanceId:[id]}` (§6a).
+- **A deleted TEST record is listed nowhere** — its state is REMOVED, yet neither «Удаленные» nor «Тестовые» shows
+  it; only `restore-bo-instance` brings it back (as a test record). Trap 79.
+- **Download** = «Экспорт в .xlsx» for the ticked rows (§6 «The import and export dialogs in the UI»).
+- **The card's own ⋮** (bottom bar of an open record) → Дублировать / Архивировать / Удалить — the same calls;
+  Дублировать opens the copy's card on top.
+
+**Mass change (⇄)** → dialog «<BO name>. Изменение параметров» · «Параметры для изменения: Выберите» → a checkbox per
+OWN field of the BO, no system fields (`TAB_GROUP` and unique fields are left out `[I]`) → every ticked field gets a
+value editor below → «Сохранить» → `POST v2/boi-update-list/mass-change-instances` B `{boId, boiIds:[…],
+values:[{fieldId, storedValue}]}` (`storedValue` in the §6b `value` shapes: a dropdown's option id, a number `"777"`)
+→ a `processId`; poll `v2/process-indicator/load-state` P `{processId}` → `{startedAt, finishedAt, percentage,
+currentCount, totalCount, phases:{main:{errors}}, error}` until `percentage` is 100. Whether it runs the BO's scripts
+is `[U]`.
+
+**A test record**: «Тестовые» → «Добавить» → `create-draft-with-boi` P `{boId, boiState:"DEV", isReadMode:false}`; the
+card is titled «<BO name> (Запись тестовая)»; it runs the TEST script version (§6b).
+
+**The record card** — what holds for every field:
+- A **«Поиск поля»** box at the top right finds a field on the card (`load-search-form-data` per keystroke).
+- A text field is sent on BLUR, not per keystroke; `INPUT_TEXT_LANG` and a checklist item's label are sent after a
+  pause in typing.
+- An unchanged card shows no СОХРАНИТЬ. × with unsaved changes → «Несохранённые данные … Закрыть» Да / Нет (Да =
+  `remove-draft`; a NEW card is dropped with `delete-boi` first, §6b). An empty required field → СОХРАНИТЬ answers
+  «Внимание / Карточка не соответствует требованиям: 1. Обязательные поля не заполнены».
+
+Per type (the `value` shapes are the §6b table):
+
+| type | on the card | what it sends |
+|---|---|---|
+| `DATE` | a date picker: year · month · day grid · «Сегодня» — no clear button | **clear = the × that shows at the input's right end only while the mouse is over the field** → `value:""`; erasing the text and leaving brings the old date back |
+| `PERIOD` | «Начальная дата» / «Конечная дата», a two-month panel | the first day click stores `{"startDate":…}` ALONE at once, the second adds `endDate`; each ISO = the picked day at the current local time of day, in UTC — its UTC date can be the day before. × on hover → `"{}"` |
+| `TIME` | «HH:mm», hour and minute columns, «Сейчас» · «ОК» | only «ОК» sends: today's date at that local time, in UTC |
+| `INPUT_TEXT_LANG` | one input | `{"<current interface language>":"<text>"}`; a globe with a value per language shows only while the input is focused and only when the company has more than one language `[I]` |
+| dictionary `DROPDOWN_SINGLE` | «Выберите» → search + radio list | the dictionary record's CODE; the chip's ⋮ reopens the chooser; its × → `values:[{fieldId}]` with no `value` key = cleared |
+| `RADIO_BUTTON_GROUP` | a radio per option | the option id; never cleared from the card |
+| `BO` SINGLE | «Выберите» → picker «<referenced BO>»: «Добавить» · search · filter · a radio table of the referenced BO's registry columns (hover → an eye = view the record) · ВЫБРАТЬ / ОТМЕНИТЬ | a tick picks AND closes: `saveType:"REMOVE"` of the old one, then `"ADD"` of the new; chip × → REMOVE. **The chip's ⋮ opens the picker with nothing ticked, and ВЫБРАТЬ then CLEARS the field** (`"[]"` ADD). Trap 80 |
+| `BO` TABLE | «⊕ Добавить» → the same picker with checkboxes | ВЫБРАТЬ → one ADD of the ticked ids; a row's minus (on hover) → «Удаление элемента» ДА / НЕТ → REMOVE — the link only, the record stays; a row click opens the linked record on top (`v2/instance-form-create-draft/create-draft-from-field` P `{boId:<referenced BO>, boiId, parentDraftId, parentFieldId}` → a draftId) |
+| `CO` | «⊕ Добавить» → one picker over the rows of ALL sources (a column per CO attribute; rows already in the field are not listed; «Загрузить еще») | Выбрать → ONE ADD of every ticked `"<source BO id>-<boiId>"`; minus → REMOVE; the picker's «Добавить» first asks WHICH source |
+| «Добавить» in a picker | — | `has-rights` CREATE on the referenced BO → `check-boi-draft-exists {parentDraftId}` → `create-draft-with-boi-from-field` P `{boId:<referenced BO>, parentDraftId, parentFieldId}` → `{draftId, boiId}`: a new card of that BO opens on top, and its СОХРАНИТЬ creates the record AND adds it to the field |
+| `CHECKLIST` | «⊕ Добавить» | a new empty item at once; label typing, Enter (= the next item), tick and trash (no confirm) each send the whole list. Items set in the constructor are the default of NEW records only (§5h «Per-type settings») |
+| `QUESTIONNAIRE` | row and column labels read-only, a radio per cell | one cell per row; no untick |
+| `PROGRESS_BAR` | the steps, display-only | nothing — a script or the API writes it |
+| `GEO_POINT` | lat and lon number inputs + a map icon | each input on blur (lat alone first); the map icon → a Leaflet map whose tiles come from `tile.openstreetmap.org` (the browser must reach that host); a click moves the marker, ВЫБРАТЬ sends both |
+| `FILE_UPLOAD` | «Прикрепите файл» over a hidden `input[type=file] multiple`; a row = icon · name · date · trash | the upload of §6b, then the whole id list. A click on the name, by mime type: image → viewer; docx/doc/xlsx/xls/pptx/ppt/pdf → document viewer (it may store a new file id into the field); audio → player; anything else → download = `GET /web/v2/file/download/<fileId>` with the `token` header. Trash → the rest of the list, no confirm; the file stays on the server. Tile mode (§5i): a download icon per tile and a «+» tile that also takes a paste |
+| `TEXTAREA` | the summernote editor | §8 «Typing HTML into the card» |
+
+CHAT and PEOPLE tabs of the card: §5k. Kanban drag: §7, R9 step 4.
 
 ### Files and templates
 
@@ -5270,7 +5432,7 @@ is stored as is; most shapes still read back, but see trap 50.
 Everything about the CONTENTS of the xlsx — the sheet format, how a cell resolves to a record, the
 SINGLE↔TABLE defect, merge/idempotency, the destructive unknowns and the importer's internals — moved to
 `MYBPM-IMPORTS.md` **Part III** (§0X is a self-contained cookbook «build me a file for this BO», §19 the
-evidence). This document keeps the transport: the routes above, the registry kebab and the templates.
+evidence). This document keeps the transport: the routes above, the registry's ⋮ dialogs and the templates.
 
 ## 7. Kanban — columns, the card template (API, constructor, archive), the board `[C]`
 
@@ -5320,7 +5482,8 @@ red ⊗.
 
 **On the board** `[C]`: dragging a card into another column = `has-rights` P `{businessObjectId, boInstanceId,
 type:"EDIT", boiPageType:"KANBAN"}`, then `v2/kanban/move-kanban-card` P `{boId, fieldId, optionId, instanceId}` B
-`{}` → `""`, then `load-bracket-total-card-count` per column.
+`{}` → `""`, then `load-bracket-total-card-count` per column. The value is stored at once, and every such call runs
+the dropdown's «Изменение поля» hook, a move into the same column included (R9 step 4).
 
 **The template, as it goes into the BO's line of the archive** (`BoStructDto`, next to `dynamicFields`;
 same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
@@ -5379,8 +5542,9 @@ same block: `MYBPM-IMPORTS.md` §0.5c) `[C]`:
   sent in the body it answers 200 and writes nothing. With params it writes `sortFieldId` (read back from
   `load-business-object-by-id`); `fieldId: null` clears it, the constructor clears it with `order: "UNSET"` and no
   `fieldId` (its «Список» view: the sort icon of a column cycles ASC → DESC → off, §5b). The ORDER OF A NESTED TABLE does follow it (§5i).
-- **The registry REMEMBERS the sort a header click chose** `[C]`: every later opening (navigation or F5) arrives
-  sorted that way until another header is clicked. Whether it is per user or shared is not checked `[U]`.
+- **The registry REMEMBERS the sort a header click chose — per person per (BO, menu item)** `[C]`: the click sends
+  `v2/bracket-filter/save-person-ordering`, and every later opening (navigation or F5) arrives sorted that way until
+  another header is clicked; the search and the conditions are remembered the same way (§6c).
 - A BO with **no** registry column answers `AccessDenied` «У Вас недостаточно прав на поля, которые выведены
   в реестр» even though every field has `accessForAll: true` — not rights, an empty column set. Trap 48.
 
@@ -5432,6 +5596,18 @@ the record still shows its own frame, while the BO's `staticValueMap` keeps its 
 over a `TEXTAREA` for a read-only embed. Which sites can be framed at all: `yandex.ru/maps` answers
 `X-Frame-Options: DENY`; the embeddable widget `https://yandex.ru/map-widget/v1/?rtt=auto&rtext=<lat,lon>~<lat,lon>`
 (no key, draws the road route) has no XFO / `frame-ancestors` and renders `[C]`.
+
+**Typing HTML into the card** `[C]` (`TEXTAREA`; `TEXTAREA_LANG` uses the same editor `[I]`): the default toolbar
+(no `params.buttonTypes`) is bold, underline, italic, font size, colour, lists, table, link, picture — **no «Code
+View»**; it appears only when `buttonTypes` lists `"codeview"` (§5h «Per-type settings»). Typing in Code View sends
+nothing; leaving it (the button again) sends the HTML with `save-field-value`. **The editor filters on the way
+out, before the server sees anything**: it removes the TAGS `script`, `style`, `link`, `meta`, `embed`, `object`,
+`frame`, `frameset`, `applet`, `base`, `title`, `textarea`, `xml` (their text stays — `<style>p{color:red}</style>`
+leaves «p{color:red}» in the field), and keeps an `<iframe>` only when its host is one of `www.youtube.com`,
+`www.youtube-nocookie.com`, `www.facebook.com`, `vine.co`, `instagram.com`, `player.vimeo.com`,
+`www.dailymotion.com`, `player.youku.com`, `jumpingbean.tv`, `v.qq.com`. So **an `<iframe>` of any other host — the
+embed above — cannot be typed in the card**: write it with `save-field-value`, a script or an import. A WYSIWYG
+round-trip also drops attributes such as `<table border>`; `style` on a `div` survives.
 
 Rules for HTML pasted into a MyBPM HTML field; the same rules work for HTML inside «Текст» (STATIC_TEXT)
 headings. **A group heading** `[C]`: `<div style="font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px">Тема</div>` renders
@@ -5645,6 +5821,27 @@ The stand's own behaviour under automation `[C]`:
   in the DOM** — record the set of dropdowns before the click and read only the new one, or you read a
   stale calendar. Run the loop fire-and-forget (`window.__r`) — eight pickers take longer than a cut-off
   in-page call.
+- **The registry and the record card** (§6c):
+  - **While a record card, a picker or a popover is open, screenshots time out** — read the overlay from the DOM
+    (`.cdk-overlay-pane` `innerText`) and click by element.
+  - **Some controls take only a REAL click** — a coordinate click of the tool, not a dispatched event: the items of
+    the registry's ⋮ menu, a chip's ×. **The registry «Поиск» needs real typing** — the native value setter plus
+    `input` sends nothing there (the opposite of the card's inputs above).
+  - **Hover-only controls** have opacity 0 until the mouse is over them: a date's ×, a table row's minus, the row
+    icons of the registry. Move the real mouse there first.
+  - **The first input of a card is its «Поиск поля» box**, not the first field.
+  - **Every `ui-radio` gets an id `ui-radioN` numbered per component** — the card's radio field and an open picker's
+    table both have `ui-radio1`, so `label[for=ui-radio1]` may toggle the wrong one; click the input itself.
+  - **Focus**: a text field is sent on blur; a click and typing in one batch lost the focus — click, check
+    `document.activeElement`, then type. A click right after typing in a contenteditable (a checklist label) is
+    eaten by the blur, and so is the first click on СОХРАНИТЬ after a nested card closes — check and click again.
+  - **A full-width nested table's row minus sits under the card's tab rail container** — a real click at its point
+    hits the container (`elementFromPoint`); a dispatched click on the icon works.
+  - **Escape with a picker open closes the WHOLE card** (`remove-draft`) and leaves the picker overlay orphaned.
+  - **The card's ⋮ menu items move once the menu has rendered**, and a time picker's minute column scrolls after
+    the hour click — re-read the rect before every click, never reuse a point.
+  - **ПРИМЕНИТЬ of an xlsx import reloads the registry page two seconds later** — in-page helpers and the request
+    log are gone; re-inject them.
 
 ## 11. Traps and defects — the short list
 
@@ -5906,6 +6103,13 @@ The stand's own behaviour under automation `[C]`:
     itself; the server never ties records to the item. A filter narrows a screen, it hides nothing — rights do
     (§3, §4 «Menu-item rights»). And ОТМЕНИТЬ in «Фильтр» leaves the unsaved state on screen until the item
     editor is reopened. §4.
+78. **A NOT condition turns every ИЛИ of the registry filter into И** `[C]` — with any bracket at
+    `notType:"NOT"` the server joins all brackets with AND, while the UI still shows «ИЛИ». Express the OR without
+    a negation, or read two filters. §6c.
+79. **A deleted TEST record is listed nowhere** `[C]` — it is REMOVED, but neither «Удаленные» nor «Тестовые» shows
+    it; only `restore-bo-instance` P `{businessObjectId, boInstanceId:[id]}` brings it back. §6c.
+80. **⋮ on a SINGLE reference chip, then ВЫБРАТЬ, CLEARS the field** `[C]` — the picker opens with nothing ticked and
+    ВЫБРАТЬ sends an empty list. Use the chip's ⋮ only to pick another record; tick one before ВЫБРАТЬ. §6c.
 
 ## 12. Open questions
 
@@ -5951,16 +6155,11 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - Rights: the head / employees / department flags of «Из поля» (second non-admin login, one flag at a time,
   `totalHits`); whether a «Пользователи» record created by the §6a draft cycle or by an xlsx sends the invitation (a probe
   user only with the user's OK and an address they own — it mails a real person); switching tenant as a multi-company user (look for a company-selector call).
-- Kanban: whether a card drag (`move-kanban-card`, §7) fires the dropdown's «Изменение поля» hook.
-- Records: the registry / card controls for Удалить / Архивировать / Восстановить / Дублировать and the params of
-  `archive-bo-instance` / `restore-bo-instance` / `copy-bo-instance` (tick a row, open both kebabs with the
-  network log on, replay, re-read with `state:"ARCHIVED"`/`"REMOVED"`); the empty value for non-date types in
-  `save-boi-value` / `save-field-value` (`""`, `null`, `[]` on a probe record, `load-boi-values`); whether
-  `save-boi-value` stores a bare option id (one call + read-back); downloading an attached file (click the
-  chip, capture the GET); a rollback of an applied records import (look for `bo-transfer/*rollback*`); the
-  records import dialog, act screen and apply button in the UI; the registry search box and filter panel
-  (capture `load-bo-instance-bracket-table` bodies); the CHAT tab's message send / read and PEOPLE add / remove;
-  deleting a dictionary row still used by records' dropdowns (re-read a record).
+- Records: the empty value of `save-boi-value` for non-date types (`""`, `null`, `[]` on a probe record,
+  `load-boi-values`); whether `save-boi-value` stores a bare option id (one call + read-back); a rollback of an
+  applied records import (look for `bo-transfer/*rollback*`); deleting a dictionary row still used by records'
+  dropdowns (re-read a record); whether mass change (§6c) and `copy-bo-instance` run the BO's scripts (a field
+  script that counts, then each action once) and whether a duplicate copies the participants.
 - A `STATIC_TEXT`'s HTML sanitizer = the `TEXTAREA` one? Save `text-transform` HTML into `staticValueMap`, read back.
 - The UI login form and the logout control (walk them once with screenshots).
 
