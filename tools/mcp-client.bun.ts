@@ -77,9 +77,14 @@ if (mode === "list") {
   for (const t of result.tools) console.log(`${t.annotations?.destructiveHint ? "✎" : " "} ${t.name.padEnd(20)} ${t.description.slice(0, 110)}`);
 } else {
   for (let i = 0; i < pairs.length; i += 2) {
-    const args = resolveRefs(JSON.parse(pairs[i + 1] ?? "{}"));
+    let args: any;
+    // an earlier failed step leaves its reference unresolved: this step fails alone, the rest of the run goes on
+    try { args = resolveRefs(JSON.parse(pairs[i + 1] ?? "{}")); } catch (e) { args = e as Error; }
     let text: string, isError: boolean, notes: string[] = [];
-    if (pairs[i] === "http") {
+    if (args instanceof Error) {
+      text = args.message;
+      isError = true;
+    } else if (pairs[i] === "http") {
       const r = await fetch(String(args.url).replace(/#.*$/, "") + args.path,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args.body ?? {}) });
       text = await r.text();

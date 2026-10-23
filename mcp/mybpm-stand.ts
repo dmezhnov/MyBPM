@@ -649,7 +649,24 @@ const LOST_ON_ADD = ["useAsKeyInMigration", "needMarkNew", "needAddToParticipant
 type Opt = string | { label: string; code?: string; color?: string };
 type FieldSpec = { label?: string; type: string; code?: string; refBoId?: string; viewType?: "TABLE" | "SINGLE"; options?: Opt[];
   required?: boolean; unique?: boolean; readonly?: boolean; column?: boolean; cols?: number; rows?: number; x?: number; y?: number;
-  tab?: string; heading?: boolean; html?: string; url?: string; questionnaire?: { rows?: Opt[]; columns?: Opt[] }; set?: Record<string, unknown> };
+  tab?: string; heading?: boolean; html?: string; url?: string; questionnaire?: { rows?: Opt[]; columns?: Opt[] }; steps?: Opt[]; set?: Record<string, unknown> };
+
+/** A key the tool does not know is refused, not dropped: an unknown key used to be ignored without a word. */
+function onlyKeys(what: string, o: object, known: string[]) {
+  const bad = Object.keys(o).filter((k) => !known.includes(k));
+  if (bad.length) throw new Error(`${what}: unknown key${bad.length > 1 ? "s" : ""} ${bad.map((k) => `«${k}»`).join(", ")} — known: ${known.join(", ")}; any other key of the field DTO goes inside set:{…}`);
+}
+
+// the keys of a bo_fields_save `edit` item — its schema below
+const EDIT_KEYS = ["fieldId", "label", "required", "unique", "readonly", "column", "x", "y", "cols", "rows", "html", "optionCodes", "steps", "set"];
+
+/** PROGRESS_BAR steps as the field DTO holds them; a step keeps the id of an old step with its code or label, a new one gets a minted id. */
+async function progressSteps(s: Stand, steps: Opt[], old: any[] = []) {
+  const items = steps.map((o) => (typeof o === "string" ? { label: o } : o));
+  const kept = items.map((v) => old.find((x) => (v.code && x.code === v.code) || x.label === v.label)?.id);
+  const ids = await freshIds(s, kept.filter((x) => !x).length);
+  return items.map((v, j) => ({ id: kept[j] ?? ids.shift(), orderIndex: j, label: v.label, code: v.code ?? null, labelMap: ru(v.label) }));
+}
 
 const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   label: { type: "string", description: "The label — the field's code is NOT derived from it if you pass `code`; get it right the first time (trap 22)." },
@@ -668,6 +685,7 @@ const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   html: { type: "string", description: "STATIC_TEXT: the HTML shown." },
   questionnaire: { type: "object", description: "QUESTIONNAIRE: {rows, columns} — the question rows and the answer columns, each a string or {label, code}. Default one row «Вопрос 1» and columns «Да», «Нет»: an empty label makes the constructor form invalid, its СОХРАНИТЬ greys out (§5b).", properties: { rows: { type: "array", items: {} }, columns: { type: "array", items: {} } } },
   url: { type: "string", description: "BUTTON / IFRAME: its url (https only for an IFRAME)." },
+  steps: { type: "array", items: {}, description: "PROGRESS_BAR: its steps in order, each a string or {label, code}; the step ids are minted (a step without one breaks the save, §5i)." },
   set: { type: "object", description: "Any other key of the field DTO, e.g. {\"params\":{\"viewType\":\"TILE\",\"contentType\":\"ALL\"}} for a FILE_UPLOAD (§5h, §5i)." },
 } };
 
@@ -758,6 +776,7 @@ const bottomOf = (fields: any[]) => Math.max(0, ...fields.filter((f) => !f.tabId
  */
 async function addFields(s: Stand, boId: string, specs: FieldSpec[], window?: boolean | { w?: number; h?: number }) {
   const notes: string[] = [];
+  specs.forEach((f, i) => onlyKeys(`field ${i} («${f.label ?? f.type}»)`, f, Object.keys(FIELD_SPEC.properties)));
   const bo = await loadBo(s, boId);
   const own = specs.every((f) => f.x !== undefined && f.y !== undefined);
   const plain = specs.filter((f) => !f.tab), tabbed = specs.filter((f) => f.tab);
@@ -814,6 +833,10 @@ async function addFields(s: Stand, boId: string, specs: FieldSpec[], window?: bo
       const { rows, columns } = grid(f), item = (o: Opt, j: number, isColumn: boolean) => { const v = typeof o === "string" ? { label: o } : o;
         return { id: optIds.shift(), label: v.label, labelMap: ru(v.label), orderIndex: j, isColumn, ...(v.code ? { code: v.code } : {}) }; };
       set("questionnaires", [...rows.map((o, j) => item(o, j, false)), ...columns.map((o, j) => item(o, j, true))]);
+    }
+    if (f.steps?.length) {
+      if (f.type !== "PROGRESS_BAR") throw new Error(`«${f.label ?? f.type}»: steps belong to a PROGRESS_BAR`);
+      set("progressSteps", await progressSteps(s, f.steps));
     }
     if (f.type === "CHECKLIST" && f.options?.length) {
       set("defaultValue", JSON.stringify(f.options.map((o) => ({ label: typeof o === "string" ? o : o.label, checked: false })))); set("isAppendable", true);
@@ -2143,7 +2166,8 @@ const tools: Tool[] = [
         x: { type: "number" }, y: { type: "number" }, cols: { type: "number" }, rows: { type: "number" },
         html: { type: "string", description: "STATIC_TEXT: the new HTML" },
         optionCodes: { type: "object", description: "DROPDOWN_SINGLE / RADIO_BUTTON_GROUP: {\"<option label or current code>\": \"new_code\"}" },
-        set: { type: "object", description: "Any other key of the field DTO (a move to another tab: {\"tabId\": …})" } } } },
+        steps: { type: "array", items: {}, description: "PROGRESS_BAR: the whole new step list (string or {label, code}); a step with an old one's code or label keeps its id, new ones get minted ids" },
+        set: { type: "object", description: "Any other key of the field DTO (a move to another tab: {\"tabId\": …}; the toolbar of a TEXTAREA: {\"params\": {\"buttonTypes\": …}})" } } } },
       delete: { type: "array", items: { type: "string" }, description: "fieldIds" },
       window: { description: "As in bo_create; applies with `add`." } },
     run: async (a) => {
@@ -2154,7 +2178,8 @@ const tools: Tool[] = [
         const bo = await loadBo(s, boId), fields: any[] = bo.formFields ?? [], edits: any[] = [];
         const drop = new Set<string>(a.delete ?? []);
         for (const id of drop) if (!fields.some((f) => f.fieldId === id)) throw new Error(`no field ${id} on this BO (bo_read lists them)`);
-        for (const e of a.edit ?? []) {
+        for (const [i, e] of (a.edit ?? []).entries()) {
+          onlyKeys(`edit[${i}]`, e, EDIT_KEYS);
           const f = fields.find((x) => x.fieldId === e.fieldId);
           if (!f) throw new Error(`no field ${e.fieldId} on this BO (bo_read lists them)`);
           if (drop.has(e.fieldId)) throw new Error(`field ${e.fieldId} is both edited and deleted`);
@@ -2179,6 +2204,10 @@ const tools: Tool[] = [
               throw new Error(`«${k}» is not an option of ${f.label ?? f.fieldId}: ${opts.map((o) => `${o.label} (${o.code})`).join(", ")}`);
             set("options", opts.map((o) => { const c = e.optionCodes[o.label] ?? e.optionCodes[o.code]; return c ? { ...o, code: c } : o; }));
           }
+          if (e.steps !== undefined) {
+            if (f.type !== "PROGRESS_BAR") throw new Error(`${f.label ?? f.fieldId}: steps belong to a PROGRESS_BAR`);
+            set("progressSteps", await progressSteps(s, e.steps, f.progressSteps ?? []));
+          }
           for (const [k, v] of Object.entries(e.set ?? {})) set(k, v);
           edits.push(edit);
         }
@@ -2190,6 +2219,11 @@ const tools: Tool[] = [
       const bo = await loadBo(s, boId);
       const lost = (a.delete ?? []).filter((id: string) => (bo.formFields ?? []).some((f: any) => f.fieldId === id));
       if (lost.length) notes.push(`still on the BO after the delete: ${lost.join(", ")}`);
+      for (const e of (a.edit ?? []).filter((x: any) => x.steps)) {
+        const got = ((bo.formFields ?? []).find((f: any) => f.fieldId === e.fieldId)?.progressSteps ?? []).map((x: any) => x.label);
+        const want = e.steps.map((o: Opt) => (typeof o === "string" ? o : o.label));
+        if (got.join("\u0001") !== want.join("\u0001")) notes.push(`steps of ${e.fieldId} read back as ${got.join(", ") || "none"}, not ${want.join(", ")}`);
+      }
       return clean({ boId, code: bo.code, added: added?.added, window: added?.window, notes: [...notes, ...(added?.notes ?? [])], fields: fieldRows(bo) });
     } },
   { name: "bo_code_set", write: true, description: "Set the code of a BO, or of one of its fields / widgets (`fieldId`), to the naming convention (0U.5 rules 4 + 12) — for codes NOTHING uses yet: the direct setters skip the usage analysis, so scripts, processes, kanban templates and menu items that name the old code are not migrated (§5j, trap 60). A code already in use → change it in the constructor's code dialog instead. A BO code is checked free first. Ask the user first.",
@@ -2241,7 +2275,7 @@ const tools: Tool[] = [
       if (!a.coId && (!a.group || !a.name)) throw new Error("pass `group` + `name` for a new composite, or `coId`");
       const index = new Map<string, string>(); // name → id, read once when a name is used
       const boIdOf = async (ref: string) => {
-        if (/^[A-Za-z0-9@_$-]{16}$/.test(ref)) return ref;
+        if (ID16.test(ref)) return ref;
         if (!index.size) for (const g of await boGroups(s))
           for (const b of g.records ?? [])
             index.set(b.name, index.has(b.name) ? "" : b.id);
@@ -2250,6 +2284,12 @@ const tools: Tool[] = [
         if (!id) throw new Error(`several BOs are named «${ref}» — pass its id`);
         return id;
       };
+      // every source resolves before create-bo: a bad name must not leave an empty composite behind
+      const srcIds: string[] = [];
+      for (const r of [...(a.sources ?? []), ...(a.attrs ?? []).flatMap((x: any) => x.links.map((l: any) => l.bo))]) {
+        const id = await boIdOf(r);
+        if (!srcIds.includes(id)) srcIds.push(id);
+      }
       let coId = a.coId, created = false;
       if (!coId) {
         const g = await groupOf(s, a.group);
@@ -2265,11 +2305,6 @@ const tools: Tool[] = [
       const attrsOut: any[] = [];
       try {
         const have = new Set(((await s.call("v2/co/load-bo-records-for-co", { coId, draftId })) ?? []).map((b: any) => b.id ?? b.boId));
-        const srcIds: string[] = [];
-        for (const r of [...(a.sources ?? []), ...(a.attrs ?? []).flatMap((x: any) => x.links.map((l: any) => l.bo))]) {
-          const id = await boIdOf(r);
-          if (!srcIds.includes(id)) srcIds.push(id);
-        }
         const fieldsOf = new Map<string, any[]>();
         for (const id of srcIds) {
           if (!have.has(id)) await s.call("v2/co/add-bo-to-co", { coId, draftId, boId: id });

@@ -6918,7 +6918,7 @@ here; the rules themselves are §0X.4.
 # Part III — Records (instances) as Excel
 
 Records never travel in a structure archive: a `.mybpm.zip` carries the SHAPE of a business object, an
-xlsx carries its ROWS. The transport — the registry kebab «импорт/экспорт xlsx» and the `v2/bo-transfer`
+xlsx carries its ROWS. The transport — the registry's ⋮ «Импорт из .xlsx» / «Экспорт в .xlsx» and the `v2/bo-transfer`
 routes — is in `MYBPM-UI-API.md` §6 and §0U R7; **this part is the file itself**.
 
 ## 0X. COOKBOOK — produce an importable xlsx from this section alone
@@ -6954,7 +6954,9 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
 ### 0X.2 Algorithm
 
 0. **Ask for the stand data of 0X.3.** Without the template file itself there is nothing to fill.
-1. **Take a FRESH template** — an export of the registry (registry kebab → «импорт/экспорт xlsx»); the
+1. **Take a FRESH template** — an export of the registry (the registry's ⋮ at the bottom right → «Экспорт в .xlsx»,
+   or «Импорт из .xlsx» → «Скачать шаблон»; both choosers pre-tick the fields that person ticked last, and the
+   columns follow the numbers shown, not the form); the
    API route is `MYBPM-UI-API.md` §0U R7.
    Columns follow the BO at export time and their positions move between exports.
 2. **Build the column map by LABELS, never by position**: the (row-1 block, row-2 field) pair identifies a
@@ -7034,9 +7036,10 @@ every column you keep or drop the column entirely.
 
 ### 0X.6 Handing the file over
 
-The user loads it: registry kebab → «импорт/экспорт xlsx». The upload only builds an **act** — read «создано /
-обновлено / ошибки» and the failing rows, then apply the second step deliberately. A blank cell shows only as
-«updated». Loading it yourself (API: template, upload, act, apply, export) is `MYBPM-UI-API.md` §0U R7 and §6.
+The user loads it: the registry's ⋮ → «Импорт из .xlsx» → «Выберите файл» → ЗАГРУЗИТЬ. The upload only builds an
+**act** — read «Новые / Ошибок / Обновлений» and the failing rows, then ПРИМЕНИТЬ deliberately (ОТМЕНИТЬ writes
+nothing). A blank cell shows only as «updated». **The act screen shows the first 10 rows only**; «Скачать файл с
+ошибками» lists every failing row with its Excel row number and message — before ПРИМЕНИТЬ, not after. Loading it yourself (API: template, upload, act, apply, export) is `MYBPM-UI-API.md` §0U R7 and §6.
 Emptying a `DATE` is not possible from a cell (19.6) — it is a record-API write, `MYBPM-UI-API.md` §6a.
 
 ## 19. The Excel format — evidence

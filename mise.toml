@@ -204,6 +204,7 @@ const env = { ...Bun.env, HOME: `${process.cwd()}/dist/mcp-test/home`, MYBPM_STA
   MYBPM_LATEST_URL: `http://127.0.0.1:${port}/latest/plugin.json`, MYBPM_ES_WAIT_MS: "2000", MYBPM_SECRETS_FILE: `${process.cwd()}/dist/mcp-test/secrets.json` };
 const page = (body: unknown) => ({ url: "@stand_accounts.url", path: "api/save", body });
 const u2 = { stand: env.MYBPM_STAND, login: "u2@mock" };
+let barIds: string[] = []; // the PROGRESS_BAR step ids read back before the edit
 const steps: [string, unknown, (r: any) => boolean][] = [
   ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].alive && r.accounts[0].companyCode === "MOCK" && r.accounts[0].personBoId === "PERSONBO00000001"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
@@ -244,6 +245,9 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     (r) => r.code === "mcp_probe_co" && r.simple.length === 1 && r.simple[0].label === "Наименование" && r.composite.length === 1
       && r.composite[0].label === "Контакт" && r.composite[0].code === "contact" && r.composite[0].links === 2 && r.sources.length === 1],
   ["co_build", { coId: "@co_build.coId", attrs: [{ links: [{ bo: "@bo_create.id", field: "Нет такого" }] }] }, (r) => /not a field.*draft was removed/.test(r)],
+  ["co_build", { group: "Бизнес-объект", name: "MCP probe orphan", attrs: [{ links: [{ bo: "Нет такого БО", field: "Имя" }] }] },
+    (r) => /no BO named/.test(r) && !/EXISTS/.test(r)],
+  ["bo_find", { name: "MCP probe orphan" }, (r) => !JSON.stringify(r).includes("MCP probe orphan")],
   ["stand_read", { path: "v2/co/load-mock-open-drafts" }, (r) => r === 0],
   // records: a client record (its form save hits the ES breaker once and is found stored), a BO with every kind of value
   // referencing it; option codes kept on create and changed by edit; both cycles, a veto, find, read, the soft delete
@@ -436,6 +440,17 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     { label: "Название", type: "INPUT_TEXT", code: "title" }, { label: "Служебное", type: "INPUT_TEXT", code: "svc", tab: "Системные" }] },
     (r) => r.notes.some((n: string) => /tab «Системные» closed/.test(n))],
   ["rights_read", { code: "mcp_probe_rights", tab: "Системные" }, (r) => r.rights.view === "nobody"],
+  // PROGRESS_BAR steps: minted ids (a step without one breaks the save), an edit keeps the id of a step by its code; unknown keys refused
+  ["bo_fields_save", { code: "mcp_probe_rights", window: false, add: [{ label: "Этапы", type: "PROGRESS_BAR", code: "stage", steps: ["Начало", { label: "Конец", code: "end" }] }] },
+    (r) => r.added.length === 1 && r.fields.some((f: any) => f.code === "stage")],
+  ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", params: { x: 1 } }] }, (r) => /edit\[0\]: unknown key «params»/.test(r)],
+  ["bo_read", { code: "mcp_probe_rights", raw: true }, (r) => { const s = r.formFields.find((f: any) => f.code === "stage")?.progressSteps ?? [];
+    barIds = s.map((x: any) => x.id); return s.map((x: any) => `${x.label}:${x.code ?? ""}`).join() === "Начало:,Конец:end" && barIds.every(Boolean); }],
+  ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", steps: ["Середина", { label: "Финиш", code: "end" }] }] }, (r) => !r.notes?.length],
+  ["bo_read", { code: "mcp_probe_rights", raw: true }, (r) => { const s = r.formFields.find((f: any) => f.code === "stage")?.progressSteps ?? [];
+    return s.map((x: any) => x.label).join() === "Середина,Финиш" && s[1].id === barIds[1] && !!s[0].id && !barIds.includes(s[0].id); }],
+  ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Лишнее", type: "INPUT_TEXT", requried: true }] }, (r) => /unknown key «requried»/.test(r)],
+  ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Не бар", type: "INPUT_TEXT", steps: ["a"] }] }, (r) => /steps belong to a PROGRESS_BAR/.test(r)],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
@@ -481,7 +496,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
