@@ -260,7 +260,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     }
     case "v2/business-objects/verify-business-object-code": return !!params.businessObjectCode && !byCode(params.businessObjectCode);
     case "v2/business-objects/create-bo": {
-      const n = bos.size + 1, bo: Bo = { id: nextId("BO"), code: `Biznes_obekt_${n}`, name: `Бизнес объект №${n}`, boCategory: body.boCategory, fields: [],
+      const n = bos.size + 1, bo: Bo = { id: nextId("BO~") /* real ids carry @ and ~ */, code: `Biznes_obekt_${n}`, name: `Бизнес объект №${n}`, boCategory: body.boCategory, fields: [],
         ...(body.boCategory === "BO_COMPOSITE" ? { co: { sources: [], fields: [] } } : {}) };
       bos.set(bo.id, bo);
       return { id: bo.id, name: bo.name, nameReadonly: false, viewState: "ACTIVE", orderIndex: 10, boCategory: bo.boCategory };
@@ -271,6 +271,9 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       parts.delete(acc);
       const p = JSON.parse(json), bo = bos.get(p.businessObject?.id);
       if (!bo) return fail("UndeclaredThrowableException");
+      // the stand: a PROGRESS_BAR step without an id breaks the whole save
+      if ([...(p.businessObject.formFields ?? []), ...(p.editedFields ?? [])].some((x: any) => x.progressSteps?.some((y: any) => !y.id)))
+        return fail("NullPointerException: Cannot invoke \"String.hashCode()\" because \"progressStepId\" is null");
       if (p.businessObject.nameMap?.RUS) bo.name = p.businessObject.nameMap.RUS;
       if (p.businessObject.formFields) {
         const drop = new Set(p.deletedFieldIds ?? []), add = new Set(p.addedFieldIds ?? []);
