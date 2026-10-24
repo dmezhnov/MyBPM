@@ -342,6 +342,8 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["script_version", { code: "mcp_probe_scripts", action: "remove", version: "2" }, (r) => r.versions.length === 1],
   ["script_version", { code: "mcp_probe_scripts", action: "work" }, (r) => r.versions.length === 2 && r.versions[0].work && !r.versions[0].test && r.versions[1].test],
   ["script_version", { code: "mcp_probe_scripts", action: "remove", version: "work" }, (r) => /stand keeps it/.test(r)],
+  ["script_version", { code: "mcp_probe_scripts", action: "unset" }, (r) => r.versions.length === 2 && !r.versions.some((v: any) => v.work) && r.versions[1].test],
+  ["script_version", { code: "mcp_probe_scripts", action: "unset", version: "test" }, (r) => /not the work one/.test(r)],
   ["scripts_wire", { global: true, methods: ["g1"] }, (r) => r.scriptModuleId && r.methods.g1],
   ["scripts_read", { global: true }, (r) => r.methods.length === 1 && r.methods[0].method === "g1"],
   ["script_write", { globalMethod: "g1", dryRun: true, def: { blocks: {}, expressions: {} } }, (r) => r.written === false && r.errors.some((e: string) => /keep its hat/.test(e))],
@@ -515,7 +517,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
