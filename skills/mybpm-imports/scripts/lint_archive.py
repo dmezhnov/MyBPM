@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 80c024e60a30
+# lintArchive sha256: ac2f28ecf0ed
 import json
 import math
 import os
@@ -1249,6 +1249,51 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         k, cp = w.split("|")[:2]
         there = [p + "(top)" if p.endswith(" ") else p for p, st in KP.items() if k in st]
         err(f'{join(uniq(at)[:3], ", ")}: key "{k}" in {cp} — it sits in {", ".join(there[:3]) or "no place of 0.4b"}{", …" if len(there) > 3 else ""}; the importer drops it there without a word (0.4b)')
+    XSS_EV = "abort activate afterprint afterupdate beforeactivate beforecopy beforecut beforedeactivate beforeeditfocus beforepaste beforeprint beforeunload beforeupdate blur bounce cellchange change click contextmenu controlselect copy cut dataavailable datasetchanged datasetcomplete dblclick deactivate drag dragend dragenter dragleave dragover dragstart drop error errorupdate filterchange finish focus focusin focusout help keydown keypress keyup layoutcomplete load losecapture mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup mousewheel move moveend movestart paste propertychange readystatechange reset resize resizeend resizestart rowenter rowexit rowsdelete rowsinserted scroll select selectionchange selectstart start stop submit unload".split(" ")  # the stand's reject check (§4 «Sections»): on<name> anywhere in a string
+
+    def XR(p, f):  # the stand's Java regex: . stops at every Java line end, \s and the case ASCII
+        def one(m):
+            x = m.group(0)
+            if x == ".":
+                return x if "s" in f else r"[^\n\r\u0085\u2028\u2029]"
+            return r"[ \t\n\x0B\f\r]" if x == r"\s" else x
+
+        return re.compile(re.sub(r"\\[\s\S]|\.", one, p), re.I | re.A | (re.S if "s" in f else 0))
+
+    XSS = [[n, XR(p, "i")] for n, p in [["script inside markup", r"<.*?\s+?script.*?>.*?</.*?>"], ["<script>", r"<script.*?>.*?</.*?>"], ["script inside markup", r"<.*?\s+?script.*?\s+.*?/script.*?>"], ["javascript: inside markup", r"<.*?javascript:.*?>.*?</.*?>"],
+           *[["a backslash + s inside a tag", rf"<(?!{t})[^>]*?\\s+(?!on\\w+\\s*=)[^>]*>.*?</[^>]*>"] for t in ["h", "h2", "h3", "h4", "p", "i", "u", "a", "span", "div"]],
+           *[x for t in ["object", "applet", "embed", "form"] for x in [[f"<{t}>", f"<{t}.*?>.*?</{t}.*?>"], [f"{t}: inside markup{' (transform, text-transform, «…form: X»)' if t == 'form' else ''}", f"<.*?{t}:.*?>.*?</.*?>"]]],
+           ["a form feed + on inside a tag", r"<.*?\f+on.*?>.*?</.*?>"], *[[f"on{e}", f"on{e}"] for e in XSS_EV]]] + \
+        [[f"the whole value {p.replace('(.*?)', '…').replace(chr(92), '')}", XR(rf"^(?:{p})\Z", f)] for p, f in [["<script>(.*?)</script>", "i"], ["</script>", "i"], ["<script(.*?)>", "is"], [r"eval\((.*?)\)", "is"], [r"expression\((.*?)\)", "is"], ["javascript:", "i"], ["vbscript:", "i"], ["onload(.*?)=", "is"], ["onerror(.*?)=", "is"]]]
+
+    def xleaf(v, f):  # the strings the check sees: a string that holds a JSON object or list is checked by ITS strings
+        if isinstance(v, str):
+            try:
+                j = jparse(v)
+            except (ValueError, RecursionError):
+                j = U
+            if isinstance(j, (dict, list)):
+                xleaf(j, f)
+            else:
+                f(v)
+        elif isinstance(v, (dict, list)):
+            for x in vals(v):
+                xleaf(x, f)
+
+    for bo in bos:
+        for at, vs in [[s(g(bo, "code")), [v for k, v in ents(bo) if k != "dynamicFields" and k != "nativeFields" and k not in W]],
+                       *[[f"{s(g(bo, 'code'))}.{k}", f] for k, f in ents(g(bo, "dynamicFields"))], *[[f"{s(g(bo, 'code'))}.{k}", f] for k, f in ents(g(bo, "nativeFields"))],
+                       *[[f"{s(g(bo, 'code'))}.{w}.{c}", x] for w in W for c, x in ents(g(bo, w))]]:
+            hit = {}
+
+            def see(v):
+                h = next((n for n, r in XSS if r.search(v.replace("\x00", ""))), None)
+                if h is not None:
+                    hit[h] = True
+
+            xleaf(vs, see)
+            if hit:
+                err(f"{at}: {', '.join(hit)} — the stand refuses this string on every save of the BO's structure: imported, it locks the constructor of {s(g(bo, 'code'))} (HTTP 500) until a re-import with it rewritten (§4 «Sections»)")
     if tr(source):  # the export this file amends (0.7 case 1): a line on a BO header, field, widget, script or process it carries byte-for-byte is left as exported; FATAL lines always stay
         def canon(v):
             if isinstance(v, list):

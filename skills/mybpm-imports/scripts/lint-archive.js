@@ -503,6 +503,24 @@ const place = (o, c, p, at) => { // p = the place of o: the key holding it, "<ma
 if (KP.size) L.forEach((o, i) => place(o, cls(o), "", o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? `line ${i + 1}`));
 for (const [w, at] of wrong) { const [k, cp] = w.split("|"), there = [...KP].filter(([, s]) => s.has(k)).map(([p]) => p.endsWith(" ") ? `${p}(top)` : p);
   err(`${[...new Set(at)].slice(0, 3).join(", ")}: key "${k}" in ${cp} — it sits in ${there.slice(0, 3).join(", ") || "no place of 0.4b"}${there.length > 3 ? ", …" : ""}; the importer drops it there without a word (0.4b)`); }
+const XSS_EV = "abort activate afterprint afterupdate beforeactivate beforecopy beforecut beforedeactivate beforeeditfocus beforepaste beforeprint beforeunload beforeupdate blur bounce cellchange change click contextmenu controlselect copy cut dataavailable datasetchanged datasetcomplete dblclick deactivate drag dragend dragenter dragleave dragover dragstart drop error errorupdate filterchange finish focus focusin focusout help keydown keypress keyup layoutcomplete load losecapture mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup mousewheel move moveend movestart paste propertychange readystatechange reset resize resizeend resizestart rowenter rowexit rowsdelete rowsinserted scroll select selectionchange selectstart start stop submit unload".split(" "); // the stand's reject check (§4 «Sections»): on<name> anywhere in a string
+const XR = (p, f) => new RegExp(p.replace(/\\[\s\S]|\./g, (m) => m === "." ? (f.includes("s") ? m : "[^\\n\\r\\u0085\\u2028\\u2029]") : m === "\\s" ? "[ \\t\\n\\x0B\\f\\r]" : m), f); // the stand's Java regex: . stops at every Java line end, \s and the case ASCII
+const XSS = [["script inside markup", "<.*?\\s+?script.*?>.*?</.*?>"], ["<script>", "<script.*?>.*?</.*?>"], ["script inside markup", "<.*?\\s+?script.*?\\s+.*?/script.*?>"], ["javascript: inside markup", "<.*?javascript:.*?>.*?</.*?>"],
+  ...["h", "h2", "h3", "h4", "p", "i", "u", "a", "span", "div"].map((t) => ["a backslash + s inside a tag", `<(?!${t})[^>]*?\\\\s+(?!on\\\\w+\\\\s*=)[^>]*>.*?</[^>]*>`]),
+  ...["object", "applet", "embed", "form"].flatMap((t) => [[`<${t}>`, `<${t}.*?>.*?</${t}.*?>`], [`${t}: inside markup${t === "form" ? " (transform, text-transform, «…form: X»)" : ""}`, `<.*?${t}:.*?>.*?</.*?>`]]),
+  ["a form feed + on inside a tag", "<.*?\\f+on.*?>.*?</.*?>"], ...XSS_EV.map((e) => [`on${e}`, `on${e}`])].map(([n, p]) => [n, XR(p, "i")])
+  .concat([["<script>(.*?)</script>", "i"], ["</script>", "i"], ["<script(.*?)>", "is"], ["eval\\((.*?)\\)", "is"], ["expression\\((.*?)\\)", "is"], ["javascript:", "i"], ["vbscript:", "i"], ["onload(.*?)=", "is"], ["onerror(.*?)=", "is"]]
+    .map(([p, f]) => [`the whole value ${p.replace(/\(\.\*\?\)/g, "…").replace(/\\/g, "")}`, XR(`^(?:${p})$`, f)]));
+const xleaf = (v, f) => { // the strings the check sees: a string that holds a JSON object or list is checked by ITS strings
+  if (typeof v === "string") { let j; try { j = JSON.parse(v); } catch {} return j && typeof j === "object" ? xleaf(j, f) : f(v); }
+  if (v && typeof v === "object") vals(v).forEach((x) => xleaf(x, f));
+};
+for (const bo of bos) for (const [at, vs] of [[`${bo.code}`, all(bo).filter(([k]) => k !== "dynamicFields" && k !== "nativeFields" && !W.includes(k)).map(([, v]) => v)],
+  ...all(bo.dynamicFields).map(([k, f]) => [`${bo.code}.${k}`, f]), ...all(bo.nativeFields).map(([k, f]) => [`${bo.code}.${k}`, f]), ...W.flatMap((w) => all(bo[w]).map(([c, x]) => [`${bo.code}.${w}.${c}`, x]))]) {
+  const hit = new Set();
+  xleaf(vs, (v) => { const h = XSS.find(([, r]) => r.test(v.replace(/\u0000/g, ""))); if (h) hit.add(h[0]); });
+  if (hit.size) err(`${at}: ${[...hit].join(", ")} — the stand refuses this string on every save of the BO's structure: imported, it locks the constructor of ${bo.code} (HTTP 500) until a re-import with it rewritten (§4 «Sections»)`);
+}
 if (source) { // the export this file amends (0.7 case 1): a line on a BO header, field, widget, script or process it carries byte-for-byte is left as exported; FATAL lines always stay
   const canon = (v) => Array.isArray(v) ? `[${v.map(canon)}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k]))}}` : JSON.stringify(v);
   const S = new Map(), had = new Set(); String(source).trimEnd().split("\n").forEach((l) => { try { const o = JSON.parse(l); had.add(canon(o)); if (cls(o) === "BoStructDto") S.set(o.code, o); } catch {} });
