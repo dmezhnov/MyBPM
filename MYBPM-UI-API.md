@@ -2025,7 +2025,8 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   CREATED the objects (`deleteItems`) removes them. **The ranking rule** `[C]`: imports are ordered by the
   MINUTE of `imported_at` (the upload time, minute precision), and **inside one minute the order is
   REVERSED — the import applied FIRST counts as the newest** (`canRollback` on it); an import applied the
-  next minute ranks above all of them. Rules: when you may need to undo, **leave at least a minute between
+  next minute ranks above all of them. The server sorts by that minute alone, with no second key, so the order
+  inside a minute is whatever the database returns — reversed is what it gives, not a rule `[I]`. Rules: when you may need to undo, **leave at least a minute between
   applies**; undoing a same-minute batch goes FIRST-applied first. Before undoing ONE import, check that it is the one
   with `canRollback:true`; undoing a CHAIN is safe only all the way back to the import that CREATED the
   objects, whose rollback deletes them. A rollback works as a re-import of that snapshot and inherits the import's
@@ -2366,7 +2367,10 @@ settings).
     checkbox is greyed;
   - **reorder** — drag a header cell by its label: every column `{fieldId, tableColOrderIndex}` in the new order;
   - **width** — drag the border between two cells: every column with `tableWidth` in px on the resized one,
-    `null` on the others.
+    `null` on the others. **The width travels in an archive** `[C]`: the export carries `tableWidth` on each
+    field that has one (no key on a field with `null`), and an import writes the archive's value — onto a new
+    BO and over the stand's width of an existing one; a field line without the key clears the stand's width to
+    `null` (`MYBPM-IMPORTS.md` §3 «Field flags»).
   On the FIRST card save of a BO with no columns the client adds the first 3 fields by grid position (not
   `TAB_GROUP` / `PROGRESS_BAR`) itself `[I]`. Widgets and `PROGRESS_BAR` are never offered as columns.
   Setting `tableColToShow` / `tableColOrderIndex` on the field DTO of the portion save does the same `[C]`.
@@ -6813,8 +6817,6 @@ The stand's own behaviour under automation `[C]`:
 
 The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` §20.
 
-- Whether a registry column's `tableWidth` travels in an archive (export a BO with a resized column, re-import
-  onto a copy).
 - The create-record iframe URL in a browser with no stand login: does it open, and whose record is it (§5m)?
 - §5n settings kinds: how to unset a migration monitor BO; what the `languageTag` an import writes
   into every language changes; whether an org unit (`D-<id>` + its record line) resolves on ANOTHER stand; TELEPHONY,
