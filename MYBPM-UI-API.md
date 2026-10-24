@@ -114,10 +114,10 @@ Content-Type: application/json
   quotes** and send the rest as the `token` header of every later call (with the quotes: `SecurityError`
   «Illegal Session», as in route B). `GET /web/v2/auth/load-auth-info` with that header names the user
   and lists their `functionCodes` — the quickest check that the login landed on the intended account.
-- Wrong credentials answer **HTTP 200** with
+- Wrong credentials answer **HTTP 401** with
   `{"message":"Не верен пользователь и/или пароль","errorType":"IllegalLoginOrPassword",…}` `[C]`.
-  So a failed login looks exactly like any other
-  error (§0U.2) — check `errorType`, never the HTTP status.
+  A malformed login body answers 400 or 500 instead (trap 36) — read `errorType`, the status alone does not say
+  which error it is (§0U.2).
 - `POST /web/v2/auth/load-token` (empty params and body) returns the token of the CURRENT session, and
   `GET /web/v2/auth/load-auth-info` describes who you are. `GET /web/v2/auth/logout` ends the session.
 
@@ -170,10 +170,15 @@ Rules that hold for every endpoint `[C]`:
   read it off the client's own code. Guessing wrong gives HTTP 400 «Required parameter 'x' is not
   present» or a silent no-op.
 - Both keys must be present; `{}` (or `null`) is the empty value.
-- **An error comes back as HTTP 200** with a body
-  `{"message":…, "className":"kz.greetgo…", "errorType":"…", "traceId":…, "stackTrace":[~100 lines]}`.
-  **Detect an error by the presence of `errorType`/`className`, never by the status code**, and never
-  print the `stackTrace` — cut it (`text.slice(0, 300)`, or read only `message` and `errorType`).
+- **An error comes back with a non-2xx status and a JSON body** `[C]`: a platform error is
+  `{"message":…, "className":"kz.greetgo…", "errorType":"…", "traceId":…, "stackTrace":[~100 lines]}` — HTTP
+  500 for a business error («данный бизнес-объект не существует») and for a bad or missing session
+  (`SecurityError` «Illegal Session»), 401 for a wrong password; a request the framework cannot bind is HTTP 400
+  with a different body, `{"type":"about:blank","title":"Bad Request","status":400,"detail":"Required parameter
+  'x' is not present."}` (no `errorType`); an unknown method is 404. **Treat any non-2xx status as an error and
+  read the reason from the body** (`errorType` + `message`, else `detail`); never print the `stackTrace` — cut it
+  (`text.slice(0, 300)`, or read only `message` and `errorType`). A 2xx answer is not proof of a write either
+  (several calls answer 200 and do nothing — read every write back).
 - **Some methods answer 200 with an EMPTY body.** `JSON.parse("")` throws — treat an empty body as
   success returning `null` (`remove-draft`, `save-menu-item-icon-name`, `save-import-description`, …).
 - **Some methods answer a bare JSON string**, not an object: `import-file` → `"<importId>"`,
@@ -193,10 +198,10 @@ async function call(stand: string, token: string, path: string, params = {}, bod
     body: JSON.stringify({ useParamsFromBody: true, params_Lr1oSgwPR8: params, body_o1nhHUG480: body }),
   });
   const text = await res.text();
-  if (!text) return null;
-  const out = JSON.parse(text);
-  if (out && typeof out === "object" && ("errorType" in out || "className" in out))
-    throw new Error(`${path}: ${out.errorType} ${out.message}`);
+  let out = null;
+  try { out = text ? JSON.parse(text) : null; } catch { out = text; }
+  if (!res.ok || (out && typeof out === "object" && ("errorType" in out || "className" in out)))
+    throw new Error(`${path}: HTTP ${res.status} ${out?.errorType ?? ""} ${out?.message ?? out?.detail ?? String(text).slice(0, 300)}`);
   return out;
 }
 ```
@@ -934,8 +939,9 @@ and dropping the rest «for scope» is a fraction reported as done.
 
 ### 0U.5 Hard rules
 
-1. **Detect errors by `errorType`/`className` in the body, never by the HTTP status.** 200 is the answer
-   to everything, including a wrong password and a wrong token.
+1. **A non-2xx status is an error; its reason is `errorType` / `message` in the body** (`detail` on a 400).
+   A wrong token is 500 `SecurityError`, a wrong password 401, a business error 500 — the status never tells
+   which. A 200 does not prove a write: read it back.
 2. **The `token` header takes the localStorage value WITHOUT its JSON quotes.** With them: `SecurityError`
    «Illegal Session».
 3. **`params_Lr1oSgwPR8` vs `body_o1nhHUG480` is decided by the endpoint.** Both keys always present.
@@ -987,7 +993,7 @@ and dropping the rest «for scope» is a fraction reported as done.
 
 ### 0U.6 Self-check before you say it worked
 
-- [ ] Every call's answer was parsed and checked for `errorType`, not just for HTTP 200.
+- [ ] Every call's answer was checked: a non-2xx status read for its `errorType`, a 2xx write read back.
 - [ ] The report lists what was READ BACK (R4), never the plan, and names no object the stand does not
       have; for a whole system (R10) it carries the coverage table — every spec item, its route, done / not
       done + a reason from R10's closed list, an item not done in a row of its own.
@@ -1308,8 +1314,9 @@ do is plain HTTP by §0U.4.
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
 | `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R10, company settings) | §0U.4 |
 
-✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods: a session token never passes through
-the model.
+✎ = writes. Neither `stand_read` nor `stand_call` takes the login methods or `v2/person/load-api-token` /
+`generate-api-token`: a session token or a user's API token never passes through the model — a user generates
+their own on their card (§3).
 
 ---
 
@@ -1325,7 +1332,7 @@ the model.
 
 - **Token**: `localStorage.LOCAL_PRIVATE_SwebToken`, **with the surrounding JSON quotes stripped**, is the
   `token` header — no XHR sniffing needed. `[C]` Sent WITH the quotes the stand answers
-  `SecurityError` «Illegal Session» (HTTP 200 body, not a 401), so that error means «bad token», not
+  `SecurityError` «Illegal Session» (HTTP 500, not a 401 — the same answer as no token at all), so that error means «bad token», not
   «expired session». In the browser the Angular client reads the same key, so a curl/Bun client outside the
   browser needs nothing else: **no cookies** (`document.cookie` is empty) and no company
   header — the token alone selects the tenant.
@@ -1336,11 +1343,20 @@ the model.
   "pushToken":null,"clientVersion":""}`. The two keys are literally base64 of `username` / `password`,
   and the values are base64 of the UTF-8 bytes (`btoa(unescape(encodeURIComponent(v)))`).
   **The response body is the token itself**, as a JSON string — strip the quotes.
-  Wrong credentials: HTTP 200 + `{"errorType":"IllegalLoginOrPassword","message":"Не верен пользователь
+  Wrong credentials: HTTP 401 + `{"errorType":"IllegalLoginOrPassword","message":"Не верен пользователь
   и/или пароль"}`. The rest of the controller: `load-token` (the current session's token),
   `load-auth-info` (GET, who am I), `fast-login`, `otp-login`, `verify-code`, `send-to-verify`,
   `has-otp-settings`, `get-all-masks`, `save-company`, `logout` (GET). A second, non-admin login is how
   rights are verified (§3 «What each subject opens») — the admin token sees everything.
+- **A user's API token — a long-lived alternative to the session token** `[C]`: a header **`API_TOKEN: <token>`**
+  (name case-insensitive; a header only — not a parameter, not the `token` header) makes the call run AS THAT
+  USER, on the whole `/web` API and on a «Защищённый» exposed service (§5o). The token is a 24-hex string; the
+  server stores no expiry for it `[I]`. `v2/person/load-api-token P {personId}` → the token or `null`;
+  `generate-api-token P {personId}` → a new token; `remove-api-token P {personId}` → deletes the current token.
+  The UI is the user's card on «Компания» (§3 «A user's API token in the UI»). **A token replaced by a second
+  `generate-api-token` stays valid** — `remove-api-token` deletes only the current one, and nothing in the API or
+  the UI revokes the older one; only the stand's database can (trap 104). A removed token still works for ~20 s
+  (server cache), then answers like a bad session (500 «Illegal Session»).
 - **Fresh ids**: `v2/id-loader/load-portion` returns an array of ids; use them for objects you create.
 - **Finding an endpoint — grep the whole bundle offline, it beats sniffing** `[C]`.
   Endpoints live in lazy JS chunks (`956.*.js` — rights, menu, icons; `9839` — BO controller + the HTTP
@@ -1450,6 +1466,17 @@ headless call has no trace of it — the person's mailbox is the proof. The rest
 `check-person {invitationId}` and `v2/complete-person` (the invited person sets the password),
 `send-to-person-password` / `v2/send-to-person-password {email, clientType}` (password reset),
 `send-to-admin {companyId}` — the same link on a company card's Email of kind `COMPANY_EMAIL`.
+
+**Finding a user in the UI** `[C]`: sidebar «Компания» (`/company`) → the search box «Поиск» of the «Компания»
+column → `v2/company/load-root-list-use-param P {searchParam}` → the matching users as a flat list. It matches
+NAMES only — a piece of an e-mail («system@», «yopmail») finds nothing, the same as the API search
+(`v2/org-unit/load-filtered-persons-v2`). A click on a user opens the card «Пользователь» in the right pane.
+
+**A user's API token in the UI** `[C]` (the token itself: §1): the bottom of that card reads «API Токен: Токен
+не сгенерирован» with the link «Сгенерировать токен» → `generate-api-token`; the token then shows in a read-only
+input with an eye icon (hiding = no call, dots; showing = `load-api-token`), and the link becomes «Удалить токен» →
+confirm «Удаление токена» / «Удаление токена. Продолжить?» ДА / НЕТ → `remove-api-token`. There is no
+«regenerate» in the UI: delete, then generate.
 
 What the head / employees / department flags open for a non-admin user: `[U]` — §12.
 
@@ -5372,7 +5399,16 @@ by API or UI. Every save is a BODY, every answer `""`; a loader reflects the sav
 `messengerType` is `TELEGRAM` or `WHATSAPP`. The record `name` you send is cosmetic — the loaders always return the
 BO's current name. **While a messenger is not connected** (`load-messenger-bo-settings` → `isConnected: false`; the
 «Подключение» tab asks for the phone, App id and App Hash id) its «Использование» tab is disabled `[C]` — the checkbox
-and «Выбор бизнес-объекта» do not react; only the API above writes `boAllow` then.
+and «Выбор бизнес-объекта» do not react; only the API above writes `boAllow` and `isActive` then.
+
+**Switching a messenger on creates its chat registry** `[C]`: the first `save-messenger-bo-settings` with
+`isActive:true` (connected or not) creates a GENERAL BO «Реестр чатов - <Messenger>» (code
+`Chat_Registry_<TYPE>`, group «Общее», the messenger's tab on its card; fields phone, «Дата отправки последнего
+сообщения», last message text, ФИО (required), messenger type, login), adds a TOP-LEVEL menu item for it (the
+messenger's logo icon, selective rights) and makes it that messenger's registry. `isActive:false` removes the menu
+item; the BO and the registry pointer stay, and the next `isActive:true` brings the same menu item back (moved to
+the end) on the same BO. **The third sub-tab «Реестр чатов»** shows on messenger X only while ANOTHER messenger is
+active (`load-messenger-data` → `settingsTabs` gains `CHAT_REGISTRY`) `[C]`.
 
 **Physical removal** — one entry per BO: `{record:{id,name}, daysAfterCreation, daysAfterCreationEnabled,
 afterChangeFields:[{id, fieldId, fieldLabel, newValue, newDisplayValue}]}`. The page warns «Внимание, актуальные
@@ -5396,9 +5432,9 @@ that BO's `name`, `recordName` (all four languages: «Реестр чатов» 
 and `description` («Реестр чатов»); fields, code and tabs stay. And **it cannot be unset**: the UI's «unselect» sends
 `chatRegistryBoRecord:null`, the server answers `""` and keeps the old BO. `isCreateUnique:true` together with a BO is
 refused («You can not register exists ChatRegistryBo and create unique ChatRegistryBo at the same time»); alone it
-asks the server to create its own registry BO `[U]`. The UI's picker lists only
-`messenger/settings/load-chat-registry-business-objects`, so an ordinary BO can be made the
-registry only through the API. A re-import of the registry BO puts the archive's name back; the registry pointer
+makes the server create a new registry BO `[I]`. The UI's picker lists only
+`messenger/settings/load-chat-registry-business-objects` — the registry BOs of the OTHER active messengers `[C]` —
+so an ordinary BO can be made the registry only through the API. A re-import of the registry BO puts the archive's name back; the registry pointer
 stays. Trap 66.
 
 **Not per BO, despite the inventory names** `[C]`: «Мобильное приложение»
@@ -5432,8 +5468,8 @@ The pages behind the other kinds (saves answer `""`):
 |---|---|---|
 | «Поддержка языков» | `v2/company/all-languages` → `[{language, code, orderIndex, isDefault, isActive, displayName, shortName}]`; `default-language` → `"ENG"`; `system-languages` = the active ones | `v2/company/language-add` B = the WHOLE list in that shape (the UI sends every language, `isActive` per row); `language-remove P {language}` |
 | «Мобильное приложение» | `v2/company/all-mobile-settings` → seven org-unit lists | `v2/company/save-mobile-settings` B deltas `add<List>` / `del<List>` for `ScreenshotAllow, CopyAllow, ImportBoAllow, DownloadFileAllow, DownloadPrintFormAllow, DownloadReportAllow, MobileAllow`; add items `{orgUnitId:{id,type}, displayName}`, del items `{id, type}` |
-| «OTP-аутентификация» | `v2/company/get-otp-settings` → `{id, department, personGroups, isActive, createInCurrentCompany, …}` (`id` null = no row) | `v2/company/save-otp-settings` B `{id, isActive, createInCurrentCompany, departmentId, personGroupsToAdd:[{id,name}], personGroupsToDel:[…]}`; **`isActive:false` deletes the row** |
-| «Навигатор» | `geo-map/settings/load-geo-map-company-fields P {geoMapType:"GOOGLE_MAP"}` (field `api_key`), `load-geo-map-company-field-values P {geoMapType}` → `[{code, value}]` | `save-geo-map-company-field-values P {geoMapType} B [{code:"api_key", value}]` (`value:null` clears; on the favicon page the save answers a websocket «No session» error AFTER storing) |
+| «OTP-аутентификация» | `v2/company/get-otp-settings` → `{id, department, personGroups, isActive, createInCurrentCompany, …}` (`id` null = no active row); `v2/auth/has-otp-settings` → `true` while a row is active (the login page then shows an OTP tab) | `v2/company/save-otp-settings` B `{id, isActive, createInCurrentCompany, departmentId, personGroupsToAdd:[{id,name}], personGroupsToDel:[…]}`; `id:null` CREATES a row; **`isActive:false` with the row's `id` switches it off** — the row stays in the database (`actual:false`) and `get-otp-settings` answers `id:null` again; no call deletes a row. Trap 102 |
+| «Навигатор» (`geo-map`) | `geo-map/settings/load-geo-map-company-fields P {geoMapType:"GOOGLE_MAP"}` (field `api_key`), `load-geo-map-company-field-values P {geoMapType}` → `[{code, value}]`; `google-map/connect-to-google-map` B `{code:"api_key", value}` → `true`/`false` = a real Google geocoding call with that key | `save-geo-map-company-field-values P {geoMapType} B [{code:"api_key", value}]` (`value:null` clears; on the favicon page the save answers a websocket «No session» error AFTER storing) |
 | «Аудиторский след» | `aud-boi-settings/load-table-records` → rows `{id, historyBoRecord, audBoList, latestHistoryPeriodDays}`; `load-fields` (11 slots); `load-field-values P {recordId}` → `[{code, value:<field id>}]` | `save-aud-settings` B `{id, historyBoId, audBoIdList, latestHistoryPeriodDays}` (the row's own shape → NPE «audBoIdList is null»); `save-field-values P {recordId} B [{code, value}]`; `create-table-record`, `remove-table-record P {recordId}`. The BO list behaves as a set (order not kept) |
 | «Мониторинг миграции» | `pg-migration-settings/load-settings` → `{monitorBoRecord}`; `load-fields` (9 slots); `load-field-values` | `save-settings` B `{monitorBoId}` — **cannot be unset** (`null` ignored, `""` → `IllegalId`, no key → NPE); `save-field-values` B `[{code, value:<field id or "">}]` |
 
@@ -5443,6 +5479,30 @@ delete deltas `{id, name}` / `{id, type}`. Messenger `userAllow` / `delUserAllow
 `{id, type, name}`. Org units for any of these: `v2/business-objects/load-org-unit-record-list P {filter:{searchText,
 types:["DEPARTMENT"|"GROUP"|"PERSON"]}, skipFirstCount:0}`.
 
+**The settings pages in the UI** `[C]`. The left menu of «Настройки» and its slugs
+(`/settings?settingsOpenPageUrl=<slug>`; the shell appends `&formType=import`): `language`, `mobile`,
+`physical-remove`, `telephony`, `offline`, `in_migration`, `out_migration`, `import_export` (§5), `messenger`,
+`otp-auth`, `geo-map` («Навигатор»), `aud-boi` («Аудиторский след»), `pg-migration` («Мониторинг миграции»),
+`script` (§5o), `script-browser`, `global-script-methods` (§5g), `appearance`. A wrong slug shows the empty
+settings shell; when a right one stays blank, click its menu item. What the pages share: an edit sends nothing,
+the СОХРАНИТЬ / ОТМЕНИТЬ bar appears on the first change, and ОТМЕНИТЬ writes nothing (a reload or a local
+reset). A «Никому» link is an org-unit picker — search «Какой элемент хотите найти?», «Выбрать все», a checkbox
+per unit (icon, name, e-mail), `v2/org-unit/load-filtered-org-units P {filter?, chosenOrgUnitIds} B {limit:20,
+offset:0}` on open and on each search; ticked units become chips with ×, and the link turns into a ⊕ right of
+the label. Pickers close on a click outside; Escape closes some and not others — do not rely on it.
+
+| page | controls → calls |
+|---|---|
+| «Физическое удаление» | «Бизнес-объекты:» ⊕ → search + a checkbox list of GENERAL non-panel BOs (`v2/business-objects/load-bo-records-for-drag`); a tick adds a row with a trash, no call. A row click → `load-bo-field-records P {boId}` and the pane «Настройка удаления:»: «Спустя [N] дней с момента создания [checkbox]» (unticked = the input disabled, its value still sent), «⊕ Добавить условие на изменение поля» → «При изменении значения поля <Выберите> на <Выберите> ⓧ» (field: a radio list of `DROPDOWN_SINGLE` fields; value: `load-bo-field-options`). The trash → «Удаление элемента» ДА / НЕТ, local only. «Сохранить» → `save-physical-remove-settings` with the whole list (each BO as the picker's full record), then the page reloads and the selection resets. A condition left without a field or a value is sent as `{id}` and dropped by the server. «Отменить» = reload |
+| «Оффлайн режим» | the checkbox «Включить использование оффлайн режима:» (no call) shows «Активность записи в оффлайн режиме: [N] день», «Разрешено использовать оффлайн режим:» (org-unit picker), the two BO lists «Выберите» (a checkbox list WITHOUT search of every BO, system kinds included: `v2/business-objects/load-bo-records-for-offline P {onOpenOrClose:true} B {limit:20, offset:0}`), «Уровень вложенности:» Нет / Первая (= `NONE` / `FIRST`; the UI cannot write `null`), «Максимальное кол-во доступных инстанций:» [N]. СОХРАНИТЬ → `save-offline-mod-settings` with the chips' add / delete deltas; unticking the mode sends `offlineModActive:false` and keeps the lists |
+| «Мессенджеры» | `load-messenger-data` → per messenger its sub-tabs (`CONNECTION`, `USAGE`, `CHAT_REGISTRY` as above); tabs TELEGRAM / WHATSAPP. «Подключение»: Телефон *, App id * (8 digits), App Hash id * (≤ 32), «Подключить Телеграмм» (disabled while empty). «Использование»: disabled until connected (above). «Реестр чатов»: «Существующие чаты реестра:» ⊕ / «Выберите:» → a single-choice list of `load-chat-registry-business-objects`, the chosen BO = a chip with ×; the checkbox «Автоматически генерировать новый реестр чатов:» drops the chosen BO; СОХРАНИТЬ is disabled unless a BO is chosen or the box is ticked (the UI cannot send «no registry») → `save-messenger-chat-registry-settings` `[I]` — it renames the BO (above) |
+| «Мобильное приложение» | seven rows «label:» + «Никому» (org-unit picker): «Разрешено пользоваться приложением» (`mobileAllow`), «Снимок экрана (только для Android)», «Копирование в буфер обмена», «Загрузка файлов в систему» (`importBoAllow`), «Выгрузка файлов из системы», «Выгрузка печатных форм», «Выгрузка отчетов в файл». СОХРАНИТЬ → `save-mobile-settings` with the deltas of all seven |
+| «Поддержка языков» | «Все языки» (pencil, name, drag handle; the active ones greyed) and «Языки системы» (radio = default, name; a trash on hover). A double-click (or a drag) on a row of «Все языки» → `language-add` with the WHOLE list at once; the trash → `language-remove P {language}` at once, no confirm. The default language cannot be removed (a client message, no call) `[I]`; the radio, a drag inside «Языки системы» and the pencil popover («Изменение названия», «Изменение обозначения», «Изменение кода языка», СОХРАНИТЬ) all send `language-add` `[I]`. With more than one active language the header gets a language switcher (globe) |
+| «OTP-аутентификация» | «Включить использование OTP» and «Создать нового пользователя в текущей компании» (disabled until the first is ticked); the second shows «Выберите департамент:» (single) and «Выберите рабочую группу:» (multi) — lists from `v2/org-unit/load-departments-by-company-id` / `load-person-groups-by-company-id`, loaded once with the page, empty when the company has none. СОХРАНИТЬ → `save-otp-settings`; **the page does not re-read after the save** — trap 102. OTP is a sign-in by phone + SMS code that creates a NEW external user in the chosen department / groups; it is not a second factor of the password login `[I]` |
+| «Навигатор» | the tab «Google Maps», «Ключ API *», «Подключить Google Map» + a status icon; a stored key is checked on load (`connect-to-google-map`, a refused key = a warning icon). **СОХРАНИТЬ stays disabled until «Подключить Google Map» succeeded** with the typed key (> 8 characters) — the UI saves only a key Google accepts. Emptying the input hides the bar: the key cannot be cleared in the UI, only by the API (`value:null`) |
+| «Аудиторский след» | «Добавить» (⊕) → `create-table-record` AT ONCE (an empty row) and opens its editor (a row click opens it too): left «Аудиторские объекты» ⊕ (a checkbox list of every BO → chips) and «Период хранения истории» [N]; right «Объект хранения истории» (a radio list of every BO, system kinds included → `load-bo-field-records`) and the 11 slots (a radio list of that BO's fields of the slot's type → a chip). «Сохранить» → `save-field-values P {recordId}` (filled slots only), then `save-aud-settings`; the row reads «<history BO> \| <audited BOs> \| <days>». «Отменить» closes the editor and stores nothing (the empty row from «Добавить» stays). The row's «−» (shown on hover, §10) → «Удаление элемента» Да / Нет → `remove-table-record` |
+| «Мониторинг миграции» | «Объект мониторинга миграции» «Выберите» → a radio list of GENERAL BOs only → `load-bo-field-records` and 9 slots (Идентификатор, Статус, Задача, Количество уже смигрированных, Общее количество, Идентификатор миграции, Ошибка при исполнении задачи, Начало задачи, Окончание задачи) + Сохранить / Отменить. Сохранить → `save-field-values` (no `recordId`), then `save-settings {monitorBoId}` `[I]`; picking another BO resets the slots. Once saved, the monitor cannot be unset — neither in the UI nor by the API. «Отменить» = reload |
+
 ### 5o. «Выставление сервисов» — a BO as a public HTTP endpoint `[C]`
 
 `/settings?settingsOpenPageUrl=script` («Выставление сервисов», header «Список выставления сервисов»). Each row
@@ -5450,10 +5510,16 @@ binds an **entry point** to a **service BO**: every HTTP call to
 `https://<stand>/api/v1/script/service/<COMPANY CODE>/<entry point>` (work scripts) or
 `…/api/v1/script/service_test/<COMPANY CODE>/<entry point>` (TEST script version) **creates one record of that BO**,
 copies the request into it, runs the BO's «Создание» hook (`onInstanceCreationId`), and answers with fields of
-that record. **No token, no login** — anyone who knows the URL creates records; treat the entry point as public.
-The company code is the tenant's code (the dialog prints both full URLs).
+that record. **An ordinary row needs no token and no login** — anyone who knows the URL creates records; treat
+its entry point as public. **A «Защищённый» row (`isProtected: true`)** `[C]` lets a call through only with the
+header `API_TOKEN: <a user's API token>` (§1) of a user of the service's company; anything else — no header, a
+made-up value, a session token in `API_TOKEN`, the API token in the `token` header — answers 401 «Для защищённого
+сервиса требуется действительный API-токен компании» and creates NO record (the check runs first). A session
+token in the `token` header does get through. The company code is the tenant's code (the dialog prints both URL
+paths).
 
-**The row** (dialog: «Точка входа» input, «Бизнес-объект» picker of every non-panel BO, then two columns):
+**The row** (dialog: «Точка входа» input, «Защищённый», «Бизнес-объект» picker of every BO, the system kinds
+Аккаунт / Департамент / Пользователи / Рабочая группа included, then two columns):
 - entry point: no leading/trailing `/`, no spaces (client checks only); it is the LAST path segment —
   `…/<ep>/extra` or an unknown ep answers 500 «Not found entry point [<ep>]. Company with code [<C>] found».
 - **ten fixed slots**, each a field of the service BO (`load-fields` gives code, Russian label and the allowed
@@ -5509,22 +5575,33 @@ The company code is the tenant's code (the dialog prints both full URLs).
 
 | call | send | returns |
 |---|---|---|
-| `load-table-records` | — | `[{id, entryPointTemplate, serviceBoRecord:{id,name,…}, orderIndex}]` |
-| `create-table-record` | P `{orderIndex}` (UI: last + 10000) | a new empty row `{id, …null}` — exists at once |
-| `save-script-settings` | B `{id, serviceBoId, entryPointTemplate}` | `""` |
+| `load-table-records` | — | `[{id, entryPointTemplate, serviceBoRecord:{id,name,…}, orderIndex, isProtected}]` |
+| `create-table-record` | P `{orderIndex}` (UI: last + 10000) | a new empty row `{id, …null, isProtected:false}` — exists at once |
+| `save-script-settings` | B `{id, serviceBoId, entryPointTemplate, isProtected}` | `""` |
 | `load-fields` | — | the ten slots `[{code, label, type}]` |
 | `load-field-values` / `save-field-values` | P `{recordId}` / P `{recordId}` B `[{code, value:<fieldId>}]` (`""` unmaps) | `[{code, value}]` |
 | `load-header-values` / `save-header-values` | P `{recordId}` / P `{recordId}` B `[{code:<header>, value:<fieldId>}]` — the WHOLE list | `[{code, value}]` |
-| `change-table-record-index` | P `{recordId, index}` | drag order |
+| `change-table-record-index` | P `{recordId, index}` (`index` = the new 0-based position) | drag order; the stored `orderIndex` becomes that position |
 | `remove-table-record` | P `{recordId}` | delete the row |
 
 Saves answer `""`; **loaders lag a few seconds** — right after the save a read still returns the old value; wait ~2 s before reading it back.
 
-**The row dialog in the UI** `[C]`: a slot or header is a chip with the field's label and an ×; × empties it on the
-page only, «Выберите» opens a popover of the BO's fields of the allowed kind (by label). **Nothing is sent until
-СОХРАНИТЬ**, and the СОХРАНИТЬ / ОТМЕНИТЬ bar appears only while something has changed; Escape or closing the dialog
-drops the edits without a word. СОХРАНИТЬ → `save-script-settings` (the whole row) + `save-field-values` with ONLY the
-changed slots + `save-header-values` with the WHOLE header list. **A dead slot or header** (a field CODE where the
+**The table and the row dialog in the UI** `[C]`: the table «Точка входа | Бизнес-объект | Защищённый» (Да / Нет)
+under «Добавить» (⊕). «Добавить» → `create-table-record` AT ONCE and the row's dialog opens by itself; a row click
+reopens it. The dialog's two URL lines update while the entry point is typed — their HOST is the web client's
+configured address, not necessarily the stand's: take the host from the stand, the path from the dialog. Ticking
+«Защищённый» shows the hint «Если включено, вызов сервиса возможен только с заголовком API_TOKEN». The «Бизнес-объект»
+popover stays open after a pick (a click outside closes it). A slot or header is a chip with the field's label and
+an ×; × empties it on the page only, «Выберите» opens a popover of the BO's fields of the allowed kind (by label).
+«Входящие заголовки копируются в поля» → «Добавить» adds a row at once — a name input prefilled `TEXT<n>`, a field
+«Выберите», a trash at the row's LEFT. **Nothing is sent until СОХРАНИТЬ**, and the bar appears only while something
+has changed; Escape does NOT close the dialog, a click outside closes it and drops the edits without a word (an
+empty row made by «Добавить» stays). СОХРАНИТЬ → `save-script-settings` (the whole row, `isProtected` included) +
+`save-field-values` with ONLY the changed slots + `save-header-values` with the WHOLE header list (only when the
+headers changed), then the dialog closes by itself. Deleting the LAST header is not saved — trap 103. **Reorder**: a
+real mouse drag of the row's left handle → one `change-table-record-index` per row whose position changed.
+**Delete**: the row's «−» at its right end, shown only while the mouse is over the
+row (§10) → «Удаление элемента» Да / Нет → `remove-table-record`, the table updates without a reload. **A dead slot or header** (a field CODE where the
 id belongs — after a rollback, trap 67) shows as an EMPTY chip, only the × on it; the list itself looks normal.
 Repair it in the UI: × on the empty chip → «Выберите» → the field → СОХРАНИТЬ — every dead chip of the row, then the
 next row.
@@ -6302,6 +6379,14 @@ The stand's own behaviour under automation `[C]`:
   - The confirm dialogs animate in, as on the import screen — click «Да» by element after it has appeared.
   - **After the BO basket's «Очистить все» the other baskets on screen are stale** (trap 87) — reload before
     reading them from the DOM.
+- **The settings pages** (§5n, §5o):
+  - **A table row's «−» («Аудиторский след», «Выставление сервисов») shows only while a real mouse is over the
+    row** — then it sits at the row's right end inside the table, while its bounding rect may still report a
+    position just outside the window. Hover the row, locate the icon on a screenshot, click it there; the confirm
+    dialog may appear ~1 s later — wait for «Да» before clicking it.
+  - **Reorder the «Выставление сервисов» rows with a real mouse drag** of the handle at the row's left.
+  - **Escape closes some pickers and not others** (the same «Никому» picker closes by it on «Оффлайн режим», not
+    on «Мобильное приложение») — close them with a click outside.
 
 ## 11. Traps and defects — the short list
 
@@ -6392,8 +6477,9 @@ The stand's own behaviour under automation `[C]`:
     then verify the rename with an API read-back.
 36. **The headless login's two body keys are base64 of the words `username` and `password`**
     (`dXNlcm5hbWU=` / `cGFzc3dvcmQ=`) and their VALUES are base64 too. A login sent with plain keys or
-    plain values is not «wrong password», it is a malformed request — and it still comes back as HTTP 200
-    with an error body. §0U.1.
+    plain values is not «wrong password», it is a malformed request: plain keys → HTTP 400 «Failed to read
+    request», base64 keys with plain values → HTTP 500 `IllegalArgumentException` (base64), never the 401
+    `IllegalLoginOrPassword` of a real wrong password. §0U.1.
 35. **`/import-structure/load-import-state` answered `{importExists:false}` while an analysed import was
     open** (UI upload, status «Импорт проанализирован») `[C]`. It is not a reliable «is
     something waiting?» probe — take the `importId` from the log row / from `import-file`, or resume with
@@ -6644,6 +6730,16 @@ The stand's own behaviour under automation `[C]`:
     `remove-bo-from-co`, or `remove-bo-field-link` of an attribute's last link, leaves it with `links: []`
     (listed by `load-co-fields-composite`), and `apply-and-remove-draft` keeps it as a real BO field.
     `remove-co-field` it before the commit, as the editor does (§5e).
+102. **Switching OTP off on the page it was switched on from creates a second row and leaves OTP on** `[C]` —
+    «OTP-аутентификация» does not re-read after СОХРАНИТЬ, so the next save sends `id:null` again: the server
+    creates a new inactive row and the first one stays active (`has-otp-settings` still `true`). Reload the page
+    before unticking; by API, send the `id` that `get-otp-settings` returns (§5n).
+103. **Deleting the LAST incoming header of a «Выставление сервисов» row is not saved** `[C]` — СОХРАНИТЬ sends no
+    `save-header-values` when the list became empty, and the header comes back on reopen; with two or more, the
+    remaining list replaces the old one. Clear the last one by API: `save-header-values P {recordId} B []` (§5o).
+104. **A user's API token replaced by a new one stays valid** `[C]` — `generate-api-token` over an existing token
+    adds a second one, and `remove-api-token` deletes only the current; the older token keeps opening the API as
+    that user, and no API or UI call revokes it. Generate once; to replace, «Удалить токен» first (§1, §3).
 
 ## 12. Open questions
 
@@ -6655,6 +6751,9 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5n settings kinds: how to unset a migration monitor BO; what the `languageTag` an import writes
   into every language changes; whether an org unit (`D-<id>` + its record line) resolves on ANOTHER stand; TELEPHONY,
   IN/OUT_MIGRATION, APPEARANCE imports (need a provider / Kafka / ownership).
+- §5n OTP: whether «Создать нового пользователя в текущей компании» makes this company's row the stand-wide one
+  (OTP sign-ups land in it, other companies can no longer change theirs — needs a second company); what an OTP
+  sign-in creates on a stand with a real SMS provider.
 - §5n: how to clear a messenger chat registry once set (the API ignores `null`); why Telegram's `isConnected` turned
   `true` with no field values set (WhatsApp stayed `false`); the per-BO telephony and
   Kafka migration lists (need a provider / Kafka).
