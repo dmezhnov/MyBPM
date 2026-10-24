@@ -4496,7 +4496,11 @@ BO — is 0.9 rule 10.
   out of the sidebar), but its id still holds the BO with every field. An archive that carries the same
   `oldId` again brings it back with all its OLD fields beside the new ones — fields the new archive does not
   name stay, each with its old `gridPosition`, so they overlap the new layout. The analysis diff lists only
-  the new fields as «added» and warns about nothing `[C]`. A revived `BO` field that pointed at a
+  the new fields as «added» and warns about nothing `[C]`. **Only the BO itself comes back** `[C]`:
+  `delete-business-object` also deleted the menu items that open it, removed every `BO` field of another BO that
+  pointed at it (its records keep the stored ids, no read shows them) and dropped it from every composite's
+  sources; none of that returns with the BO — an archive that needs them carries those menu items, fields and
+  composite links again. A revived `BO` field that pointed at a
   dictionary removed by a ROLLBACK keeps the dead id: opening its options answers «… данный бизнес-объект не
   существует» `[C]`; a dictionary removed by `delete-business-object` stays resolvable and the options
   are simply empty `[C]`. Why the two removals differ is `[I]` (rollback deletes the dictionary hard).

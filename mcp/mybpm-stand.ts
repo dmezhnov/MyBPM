@@ -2268,7 +2268,7 @@ const tools: Tool[] = [
       const back = ((await loadBo(s, boId)).formFields ?? []).find((x: any) => x.fieldId === a.fieldId);
       return { boId, fieldId: a.fieldId, was: f.code, code: back?.code };
     } },
-  { name: "bo_delete", write: true, description: "Delete a BO (constructor ⋮ → «Удалить»). Without `confirm` only the preview: the BO and what uses it (v2/delete-script-usage/analyze-bo). With `confirm: true` — after the user agreed — delete-business-object, then the code check. The delete is SOFT: the id keeps the BO with all its fields, and an archive with the same oldId revives it with the old fields — a new attempt needs new ids (§5 «A deleted BO comes back», MYBPM-IMPORTS.md 0.7). Its script module survives (trap 25).",
+  { name: "bo_delete", write: true, description: "Delete a BO (constructor ⋮ → «Удалить»). Without `confirm` only the preview: the BO and what uses it (v2/delete-script-usage/analyze-bo). With `confirm: true` — after the user agreed — delete-business-object, then the code check. The delete is SOFT: the id keeps the BO with all its fields, and an archive with the same oldId revives it with the old fields — a new attempt needs new ids (§5 «A deleted BO comes back», MYBPM-IMPORTS.md 0.7). What the preview lists goes for good, a revive does not bring it back: the menu items that open the BO, the BO fields of other BOs that point at it, its links in composites (§5b «Delete a BO»). Its script module survives (trap 25).",
     props: { boId: { type: "string" }, code: { type: "string" }, confirm: { type: "boolean" } },
     run: async (a) => {
       const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId);
