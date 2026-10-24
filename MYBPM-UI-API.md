@@ -174,7 +174,8 @@ Rules that hold for every endpoint `[C]`:
   `{"message":…, "className":"kz.greetgo…", "errorType":"…", "traceId":…, "stackTrace":[~100 lines]}` — HTTP
   500 for a business error («данный бизнес-объект не существует») and for a bad or missing session
   (`SecurityError` «Illegal Session»), 401 for a wrong password, 403 `AccessDenied` («У вас недостаточно прав…»)
-  for an action the user's own level forbids (raising one's own access level); a request the framework cannot bind is HTTP 400
+  for an action the user's own level forbids (raising one's own access level), 403 `AuthProblemException` for a
+  login of a deleted user; a request the framework cannot bind is HTTP 400
   with a different body, `{"type":"about:blank","title":"Bad Request","status":400,"detail":"Required parameter
   'x' is not present."}` (no `errorType`); an unknown method is 404. **Treat any non-2xx status as an error and
   read the reason from the body** (`errorType` + `message`, else `detail`); never print the `stackTrace` — cut it
@@ -1345,7 +1346,8 @@ their own on their card (§3).
   and the values are base64 of the UTF-8 bytes (`btoa(unescape(encodeURIComponent(v)))`).
   **The response body is the token itself**, as a JSON string — strip the quotes.
   Wrong credentials: HTTP 401 + `{"errorType":"IllegalLoginOrPassword","message":"Не верен пользователь
-  и/или пароль"}`. The rest of the controller: `load-token` (the current session's token),
+  и/или пароль"}`. A user whose «Пользователи» record is deleted (state `REMOVED`) gets HTTP 403 +
+  `{"errorType":"AuthProblemException","message":"… Пользователь удален"}` `[C]`. The rest of the controller: `load-token` (the current session's token),
   `load-auth-info` (GET, who am I), `fast-login`, `otp-login`, `verify-code`, `send-to-verify`,
   `has-otp-settings`, `get-all-masks`, `save-company`, `logout` (GET). A second, non-admin login is how
   rights are verified (§3 «What each subject opens») — the admin token sees everything.
