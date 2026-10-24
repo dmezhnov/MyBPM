@@ -2060,7 +2060,8 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   (`load-business-object-name`, `load-bo-fields-for-drag` by id answer). An archive that carries the same
   `oldId` again brings it back with all its OLD fields beside the new ones; the old fields keep their
   `gridPosition` and overlap the new layout, and the analysis diff lists only the new fields as «added», with
-  no warning `[C]`. A revived `BO` field whose dictionary was removed by a ROLLBACK keeps the dead id:
+  no warning `[C]`. Only the BO itself comes back: the menu items, other BOs' `BO` fields and composite links that
+  `delete-business-object` removed with it stay gone (§5b «Delete a BO») `[C]`. A revived `BO` field whose dictionary was removed by a ROLLBACK keeps the dead id:
   `v2/script/load-bo-field-options` (opening the dropdown on a record) answers «Cgf5V16VU4 :: … данный
   бизнес-объект не существует» `[C]`; a dictionary removed by `delete-business-object` stays resolvable
   and the options are empty `[C]` (why the two differ — `[I]`: the rollback deletes a dictionary hard).
@@ -2419,7 +2420,8 @@ write. Open questions: §12.
 | Print forms | rail → «Печатные формы» → panel: list + a draft dialog (add / edit) | §5i «Print forms» `[C]` |
 | Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
 | BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
-| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); its records stay readable by the BO id and it leaves the export basket (§5m) `[C]`; what happens to menu items, references and composites: §12 |
+| Field type | none — no control of the constructor sends `type` | portion save `editedFields [{fieldId, type:"<new type>"}]` changes it at once; the server checks no old → new pair `[C]`. **Stored values are not converted** — each record keeps what it held, and the card renders it by the new type: a text value in a field turned `INPUT_NUMBER` shows an empty input but is still stored (a read gives it back; a card save writes only the fields the user touched, so it survives), `INPUT_TEXT` → `TEXTAREA` shows the text, `INPUT_NUMBER` → `INPUT_TEXT` shows the number `[C]`. The registry column of such a record stays blank — even after the type is reverted — until the record is saved again `[C]`. A type whose stored shape differs (`BO`, `CO`, dropdowns, dates, `*_LANG`) is not converted either `[I]`: for those add a new field and move the data (records xlsx, `MYBPM-IMPORTS.md` Part III) |
+| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); its records stay readable by the BO id through `load-boi-values` (`load-business-object-by-id` and a draft answer «бизнес-объект не существует») and it leaves the export basket (§5m) `[C]`. **The delete cascades to what the dialog lists** `[C]`: the menu items that open the BO are deleted; every `BO` field of another BO that points at it is removed from that BO (the records keep the stored ids, but no read or form shows them); every composite drops it as a source (`refBoNames` names composites too) — an attribute loses its link to the BO, a two-link attribute becomes a simple one. Reviving the BO by an archive (§5 «A deleted BO comes back») brings back none of these `[C]` |
 | BO groups | caption ⊕ → «Группа»; group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» (deletes the group's BOs too); «Общее» has no ⋮ | the group lifecycle calls of §5 «Verifying an import»; the UI side: §5m «The groups» `[C]` |
 | Composite attributes | «Связи» view of the composite — every control in §5e «The composite editor in the UI» | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-field-link`, `remove-co-field`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
 
@@ -5419,7 +5421,8 @@ that screen's button (§5 «Export tab»).
 reference it), «Места использования» (scripts), УДАЛИТЬ ВСЁ РАВНО / ОТМЕНИТЬ → `delete-business-object
 {businessObjectId}` → `""`. The page stays on the deleted BO's editor, with no message. The delete is soft (§5 «A
 deleted BO comes back»): **its records stay readable by the BO id** (`load-bo-instance-bracket-table`), and **the BO
-leaves the export basket**.
+leaves the export basket**. The menu items, referencing `BO` fields and composite links the dialog lists are removed
+with it for good — §5b «Delete a BO».
 
 **The create-record iframe URL** — header gear → «Сгенерировать встраиваемый URL на создание» → «Пользователь:
 Выберите» (a person chooser, `v2/org-unit/load-filtered-persons-v2`) → «Сформировать»:
@@ -6828,9 +6831,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   field feeds a kanban or a menu item (`load-field-usage` not empty); nested tab groups (a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
   `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
   `calendarCardTemplates` / `timelineTemplates` through an archive (export shape, re-import onto a copy).
-- Changing a field's TYPE: look for a control in the gear / «Инфо» tab; try `editedFields {fieldId, type}`, re-read.
-- Deleting a BO: what happens to its menu items, references from other BOs and composites that use it
-  (scratch BO with one of each, delete, re-read each).
 - BO groups: reordering by a real mouse drag (a synthetic drag sends nothing, §5m; watch for
   `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
