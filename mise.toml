@@ -371,6 +371,15 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "forward" }, (r) => /forward needs arrowId/.test(r)],
   ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "forward", arrowId: "@process_edit.ids.fw" },
     (r) => r.changed && r.over && r.steps.at(-1).state === "PASSED" && r.steps.length === 5],
+  // a second test record: stop refuses a step that is not STAND, stops the Form; terminate goes on past it
+  ["record_save", { code: "mcp_probe_scripts", values: { title: "Процесс 2" }, scripts: false }, (r) => r.saved === true],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "stop", figureId: "@process_edit.ids.s" }, (r) => /Нет активных шагов для остановки/.test(r)],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "retry", figureId: "@process_edit.ids.f" }, (r) => /Нет активных шагов для повторного запуска/.test(r)],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "stop", figureId: "@process_edit.ids.f" },
+    (r) => r.changed && r.over && r.steps.at(-1).state === "STOPPED" && !r.standError],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "terminate" }, (r) => /terminate needs arrowId/.test(r)],
+  ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "terminate", arrowId: "@process_edit.ids.fw" },
+    (r) => r.changed && r.over && r.steps.length === 5 && r.steps[2].state === "STOPPED" && r.steps.at(-1).state === "PASSED"],
   // rights (R5): BO, tab, field, menu item; exact subjects, «выборочно» follows, a «Системные» tab closed by bo_create
   ["rights_read", { code: "mcp_probe_records", subjects: true }, (r) => r.rights.view === "all" && r.rights.add === "all" && r.groups.some((g: any) => g.name === "Менеджеры") && r.persons.length === 1],
   ["rights_save", { code: "mcp_probe_records", set: { view: { groups: ["Менеджеры"], persons: ["admin@mock"], author: true }, edit: "nobody" } },
@@ -517,7 +526,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not

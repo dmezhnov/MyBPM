@@ -560,7 +560,7 @@ type PVer = { boProcessId: string; version: string; isWork: boolean; isTest: boo
 const sVers = new Map<string, SVer[]>(), pVers = new Map<string, PVer[]>(), defs = new Map<string, any>(), written = new Set<string>();
 const localMethods = new Map<string, { scriptId: string; methodName: string }[]>(); // per BO: every version lists them (trap 68a)
 let globals: { scriptId: string; methodName: string }[] = [];
-const rwDrafts = new Map<string, { boProcessId: string; runWayMap: Record<string, any> }>(), forced = new Map<string, Set<string>>();
+const rwDrafts = new Map<string, { boProcessId: string; runWayMap: Record<string, any> }>(), forced = new Map<string, Set<string>>(), stopped = new Map<string, Set<string>>();
 const HOOK_KEYS = ["onOpenFormScriptId", "afterSaveScriptId", "onCloseScriptId", "onInstanceCreationId"];
 const dk = (m: string, s: string) => `${m}/${s}`;
 const setPath = (o: any, path: string, v: unknown) => {
@@ -616,8 +616,9 @@ function steps(boProcessId: string, boiId: string) {
     seen.add(at);
     const fig = def.figures[at], outs = Object.entries<any>(def.arrows).filter(([, a]) => a.startFigureId === at);
     const push = outs.find(([id]) => forced.get(boiId)?.has(id));
-    if ((fig.type === "Form" || fig.type === "Timer") && !push) { out.push({ figureId: at, state: "STAND" }); break; }
-    out.push({ figureId: at, state: "PASSED" });
+    const stop = stopped.get(boiId)?.has(at); // a stopped step stays STOPPED; terminate-all goes on past it
+    if ((fig.type === "Form" || fig.type === "Timer") && !push) { out.push({ figureId: at, state: stop ? "STOPPED" : "STAND" }); break; }
+    out.push({ figureId: at, state: stop ? "STOPPED" : "PASSED" });
     if (fig.type === "Exit") break;
     const exitArrow = Object.values<any>(defs.get(dk(boProcessId, at))?.blocks ?? {}).find((b) => b.targetArrowId)?.targetArrowId;
     at = (push ?? outs.find(([id]) => id === exitArrow) ?? outs[0])?.[1].finishFigureId;
@@ -695,7 +696,14 @@ function scriptsAndProcesses(route: string, params: any, body: any): any {
     case "v2/boi-process2/load-boi-process-id": return pVersOf(params.boId).find((v) => v.isTest)!.boProcessId;
     case "v2/boi-process/load-process-steps": return steps(params.boProcessId, params.boiId);
     case "v2/boi-process/push-step-forcibly": forced.set(params.boiId, new Set([...(forced.get(params.boiId) ?? []), params.arrowId])); return null;
-    case "v2/boi-process/push-step-retry": return null;
+    case "v2/boi-process/push-step-terminate-all": forced.set(params.boiId, new Set([...(forced.get(params.boiId) ?? []), params.arrowId])); return null;
+    // the server stops only a STAND step and retries only a FAILED one
+    case "v2/boi-process/stop-step":
+      if (!steps(params.boProcessId, params.boiId).some((x) => x.figureId === params.figureId && x.state === "STAND")) return fail("nAvyFrTP75 :: Нет активных шагов для остановки");
+      stopped.set(params.boiId, new Set([...(stopped.get(params.boiId) ?? []), params.figureId])); return null;
+    case "v2/boi-process/push-step-retry":
+      if (!steps(params.boProcessId, params.boiId).some((x) => x.figureId === params.figureId && x.state === "FAILED")) return fail("tPV45WyxAZ :: Нет активных шагов для повторного запуска");
+      return null;
   }
   const m = route.match(/^v2\/bo-(scripts|process)-editor2?\/(in-work|in-test|copy|remove|change)-bo-(script|process)-version(-comment)?$/);
   if (m) {
