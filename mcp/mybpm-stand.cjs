@@ -1874,6 +1874,11 @@ async function runWays(s, bo, boProcessId) {
     await s.call(PE2_ + "remove-draft", { draftId }).catch(() => {});
   }
 }
+function diagnostic(d) {
+  const first = String(d.exceptionStackTrace ?? "").split(`
+`)[0].trim();
+  return clean({ type: d.type, code: d.messageCode, message: d.message, trace: first && first !== d.message ? `${first} …` : undefined });
+}
 async function processSteps(s, boProcessId, boiId, def, fields) {
   const steps = await s.call(BP_ + "load-process-steps", { boProcessId, boiId }) ?? [];
   const arrows = Object.entries(def.arrows ?? {});
@@ -1886,7 +1891,7 @@ async function processSteps(s, boProcessId, boiId, def, fields) {
         what: f ? figureLabel(f, fields) : undefined,
         state: x.state,
         scriptRunSuccess: x.scriptRunSuccess === false ? false : undefined,
-        diagnostics: x.diagnosticMessages,
+        diagnostics: (x.diagnosticMessages ?? []).map(diagnostic),
         out: arrows.filter(([, a]) => a.startFigureId === x.figureId).map(([id, a]) => `${id}${a.name ? ` «${a.name}»` : ""} → ${a.finishFigureId}`)
       });
     })
@@ -4018,7 +4023,7 @@ var tools = [
   },
   {
     name: "process_steps",
-    description: "Where a process record is (§5f run-time controller): the version it runs and every step — figure, what it is, state PASSED | STAND (waiting: a Form, a Timer) | GO (running) | WAITING (a Timer past due) | FAILED, a script failure, diagnostics, its outgoing arrows; over = none is STAND / GO / WAITING. A Form waits for a CHANGED save of its record; a field filled after the Form was entered leaves it stuck (§5f).",
+    description: "Where a process record is (§5f run-time controller): the version it runs and every step — figure, what it is, state PASSED | STAND (waiting: a Form, a Timer) | GO (running) | WAITING (a Timer past due) | FAILED | STOPPED (stopped by process_push stop), a script failure, diagnostics (message + the first line of the stack trace), its outgoing arrows; over = none is STAND / GO / WAITING. A Form waits for a CHANGED save of its record; a field filled after the Form was entered leaves it stuck (§5f).",
     props: { boId: { type: "string" }, code: { type: "string", description: "The process BO code instead of boId" }, boiId: { type: "string", description: "The process record" } },
     required: ["boiId"],
     run: async (a) => {
@@ -4029,12 +4034,12 @@ var tools = [
   {
     name: "process_push",
     write: true,
-    description: "Move a stuck process record on (§5f): action forward = «Продолжить принудительно» along an OUTGOING arrow of the standing step (arrowId; the arrow into it does nothing); retry = «Попробовать еще раз» on a Script / Switch / Form step with diagnostics (figureId). Then the steps, re-read until they change (≤10 s). Ask the user first.",
+    description: "Move a stuck process record on (§5f): action forward = «Продолжить принудительно» along an OUTGOING arrow of the standing step (arrowId; the arrow into it does nothing); retry = run a FAILED Script / Switch / Form step again (figureId; the UI's «Попробовать еще раз» never reaches one); stop = stop a STAND step, it becomes STOPPED (figureId; the UI's «Остановить текущий» never reaches one); terminate = «Терминировать все и продолжить здесь»: end the run and go on from that arrow's target (arrowId, any arrow — the one INTO a failed step retries it). A target Script that fails answers an error, yet the step has moved. Then the steps, re-read until they change (≤10 s). Ask the user first.",
     props: {
       boId: { type: "string" },
       code: { type: "string", description: "The process BO code instead of boId" },
       boiId: { type: "string" },
-      action: { type: "string", enum: ["forward", "retry"] },
+      action: { type: "string", enum: ["forward", "retry", "stop", "terminate"] },
       arrowId: { type: "string" },
       figureId: { type: "string" }
     },
@@ -4043,22 +4048,35 @@ var tools = [
       const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), p = await boiProcess(s, boId, a.boiId);
       const fields = new Map((bo.formFields ?? []).map((f) => [f.fieldId, f]));
       const before = await processSteps(s, p.boProcessId, a.boiId, p.def, fields);
-      if (a.action === "forward") {
+      const ids = { boProcessId: p.boProcessId, boiId: a.boiId };
+      let route, params;
+      if (a.action === "forward" || a.action === "terminate") {
         if (!a.arrowId || !p.def.arrows?.[a.arrowId])
-          throw new Error("forward needs arrowId: an outgoing arrow of the standing step (process_steps lists them)");
-        await s.call(BP_ + "push-step-forcibly", { boProcessId: p.boProcessId, boiId: a.boiId, arrowId: a.arrowId });
-      } else if (a.action === "retry") {
+          throw new Error(a.action === "forward" ? "forward needs arrowId: an outgoing arrow of the standing step (process_steps lists them)" : "terminate needs arrowId: an arrow of the version the record runs (process_steps lists them)");
+        route = a.action === "forward" ? "push-step-forcibly" : "push-step-terminate-all";
+        params = { ...ids, arrowId: a.arrowId };
+      } else if (a.action === "retry" || a.action === "stop") {
         if (!a.figureId)
-          throw new Error("retry needs figureId");
-        await s.call(BP_ + "push-step-retry", { boProcessId: p.boProcessId, boiId: a.boiId, figureId: a.figureId });
+          throw new Error(`${a.action} needs figureId: a ${a.action === "retry" ? "FAILED" : "STAND"} step (process_steps lists them)`);
+        route = a.action === "retry" ? "push-step-retry" : "stop-step";
+        params = { ...ids, figureId: a.figureId };
       } else
-        throw new Error("action is forward or retry");
+        throw new Error("action is forward, retry, stop or terminate");
+      let standError;
+      try {
+        await s.call(BP_ + route, params);
+      } catch (e) {
+        standError = e.message;
+      }
       let after = before;
-      for (let i = 0;i < 20 && JSON.stringify(after) === JSON.stringify(before); i++) {
+      for (let i = 0;i < (standError ? 4 : 20) && JSON.stringify(after) === JSON.stringify(before); i++) {
         await sleep(500);
         after = await processSteps(s, p.boProcessId, a.boiId, p.def, fields);
       }
-      return { boId, boiId: a.boiId, boProcessId: p.boProcessId, changed: JSON.stringify(after) !== JSON.stringify(before), ...after };
+      const changed = JSON.stringify(after) !== JSON.stringify(before);
+      if (standError && !changed)
+        throw new Error(standError);
+      return clean({ boId, boiId: a.boiId, boProcessId: p.boProcessId, changed, standError, ...after });
     }
   },
   {
