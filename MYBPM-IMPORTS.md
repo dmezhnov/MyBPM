@@ -4214,7 +4214,9 @@ these lines (plus `CompanyMetadataStructDto`) — no group, no BO; the analysis 
   its **`args` are keyed by the callee's parameter id** (§13). After a global method's param ids change,
   `translate-script` of the caller says «Не передан аргумент `imya` в вызов метода `glob_greet`»; after
   the method disappears, «У выражения справа не определён тип». Repair = re-key the args (or re-import
-  the archive with the old ids). Ship global methods with their stand ids unchanged. Whether a RENAMED method
+  the archive with the old ids). Ship global methods with their stand ids unchanged. A global method also has an
+  IMPLICIT first parameter «эта инстанция» — the calling record, id `__gsm_self__`, `implicitCallerSelf:true` — that
+  is NOT in the hat's `params` `[C]`; a call site leaves it out of `args` `[I]`. Whether a RENAMED method
   (same `scriptId`, new `methodName`) keeps its callers translating is not known yet `[U]` — §18.
 - Re-importing a stand's own export changes nothing (same `scriptId`, no duplicate).
 - **An import does NOT reach the running scripts.** The stand runs a compiled copy of the global module,

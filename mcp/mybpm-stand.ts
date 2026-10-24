@@ -1410,11 +1410,14 @@ async function versionAction(s: Stand, kind: "script" | "process", boId: string,
   const idParam = kind === "script" ? "boScriptsId" : "boProcessId";
   const before: any[] = (await s.call(ctl + list, { boId })) ?? [];
   if (!a.action) return { boId, versions: versionRows(before, idKey) };
-  const v = pickVersion(before, a.version ?? (a.action === "copy" || a.action === "comment" ? undefined : "test"), idKey);
-  const method = ({ work: `in-work-${noun}`, test: `in-test-${noun}`, copy: `copy-${noun}`, remove: `remove-${noun}`, comment: `change-${noun}-comment` } as any)[a.action];
-  if (!method) throw new Error("action is one of work, test, copy, remove, comment");
+  if (a.action === "unset" && kind !== "script") throw new Error("unset: script versions only — a process version is taken out of work by publishing another one");
+  const v = pickVersion(before, a.version ?? (a.action === "copy" || a.action === "comment" ? undefined : a.action === "unset" ? "work" : "test"), idKey);
+  const method = ({ work: `in-work-${noun}`, test: `in-test-${noun}`, copy: `copy-${noun}`, remove: `remove-${noun}`, comment: `change-${noun}-comment`, unset: "unset-in-work-version" } as any)[a.action];
+  if (!method) throw new Error("action is one of work, test, copy, remove, comment" + (kind === "script" ? ", unset" : ""));
+  if (a.action === "unset" && !v.isWork) throw new Error(`version ${v.version} is not the work one — unset takes the work version out of work`);
   if (a.action === "remove" && (v.isWork || v.isTest)) throw new Error(`version ${v.version} is the ${v.isWork ? "work" : "test"} one — the stand keeps it; make another one work/test first`);
-  const answer = await s.call(ctl + method, { boId, [idParam]: v[idKey], ...(a.action === "comment" ? { comment: a.comment ?? "" } : {}) });
+  // unset-in-work-version names the version boScriptId (singular), every other call boScriptsId
+  const answer = await s.call(ctl + method, { boId, [a.action === "unset" ? "boScriptId" : idParam]: v[idKey], ...(a.action === "comment" ? { comment: a.comment ?? "" } : {}) });
   const refused = Array.isArray(answer) ? answer.filter((x: any) => x?.text).map((x: any) => x.text) : [];
   const after: any[] = (await s.call(ctl + list, { boId })) ?? [];
   return clean({ boId, action: a.action, version: v.version, ...(refused.length ? { refused } : {}), versions: versionRows(after, idKey) });
@@ -2710,9 +2713,9 @@ const tools: Tool[] = [
         fields: Object.fromEntries(Object.entries<any>(w.fieldScripts ?? {}).map(([fid, x]) => [byId.get(fid) ? nameOf(byId.get(fid)) : fid, x?.afterChangeScriptId])),
         methods: ms, notes, next: "script_write writes each body (a new one is empty and does not translate until then)" });
     } },
-  { name: "script_version", write: true, description: "A BO's script versions (§5g): no action → the list; action work (publish: ordinary records run it; the stand then makes a fresh test copy), test (make it the test version), copy, remove (not the work or test one), comment. version: work | test | id | number (default test; copy / comment default the work one). Ask the user first.",
+  { name: "script_version", write: true, description: "A BO's script versions (§5g): no action → the list; action work (publish: ordinary records run it; the stand then makes a fresh test copy; a refusal comes back as refused, e.g. script_after_save_cause = a hook that does not translate), unset (take the work version out of work — the UI «Убрать из опубликованных»; ordinary records then run no script), test (make it the test version), copy, remove (not the work or test one), comment. version: work | test | id | number (default test; copy / comment / unset default the work one). Ask the user first.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
-      action: { type: "string", enum: ["work", "test", "copy", "remove", "comment"] }, version: { type: "string" }, comment: { type: "string" } },
+      action: { type: "string", enum: ["work", "unset", "test", "copy", "remove", "comment"] }, version: { type: "string" }, comment: { type: "string" } },
     run: async (a) => { const s = stand(a); return versionAction(s, "script", await boById(s, a), a); } },
 
   // 9. processes (§5f)
