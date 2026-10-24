@@ -2025,6 +2025,10 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 - **An import never deletes** `[C]` (`MYBPM-IMPORTS.md` §8): fields, TAB_GROUPs and single tabs that a
   re-imported archive no longer carries stay on the BO with the same ids, and the fields on a dropped tab
   keep their `tabId`. Delete them with `deletedFieldIds` of `save-business-object-portion` (R1).
+- **An import checks no string of a BO line** `[C]` — neither the request reject check nor the HTML cleaner
+  of §8 runs, so HTML, labels and codes are stored verbatim. A string the reject check would refuse (CSS
+  `transform` / `text-transform`, a DOM event name such as `onstart` inside any word, «Platform: X» inside
+  markup) imports cleanly and then makes every constructor save of that BO fail with HTTP 500 (trap 106).
 - **Rollback trap: «latest» is not the order you applied in, and a rollback restores a SNAPSHOT** `[C]`.
   An import that UPDATES something stores the state it
   found and puts it back on rollback (`restoreItems`, `action:"RESTORE"`), without looking at what came
@@ -6159,18 +6163,78 @@ Two related traps `[C]`:
 **Which fields take HTML** `[C]`: «Текст» (`STATIC_TEXT`), «Текстовый блок»
 (`TEXTAREA`) and «Мультиязычный текстовый блок» (`TEXTAREA_LANG`) — an HTML fragment can go into them
 instead of plain text, whether typed in the card, saved through `save-field-value` (§6b), written by a
-script or imported. «Текстовое поле» (`INPUT_TEXT`) and its multilingual twin are plain single-line inputs `[I]`.
+script or imported. «Текстовое поле» (`INPUT_TEXT`) and its multilingual twin are plain single-line inputs `[I]`;
+HTML sent to them is stored verbatim `[C]`.
 
-**What the server keeps** `[C]` — in a `TEXTAREA` written by `save-field-value` and read back with
-`load-field-data`, and in `staticValueMap` of a `STATIC_TEXT` saved through
-`save-business-object-portion`. The server re-serialises the HTML (pretty-printed, `\n` + indent around
-block tags) and:
-- keeps `<b>`, `<br>`, `<div style=…>`, `<a href target>`, `<img src width>` and **`<iframe src width
-  height>`**;
-- strips `srcdoc` from an `<iframe>` silently (the tag stays, empty);
-- **rejects the whole value** when it holds `<script>`: the call answers `RestError` «Обнаружено
-  недопустимое значение: <script>… Проверьте введённые данные на наличие не доверенных ссылок, программного
-  кода…» and nothing is stored, the other tags of that value included.
+There is **no single sanitizer: two independent server checks**, and which one a value meets depends on the
+route, not on the field type `[C]`.
+
+**Check 1 — the request reject check.** It runs on these routes only: `save-business-object-portion` (the
+constructor's СОХРАНИТЬ, i.e. the WHOLE BO), `v2/save-boi-value`, `save-field-value` and the form's
+confirm-method run, `validate-apply-remove-draft`, and the save of an IFRAME widget's url. **Every string of
+the request is checked on its own** — field codes, names, labels, option texts, `staticValueMap`, record values;
+a string that itself holds JSON is checked by the strings inside it; keys are not checked. One hit answers
+`RestError` «Обнаружено недопустимое значение: <the matched text>. Проверьте введённые данные на наличие не
+доверенных ссылок, программного кода…» and **nothing of the request is stored**. Case does not matter. A value is
+refused when it holds something that looks like code a browser could run; the kinds, with examples:
+- **a DOM event-handler name** — `on` + an event (`onclick`, `onload`, `onerror`, `onchange`, `onselect`,
+  `onstart`, `onstop`, `onfocus`, `onscroll`, …) **anywhere in the string, inside a word or a code too**:
+  `buttonstart`, `nonstop`, `connectionerror`, `personchange` and a code `imp_onclick` are refused; a separator
+  between `on` and the event name breaks it (`button_start`);
+- **the word `script` inside markup** — `<p>Run the scripts</p><p>…</p>`, a `<script>` element;
+- **`javascript:` or `vbscript:`**;
+- **an `<object>`, `<applet>`, `<embed>` or `<form>` element**;
+- **`form:`, `object:`, `embed:` or `applet:` inside markup** — so CSS `transform:` and `text-transform:` in a
+  `style`, and English text such as «Platform: X», «Information: X», «Business object: X» inside tags;
+- **`eval(…)` or `expression(…)`**;
+- **a backslash or a control character (form feed) inside a tag**;
+- **a link to an untrusted host**: the value of every `src="…"` / `href="…"`, and a value that is itself a URL
+  with a host, must name a host from the stand's `trustedDomains` configuration (a `;`-separated list, `*` =
+  every host); `data:…`, `[fileId:…`, `web/…`, `/web…` always pass. The local test stand trusts every host
+  `[C]`; a customer stand's list is unknown `[U]` — a rejection that quotes an external host is this check.
+
+**Write every string so the form lint passes** (`MYBPM-IMPORTS.md` 0.10): it refuses each kind above wherever it
+stands in a string, over the whole open vocabulary of DOM event names, so it is stricter than the stand — a
+string the lint passes is never refused here. A lint ERROR on a string the stand would take (`personsearch`,
+«JavaScript API» inside markup) is fixed the same way: reword it, or break the word with `_`.
+
+Passes: `letter-spacing`, `conic-gradient`, `clamp()`, an `h1` with a `style`, an external `https` link with
+`target`, an external `<iframe>`, `<img src="data:…">`, «metadata: 1».
+
+**Check 2 — the HTML cleaner on RECORD values** of `STATIC_TEXT`, `TEXTAREA` and `TEXTAREA_LANG`: after check
+1 on `save-field-value` / `save-boi-value`, and on a script's write `[I]`. Kept tags: `a b blockquote br
+caption cite code col colgroup dd div dl dt em h1`…`h8 hr html i iframe img li ol p pre q small span strike
+strong sub sup table tbody td tfoot th thead tr u ul`. Kept attributes: `style` and `class` on most of them;
+`a` — `href` (`ftp`, `http`, `https`, `mailto` only), `target`, `title`; `iframe` — `src`, `width`,
+`height`, `frameBorder`; `img` — `src`, `width`, `height`, `align`, `alt`, `title`; `td` / `th` — `colspan`,
+`rowspan`, `width`, `abbr`, `axis` (`th` also `scope`); `ol` — `start`, `type`; `ul` — `type`; `col` /
+`colgroup` — `span`, `width`; `table` — `summary`, `width`. A dropped tag leaves its text (`<section>` → its
+content), except `<style>`, which goes with its text; `aria-label`, `id`, `data-*` and an `<iframe>`'s
+`srcdoc` are dropped. The CSS inside `style` is not filtered. **No reformatting**: a value that loses nothing
+comes back exactly as sent, and one that loses something comes back with no added line breaks or indent. A
+`TEXTAREA` also uploads an `<img src="data:…">` and stores `src="[fileId:…]"` instead; a record `STATIC_TEXT`
+keeps the `data:` source.
+
+**Which value meets which check** `[C]`:
+
+| Where the HTML goes | Check 1 | Check 2 |
+|---|---|---|
+| A `STATIC_TEXT`'s default (`staticValueMap`) saved by the constructor | yes | no — `aria-label`, `id`, `data-*`, `<section>` / `<main>` / `<header>` / `<article>`, `<style>`, `srcdoc` are stored verbatim |
+| A record's `STATIC_TEXT` / `TEXTAREA` / `TEXTAREA_LANG` through `save-field-value` / `save-boi-value` | yes | yes |
+| A record's `INPUT_TEXT` | yes | no — stored verbatim |
+| A record value written by a script | no `[I]` | yes `[I]` |
+| **The structure archive import** (`staticValue`, labels, codes — every string of a BO line) | **no** | **no** — stored verbatim |
+| The records xlsx import | `[U]` | `[U]` |
+
+**The card filters again when it renders** `[C]`: it drops `<section>` (with its `style`), `aria-label`, and
+the `onclick` of a `<div onclick>`; `text-transform` and `transform` that reached the stand through an archive
+render.
+
+**An archive line that check 1 would reject locks its BO's constructor** `[C]`: the import stores it without a
+word, and from then on EVERY save of that BO's structure — the constructor's СОХРАНИТЬ, a field rename, a field
+delete, any `save-business-object-portion` — answers HTTP 500 with that `RestError`, because the save sends the
+whole BO and the stored string is in it. Record saves keep working. The repair is a re-import of the line with
+the offending strings cleaned (trap 106).
 
 **An `<iframe>` in these fields renders on the card** `[C]`: in a «Текст» section as a live
 frame, and in a `TEXTAREA` inside the summernote editor (`.note-editable`), with no `sandbox` and no
@@ -6178,7 +6242,8 @@ frame, and in a `TEXTAREA` inside the summernote editor (`.note-editable`), with
 `TEXTAREA` gives each record its own embedded page. That is the way around the IFRAME widget's single
 fixed url (§5i). The page still needs a host of its own: **`/web/v2/file/download/<fileId>`** (controller
 `v2/file`, `upload` / `download/{id}`) answers `SecurityError «Illegal Session»` without the `token`
-header, so a file uploaded to the platform cannot be the `src` of a frame.
+header, so a file uploaded to the platform cannot be the `src` of a frame. On a stand with a `trustedDomains`
+list the frame's host must be on it, or check 1 rejects the save `[I]`.
 A button script that writes
 `<iframe src="https://<external host>/?a=<lat,lon>&b=<lat,lon>" width="100%" height="400">` into a
 `TEXTAREA` makes the card show the external page inside the field; the value is stored with `&` as
@@ -6210,12 +6275,18 @@ headings. **A group heading** `[C]`: `<div style="font-size:18px;font-weight:700
 18 px bold with the underline (a `background` + `border-radius` plate and a `border-left` bar render too; so does
 `<h3 style="font-size:18px;font-weight:700;margin:0">`); a bare `<h3><b>Тема</b></h3>` renders as a small bold label.
 
-- **Rejected**: `text-transform` (probably matched as "transform"), `letter-spacing`.
-- **Stripped together with their styles**: `main`, `header`, `section`, `article` → use only `div` and `span`.
-- Paste a **fragment**: no doctype / `html` / `head` / `title`.
-- Drop `clamp()` and `aria-label`. `h1`–`h3` lose bold → set `font-weight:700` explicitly.
-- Assume `transform` and `conic-gradient` are filtered (avoided rather than tested `[U]`).
-- **Progress ring without transform/conic-gradient**: a full green `border` ring plus an overlay grey ring
+- **No `transform` and no `text-transform`** — check 1 rejects both (`form:`); type capitals as capitals.
+- **No DOM event-handler name (`on` + event) inside any string** — HTML, label, code (check 1); break it with `_`.
+- No «Platform:» / «Information:» / «Business object:» style colons inside markup that more markup follows —
+  a dash instead of the colon, or the text outside the tags.
+- `letter-spacing`, `clamp()` and `conic-gradient` pass `[C]`.
+- **Tags**: `div`, `span`, `p`, `h1`–`h6`, `b`/`i`/`u`, `br`, `ul`/`ol`/`li`, `table`, `a`, `img` — `main`,
+  `header`, `section`, `article` are dropped from records by check 2 and from every card by the client.
+- Paste a **fragment**: no doctype / `html` / `head` / `title`; no `<style>` block — inline `style` only.
+- No `aria-label`, `id`, `data-*`: dropped from records and, for `aria-label`, from the rendered card.
+- `h1`–`h3` lose bold → set `font-weight:700` explicitly.
+- **Progress ring** (`conic-gradient` passes the server; whether the card renders it is unchecked `[U]`) — the
+  form that needs neither it nor `transform`: a full green `border` ring plus an overlay grey ring
   clipped to the top-left quarter by a 54×54 `overflow:hidden` wrapper with `margin:-108px 0 0 0`; other
   percentages by changing only the clip box height, `h = 54 − 48·cos(2π·p)` px (60% → 93px, 65% → 82px),
   valid for p in 50..75%. Verify with a headless Chrome screenshot.
@@ -6819,6 +6890,12 @@ The stand's own behaviour under automation `[C]`:
     (and the reset link) and the profile tab БЕЗОПАСНОСТЬ encode it with a plain `btoa()`, which throws on
     Cyrillic and the like: ВОЙТИ / СОХРАНИТЬ do nothing, no call goes out, no message shows (only a console
     error). The login form encodes UTF-8 and is not affected. Use Latin letters, digits and signs (§1, §3).
+106. **An imported string that the reject check refuses locks the BO's constructor** `[C]` — the archive
+    import checks no HTML and no text, so a `transform:` / `text-transform:` in a «Текст» heading, a DOM event
+    name inside a code, label or text (`buttonstart`, `imp_onclick`), or «Platform: X» inside markup is
+    stored; after that every `save-business-object-portion` of that BO — СОХРАНИТЬ in the constructor, a field
+    rename or delete — answers HTTP 500 «Обнаружено недопустимое значение: …» and saves nothing. Re-import the
+    line with the strings cleaned (§8 «Check 1»; the form lint flags them, `MYBPM-IMPORTS.md` 0.10).
 
 ## 12. Open questions
 
@@ -6858,7 +6935,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   applied records import (look for `bo-transfer/*rollback*`); deleting a dictionary row still used by records'
   dropdowns (re-read a record); whether mass change (§6c) and `copy-bo-instance` run the BO's scripts (a field
   script that counts, then each action once) and whether a duplicate copies the participants.
-- A `STATIC_TEXT`'s HTML sanitizer = the `TEXTAREA` one? Save `text-transform` HTML into `staticValueMap`, read back.
 
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — see trap 42.
