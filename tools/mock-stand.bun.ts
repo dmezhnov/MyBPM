@@ -638,6 +638,11 @@ function scriptsAndProcesses(route: string, params: any, body: any): any {
       v.w.fieldScripts = structuredClone(body.fieldScripts ?? {});
       return null;
     }
+    case "v2/bo-scripts-editor/unset-in-work-version": { // P {boId, boScriptId} — singular; no new version
+      const v = sVersOf(params.boId).find((x) => x.boScriptModId === params.boScriptId)!;
+      v.isWork = false;
+      return "";
+    }
     case "v2/bo-scripts-editor/list-local-methods": return localMethods.get(ownerOf(params.boScriptsId)![0]) ?? [];
     case "v2/bo-scripts-editor/create-local-method": {
       const boId = ownerOf(params.boScriptsId)![0], m = { scriptId: nextId("LM"), methodName: params.methodName };

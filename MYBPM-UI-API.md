@@ -3082,7 +3082,12 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   method you shadow and the same call works against either.
 - **Calling a global method** `[C]`: a BO script calls it like a local one — `ExprCall {funcName:
   "<name>", useArgNames:false, args: {<the global method's param id>: {name, order, exprId}}}`; nothing
-  names the global module. **A process Script figure calls it the same way** `[C]`: the figure's
+  names the global module. `load-module-methods {scriptModuleId: <the caller's module>}` lists the globals
+  beside the local methods `[C]`: `{name, companyGlobal:true, scriptId, scriptModuleId: <the company module>,
+  methodBlockId, returnType, params}`, and `params` starts with an IMPLICIT one — `{id:"__gsm_self__", name:"эта
+  инстанция", order:-2147483648, type Bo/BoiRefCode, implicitCallerSelf:true}`, the calling record (the IDE's
+  method panel shows it as a fixed first row «эта инстанция — из вызывающего скрипта»). A call site leaves it out
+  of `args` — the IDE builds `args` from the other params only `[I]`. **A process Script figure calls it the same way** `[C]`: the figure's
   def has `scriptModuleId` = the process version, e.g. `Итог.#Значение = glob_greet("БП")` (`BlockAssign`,
   left = `F-VALUE-K-DYN-R-D-S-boi_fields` over `F-Itog-K-DYN-S-boi_fields` over `THIS_PROCESS`). The archive form and its import semantics (REPLACES the whole list,
   ids kept verbatim) are `MYBPM-IMPORTS.md` §5d «Company-global methods».
@@ -3119,15 +3124,16 @@ wiring, «Wiring scripts onto a BO headlessly»), and so are `create-local-metho
   «not yours to generate».
 #### Reading a BO's scripts headlessly — the four calls, in order `[C]`
 
-1. `v2/script-browser/load-tree {}` → `roots[]`, one **`id: "bo-<boId>"`** per BO plus the folder
-   `global-methods`. This is also the cheapest BO-id lookup by name: `label` is the BO's name.
+1. `v2/script-browser/load-tree {}` → `roots[]`, one **`id: "bo-<boId>"`** per BO THAT HAS SCRIPTS plus the
+   folder `global-methods` (the built-in BOs and a BO never given a script are not listed). For a BO with
+   scripts this is also the cheapest BO-id lookup by name: `label` is the BO's name.
 2. `v2/script-browser/load-children {folderId: "bo-<boId>"}` → «Скрипты формы» with a `SCRIPT` child per
    hook (labels Открытие / Сохранение / Создание / Закрытие) and the folder «Изменение полей» whose
    children are labelled **«<метка> [<код>]»**. Every `SCRIPT` node carries the pair you need:
    `{scriptModuleId, scriptId}` (its `id` is `"<scriptModuleId>:<scriptId>"`).
 3. `v2/bo-scripts-editor/load-bo-script-versions {boId}` → `[{boScriptModId, isWork, isTest, version,
-   comment}]`. **`load-tree` shows the WORK version only** — take `isWork:true` here and you have the same
-   module id. `load-bo-scripts {boId, boScriptsId}` then gives the wiring:
+   comment}]`. **`load-tree` shows the WORK version** — take `isWork:true` here and you have the same
+   module id; a BO with no work version shows its TEST one instead (every node `testMode:true`) `[C]`. `load-bo-scripts {boId, boScriptsId}` then gives the wiring:
    `{onOpenFormScriptId, afterSaveScriptId, onCloseScriptId, onInstanceCreationId, methodScriptIds,
    methodsScriptId, fieldScripts: {<fieldId>: {afterChangeScriptId}}}` — **keyed by field ID**, while the
    archive's `fieldScripts` is keyed by field CODE (`MYBPM-IMPORTS.md` §5d).
@@ -3157,7 +3163,8 @@ Use it after every script write — an import NEVER reports a broken body (`MYBP
   screens are `/settings?settingsOpenPageUrl=…` → «Глобальные методы» and «Браузер скриптов»
   (controller `v2/script-browser`: `load-tree`, `load-children {folderId}`, `search {query}`,
   `load-exit-variants {scriptModuleId, scriptId}`). «Глобальные методы» is a list on the left
-  («Добавить», search) and the method's IDE canvas on the right; «Браузер скриптов» is `[U]`.
+  («Добавить», search) and the method's IDE canvas on the right; «Браузер скриптов» is a read-only tree of
+  every script of the company with a search — both screens in «The script IDE in the UI» below.
 - **A freshly imported BO may fail `translate-script` falsely** `[I]`: right after the import, every
   field act of a script on it may answer `exprAct__noDefinitionForActId` for `F-VALUE-K-DYN-R-D-S-boi_fields`
   (hop 1 typed with no `boCode`; `load-bo-def-list` → 0 BOs), while `load-act-record-list` already knows
@@ -3539,7 +3546,10 @@ The IDE's own sequence; it works alone, also on a BO that has NO scripts:
    DEV records in its `BO`/`CO` fields** `[C]` — links to ordinary records read as an empty collection, so test
    link logic with DEV children, or promote the version and test on an ordinary record (`MYBPM-IMPORTS.md` 0S.7). `in-work-bo-script-version`
    P `{boId, boScriptsId}` makes it the work version and the stand immediately creates a new test
-   version (a copy, next number). The UI control that publishes a version: not known yet `[U]` — §12.
+   version (a copy, next number, comment NOT copied). It answers `[]` when it published; a refusal is a list
+   `[{text:"script_<hook>_cause", interpolateParams}]` (`script_after_save_cause` — a hook that does not
+   translate) and the version stays TEST `[C]`. Wired hooks with no body («Не определён скрипт») do not block it.
+   In the UI it is the version selector's ⋮ «Опубликовать» («The script IDE in the UI» below).
 
 - The UI lists every field in «Изменение поля» **except `TAB_GROUP` and `PROGRESS_BAR`**; the wiring
   itself accepts them, and scripts on both fire `[C]`.
@@ -3570,17 +3580,127 @@ A `valueExtType` is `{type, baseType, isArray, boCode?, boId?, enumNativeName?}`
 `{type:"Bo",baseType:"BoRefCode",boCode,boId}` (the BO type). Walk: `load-act-record-list` →
 `load-act-details(ret.type)` → `load-act-record-list(ret.type)` …
 
-#### Where the IDE is and what its panel holds `[C]`
+#### The script IDE in the UI — dialog, versions, lists, canvas `[C]`
 
-BO constructor `…/business-objects/editing/<boId>/object-editing` → the orange «scripts» icon at the top
-right → dialog **«Настройка скрипта»**: left, the tabs «Скрипты» (hooks Открытие / Сохранение /
-Добавление новой записи / Закрытие, and «На изменение Поля: ⊕») and «Локальные методы»; top right, the
-version switch («Версия: N (Тест)»); in the canvas the `»` at the top left unfolds the toolbox. The
-toolbox holds exactly: ТОЧКА ВХОДА, «Пусть переменная =», «⬭ = ⬭» with «‹значение›», «Выход» with
-«⬭.‹действие›», «‹Вызов метода›», «Если … то», «Цикл элемент :», and `+ ∙ И =`. A click on an empty slot
-opens «выберите значение» (15 kinds; in a BO script `THIS_PROCESS` is labelled «ЭТА ИНСТАНЦИЯ»); a
-second-level list such as «Встроенные объекты» may open EMPTY («Данных нет») until «Загрузить ещё» is
-pressed. The red dot with a number at the top right is the count of `translate-script` diagnostics.
+Every edit in the IDE is saved the moment it is made — there is no СОХРАНИТЬ anywhere in it; each control below
+names the call it sends. Controller prefixes: `v2/bo-scripts-editor/…` for versions, wiring and local methods,
+`v2/script/…` for everything on the canvas.
+
+**Opening.** BO constructor `…/business-objects/editing/<boId>/object-editing` → the «scripts» icon at the top
+right (grey on a BO without scripts, orange with them) → dialog **«Настройка скрипта»**, on the TEST version.
+Opening it sends `load-bo-script-versions {boId}` → `load-bo-scripts` → and, for every hook not yet wired,
+**`load-new-ids` + `save-bo-scripts` with all four hook ids** — merely opening the dialog wires the four hooks
+(empty, «Не определён скрипт»; they block nothing). Header: «Настройка скрипта», the version selector «Версия: N
+(Тест)», the diagnostics badge. **Escape closes the whole dialog** (trap 88); so does a click outside it.
+
+**The version selector** (click «Версия: N (…)»; no call — the versions came on open) lists one row per version
+`{icon} Версия: N <comment> ⋮`: wrench = the test version, gauge = the work one, gear = any other; order work,
+test, then the rest by number descending. A row's ⋮ opens that version in the dialog AND its menu, which differs
+by state:
+
+| version | ⋮ menu | calls (P `{boId, boScriptsId}` unless noted) |
+|---|---|---|
+| test | Опубликовать · Изменить комментарий · Дублировать | «Опубликовать» → confirm «Вы устанавливаете версию в работу» Да / Нет → `in-work-bo-script-version` → toast «Скрипты были успешно опубликованы», or «При публикации найдены ошибки:» on a refusal (step 5 above) |
+| work | Убрать из опубликованных · Изменить комментарий · Дублировать | «Убрать из опубликованных» → confirm «Вы убираете из опубликованных» → `unset-in-work-version` P `{boId, boScriptId}` (singular); the version becomes an ordinary one, no new version |
+| other | Сделать тестовой · Изменить комментарий · Дублировать · Удалить | «Сделать тестовой» → no confirm → `in-test-bo-script-version` (the old test version becomes ordinary); «Удалить» → confirm «Вы удаляете версию» → `remove-bo-script-version`, the dialog returns to the test version |
+
+«Изменить комментарий» → popover input + «Сохранить» → `change-bo-script-version-comment` P `{boId, boScriptsId,
+comment}`. «Дублировать» → no confirm → `copy-bo-script-version` → the copy takes the next number, ordinary, with
+the SAME comment (publishing does not copy the comment). The test version has no «Удалить», the work one no
+«Сделать тестовой»; publishing is only from the test version. Wait ~0.5 s after opening ⋮ — a click while the
+menu still animates is lost.
+
+**The diagnostics badge** (red, with a number) is the count of the last `translate-script` answer; a click toggles
+an inline list `err <message>` under it, no call. A block with an error carries a small «err» mark on the canvas.
+
+**Left column, tab «Скрипты»**: the four hooks Открытие / Сохранение / Добавление новой записи / Закрытие, then
+the field scripts. The green ⊕ «На изменение Поля» → popover with a search and a CHECKBOX per field not yet wired
+(BUTTONs included — their «На нажатие» is the same slot; not `TAB_GROUP` / `PROGRESS_BAR`); ticking one closes
+it and wires at once: `load-new-ids {count:1}` → `save-bo-scripts` with `fieldScripts.<fieldId>.afterChangeScriptId`
+added → the new, empty row opens. Rows are sorted by label. A row's hover trash → «Удаление элемента» Да / Нет →
+`save-bo-scripts` without that key (the def stays orphaned).
+
+**Tab «Локальные методы»**: «⊕ Добавить» → no dialog: `create-local-method {boScriptsId, methodName:"Новый
+метод"}` → `list-local-methods` → the method opens with its bare hat «МЕТОД / Новый метод». Row hover trash →
+«Удаление элемента» Да / Нет → `delete-local-method {boScriptsId, scriptId}`. **Nothing checks for callers**
+(trap 90): a caller then fails `translate-script` with `exprCall_funcName__notFound`, and publishing refuses.
+
+**Method signature** (local and global alike): click the method NAME on the hat → an inline panel: name input
+(typing sends `apply-update-cmd` `BlockFixMethod__change_methodName` = `Set blocks.<hat>.methodName`), «Параметры
+метода» «+ Добавить» (`load-new-ids {count:1}` → `BlockFixMethod__addParam` `Set blocks.<hat>.params.<id> =
+{name:"арг1", order:N, type Text}`), per parameter a name input (`BlockFixMethod__paramName`, sent on blur), a
+type select Текст / Число / Логический / Дата / Поле / Инстанция (`BlockFixMethod__paramType`; «Инстанция» adds a
+BO select → `{type:"Bo", baseType:"BoiRefCode", boCode}`, «Поле» a BO and a field select → `{type:"Bo",
+baseType:"BoiFieldRefCode", boCode, fieldCode}`) and ×, and «Возвращает» — «Нет (void)» or the same six
+(`BlockFixMethod__returnType`; void = `Unset`). A global method's panel starts with the fixed row «эта
+инстанция — из вызывающего скрипта» (the implicit `__gsm_self__` parameter above).
+
+**The canvas.** The `»` button at its top left unfolds the toolbox: ТОЧКА ВХОДА (hooks and process scripts only,
+not in a method), «Пусть переменная =», «⬭ = ‹значение›», «Выход», «.‹действие›», «‹Вызов метода›», «Если … то»,
+«Цикл элемент :», and `+ ∙ И =`. «.‹действие›», «‹Вызов метода›» and `+ ∙ И =` are EXPRESSIONS, the rest
+statement blocks. Every gesture is one `apply-update-cmd` (§5g «Writing a script headlessly» — the command `name`
+in brackets):
+
+- a block dragged from the toolbox lands FREE (`CREATE_BLOCK`, wrapped in a `BlockFixEmpty` with x/y; ТОЧКА
+  ВХОДА lands bare), onto a block's bottom connector it is attached (`CREATE_BLOCK_AND_CONNECT_DOWN`; «Выход» in
+  a hook or method comes with `exitType FROM_METHOD`); a free block dropped with its top on a connector →
+  `RECONNECT_BLOCK_TO_DOWN`; moved free → `MOVE_BLOCK`. **Dragging a connected block by its frame detaches it**
+  (`MOVE_BLOCK` unsets the parent's `downBlockId`) — trap 89. Grab a block by its body, not by a «‹…›» text
+  (that opens a picker);
+- an expression from the toolbox dropped off any socket → `CREATE_EXPRESSION_WITH_FIX` (free, its x/y = its
+  left-middle point), into an EMPTY socket → `CREATE_EXPRESSION_AND_DROP_INTO_BOND`; pulled out of a socket →
+  `MOVE_EXPRESSION_AND_CREATE_FIX`; socket → socket (or free → socket) = one `DROP_EXPRESSION_INTO_BOND`; an
+  occupied socket accepts nothing. The drop point is about half the dragged expression's height plus 15 px BELOW
+  the pointer (grabbing a 36-px expression at its middle, hold the pointer ~33 px above the target socket). A type
+  mismatch is accepted on drop — `translate-script` reports it;
+- **there is no «wrap» command**: to put `.‹действие›` around an expression, pull the expression out, drop
+  «.‹действие›» into the empty socket, drop the expression into its left socket, pick the act. A field write is
+  two acts — `ЭТА ИНСТАНЦИЯ.<поле>.#Значение = …`; an assign whose left is the bare field act shows no «=»;
+- a click on an empty socket creates the empty value at once (`Bond_newExprValue`) and opens «выберите
+  значение»: a type filter and 15 kinds (Переменная, ЭТА ИНСТАНЦИЯ, Аналитика, Бизнес-объект (тип / экземпляр),
+  Встроенные объекты, Гео-координаты, Да/Нет, Дата/время, Метод скрипта, Одиночный выбор, Перечисление, Печатная
+  форма, Текст, Число); clicking a kind sets it at once (`ExprValue_ChangeConstType`; «ЭТА ИНСТАНЦИЯ» =
+  `THIS_PROCESS` in a BO script too), the right column then lists its items — a variable or a method parameter
+  → `ExprValue_changed_varBlockId` (a parameter is referenced by its PARAM id). A second-level list such as
+  «Встроенные объекты» may open EMPTY («Данных нет») until «Загрузить ещё»;
+- «‹выберите действие…›» → `load-act-record-list` (20 at a time, «Загрузить ещё») + `load-act-details`: a filter,
+  the acts of the value on the left, and on the right the chosen act's description, argument table (Имя / Тип /
+  ОДЗ / Описание) and «Возвращаемое значение». **A row click only shows the details; «(Выбрать)» or a
+  double-click on the row picks it** → `ExprAct__changeAct`;
+- «‹выберите метод…›» on a «‹Вызов метода›» → `load-module-methods` → a filter and one row per method
+  `name(params)`, a global one marked «· глобальный» → `ExprCall__changeFuncName` (`funcName` + `args` keyed by
+  param id, `exprId` empty); each argument socket is then filled like any socket
+  (`Set expressions.<call>.args.<paramId>.exprId`);
+- a click on an operator glyph lists the 17 operators (◊ Конкатенация строк, =, ≠, +, -, ∙, /, И, ИЛИ, ИЛИ-ИЛИ, НЕ,
+  <, ⩽, >, ⩾, «или =», «и ≠») → `ExprOp__change_opType`; the toolbox `+` is `Plus` — text is joined with ◊ (`Concat`);
+- «‹выберите выход…›» on «Выход» → a filter and the exits of the context (in a method only «Выйти из метода») →
+  `BlockExit__change`.
+
+**Undo / redo** are keyboard-only, on the canvas: **Ctrl+Z** = `v2/script/undo`, **Ctrl+Shift+Z** =
+`v2/script/redo` (P `{scriptModuleId, scriptId}`, body `{}`); Ctrl+Y does nothing. The stack is server-side per
+script and survives a page reload.
+
+**Pickers near the dialog edge are clipped** (trap 91): the act picker's «(Выбрать)» and the lower value kinds
+(Текст, Число) can fall outside the dialog, and a click there lands on the backdrop and closes the dialog. Use the
+double-click on the act row, or scroll the canvas so the socket sits away from the right and bottom edges.
+
+**«Глобальные методы»** (`/settings?settingsOpenPageUrl=global-script-methods`): a list «Глобальные методы» with
+«⊕ Добавить» and a search, empty «Нет глобальных методов»; the right side is the same canvas (no version selector —
+the company module has none). «Добавить» → `create-company-global-method {methodName:"Новый метод"}` →
+`ensure-company-global-script-module` → `list-company-global-methods` → the new row is open. A rename on the hat
+shows in the list at once. Row trash → «Удаление элемента» / «Удаление элемента <name>» ДА / НЕТ →
+`delete-company-global-method {scriptId}`.
+
+**«Браузер скриптов»** (`/settings?settingsOpenPageUrl=script-browser`) is READ-ONLY («Просмотр всех скриптов
+компании (только чтение)»): `load-tree` → the folder «Глобальные методы» (its ⊕ creates a global method and jumps to
+the screen above) and one folder per BO with scripts; ▸ → `load-children` → «Скрипты формы» (the four hooks,
+each tagged «test» when it is the test version's) and «Изменение полей». A script click opens its canvas — no
+toolbox, drags do nothing — with «← Назад» and the diagnostics badge. The search («Поиск: текст, число, плашка, поле,
+метод…») sends `search {query}` on typing → hits `{scriptModuleId, scriptId, scriptType, baseType, testMode,
+pathLabels, matchReason, focusExprId, focusBlockId}` shown as «<BO> (бизнес-объект) / Скрипты формы / <hook>»
+over the reason («Вызов метода «<имя>»», «Название: <скрипт>»); a hit opens the script with that expression
+highlighted; nothing → «Ничего не найдено». It finds method names in calls and script names; a field's label or
+code and a BO's name gave no hit. A click on a «Вызов метода» opens the method's own script `[I]`.
 
 #### Pasting a script in the UI — the canvas context menu «Вставить»
 
@@ -6276,6 +6396,19 @@ The stand's own behaviour under automation `[C]`:
     `struct/clear-export-records` (trap 85); the menu, report and settings baskets stay on screen, ticks included,
     until a reload, and «Выгрузить» then exports without them. Take BOs out with the row's trash icon, or reload and
     rebuild the other baskets. §5 «Export tab».
+88. **Escape closes the whole «Настройка скрипта» dialog** `[C]` — also with the version popover or a ⋮ menu open,
+    which then stay on screen as orphan overlays that block clicks; reload the page. Close a popover by a click on
+    an empty part of the dialog instead. Every edit made before is already saved. §5g «The script IDE in the UI».
+89. **Dragging a connected block by its frame detaches it from the chain** `[C]` — `MOVE_BLOCK` unsets the parent's
+    `downBlockId`, and the blocks below go with it; the script then fails `translate-script`. Ctrl+Z
+    (`v2/script/undo`) restores it. Grab a free block, or the head of a chain you mean to move.
+90. **Deleting a method checks no callers** `[C]` — `delete-local-method` (and the list's trash) removes a method
+    that a hook still calls; the caller keeps showing the call, fails `translate-script` with
+    `exprCall_funcName__notFound`, and `in-work-bo-script-version` refuses (`script_after_save_cause` for the
+    Сохранение hook). Search the method's name in «Браузер скриптов» before deleting it.
+91. **A picker cut off by the edge of the script dialog closes the dialog** `[C]` — near the right or bottom edge,
+    the act picker's «(Выбрать)» and the lower value kinds fall outside the dialog; a click there hits the backdrop.
+    Double-click the act row instead (it picks too), or scroll the canvas first.
 
 ## 12. Open questions
 
@@ -6293,8 +6426,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
 - §5o: whether the other 13 settings
   kinds (physical removal, messengers, offline …) round-trip through `CompanySettingsStructDto` like
   `SCRIPT_SETTINGS`, and whether they too REPLACE the stand's list; what caused the one-minute 502 after a TEST call.
-- What «Браузер скриптов» (`v2/script-browser`) looks like on screen — not opened yet
-  («Глобальные методы» is answered in §5g).
 - **Constructor controls read off the bundle** (§5b «The rest of the constructor's controls», the rows not marked
   `[C]`): confirm each row once with the network log on, then re-read `load-business-object-by-id`. Open within
   them: the per-language option label (a company with two languages); the second dialog of a field delete when the
@@ -6308,14 +6439,15 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
   field, then delete it.
-- Script and process versions: the UI control that publishes a version (open the version selector, capture
-  `in-work-*`); `change-bo-process-version-comment`, `unset-in-work-version`, `remove-bo-process-version` on a
-  scratch BO, read the versions back.
+- Process versions: the UI control that publishes one (capture `in-work-*`); `change-bo-process-version-comment`,
+  `unset-in-work-version`, `remove-bo-process-version` on a scratch BO, read the versions back.
 - Processes: does a `SCHEDULED` run way ever fire (`startTime` a few minutes ahead, poll for a new process
   record); process local methods (`bo-process-editor/create-local-method {boProcessId, methodName}`, call it
   from a Script figure); `stop-step` / `push-step-terminate-all` / `go` / `start-dev-process` on a DEV process
   standing in a Form; a Form timer (`createTimer` 1 min, watch `load-process-steps`).
-- Renaming a company-global method: `Set blocks.<hat>.methodName`, then `translate-script` its callers.
+- Renaming a method (the hat's name input = `Set blocks.<hat>.methodName`): do its callers keep translating?
+  Call it from a hook, rename it, `translate-script` the hook. Does a global method's body reach «эта инстанция»
+  (`__gsm_self__`), and how is it written in the def?
 - Rights: the head / employees / department flags of «Из поля» (second non-admin login, one flag at a time,
   `totalHits`); whether a «Пользователи» record created by the §6a draft cycle or by an xlsx sends the invitation (a probe
   user only with the user's OK and an address they own — it mails a real person); switching tenant as a multi-company user (look for a company-selector call).
