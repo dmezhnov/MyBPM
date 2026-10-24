@@ -18,7 +18,7 @@ concurrency:
 jobs:
     publish:
         name: Test, fast-forward main, release
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-26.04
         steps:
             # Pushing through the deploy key, not GITHUB_TOKEN: GitHub refuses a
             # GITHUB_TOKEN push that brings changes to .github/workflows/.
