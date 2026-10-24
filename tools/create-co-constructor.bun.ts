@@ -224,17 +224,10 @@ try {
 
   // 7. attributes. add-co-field-to-simple creates ONE attribute per link in its body, so a composite
   // attribute is built as «create with the first link, then add the rest to it».
-  const seen = async () => {
-    const simple = (await co<any[]>("load-co-fields-simple", { coId, draftId })) ?? [];
-    const composite = (await co<any[]>("load-co-fields-composite", { coId, draftId })) ?? [];
-    return [...simple, ...composite];
-  };
-
+  // Its reply lists the attributes it made, so the coFieldId comes from there.
   for (const a of attrs) {
-    const before = new Set((await seen()).map(f => f.coFieldId));
-    await co("add-co-field-to-simple", { coId, draftId }, [linkOf(a.links[0].srcIdx, a.links[0].field)]);
-    const fresh = (await seen()).filter(f => !before.has(f.coFieldId));
-    if (fresh.length !== 1) throw new Error(`add-co-field-to-simple created ${fresh.length} attributes, expected 1`);
+    const fresh = (await co<any[]>("add-co-field-to-simple", { coId, draftId }, [linkOf(a.links[0].srcIdx, a.links[0].field)])) ?? [];
+    if (!Array.isArray(fresh) || fresh.length !== 1) throw new Error(`add-co-field-to-simple created ${fresh.length} attributes, expected 1`);
     const coFieldId = fresh[0].coFieldId;
 
     if (a.links.length > 1) {
