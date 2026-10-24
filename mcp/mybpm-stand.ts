@@ -1567,7 +1567,7 @@ const STAND_ARGS = {
   stand: { type: "string", description: "The account: its name or the stand host (stand_list). Required when several accounts are kept — ask the user which one; may be omitted only when there is one account." },
   login: { type: "string", description: "Login on that stand, when it has several accounts." },
 };
-const AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)/;
+const AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)|person\/(load|generate)-api-token/;
 const READ_METHOD = /^(load|count|verify|get|find|search)-/;
 
 /** What the delete dialog lists: scripts that use the BO (an analysis polled until done), menu items, referencing BOs. */
@@ -3254,7 +3254,7 @@ const tools: Tool[] = [
     props: { path: { type: "string", description: "After /web/, e.g. v2/business-objects/load-business-object-groups" }, params: { type: "object" }, body: {}, get: { type: "boolean", description: "GET without the envelope" },
       maxChars: { type: "number" } }, required: ["path"],
     run: async (a) => {
-      if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session token — refused");
+      if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session or API token — refused");
       if (!READ_METHOD.test(String(a.path).split("/").pop() ?? "")) throw new Error("not a read method — use stand_call (asks the user)");
       const s = stand(a);
       return trim(a.get ? await s.get(a.path) : await s.call(a.path, a.params, a.body), a.maxChars);
@@ -3262,7 +3262,7 @@ const tools: Tool[] = [
   { name: "stand_call", write: true, description: "Any stand API method, writes included, in the standard envelope (MYBPM-UI-API.md 0U.2). For the recipes no task tool covers yet (company settings — MYBPM-UI-API.md §0U). Writes are immediate: say what it changes and get the user's OK first; read the result back afterwards.",
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } }, required: ["path"],
     run: async (a) => {
-      if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session token — refused");
+      if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session or API token — refused");
       const s = stand(a);
       return trim(a.get ? await s.get(a.path) : await s.call(a.path, a.params, a.body), a.maxChars);
     } },

@@ -3138,9 +3138,11 @@ the BO ids come from the stand after the import (§0.2a). Two side effects cross
 
 «Настройки → Выставление сервисов» turns a BO into a public HTTP endpoint: a call to
 `https://<stand>/api/v1/script/service/<COMPANY CODE>/<entry point>` (or `…/service_test/…` for the TEST script
-version) needs NO token, creates one record of the service BO, copies the request into mapped fields, runs the BO's
-«Создание» hook, and answers with the record's result fields. Runtime, slots, headers, the API and the traps:
-`MYBPM-UI-API.md` §5o. The essentials for building one:
+version) creates one record of the service BO, copies the request into mapped fields, runs the BO's
+«Создание» hook, and answers with the record's result fields. It needs NO token unless the row is «Защищённый»
+(`isProtected: true`): then only a call with the header `API_TOKEN: <a user's API token>` of a user of the same
+company gets through, any other answers 401 and creates no record `[C]`. Runtime, slots, headers, the API and the
+traps: `MYBPM-UI-API.md` §5o. The essentials for building one:
 - the service BO needs text fields for the request (body, content type, method, mode, two error fields) and for the
   answer (text, content type), an `INPUT_NUMBER` for the status code, and a «Создание» script that sets at least the
   status code (≥ 100; empty → 501) and the answer text / content type (plain `BlockAssign`s, §0S.7);
@@ -3164,8 +3166,8 @@ version) needs NO token, creates one record of the service BO, copies the reques
 - `payloadJson` is a JSON **string**. Everything is by CODE: `serviceBoCode` = the BO code, `baseFields` = slot →
   field code (slots: `INPUT_TXT, INPUT_CONTENT_TYPE, METHOD, MODE, REQUEST_ERRORS, SCRIPT_ERRORS, RESULT_TXT,
   RESULT_FILE, RESULT_CONTENT_TYPE, RESULT_CODE`; an unmapped slot is left out), `headerFields` = header name →
-  field code. The other keys of the payload export empty, and the import of a `SCRIPT_SETTINGS` line leaves the
-  stand's other settings alone.
+  field code, `isProtected` = «Защищённый» (above). The other keys of the payload export empty, and the import of a
+  `SCRIPT_SETTINGS` line leaves the stand's other settings alone.
 - A settings-only archive (this one line + `metadata.mybpm` `objectCount-1`) imports: the analyzer shows one item
   «Выставление сервисов», `structTypes ["SETTINGS"]`, `settingsState "UPDATE"`; the BO may come in the same archive
   or already be on the stand.

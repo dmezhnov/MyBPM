@@ -231,6 +231,8 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.count.notifications === 1],
   ["stand_read", { path: "import-structure/cancel-import" }, (r) => /not a read method/.test(r)],
   ["stand_call", { path: "v2/auth/v3/login" }, (r) => /refused/.test(r)],
+  ["stand_read", { path: "v2/person/load-api-token", params: { personId: "x" } }, (r) => /API token — refused/.test(r)],
+  ["stand_call", { path: "v2/person/generate-api-token", params: { personId: "x" } }, (r) => /API token — refused/.test(r)],
   // an empty group is listed (load-bo-groups would hide it); the «dup» bo_create below targets it
   ["bo_groups", {}, (r) => r.length === 2 && r[1].name === "Пустая группа" && r[1].bos.length === 0],
   // the constructor: a BO with a pair row, a dropdown and two fields on a tab; edit + delete + add; codes; a composite; the delete
@@ -832,7 +834,7 @@ shell = "bun -e"
 run = '''
 const host = Bun.env.usage_host!.replace(/^https?:\/\//, "").replace(/\/+$/, ""), login = Bun.env.usage_login!;
 const path = Bun.env.usage_path!.replace(/^\/?(web\/)?/, "");
-if (/auth\/(v3\/login|load-token|fast-login|otp-login)/.test(path)) { console.error("этот вызов возвращает токен — не через stand-call"); process.exit(1); }
+if (/auth\/(v3\/login|load-token|fast-login|otp-login)|person\/(load|generate)-api-token/.test(path)) { console.error("этот вызов возвращает токен — не через stand-call"); process.exit(1); }
 const file = Bun.file(`${Bun.env.HOME}/.config/mybpm/tokens/${host}/${login}.token`);
 if (!(await file.exists())) { console.error(`нет токена — сначала: mise run stand-login ${host} ${login}`); process.exit(1); }
 const token = (await file.text()).trim();
