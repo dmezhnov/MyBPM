@@ -173,7 +173,8 @@ Rules that hold for every endpoint `[C]`:
 - **An error comes back with a non-2xx status and a JSON body** `[C]`: a platform error is
   `{"message":…, "className":"kz.greetgo…", "errorType":"…", "traceId":…, "stackTrace":[~100 lines]}` — HTTP
   500 for a business error («данный бизнес-объект не существует») and for a bad or missing session
-  (`SecurityError` «Illegal Session»), 401 for a wrong password; a request the framework cannot bind is HTTP 400
+  (`SecurityError` «Illegal Session»), 401 for a wrong password, 403 `AccessDenied` («У вас недостаточно прав…»)
+  for an action the user's own level forbids (raising one's own access level); a request the framework cannot bind is HTTP 400
   with a different body, `{"type":"about:blank","title":"Bad Request","status":400,"detail":"Required parameter
   'x' is not present."}` (no `errorType`); an unknown method is 404. **Treat any non-2xx status as an error and
   read the reason from the body** (`errorType` + `message`, else `detail`); never print the `stackTrace` — cut it
@@ -1348,6 +1349,53 @@ their own on their card (§3).
   `load-auth-info` (GET, who am I), `fast-login`, `otp-login`, `verify-code`, `send-to-verify`,
   `has-otp-settings`, `get-all-masks`, `save-company`, `logout` (GET). A second, non-admin login is how
   rights are verified (§3 «What each subject opens») — the admin token sees everything.
+- **The login page in the UI** `[C]`: logged out, every route goes to `/auth` — «Пользователь», «Пароль» (eye
+  toggle), «ВОЙТИ», «Забыли пароль?». Opening it calls `v2/auth/has-otp-settings` (`true` → header tabs «По почте»
+  / «По телефону», below), `GET v2/auth/can-create-company` (a server setting; `true` → a company-registration view
+  that sends `save-company P {name, email}` and toasts `company_invitation_is_send` `[I]`) and
+  `v2/login-cmd/load-login-cmd-list` → `[{cmd, message}]` (a `show-attention-message` command shows its message as
+  a sticky toast «Внимание»; the client ignores any other command). ВОЙТИ = `v3/login` (above; `userAgent` = a
+  per-browser id, `clientVersion` = the client build), then `load-auth-info`, `load-person-profile-details`,
+  `v2/security/verifying P {userAgent}`; the token goes to `localStorage.LOCAL_PRIVATE_SwebToken` and the page
+  lands on `/business-objects/viewing-list`. A wrong password: red «Не верен пользователь и/или пароль» under the
+  fields, a toast «Ошибка», and ВОЙТИ stays disabled until a field is edited.
+- **«Забыли пароль?»** `[C]` swaps the form in place (the URL stays `/auth`): «Пользователь» + ВОССТАНОВИТЬ →
+  `v2/invitation/v2/send-to-person-password P {email, clientType:"WEB"}` → 200, empty body, for ANY address —
+  the form returns to the login view with the toast «Письмо будет отправлено на e-mail пользователя, если он
+  существует в системе», which does not say whether the user exists. A known address gets a reset link to the
+  same page an invitation opens (§3 «The invited person's page»), with the same 48-hour life.
+- **The avatar menu** (the name block top right) `[C]`: Перейти в профиль, Сменить пароль, Сменить язык, QR-код для
+  мобильной версии, О платформе, Выйти. Escape closes none of the dialogs it opens; a second one stacks on top.
+  - The first three open ONE dialog «<Фамилия> <Имя>» on the tab ДАННЫЕ О ПОЛЬЗОВАТЕЛЕ / ЯЗЫК СИСТЕМЫ /
+    БЕЗОПАСНОСТЬ, loading `v2/user-profile/v2/load-person-profile-details` → `{surname, name, leader, position, phone,
+    email, avatarFileId}` and `v2/person/v2/load-person-access-level`. ДАННЫЕ: Фамилия and Имя editable (the header
+    name follows the typing before any save), Email / Должность / Телефон read-only, the role as a chip, «Сменить
+    аватар»; no company anywhere. ЯЗЫК СИСТЕМЫ lists the active languages (`v2/company/system-languages`).
+    СОХРАНИТЬ → `v2/person/v2/update-person-access-level P {accessLevel:<the current level>}` +
+    `v2/person/update-person-profile-details B {surname, name, leader, position, phone, email, avatarFileId}` +
+    a re-load. A user who sends a higher level for themselves gets HTTP 403 `AccessDenied` and keeps the level.
+  - БЕЗОПАСНОСТЬ: Старый пароль, Новый пароль, Повторите пароль → СОХРАНИТЬ → `v2/person/v3/update-password` B
+    `{"b2xkUGFzc3dvcmQ=": btoa(old), "bmV3UGFzc3dvcmQ=": btoa(new)}` (the keys are base64 of `oldPassword` /
+    `newPassword`) → **HTTP 200 either way** with `{oldPasswordErrorMessage, newPasswordErrorMessage, hasError}`:
+    a wrong old password is `hasError:true` + «Неправильный текущий пароль» (the dialog shows «Неверный пароль»),
+    so read `hasError`, not the status. On success the same СОХРАНИТЬ also sends the ДАННЫЕ calls above and closes
+    the dialog; the current session stays valid, the old password stops working at once. A password with a
+    character outside Latin-1 is never sent (trap 105).
+  - QR-код для мобильной версии → «Мобильная версия»: a QR of the address `v2/security/proxy` returns, printed
+    under it. О платформе → «Платформа MyBPM», tab ВЕРСИИ: Имя хоста, Код аккаунта (the company code), Версия
+    сервера, Версия клиента (`/v2/about_dialog/load-details`).
+  - Выйти → `GET v2/auth/logout`, the token leaves localStorage, the page goes to `/auth`; the old token then
+    answers 500 «Illegal Session».
+- **OTP sign-in** `[I]` (only while an «OTP-аутентификация» row is active, §5n; it creates an external user): the tab
+  «По телефону» → a phone input masked by `get-all-masks` (no token needed) → `send-to-verify P {phone}` (toast
+  «SMS-код был успешно отправлен») → a 6-digit code → `verify-code P {code, phone}` → `false` = «Неверный код
+  подтверждения»; `true` → `otp-login` B `{"cGhvbmVOdW1iZXI=": <base64 of the phone>, "Y29kZQ==": <base64 of the
+  code>, timeOffsetZoneInMinutes, timezoneRegion, clientType, userAgent, pushToken}` → the token. The repeat link →
+  `send-to-verify-again P {phone}` («Код отправлен повторно»).
+- **`fast-login`** `[C]`: the route `/auth/fast-login/<email>?gotoRef=<path>` sends `v2/auth/fast-login P {username,
+  timeOffsetZoneInMinutes, timezoneRegion}` — a session for that address with no password, then goes to
+  `gotoRef`. It works only on a server started with a developer switch; elsewhere it answers 500 «disabled fast
+  login». Not a route for a client.
 - **A user's API token — a long-lived alternative to the session token** `[C]`: a header **`API_TOKEN: <token>`**
   (name case-insensitive; a header only — not a parameter, not the `token` header) makes the call run AS THAT
   USER, on the whole `/web` API and on a «Защищённый» exposed service (§5o). The token is a 24-hex string; the
@@ -1462,10 +1510,19 @@ admin `[C]`; the admin does not see «Аккаунт».
 itself (field kind `PERSON_EMAIL`, the `dff-input-email` component), drawn only on an existing record's card
 (never in the create dialog) and only for a user with the right `SEND_invitation` `[C]`. The call:
 `POST /web/v2/invitation/send-to-person` P `{personId:<the record id>}` → `null` `[C]`. The UI then shows a short-lived toast that the link was sent; that one is toast-only and never kept in the bell `[C]`, so a
-headless call has no trace of it — the person's mailbox is the proof. The rest of `v2/invitation` `[I]`:
-`check-person {invitationId}` and `v2/complete-person` (the invited person sets the password),
-`send-to-person-password` / `v2/send-to-person-password {email, clientType}` (password reset),
-`send-to-admin {companyId}` — the same link on a company card's Email of kind `COMPANY_EMAIL`.
+headless call has no trace of it — the person's mailbox is the proof. `send-to-admin {companyId}` is the same link
+on a company card's Email of kind `COMPANY_EMAIL` `[I]`.
+
+**The invited person's page** `[C]`: the invitation link — and the password-reset link of «Забыли пароль?» (§1) — is
+`https://<stand>/set-new-password?invitationId=<id>&globalLang=<lang>`, valid 48 hours (a server setting). Opening
+it FIRST ENDS the browser's current session (`logout`), then calls `v2/invitation/check-person P {invitationId}` →
+`{newInvitationId, personFio, email}` and `v2/person/password-settings` → `{minPasswordLength, needCheckDigits,
+needCheckCapitalLetters, needCheckLowercaseLetters, needCheckSpecialCharacters}`. The page: «Пользователь» (the
+e-mail, read-only), «Пароль», «Повторите пароль», ВОЙТИ (disabled until a password is typed); the client checks
+those rules and the match («Пароли не совпадают») itself, with no call. ВОЙТИ → `v2/invitation/v2/complete-person`
+B `{newInvitationId, "bmV3UGFzc3dvcmQ=": btoa(password)}` → 200, empty body; the client then logs in by itself and
+lands on the BO list. The link is spent: opened again it shows «Ссылка недействительна» and a toast «Ошибка», as an
+expired one does. A password with a character outside Latin-1 is never sent (trap 105).
 
 **Finding a user in the UI** `[C]`: sidebar «Компания» (`/company`) → the search box «Поиск» of the «Компания»
 column → `v2/company/load-root-list-use-param P {searchParam}` → the matching users as a flat list. It matches
@@ -6739,6 +6796,10 @@ The stand's own behaviour under automation `[C]`:
 104. **A user's API token replaced by a new one stays valid** `[C]` — `generate-api-token` over an existing token
     adds a second one, and `remove-api-token` deletes only the current; the older token keeps opening the API as
     that user, and no API or UI call revokes it. Generate once; to replace, «Удалить токен» first (§1, §3).
+105. **A password with a character outside Latin-1 cannot be set from the UI** `[C]` — the invited person's page
+    (and the reset link) and the profile tab БЕЗОПАСНОСТЬ encode it with a plain `btoa()`, which throws on
+    Cyrillic and the like: ВОЙТИ / СОХРАНИТЬ do nothing, no call goes out, no message shows (only a console
+    error). The login form encodes UTF-8 and is not affected. Use Latin letters, digits and signs (§1, §3).
 
 ## 12. Open questions
 
@@ -6788,7 +6849,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   dropdowns (re-read a record); whether mass change (§6c) and `copy-bo-instance` run the BO's scripts (a field
   script that counts, then each action once) and whether a duplicate copies the participants.
 - A `STATIC_TEXT`'s HTML sanitizer = the `TEXTAREA` one? Save `text-transform` HTML into `staticValueMap`, read back.
-- The UI login form and the logout control (walk them once with screenshots).
 
 - Whether a `CHECKLIST`'s items can be carried by an archive at all (an undocumented key?) or whether the
   exporter simply omits them — see trap 42.
