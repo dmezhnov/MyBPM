@@ -5364,9 +5364,11 @@ sidebar».
   `delete-business-object-group {boGroupId}`. **It deletes the BOs in the group too** — the dialog speaks only of
   scripts; which BOs survive: §5 (the group lifecycle). Trap 74.
 - **«Общее» (`kind: DEFAULT`) has no ⋮** — it is not renamed, recoded or deleted in the UI.
-- **Groups cannot be reordered by drag** `[I]`: the dragged group falls into the BO list of the group it crosses
-  and the drop sends nothing. Move a group with `save-business-object-group` (`orderIndex`) or the archive's group
-  line.
+- **Groups cannot be reordered by drag** `[C]`, a real mouse included: every group block is itself the drop list of
+  its BOs, and the list of groups is exactly as large as the groups, so the dragged group always falls into the BO
+  list of the group under the pointer and the drop sends nothing. (The client's group-drop handler — `save-business-object-group`
+  with the midpoint `orderIndex` — is never reached.) Move a group with `save-business-object-group` BODY = the whole
+  group with the new `orderIndex` (the sidebar shows the new order after a reload `[C]`) or the archive's group line.
 
 **The list search finds BOs by NAME only** `[C]`: «Поиск» above the groups filters on the client (no call) and
 collapses the groups — open a group to see what matched. A BO code finds nothing there; code → BO is
@@ -6831,8 +6833,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   field feeds a kanban or a menu item (`load-field-usage` not empty); nested tab groups (a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
   `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
   `calendarCardTemplates` / `timelineTemplates` through an archive (export shape, re-import onto a copy).
-- BO groups: reordering by a real mouse drag (a synthetic drag sends nothing, §5m; watch for
-  `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
   field, then delete it.
 - Processes: does a `SCHEDULED` run way ever fire (`startTime` a few minutes ahead, poll for a new process
