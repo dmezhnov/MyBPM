@@ -1,5 +1,23 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "baseBranches": ["test"],
-    "extends": ["config:recommended"]
+    "baseBranches": [
+        "test"
+    ],
+    "extends": [
+        "config:recommended",
+        "helpers:pinGitHubActionDigests"
+    ],
+    "customManagers": [
+        {
+            "customType": "regex",
+            "description": "The mise version that jdx/mise-action installs in CI",
+            "managerFilePatterns": [
+                "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+            ],
+            "matchStrings": [
+                "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+version: (?<currentValue>\\S+)"
+            ],
+            "extractVersionTemplate": "^v(?<version>.*)$"
+        }
+    ]
 }
