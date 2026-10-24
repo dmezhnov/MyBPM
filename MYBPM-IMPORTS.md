@@ -3305,8 +3305,10 @@ A widget DTO carries `widgetType` and a **null** `type`; a native one carries `n
 saved), `isSystem`, `tableColToShow` (shown as a registry column), `tableColOrderIndex` (**not** an
 export switch), `removeType`, `hideLabel`, `chosenAccessRight` (individual rights set),
 `isKindAddForSelect`, `isHeightDynamic` (tables), `tableWidth` (registry column width in px; the small
-numbers inside nested tables are in unverified units; whether an import applies `tableWidth` is not known yet
-`[U]` — §18). A SCALAR field's default value (`defaultValue` / `defaultValueMap` on a text, number, date or
+numbers inside nested tables are in unverified units). **`tableWidth` travels** `[C]`: an export carries it only
+on a field that has a width, an import writes the line's value onto a new BO and over the stand's width of an
+existing one, and a field line WITHOUT the key clears the stand's width to `null` — keep the key from the export
+when an amendment should not reset the column widths. A SCALAR field's default value (`defaultValue` / `defaultValueMap` on a text, number, date or
 checkbox field) is not known to travel yet `[U]` — §18; the list default and the `CHECKLIST` items are `[C]` (below, 0.5).
 
 **Dates: `dateOnlyPast` / `dateOnlyFuture`** `[C]` — plain booleans on a `DATE`,
@@ -6907,7 +6909,6 @@ here; the rules themselves are §0X.4.
   `category` changed (same `oldId`) — check: import it, read `load-business-object-by-id` `formFields[]` / `boCategory`.
 - `[U]` A composite re-import with one attribute relabelled and one dropped, or a source dropped — check: import,
   read the composite's fields in `load-business-object-by-id`.
-- `[U]` Whether an import applies `tableWidth` — check: change it in an export, import, read the field back.
 - `[U]` Scalar `defaultValue` / `defaultValueMap` (text, number, date, checkbox) — check: set one in the
   constructor, export, re-import onto a copy, open «Добавить» and read the draft value.
 - `[U]` The archive shape of `calendarCardTemplates` and `timelineTemplates` — check: set each in the
