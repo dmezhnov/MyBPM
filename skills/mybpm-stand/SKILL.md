@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.45**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.46**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -111,7 +111,8 @@ reaches the stand.
 1. **Ask for the stand URL, the company and the credentials — never assume them** (MCP connected: it holds
    them — confirm with `stand_list` instead, and ask which account when it holds several; a stand it has no account for → `stand_accounts`). The document uses
    placeholders (`<stand>`, `<company-a>` …); ids and codes in its examples belong to other stands.
-2. **HTTP 200 proves nothing.** Detect errors by `errorType` in the body, and read every write back.
+2. **HTTP 200 proves nothing.** A non-2xx status is an error (its reason is `errorType` / `message` in the body),
+   and a 200 may be a silent no-op — read every write back.
 3. **Writes are immediate and have no undo but deletion** (`create-bo`, `apply-import`, `v2/co/add-*`).
    Confirm with the user before any write to a stand they did not call a sandbox.
 4. When the stand behaves impossibly, read `## 11. Traps and defects` before guessing; before driving the UI

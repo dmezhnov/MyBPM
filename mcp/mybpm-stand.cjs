@@ -1951,7 +1951,7 @@ var STAND_ARGS = {
   stand: { type: "string", description: "The account: its name or the stand host (stand_list). Required when several accounts are kept — ask the user which one; may be omitted only when there is one account." },
   login: { type: "string", description: "Login on that stand, when it has several accounts." }
 };
-var AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)/;
+var AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)|person\/(load|generate)-api-token/;
 var READ_METHOD = /^(load|count|verify|get|find|search)-/;
 async function boUsage(s, boId) {
   const out = {};
@@ -4638,7 +4638,7 @@ var tools = [
     required: ["path"],
     run: async (a) => {
       if (AUTH_PATHS.test(a.path))
-        throw new Error("this method returns a session token — refused");
+        throw new Error("this method returns a session or API token — refused");
       if (!READ_METHOD.test(String(a.path).split("/").pop() ?? ""))
         throw new Error("not a read method — use stand_call (asks the user)");
       const s = stand(a);
@@ -4653,7 +4653,7 @@ var tools = [
     required: ["path"],
     run: async (a) => {
       if (AUTH_PATHS.test(a.path))
-        throw new Error("this method returns a session token — refused");
+        throw new Error("this method returns a session or API token — refused");
       const s = stand(a);
       return trim(a.get ? await s.get(a.path) : await s.call(a.path, a.params, a.body), a.maxChars);
     }
