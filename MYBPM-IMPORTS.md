@@ -760,7 +760,7 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 
 The types that need extra keys — every shape `[C]`:
 
-- `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<div style=\"font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px\">…</div>"}` (a bare `<h3><b>` renders as a small bold label — the sanitizer strips the size of `h1`–`h3` `[C]`), with
+- `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<div style=\"font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px\">…</div>"}` (a bare `<h3><b>` renders as a small bold label `[C]`; no `transform` / `text-transform` and no DOM event name in it — §4 «Sections»), with
   `"hideLabel": true`, `"tableColToShow": false` and the cell `{"x":0,"y":<y>,"cols":15,"rows":3}` — a
   one-line group heading (0.8a). A heading text **must not repeat any field label of the same BO** — that
   breaks Excel import.
@@ -1946,6 +1946,21 @@ const place = (o, c, p, at) => { // p = the place of o: the key holding it, "<ma
 if (KP.size) L.forEach((o, i) => place(o, cls(o), "", o.code ?? o.menuItemCode ?? o.ownerBoInfo?.code ?? o.compositeId ?? `line ${i + 1}`));
 for (const [w, at] of wrong) { const [k, cp] = w.split("|"), there = [...KP].filter(([, s]) => s.has(k)).map(([p]) => p.endsWith(" ") ? `${p}(top)` : p);
   err(`${[...new Set(at)].slice(0, 3).join(", ")}: key "${k}" in ${cp} — it sits in ${there.slice(0, 3).join(", ") || "no place of 0.4b"}${there.length > 3 ? ", …" : ""}; the importer drops it there without a word (0.4b)`); }
+const XSS_EV = "abort activate afterprint afterupdate animationcancel animationend animationiteration animationstart auxclick beforeactivate beforecopy beforecut beforedeactivate beforeeditfocus beforeinput beforematch beforepaste beforeprint beforetoggle beforeunload beforeupdate begin blur bounce cancel canplay canplaythrough cellchange change click close compositionend compositionstart compositionupdate contextlost contextmenu contextrestored controlselect copy cuechange cut dataavailable datasetchanged datasetcomplete dblclick deactivate devicemotion deviceorientation deviceorientationabsolute drag dragend dragenter dragexit dragleave dragover dragstart drop durationchange emptied end ended error errorupdate filterchange finish focus focusin focusout formdata fullscreenchange fullscreenerror gesturechange gestureend gesturestart gotpointercapture hashchange help input invalid keydown keypress keyup languagechange layoutcomplete load loadeddata loadedmetadata loadend loadstart losecapture lostpointercapture message messageerror mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup mousewheel move moveend movestart offline online orientationchange pagehide pagereveal pageshow pageswap paste pause play playing pointercancel pointerdown pointerenter pointerleave pointerlockchange pointerlockerror pointermove pointerout pointerover pointerrawupdate pointerup popstate progress propertychange ratechange readystatechange rejectionhandled repeat reset resize resizeend resizestart rowenter rowexit rowsdelete rowsinserted scroll scrollend search securitypolicyviolation seeked seeking select selectionchange selectstart show slotchange stalled start stop storage submit suspend timeupdate toggle touchcancel touchend touchmove touchstart transitioncancel transitionend transitionrun transitionstart unhandledrejection unload visibilitychange volumechange waiting webkitanimationend webkitanimationiteration webkitanimationstart webkittransitionend wheel zoom".split(" "); // DOM event names, the open HTML/DOM vocabulary with the legacy ones: on<name> anywhere in a string is refused (§4 «Sections»)
+const XW = "[ \\t\\n\\x0B\\f\\r]*"; // ASCII whitespace, the same in every engine
+const XSS = [["the word script inside markup", "<[\\s\\S]*?script[\\s\\S]*?>"], ["javascript: or vbscript:", "(?:java|vb)script:"], ["a backslash inside a tag", "<[^>]*\\\\[^>]*>"],
+  ["an <object>, <applet>, <embed> or <form> tag", "<(?:object|applet|embed|form)"], ["form:, object:, embed: or applet: after a < (transform, text-transform, «Platform: X» inside markup)", "<[\\s\\S]*?(?:form|object|embed|applet):"],
+  ["a form feed", "\\f"], ["eval( or expression(", `(?:eval|expression)${XW}\\(`], ...XSS_EV.map((e) => [`on${e}`, `on${e}`])].map(([n, p]) => [n, new RegExp(p, "i")]); // the lint refuses MORE than the stand: every category is wider than what the stand refuses
+const xleaf = (v, f) => { // the strings the check sees: a string that holds a JSON object or list is checked by ITS strings
+  if (typeof v === "string") { let j; try { j = JSON.parse(v); } catch {} return j && typeof j === "object" ? xleaf(j, f) : f(v); }
+  if (v && typeof v === "object") vals(v).forEach((x) => xleaf(x, f));
+};
+for (const bo of bos) for (const [at, vs] of [[`${bo.code}`, all(bo).filter(([k]) => k !== "dynamicFields" && k !== "nativeFields" && !W.includes(k)).map(([, v]) => v)],
+  ...all(bo.dynamicFields).map(([k, f]) => [`${bo.code}.${k}`, f]), ...all(bo.nativeFields).map(([k, f]) => [`${bo.code}.${k}`, f]), ...W.flatMap((w) => all(bo[w]).map(([c, x]) => [`${bo.code}.${w}.${c}`, x]))]) {
+  const hit = new Set();
+  xleaf(vs, (v) => { const h = XSS.find(([, r]) => r.test(v.replace(/\u0000/g, ""))); if (h) hit.add(h[0]); });
+  if (hit.size) err(`${at}: ${[...hit].join(", ")} — a kind of string the stand refuses on every save of the BO's structure (the lint is stricter than the stand): imported, it can lock the constructor of ${bo.code} (HTTP 500) until a re-import with it rewritten (§4 «Sections»)`);
+}
 if (source) { // the export this file amends (0.7 case 1): a line on a BO header, field, widget, script or process it carries byte-for-byte is left as exported; FATAL lines always stay
   const canon = (v) => Array.isArray(v) ? `[${v.map(canon)}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k]))}}` : JSON.stringify(v);
   const S = new Map(), had = new Set(); String(source).trimEnd().split("\n").forEach((l) => { try { const o = JSON.parse(l); had.add(canon(o)); if (cls(o) === "BoStructDto") S.set(o.code, o); } catch {} });
@@ -2785,12 +2800,15 @@ The core template of 0.5 plus these keys; the type table of 0.5 says which type 
 - **HTML instead of plain text** `[C]`: «Текст» (`STATIC_TEXT`), «Текстовый блок»
   (`TEXTAREA`) and «Мультиязычный текстовый блок» (`TEXTAREA_LANG`) render HTML, so anywhere their text
   goes — `staticValue`, a record value written by a script, the API or an xlsx cell — an HTML fragment
-  may stand in for the plain string (`<b>`, `<br>`, `<a href>`, `<div style=…>`). What the sanitizer keeps
-  is `MYBPM-UI-API.md` §8. «Текстовое поле» (`INPUT_TEXT`) and `INPUT_TEXT_LANG` are single-line inputs
-  and show the tags as text `[I]` — this rule is not about them.
-  `<script>` makes the server reject the whole value, `srcdoc` is stripped, while `<iframe src>`, `<img>`,
-  `<a>` and inline `style` are kept, and an `<iframe>` renders live on the card `[C]`
-  (`MYBPM-UI-API.md` §8).
+  may stand in for the plain string (`<b>`, `<br>`, `<a href>`, `<div style=…>`). «Текстовое поле»
+  (`INPUT_TEXT`) and `INPUT_TEXT_LANG` are single-line inputs and show the tags as text `[I]` — this rule
+  is not about them. **The archive import stores every string of a BO line verbatim** — no HTML cleaning, no
+  reject check `[C]`; the stand's two checks (`MYBPM-UI-API.md` §8) meet the HTML only later: the reject
+  check on every constructor save of the BO, the cleaner on record values. A record value loses tags and
+  attributes outside a safelist (`section`, `main`, `header`, `article` and `<style>` go; `aria-label`,
+  `id`, `data-*`, `srcdoc` go), while `<iframe src>`, `<img>`, `<a>`, tables and inline `style` stay,
+  and an `<iframe>` renders live on the card `[C]`. **What the reject check refuses must not be in an
+  archive at all** (rules: §4 «Sections»; lint 0.10).
 - `QUESTIONNAIRE` — columns and rows share ONE map, told apart by `isColumn`, keyed by the option's code; at least
   one row and one column, each with a non-empty `label` (an empty one leaves the BO unsavable in the constructor):
   `"questionnaires": {"column_1": {"questionnaireDto": {"label":"Колонка 1","isColumn":true,"orderIndex":0,"code":"column_1"}, "newId":"<16 chars>"}, "row_1": {…"isColumn":false…}}`
@@ -3589,11 +3607,19 @@ Every field carries `gridPosition {x, y, cols, rows}` on a form grid **15 column
   field). With `isHeightDynamic:true` and a 5-row cell (label + header +
   one row) the empty band under short tables disappears; import applies the flag. `[C]`
 - **Sections** = everything between one full-width «Текст» (STATIC_TEXT) field and the next. HTML goes in
-  `staticValue.rus` — a FRAGMENT (no doctype / `html` / `head` / `title`), and only what the sanitizer
-  lets through `[C]` (identical sanitizing in «Текст» headings is `[U]`): `text-transform` and `letter-spacing` are REJECTED; `main`, `header`,
-  `section`, `article` are stripped WITH their styles → use only `div` and `span`; drop `clamp()` and
-  `aria-label`; `h1`–`h3` lose bold → set `font-weight:700` explicitly; avoid `transform` and
-  `conic-gradient` (assumed filtered `[U]`). (Same list: `MYBPM-UI-API.md` §8.) 15×3 showed the platform's own scrollbar inside
+  `staticValue.rus` — a FRAGMENT (no doctype / `html` / `head` / `title`, no `<style>` block — inline
+  `style` only). The import stores it verbatim, but **a string the stand's reject check refuses locks the
+  BO**: every later constructor save of it answers HTTP 500 «Обнаружено недопустимое значение: …» until a
+  clean re-import `[C]`. So in EVERY string of a BO line — HTML, labels, names, codes, option texts `[C]`:
+  no CSS `transform` / `text-transform` (any `form:`, `object:`, `embed:`, `applet:` inside markup — «Platform: X»
+  or «Business object: X» inside tags too); no DOM event-handler name (`on` + an event: `onstart`, `onchange`,
+  `onerror`, `onclick`, `onselect`…) as a substring anywhere — `buttonstart`, `nonstop`, `personchange` hit,
+  `button_start` does not; no word `script` inside markup (`<p>the scripts</p><p>…`); no `javascript:` /
+  `vbscript:`, no `eval(` / `expression(`; no `<script>`, `<object>`,
+  `<embed>`, `<applet>`, `<form>` elements. `letter-spacing`, `clamp()` and `conic-gradient` pass
+  `[C]`. Use `div` / `span` / `p` / `h1`–`h6` / tables: `main`, `header`, `section`, `article`
+  and `aria-label` are dropped by the card when it renders; `h1`–`h3` lose bold → set `font-weight:700`
+  explicitly. (Same rules with the route table: `MYBPM-UI-API.md` §8.) 15×3 showed the platform's own scrollbar inside
   the band for "heading + subheading" → use **15×4** or more. `hideLabel:true` avoids the field label
   duplicating the heading — import applies it on a «Текст» field too `[C]`: the card shows only the
   HTML, no label row.
@@ -4454,6 +4480,10 @@ BO — is 0.9 rule 10.
   the diff lists the kept fields as «changed» and the apply is clean. Remove fields and tabs in the constructor
   or through the API (`deletedFieldIds` of `save-business-object-portion`, `MYBPM-UI-API.md` R1).
 - Structure import does not touch instance values — belief consistent with everything seen `[I]`.
+- **Import checks no string** `[C]`: HTML, labels and codes of a BO line are stored verbatim, also those
+  the stand's reject check refuses (`MYBPM-UI-API.md` §8 «Check 1»). Such a string then makes every
+  constructor save of the BO fail with HTTP 500 until a re-import with the string cleaned — the lint
+  (0.10) reports it as ERROR.
 - **Import APPLIES `AccessStructDto`, group ids included** `[C]`: rights
   reset on the stand come back from an export taken with «Права доступа» — every group on its action.
   `denyAll`, `author`, `fromFields`, field rules and tab rules arrive too. The import does NOT

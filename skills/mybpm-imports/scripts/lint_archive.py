@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 80c024e60a30
+# lintArchive sha256: 7f87a31ed490
 import json
 import math
 import os
@@ -1249,6 +1249,40 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         k, cp = w.split("|")[:2]
         there = [p + "(top)" if p.endswith(" ") else p for p, st in KP.items() if k in st]
         err(f'{join(uniq(at)[:3], ", ")}: key "{k}" in {cp} — it sits in {", ".join(there[:3]) or "no place of 0.4b"}{", …" if len(there) > 3 else ""}; the importer drops it there without a word (0.4b)')
+    XSS_EV = "abort activate afterprint afterupdate animationcancel animationend animationiteration animationstart auxclick beforeactivate beforecopy beforecut beforedeactivate beforeeditfocus beforeinput beforematch beforepaste beforeprint beforetoggle beforeunload beforeupdate begin blur bounce cancel canplay canplaythrough cellchange change click close compositionend compositionstart compositionupdate contextlost contextmenu contextrestored controlselect copy cuechange cut dataavailable datasetchanged datasetcomplete dblclick deactivate devicemotion deviceorientation deviceorientationabsolute drag dragend dragenter dragexit dragleave dragover dragstart drop durationchange emptied end ended error errorupdate filterchange finish focus focusin focusout formdata fullscreenchange fullscreenerror gesturechange gestureend gesturestart gotpointercapture hashchange help input invalid keydown keypress keyup languagechange layoutcomplete load loadeddata loadedmetadata loadend loadstart losecapture lostpointercapture message messageerror mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup mousewheel move moveend movestart offline online orientationchange pagehide pagereveal pageshow pageswap paste pause play playing pointercancel pointerdown pointerenter pointerleave pointerlockchange pointerlockerror pointermove pointerout pointerover pointerrawupdate pointerup popstate progress propertychange ratechange readystatechange rejectionhandled repeat reset resize resizeend resizestart rowenter rowexit rowsdelete rowsinserted scroll scrollend search securitypolicyviolation seeked seeking select selectionchange selectstart show slotchange stalled start stop storage submit suspend timeupdate toggle touchcancel touchend touchmove touchstart transitioncancel transitionend transitionrun transitionstart unhandledrejection unload visibilitychange volumechange waiting webkitanimationend webkitanimationiteration webkitanimationstart webkittransitionend wheel zoom".split(" ")  # DOM event names, the open HTML/DOM vocabulary with the legacy ones: on<name> anywhere in a string is refused (§4 «Sections»)
+    XW = r"[ \t\n\x0B\f\r]*"  # ASCII whitespace, the same in every engine
+    XSS = [[n, re.compile(p, re.I | re.A)] for n, p in [["the word script inside markup", r"<[\s\S]*?script[\s\S]*?>"], ["javascript: or vbscript:", "(?:java|vb)script:"], ["a backslash inside a tag", r"<[^>]*\\[^>]*>"],
+           ["an <object>, <applet>, <embed> or <form> tag", "<(?:object|applet|embed|form)"], ["form:, object:, embed: or applet: after a < (transform, text-transform, «Platform: X» inside markup)", r"<[\s\S]*?(?:form|object|embed|applet):"],
+           ["a form feed", r"\f"], ["eval( or expression(", rf"(?:eval|expression){XW}\("], *[[f"on{e}", f"on{e}"] for e in XSS_EV]]]  # the lint refuses MORE than the stand: every category is wider than what the stand refuses
+
+    def xleaf(v, f):  # the strings the check sees: a string that holds a JSON object or list is checked by ITS strings
+        if isinstance(v, str):
+            try:
+                j = jparse(v)
+            except (ValueError, RecursionError):
+                j = U
+            if isinstance(j, (dict, list)):
+                xleaf(j, f)
+            else:
+                f(v)
+        elif isinstance(v, (dict, list)):
+            for x in vals(v):
+                xleaf(x, f)
+
+    for bo in bos:
+        for at, vs in [[s(g(bo, "code")), [v for k, v in ents(bo) if k != "dynamicFields" and k != "nativeFields" and k not in W]],
+                       *[[f"{s(g(bo, 'code'))}.{k}", f] for k, f in ents(g(bo, "dynamicFields"))], *[[f"{s(g(bo, 'code'))}.{k}", f] for k, f in ents(g(bo, "nativeFields"))],
+                       *[[f"{s(g(bo, 'code'))}.{w}.{c}", x] for w in W for c, x in ents(g(bo, w))]]:
+            hit = {}
+
+            def see(v):
+                h = next((n for n, r in XSS if r.search(v.replace("\x00", ""))), None)
+                if h is not None:
+                    hit[h] = True
+
+            xleaf(vs, see)
+            if hit:
+                err(f"{at}: {', '.join(hit)} — a kind of string the stand refuses on every save of the BO's structure (the lint is stricter than the stand): imported, it can lock the constructor of {s(g(bo, 'code'))} (HTTP 500) until a re-import with it rewritten (§4 «Sections»)")
     if tr(source):  # the export this file amends (0.7 case 1): a line on a BO header, field, widget, script or process it carries byte-for-byte is left as exported; FATAL lines always stay
         def canon(v):
             if isinstance(v, list):
