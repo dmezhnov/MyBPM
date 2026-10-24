@@ -46,9 +46,9 @@ const parts = new Map<string, string>(); // portion-save accumulator id → the 
 const drafts = new Map<string, { coId: string } & Co>();
 const copyCo = (c: Co): Co => JSON.parse(JSON.stringify(c));
 const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null; conflicts?: Record<string, any>; removed?: boolean }>();
-// the export baskets (UI-API R4a): BO records by boId, ticked settings kinds, the menu basket as a count
+// the export baskets (UI-API R4a): BO records by boId, ticked settings kinds, the menu and report baskets as counts
 const boBasket = new Map<string, any>([["USERBO0000000001", { boId: "USERBO0000000001", boName: "Чужой выбор", isStructureExport: true }]]), settingsBasket = new Set<string>(["SCRIPT_SETTINGS"]);
-let menuBasket = 1;
+let menuBasket = 1, reportBasket = 1;
 const members = new Map<string, any[]>(); // boiId → participants (the author from the start)
 let bell: { id: string; header: string; body: string; happenedAt: number }[] = [{ id: "NOTE_OLD_0000001", header: "Старое", body: "не наше", happenedAt: 1 }];
 let seq = 0;
@@ -538,9 +538,10 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "struct/load-bo-export-records": return [...boBasket.values()];
     case "struct/count-menu-export-records": return menuBasket;
     case "struct/count-settings-export-kinds": return settingsBasket.size;
+    case "struct/count-report-export-records": return reportBasket;
     case "struct/load-export-is-global-methods": return false;
     // the stand's clear empties every basket, not only the BO one (R4a step 6)
-    case "struct/clear-export-records": boBasket.clear(); settingsBasket.clear(); menuBasket = 0; return null;
+    case "struct/clear-export-records": boBasket.clear(); settingsBasket.clear(); menuBasket = 0; reportBasket = 0; return null;
     case "struct/save-bo-export-records": for (const r of body) boBasket.set(r.boId, r); return "";
     case "struct/remove-bo-export-records":
       if (!Array.isArray(body) || body.some((x) => typeof x !== "string")) return new Response("Failed to read request", { status: 400 });
@@ -701,12 +702,14 @@ function scriptsAndProcesses(route: string, params: any, body: any): any {
 }
 
 /** The export: one BO line per BO in the basket (outside the MCP mode — every BO of the stand) + one settings line
- *  per ticked kind, as the stand's own zip of 0000001.mybpm + metadata.mybpm. */
+ *  per ticked kind + one report-group line per report item, as the stand's own zip of 0000001.mybpm + metadata.mybpm. */
 function exportZip(): Uint8Array {
   const enc = new TextEncoder();
   const picked = Bun.env.MOCK_MCP ? live().filter((b) => boBasket.has(b.id)) : live();
   const settings = Bun.env.MOCK_MCP ? [...settingsBasket].map((kind) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.CompanySettingsStructDto", kind, payloadJson: "{}" })) : [];
-  const lines = [...settings, ...picked.map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
+  const reports = Bun.env.MOCK_MCP ? Array.from({ length: reportBasket }, () => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.ReportGroupStructDto",
+    groupKey: "GENERAL", name: "Общая группа", isGeneral: true })) : [];
+  const lines = [...settings, ...reports, ...picked.map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
     code: b.code, category: b.boCategory, name: { rus: b.name }, nativeFields: {}, kanbanCardTemplates: b.kanban ?? {},
     dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [x.code, { type: x.type }])) }))];
   return zip([{ name: "data-mock/0000001.mybpm", data: enc.encode(lines.join("\n") + "\n") },

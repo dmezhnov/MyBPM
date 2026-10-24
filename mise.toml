@@ -216,11 +216,13 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   // an applied import is refused: removing its row would strand it (the rollback preview below still says canRollback)
   ["import_cancel", { importId: "@import_analyze.importId", remove: true }, (r) => /APPLIED.*import_rollback/.test(r)],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === true],
-  // the user's baskets (one BO of their own, SCRIPT_SETTINGS ticked, one menu item) come along and survive the export
+  // the user's baskets (one BO of their own, SCRIPT_SETTINGS ticked, one menu item, one report group) come along and survive the export
   ["structure_export", { codes: ["Lint_dict"], out: "dist/mcp-test/export" }, (r) => r.bos.length === 1 && r.bos[0].code === "Lint_dict"
-    && r.types.CompanySettingsStructDto === 1 && r.alsoInBaskets.settingsKinds === 1 && r.alsoInBaskets.menuItems === 1],
+    && r.types.CompanySettingsStructDto === 1 && r.alsoInBaskets.settingsKinds === 1 && r.alsoInBaskets.menuItems === 1
+    && r.types.ReportGroupStructDto === 1 && r.alsoInBaskets.reportItems === 1],
   ["stand_read", { path: "struct/count-settings-export-kinds" }, (r) => r === 1],
   ["stand_read", { path: "struct/count-menu-export-records" }, (r) => r === 1],
+  ["stand_read", { path: "struct/count-report-export-records" }, (r) => r === 1],
   ["stand_read", { path: "struct/load-bo-export-records", params: { offset: 0, limit: 100 } }, (r) => r.length === 1 && r[0].boId === "USERBO0000000001"],
   ["import_rollback", { importId: "@import_analyze.importId" }, (r) => r.preview.canRollback && !r.result],
   ["import_rollback", { importId: "@import_analyze.importId", confirm: true }, (r) => r.log.status === "ROLLED_BACK"],
