@@ -1233,8 +1233,9 @@ do is plain HTTP by §0U.4.
   §5f table, gives every new Script a body «entry → exit» and every new Switch an exit by its first outgoing arrow,
   then validate-def. `process_version` as `script_version` (work on the test version makes a new test one).
   `process_run_ways` sets / removes run ways in one draft. `process_steps` shows where a record is (STAND / GO /
-  WAITING / FAILED per figure); `process_push` ✎ moves a stuck one on (forward along an outgoing arrow, retry a
-  failed step).
+  WAITING / FAILED / STOPPED per figure, diagnostics without the Java stack); `process_push` ✎ moves a stuck one on
+  (forward along an outgoing arrow, retry a FAILED step, stop a STAND one, terminate all and go on from an arrow —
+  the stop and the retry the UI cannot do, trap 97).
 - **The stand contradicts a document → `platform_report`** (the rule at the top of this document): it returns
   the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
   stands, logins, people or companies. Ask the user before giving them the link to submit.
@@ -1301,7 +1302,7 @@ do is plain HTTP by §0U.4.
 | `process_version` ✎ | a process's versions: list, work, test, copy, remove, comment | §5f «Versions» |
 | `process_run_ways` ✎ | WHEN the process starts: set / remove run ways in one draft | §5f «Run ways» |
 | `process_steps` | where a process record is: each step's figure and state | §5f run-time controller |
-| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step | §5f run-time controller |
+| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step, stop a standing one, terminate all and go on from an arrow | §5f run-time controller, trap 97 |
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
@@ -2537,14 +2538,16 @@ editor route, TWO controllers and a versioned diagram.
 - **Creation is the same as every other kind**: group kebab ⋮ → «Добавить бизнес-процесс» =
   `create-bo {boGroupId, boCategory: "BO_PROCESS"}`, created immediately as «Бизнес-процесс №N».
 - **The editor is `/business-objects/editing/<boId>/process-editing`**, NOT `…/object-editing`: a name
-  input, a version selector «Версия: 1 (Тест)», a «Блок-схема» dropdown, a «Локальные методы» button and
+  input, a version selector «Версия: 1 (Тест)», a «Блок-схема» dropdown, a «Локальные методы» panel and
   the diagram canvas. There is **no field palette and no form canvas in this editor** — the process's
-  fields are still edited through the ordinary BO constructor.
+  fields are still edited through the ordinary BO constructor. Every control of the editor with its call:
+  «The process editor in the UI» at the end of this section.
 - **The platform pre-builds two things at creation** `[C]`: the field `PROCESS_STATUS` («Статус процесса»,
   `type: "BO"`, `isSystem`, `isRequired`, pointing at the built-in dictionary «Статус процесса» — code
   `PROCESS_STATUS`, its id differs per stand), and **version 1 with a single `Enter` figure**.
 - **The BO code FOLLOWS the rename** here, like a plain BO and unlike a
-  composite — the name input of the process editor writes through the ordinary BO writer.
+  composite — the name input of the process editor writes through the ordinary BO writer. A code set
+  explicitly (`bo_code_set`, §5j) stays `[C]`.
 - A fresh process does not validate: `validate-def` answers «Нет точка окончания» +
   «Из фигуры должен быть выход» until an Exit is wired in.
 
@@ -2577,8 +2580,8 @@ editor route, TWO controllers and a versioned diagram.
   **A process made in the constructor has only a TEST version, and a test version runs — by hand and by its
   run ways — only for test (DEV) records** `[C]`: publish it with `in-work-bo-process-version` (UI «в работу»)
   before ordinary records start it. An imported `workProcess` is already the work version.
-- **Run ways — WHEN the process starts** (`process_run_way_settings`, a button of the process BO's
-  editor) — the `bo-process-editor2` draft family, all `[C]`:
+- **Run ways — WHEN the process starts** (`process_run_way_settings`, the process editor's gear →
+  «Параметры запуска процесса») — the `bo-process-editor2` draft family, all `[C]`:
   `create-draft {boProcessId}` → a draftId; `load-draft-data {draftId}` → `{runWayMap: {…}}`
   (`{}` on a fresh process = the default «run on a record of this BO when it is created»);
   `update-draft` `P {draftId}` `B` = an ARRAY of `{dotPath, value}` → `[{type:"SET_SAVE_BUTTON_VISIBILITY"…}]`;
@@ -2605,20 +2608,21 @@ editor route, TWO controllers and a versioned diagram.
   `runWayMap.<id>` removes a run way. The process field must be a `type:"BO"` field of the process BO with
   `viewType` `SINGLE` or `FIELDS` (the dialog lists no other); `fieldIdsSet` holds ids of the TARGET BO's
   fields (the dialog offers that reference's `boFieldRefs` — an archive-built reference already lists
-  every target field there, `toShow:false`). **The client refuses every edit on a WORK version**
-  («you_cant_change_published_bo_process_version»), **the server does not**: the draft cycle above
-  applies on an `isWork+isTest` version and the run ways work at once on ordinary records.
+  every target field there, `toShow:false`). **The run-ways dialog refuses every edit on a WORK version**
+  («Вы не можете изменить опубликованную версию бизнес-процесса»), **the server does not**: the draft cycle
+  above applies on an `isWork+isTest` version and the run ways work at once on ordinary records. The
+  diagram of a WORK version is not refused anywhere — its canvas edits the published process live (trap 93).
   What they do `[C]`: a target record's creation (`ON_INSTANCE_CREATE`) or a saved change of one of the
   `fieldIdsSet` fields (`ON_FIELD_CHANGE`; saving with no change or the same value starts nothing) creates a NEW
   record of the process BO pointing at that target record and runs the process on it; adding run ways does
   not switch off the default (a process record created directly still runs). `changeVariantSet`
   `ON_MANUAL_SAVE` (the dialog's default) covers a form save AND a record made by the §6a cycle;
   `ON_UPLOAD_XLSX` makes a record created by an xlsx records import (§6) start the `ON_INSTANCE_CREATE` run
-  way `[C]` — the import itself runs no Block IDE script; the other members are `[U]`. **UI** `[I]`: the process editor's run-ways button opens the dialog
-  (`openPopoverBoProcessRunWaysSettings`); its process-field list = the process BO's `BO`/`CO` fields with
-  `viewType` `SINGLE`/`FIELDS`, its target-field list = that reference's `boFieldRefs`; it refuses every edit on a WORK version — switch to the test version first (or use the API
-  above). The archive form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) — `MYBPM-IMPORTS.md` §5c
-  `runWayMap`.
+  way `[C]` — the import itself runs no Block IDE script; the other members are `[U]`. **UI** `[C]`: the
+  dialog «Параметры запуска процесса» — «The process editor in the UI» below; its process-field list = the
+  process BO's `BO`/`CO` fields with `viewType` `SINGLE`/`FIELDS`, its target-field list = that reference's
+  `boFieldRefs`; on a WORK version switch to the test version first (or use the API above). The archive
+  form (by CODE: `refBoInfo`, `processFieldCode`, `fieldCodes`) — `MYBPM-IMPORTS.md` §5c `runWayMap`.
 
 #### `apply-update-cmd` — a JSON-patch language over the def
 
@@ -2805,16 +2809,19 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
 
   ```
   Set figures.<pt> = {type:"Point", x, y}
-  Set arrows.<old>.finishFigureId = <pt>, .finishSlotName = "angle_<a+180>", .labelDeltaX = 0, .labelDeltaY = 0
+  Set arrows.<old>.finishFigureId = <pt>, .finishSlotName = "angle_<a+180>"
+  Unset arrows.<old>.labelDeltaX, arrows.<old>.labelDeltaY
   Set arrows.<new> = {name: <old name>, startFigureId: <pt>, startSlotName: "angle_<a>",
-                      finishFigureId: <old target>, finishSlotName: <old target slot>, labelDeltaX: 0, labelDeltaY: 0}
+                      finishFigureId: <old target>, finishSlotName: <old target slot>}
   ```
+
+  The new arrow takes the OLD name, so a named arrow then shows its label twice — rename one of them.
 
   (`a` = the arrow's direction at that spot, snapped to 45°; eight slots `angle_0` … `angle_315`: a
   left-to-right arrow comes in at `angle_180` and leaves at `angle_0`). Dragging from a Point that
   has no outgoing arrow starts a new arrow. At run time it passes instantly as its own step
   (`MYBPM-IMPORTS.md` §16 «A Point»); in an archive it is `FigurePointStruct {x, y}`.
-- **Arrow name** — double-click the arrow → an inline input; Enter →
+- **Arrow name** — double-click the arrow (or its right-click «Изменить имя стрелки») → an inline input; Enter →
   `CHANGE_ARROW_NAME`, `Set arrows.<id>.name = "<text>"`. **Every arrow leaving a Switch must be named**
   («У стрелки должно быть название» until then); the name is what the Switch's script exits by.
   **A Form shows its reference field's label inside the figure, a Timer its date field's label; no other
@@ -2881,8 +2888,8 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   wrong name on a Form or Timer resolves to nothing. **A Form has three timer slots of its own** — an
   armed timer's exit is presumably an arrow out of `timerCreate` / `timerOpenForm` / `timerTouchDraft`
   `[I]`. A real project's generated archives use Switch `left`/`right`/`down` out and `up` in, Exit `main`/`top`.
-- Dragging out of a slot works from the Enter but NOT from the Form's right slot (no picker opens) —
-  the API route is the reliable one.
+- Dragging out of a slot works from any free slot of any figure, the Form's right slot included `[C]` —
+  with a real pointer drag; a synthetic drag (dispatched mouse events) starts nothing.
 - **The editor remembers the open script** — `load-editor-state` → `{scrollTop, scrollLeft,
   scriptFigureId}`; with `scriptFigureId` set, reopening `…/process-editing` can come up straight in that
   figure's IDE: an empty grey canvas with only `»` at the top left, which looks like a diagram that failed
@@ -2916,13 +2923,16 @@ cycle from inside the page and read the result back with `load-process-steps`.
    before the step exists.
 3. **Filling the field AFTER the Form was entered leaves the step stuck for good** — even when the
    Заявка is then saved with a changed value. A retry does not help
-   (`push-step-retry` → «Нет активных шагов для повторного запуска»; it is only for a step with
-   diagnostics). So whatever feeds a Form must fill its field BEFORE the process reaches it: at the
+   (`push-step-retry` → «Нет активных шагов для повторного запуска»; it retries only a `FAILED` step).
+   So whatever feeds a Form must fill its field BEFORE the process reaches it: at the
    record's first save, or in a Script placed before the Form.
 4. **Unsticking a step by hand: «Продолжить принудительно»** — the context menu of a STAND step's
    OUTGOING arrow in the diagram → `v2/boi-process/push-step-forcibly P {boProcessId, boiId, arrowId}`
    → empty 200, and the process runs on from that arrow's target. Given the arrow INTO the standing
-   step (Enter → Form) it does nothing.
+   step (Enter → Form) it does nothing. When the target Script fails, the call answers **500** «Ошибка
+   при исполнении скрипта» — yet the step HAS moved: the Form is `PASSED`, the Script `FAILED` `[C]`; read
+   `load-process-steps` instead of trusting the error (the canvas keeps the old colours until a reload,
+   trap 98). Other ways out of a step: the runtime menus in «The process editor in the UI» below.
 5. **A conditional Switch branches on the data** `[C]`: the Switch's script rewritten with
    `apply-update-cmd` to `ЕСЛИ ЭТОТ_ПРОЦЕСС.Заявка.Одобрить.#Значение → по стрелке «Да», ИНАЧЕ → по
    стрелке «Нет»` (the JSON below; same as `MYBPM-IMPORTS.md` §16 «A Switch with a condition»; `translate-script`
@@ -2975,20 +2985,23 @@ The run-time controller, all `P`: `v2/boi-process/…`
 
 | call | params | what it does |
 |---|---|---|
-| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|GO\|WAITING\|FAILED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` — `GO` = a figure running, `WAITING` = a Timer past due but not yet fired; a run is over when none is `STAND`/`GO`/`WAITING` |
+| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|GO\|WAITING\|FAILED\|STOPPED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` — `GO` = a figure running, `WAITING` = a Timer past due but not yet fired, `STOPPED` = stopped by `stop-step`; a run is over when none is `STAND`/`GO`/`WAITING`. A diagnostic is `{type, place, messageCode, message, figureId, arrowId, exceptionStackTrace}` — the trace is the whole Java stack, kilobytes long |
 | `load-test-run-poi-id` | `{boProcessId}` | the editor's current test record `[C]` |
-| `push-step-forcibly` | `{boProcessId, boiId, arrowId}` | «Продолжить принудительно» `[C]` |
-| `push-step-retry` | `{boProcessId, boiId, figureId}` | «Попробовать еще раз» (Script / Switch / Form STAND with diagnostics) `[C]` refusal only |
-| `stop-step` | `{boProcessId, boiId, figureId}` | «Остановить текущий» `[I]` |
-| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь» `[I]` |
-| `start-dev-process` / `stop-dev-process` | `{boProcessId}` | the editor's test run (a process with no «on record create» fields) `[I]` |
-| `go` | `{boProcessId, boiId}` | `[U]` |
+| `push-step-forcibly` | `{boProcessId, boiId, arrowId}` | «Продолжить принудительно»: on from a STAND step along its outgoing arrow `[C]` (500 when the target Script fails, the step moved anyway — point 4) |
+| `push-step-retry` | `{boProcessId, boiId, figureId}` | runs a `FAILED` Script / Switch / Form again (state `GO`, diagnostics cleared); any other state → «Нет активных шагов для повторного запуска» `[C]`. The UI item «Попробовать еще раз» is offered only on a STAND step, so it never succeeds (trap 97) |
+| `stop-step` | `{boProcessId, boiId, figureId}` | stops a `STAND` step → `STOPPED` `[C]`; any other state → 500 «Нет активных шагов для остановки». The UI item «Остановить текущий» is offered only on a FAILED step, so it never succeeds (trap 97) — API only |
+| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь»: ends what runs and goes on from that arrow's target, from any state of its source (a FAILED or STOPPED one stays so) `[C]`; the arrow INTO a failed figure = the UI's retry. 500 when the target Script fails, the step moved anyway |
+| `start-dev-process` / `stop-dev-process` | `{boProcessId}` | the editor's test run: start = a new DEV record running the version, stop = the run and its colours gone `[C]` |
+| `go` | `{boProcessId, boiId}` | no UI calls it `[C]`; what it does `[U]` |
 
 Plus `v2/boi-process2/load-boi-process-id {boId, boiId, draftId}` → the version a record runs, and in
 `v2/bo-process-editor/`: `load-bo-with-instance-id {boProcessId, poiId, fieldId}` → `{boId, boiId}` of the
 record held in a field (what a Form step opens) `[C]`; `load-on-boi-create-fields {boProcessId}` → the
 fields whose referenced BO can START the process by creating a record there (when there are any, the editor
-opens that BO's new-record form instead of `start-dev-process`) `[I]`.
+opens that BO's new-record form instead of `start-dev-process`) `[I]`. That set is written by
+`v2/bo-process-editor2/save-on-boi-create-field-ids {boProcessId, fieldIds}` `[I]` — **API only**: the
+editor's chooser for it exists in the client but no control opens it `[I]`, and the settings
+popover's «Список полей» is a different list `[C]` (below).
 
 - **In the process EDITOR, a double-click on a standing Form opens the form of its record** (test mode
   only — the diagram on a record's own card does nothing). It is the same `create-draft` as anywhere
@@ -2997,6 +3010,147 @@ opens that BO's new-record form instead of `start-dev-process`) `[I]`.
   referenced records with `create-draft-with-boi {…, boiState:"DEV"}` for a test run.
 - `load-boi-values` returns `""` for a `BO` reference field on a process record; read the link with
   `load-bo-with-instance-id` instead `[C]`.
+
+#### The process editor in the UI — header, canvas, versions, run ways, test run `[C]`
+
+Like the script IDE (§5g), the editor has no СОХРАНИТЬ: every gesture below is saved the moment it is made, and
+every diagram gesture is ONE `v2/bo-process-editor/apply-update-cmd` (its `name` in brackets) followed by
+`validate-def {boProcessId, testMode:true}`. Open it at `/business-objects/editing/<boId>/process-editing`; it
+opens on the test version.
+
+**Header.** Left: «Наименование:» — typing saves as you type (debounced): `save-business-object-portion` with
+`businessObject {id, nameMap, recordNameMap}` → `load-dev-bo-process-id`; no blur needed. Right: the version
+selector «Версия: N (Тест)» / «(Опубликованный)» / bare «Версия: N» for any other, the eye «Блок-схема» ▾ (the
+BO's view chooser, with its arrow icon), the lock (the BO's access rights, §3) and the gear (the BO settings
+popover, below). Under them the zoom − / + and the **validation indicator**: a green ✓ when `validate-def` is
+`[]`, otherwise a red dot ▾ with the count; a click lists the messages (⚠ + text), a click on a message selects
+its figure and closes the list — no call. There is no «validate» button: the check runs after every gesture.
+
+**The figure picker.** Drag from a free slot dot of any figure onto empty canvas (a real pointer drag) → «Выберите
+фигуру», 3×3 tiles: row 1 Exit, Switch, Form; row 2 Script, SingleToParallel, ParallelToSingle; row 3 Timer,
+Terminator. A tile → `load-new-ids {count:50}` → one command (`CREATE_SWITCH`, the client's name for every
+creation) that Sets the figure key by key (`figures.<id>.type`, `.x`, `.y`, …) plus the arrow from the slot.
+Escape does NOT close the picker; a click elsewhere does. **The fork / join tiles always make 3 slots**
+(`outSlotsCount` / `inSlotsCount` 3, whatever the tile picture shows), and no control changes a slot count — a
+different count is API or archive only (`MYBPM-IMPORTS.md` §5c).
+
+**Figures on the canvas.**
+
+| gesture | command |
+|---|---|
+| drag a figure | `MOVE_FIGURE` — Set `.x` / `.y` (diagram units = CSS px at zoom 1); arrows follow |
+| click | selects (yellow dashed frame) — no call; **Shift+click** adds, **Ctrl+click** toggles; a band on empty canvas dragged left → right selects every figure it touches, right → left only those fully inside; **Ctrl+A** all (the Enter is framed but never copied or deleted) |
+| drag one of several selected | `MOVE_FIGURES` — x / y of each |
+| **Delete** key, or right-click «Удалить одну фигуру» / «Удалить все выделенные фигуры» | `DELETE_ONE_FIGURE` / `DELETE_SEVERAL_FIGURES` — Unset each figure and every arrow at it |
+| right-click «Скопировать» | `load-script-def-list {boProcessId, scriptFigureIds}`, then the clipboard gets `{copiedType:"FIGURES", mouseX, mouseY, figures, arrows (only those with BOTH ends copied), scriptsDefs}` — no write |
+| «Вырезать» | the same copy + `DELETE_ONE_FIGURE` / `DELETE_SEVERAL_FIGURES` |
+| «Вставить» (right-click on empty canvas or a figure; greyed while the clipboard holds no figures) | `load-new-ids {count:50}` → `PASTE_FIGURES` (new ids for figures and arrows, positions shifted by the paste point) → `save-script-def-list {boProcessId}` with the copied script bodies under the new figure ids → the pasted figures are selected |
+
+Opening a Script's context menu already sends `load-script-def-list` for it. Clipboard use needs a real click on
+the page first (a synthetic one leaves the clipboard untouched and «Вставить» greyed). A Point cannot be
+selected by a click (a press on it starts an arrow, its right-click shows the empty-canvas menu): take it with a
+band or Ctrl+A.
+
+**Undo / redo** — keyboard only, with the canvas focused (click EMPTY canvas; a click on a figure does not move
+focus): **Ctrl+Z** = `bo-process-editor/undo`, **Ctrl+Shift+Z** = `bo-process-editor/redo {boProcessId}`, both
+then `validate-def`. Focus in the name input makes them the browser's own text undo — and Ctrl+Z on the canvas
+after typing a name undoes the name too (trap 92).
+
+**Arrows.**
+
+- From any free slot (a Script has eight) dropped on a slot of an existing figure → `CREATE_ARROW` (Set
+  `.startFigureId`, `.startSlotName`, `.finishFigureId`, `.finishSlotName`). A second outgoing arrow is drawn
+  and then flagged by validation («Из фигуры выходить может только одна стрелка»).
+- Drag an arrow's line: grabbed nearer its end it moves the TIP → `RECONNECT_ARROW_TIP` (Set `.finishFigureId`
+  / `.finishSlotName`; refused silently onto a slot that already has an incoming arrow `[I]`), nearer its start
+  the TAIL → `RECONNECT_ARROW_BACK`; dropped on a figure body it takes that figure's slot closest to the old one
+  `[I]`; dropped on empty canvas → `DELETE_ARROW` (Unset the arrow).
+- Drag its label → `MOVE_ARROW_LABEL` (Set `.labelDeltaX` / `.labelDeltaY`, floats).
+- Right-click → «Изменить имя стрелки» (inline input; typing sends nothing, Enter → `CHANGE_ARROW_NAME`),
+  «Вставить точку» (`CUT_ARROW_WITHIN_POINT`, the Point bullet above), and the runtime items below.
+
+**Versions** — the selector opens a popover, one row per version `{icon, «Версия: N», comment, ⋮}`: gauge = work,
+wrench = test, gear = any other; the work row first, then the test row. A row's TEXT opens that version in the
+editor (`load-editor-state`, `load-bo-process-def`, `load-test-run-poi-id`, …). ⋮ by state (P `{boId,
+boProcessId}` for each call):
+
+| version | ⋮ menu | calls |
+|---|---|---|
+| test | Опубликовать · Изменить комментарий · Дублировать | «Опубликовать» → confirm «Вы устанавливаете версию в работу» Да / Нет → `in-work-bo-process-version`; the stand makes a new test version (comment not copied), the editor stays on the published one. **A Script figure with no body makes it refuse** — 500 «В скрипте есть ошибки, их нужно исправить», although `validate-def` is `[]` (trap 95) |
+| work | Изменить комментарий · Дублировать | there is no «Убрать из опубликованных» for a process and no call for it |
+| other | Сделать тестовой · Изменить комментарий · Дублировать · Удалить | «Сделать тестовой» → no confirm → `in-test-bo-process-version` (the old test one becomes ordinary), the editor switches to it; «Удалить» → confirm «Вы удаляете версию» Да / Нет → `remove-bo-process-version` (trap 94 when it is the open one) |
+
+«Изменить комментарий» → popover «Изменение комментария» + СОХРАНИТЬ → `change-bo-process-version-comment {boId,
+boProcessId, comment}`. «Дублировать» → no confirm → `copy-bo-process-version` → the next number, ordinary, and
+**the comment IS copied** (a script version's copy is not). The ⋮ menu stays open after an action and ignores
+Escape; wait ~1 s after opening it — its items slide into place. Every version is editable on the canvas, the
+work one included (trap 93).
+
+**The gear — BO settings popover** (no call on opening): id, «Код бизнес-объекта» (§5j), «Помечать новые
+(непросмотренные) записи», «Скрыть кнопку добавить», «Список полей» — the FORM-FIELD navigator (a label click
+scrolls the form and closes the popover; no call; NOT the «on record create» fields, which have no UI),
+«Сгенерировать встраиваемый URL на создание» (§5m), «Параметры запуска процесса», СОХРАНИТЬ / ОТМЕНИТЬ.
+
+**«Параметры запуска процесса»** — the run-ways dialog on the version open in the editor. Opening = `create-draft
+{boProcessId}` → `load-draft-data`; every control is one `update-draft` (the «Run ways» bullet above for the
+keys). Left: one row per run way («Запуск бизнес процесса при <way>: <process field>», «По расписанию:
+<summary>») and ⊕; right: the selected row's settings.
+
+- ⊕ → a new row (`runWay ON_INSTANCE_CREATE`, `changeVariantSet {ON_MANUAL_SAVE:1}`, id made by the client).
+  **When a row was already selected, the selection stays on it** — click the new row before touching the right
+  pane, or the radios rewrite the old run way (trap 96). Row trash (on hover) → `update-draft` without a value
+  = delete, no confirm.
+- «Запуск бизнес процесса при»: Создании инстанции БО / Изменение поля / По расписанию / Завершении миграции.
+  The process-field radios (with a search) → `.processFieldId` + `load-form-fields-by-ids`. «Изменение поля» adds
+  «Список полей» + green ⊕ → a picker of the target BO's fields with checkboxes; ticking sends nothing, closing
+  the picker sends ONE `.fieldIdsSet`. A field chip's ▾ → «Использовать сравнение» (`.useFieldValuesSet`) and a
+  value input (`.fieldValues`, the whole map); × removes the field.
+- Variants — only the small square is clickable, not its label; each tick sends the whole `.changeVariantSet`:
+  При ручном сохранении (`ON_MANUAL_SAVE`, ticked by default), При входящей миграции, При загрузке xlsx файла
+  (`ON_UPLOAD_XLSX`), При вызове API, При изменении из процессов, При вызове из плагина, При массовом изменении
+  (`ON_MASS_CHANGE`, «Изменение поля» only), При входящей миграции через кафку; «Создании инстанции БО» lists
+  «При создании из процесса» and «При создании из плагина» instead of mass change.
+- «По расписанию» → `.runWay SCHEDULED` + the default schedule in one update; «Повторять процесс» (каждый день,
+  каждую неделю, раз в месяц, каждый рабочий день, каждый последний день месяца, каждый последний рабочий день
+  месяца), «Время запуска процесса» in LOCAL time (stored as UTC), «Повторять с интервалом», weekly «Дни
+  повторение» Пн…Вс, «Начало повторений», «Повторять до» (нет конечной даты / число повторений / дата
+  окончания), «Сводка».
+- СОХРАНИТЬ → `apply-draft` → a new `create-draft`, the dialog STAYS open; ОТМЕНИТЬ → `remove-draft` → a new
+  draft (changes dropped, dialog stays); × → `remove-draft`. A click while a dropdown is open only closes the
+  dropdown. On a WORK version ⊕ and every edit → blue toast «Вы не можете изменить опубликованную версию
+  бизнес-процесса», no call.
+
+**Test run** — **double-click the Enter**: `load-on-boi-create-fields {boProcessId}` → with none,
+`start-dev-process {boProcessId}` → `load-test-run-poi-id` (a new DEV record) → `load-process-steps`; with one
+such field the editor opens that BO's new-record form instead, with several a list to choose from `[I]`.
+Double-click the Enter again (while a test record exists, finished or not) → `stop-dev-process` and the colours
+go. Step colours on the figure: green = `PASSED`, orange = `STAND`, red = `FAILED`, grey = `STOPPED`. A
+**double-click** on a standing Form (or on its field label) → `load-bo-with-instance-id {boProcessId, poiId,
+fieldId}` → that record's form opens; with the field empty nothing shows. A single click does nothing.
+
+**Runtime menus** (on the version that runs the test record):
+
+- arrow whose source step is `STAND` → + **«Продолжить принудительно»** = `push-step-forcibly` (point 4 above);
+- any arrow, always (even with no run) → **«Терминировать все и продолжить здесь»** = `push-step-terminate-all
+  {boProcessId, boiId, arrowId}`. **The UI's way to retry a failed figure is this item on the arrow INTO it;**
+- figure menu of a `FAILED` Script / Switch / Form → + «Остановить текущий» = `stop-step` — it always fails
+  (trap 97);
+- a `STAND` Script / Switch / Form with diagnostics → + «Попробовать еще раз» `[I]` = `push-step-retry` — it
+  always fails too (trap 97). A standing Form's menu has no runtime item.
+
+After a 500 from either push the canvas keeps the old colours — reload (trap 98).
+
+**«Локальные методы»** — the panel left of the canvas, COLLAPSED at first; ▶ expands it, and its ⊕ does nothing
+until then. ⊕ → `create-local-method {boProcessId, methodName:"Новый метод"}` → `list-local-methods` → the method
+opens in the Block IDE (`save-editing-script-figure-id {boProcessId, scriptFigureId: <scriptId>}`, then the §5g
+loads; signature and canvas as in §5g «The script IDE in the UI»). **The IDE covers the whole editor, the list
+included** — close it with the × at its top right (`save-editing-script-figure-id {boProcessId}` →
+`validate-def`); Escape does not close it. A row click opens a method `[I]`; the row trash → «Удаление элемента»
+Да / Нет → `delete-local-method {boProcessId, scriptId}`, with no check for callers `[I]`. **A process's local methods
+belong to ONE version** (trap 99) — a BO's script methods belong to every version (trap 68a).
+
+**No UI:** `go` (no control calls it), the «on record create» fields (`save-on-boi-create-field-ids`), slot
+counts ≠ 3, `stop-step` and `push-step-retry` in practice (trap 97).
 
 ### Export through the API — no browser download `[C]`
 
@@ -6409,6 +6563,33 @@ The stand's own behaviour under automation `[C]`:
 91. **A picker cut off by the edge of the script dialog closes the dialog** `[C]` — near the right or bottom edge,
     the act picker's «(Выбрать)» and the lower value kinds fall outside the dialog; a click there hits the backdrop.
     Double-click the act row instead (it picks too), or scroll the canvas first.
+92. **Ctrl+Z on the process canvas also undoes the name you typed** `[C]` — the browser's undo stack is page-wide:
+    after typing in «Наименование:», Ctrl+Z on the canvas undoes the diagram step AND the name text, and the
+    editor saves that older name (`save-business-object-portion`). Re-read the name after an undo. §5f «The
+    process editor in the UI».
+93. **The canvas of a WORK process version edits the published process live** `[C]` — only the run-ways dialog
+    refuses a work version; a figure moved, deleted or added on it is written at once (`apply-update-cmd` 200) and
+    ordinary records run the change. Switch to the test version before editing. §5f.
+94. **Deleting the version open in the process editor keeps editing it** `[C]` — the header jumps to the test
+    version, but the deleted diagram stays on the canvas and every gesture still goes to the DELETED version id
+    (200, `validate-def []`). Reload the page after deleting the open version.
+95. **Publishing a process refuses an empty Script figure that validation passes** `[C]` — `validate-def
+    {testMode:true}` answers `[]`, yet «Опубликовать» (`in-work-bo-process-version`) answers 500 «В скрипте есть
+    ошибки, их нужно исправить». Give every Script a body (at least «entry → exit») or remove it before publishing.
+96. **⊕ in «Параметры запуска процесса» keeps the old row selected** `[C]` — with a row already selected, the new
+    row is added but the right pane stays on the old one, and the radios rewrite the OLD run way. Click the new
+    row first. §5f.
+97. **The editor's «Остановить текущий» and «Попробовать еще раз» never succeed** `[C]` (the retry item `[I]`) — the client offers «Остановить
+    текущий» only on a FAILED step, while `stop-step` stops only a STAND one (500 «Нет активных шагов для
+    остановки»); it offers «Попробовать еще раз» only on a STAND step with diagnostics, while `push-step-retry`
+    retries only a FAILED one («Нет активных шагов для повторного запуска»). In the UI, retry a failed figure by
+    «Терминировать все и продолжить здесь» on the arrow INTO it; stop a standing step through the API.
+98. **After a 500 from «Продолжить принудительно» or «Терминировать все и продолжить здесь» the diagram is stale**
+    `[C]` — the step moved anyway (the target Script failed), but the canvas keeps the old colours. Reload, or
+    read `load-process-steps`.
+99. **A process's local methods belong to one version** `[C]` — `list-local-methods` of another version of the
+    same process is empty, unlike a BO's script methods (trap 68a). Create the method on the version that calls
+    it; a published copy made later carries it `[U]`.
 
 ## 12. Open questions
 
@@ -6439,12 +6620,10 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
   field, then delete it.
-- Process versions: the UI control that publishes one (capture `in-work-*`); `change-bo-process-version-comment`,
-  `unset-in-work-version`, `remove-bo-process-version` on a scratch BO, read the versions back.
 - Processes: does a `SCHEDULED` run way ever fire (`startTime` a few minutes ahead, poll for a new process
-  record); process local methods (`bo-process-editor/create-local-method {boProcessId, methodName}`, call it
-  from a Script figure); `stop-step` / `push-step-terminate-all` / `go` / `start-dev-process` on a DEV process
-  standing in a Form; a Form timer (`createTimer` 1 min, watch `load-process-steps`).
+  record); a process local method called from a Script figure, and whether publishing or copying a version
+  carries it; what `go` does on a DEV record standing in a Form; a Form timer (`createTimer` 1 min, watch
+  `load-process-steps`).
 - Renaming a method (the hat's name input = `Set blocks.<hat>.methodName`): do its callers keep translating?
   Call it from a hook, rename it, `translate-script` the hook. Does a global method's body reach «эта инстанция»
   (`__gsm_self__`), and how is it written in the def?
