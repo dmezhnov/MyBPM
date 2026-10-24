@@ -255,6 +255,8 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     (r) => r.code === "mcp_probe_co" && r.simple.length === 1 && r.simple[0].label === "Наименование" && r.composite.length === 1
       && r.composite[0].label === "Контакт" && r.composite[0].code === "contact" && r.composite[0].links === 2 && r.sources.length === 1],
   ["co_build", { coId: "@co_build.coId", attrs: [{ links: [{ bo: "@bo_create.id", field: "Нет такого" }] }] }, (r) => /not a field.*draft was removed/.test(r)],
+  ["co_build", { coId: "@co_build.coId", attrs: [{ links: [{ bo: "@bo_create.id", field: "Заметки" }, { bo: "@bo_create.id", field: "E-mail" }] }] },
+    (r) => /IllegalFieldType.*draft was removed/.test(r)],
   ["co_build", { group: "Бизнес-объект", name: "MCP probe orphan", attrs: [{ links: [{ bo: "Нет такого БО", field: "Имя" }] }] },
     (r) => /no BO named/.test(r) && !/EXISTS/.test(r)],
   ["bo_find", { name: "MCP probe orphan" }, (r) => !JSON.stringify(r).includes("MCP probe orphan")],
@@ -526,7 +528,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not

@@ -2285,7 +2285,7 @@ const tools: Tool[] = [
       coId: { type: "string", description: "An existing composite to add sources / attributes to" },
       sources: { type: "array", items: { type: "string" }, description: "Source BOs by id or exact name; those named in links are added by themselves" },
       attrs: { type: "array", items: { type: "object", required: ["links"], properties: {
-        label: { type: "string", description: "Default = the first source field's label" }, code: { type: "string", description: "Default = transliterated from the source label" },
+        label: { type: "string", description: "Default = the first source field's label" }, code: { type: "string", description: "Default = the first source field's code" },
         links: { type: "array", items: { type: "object", required: ["bo", "field"], properties: {
           bo: { type: "string", description: "Source BO id or exact name" }, field: { type: "string", description: "Source field label or fieldId" } } } } } } } },
     run: async (a) => {
@@ -2334,13 +2334,10 @@ const tools: Tool[] = [
           if (!f) throw new Error(`«${l.field}» is not a field of ${l.bo}: ${list.map((x) => x.label ?? x.name).filter(Boolean).join(", ")}`);
           return { boId, fieldId: f.fieldId ?? f.id };
         };
-        const seen = async () => [...((await s.call("v2/co/load-co-fields-simple", { coId, draftId })) ?? []),
-          ...((await s.call("v2/co/load-co-fields-composite", { coId, draftId })) ?? [])];
         for (const at of a.attrs ?? []) {
-          const before = new Set((await seen()).map((f: any) => f.coFieldId));
-          await s.call("v2/co/add-co-field-to-simple", { coId, draftId }, [await link(at.links[0])]);
-          const fresh = (await seen()).filter((f: any) => !before.has(f.coFieldId));
-          if (fresh.length !== 1) throw new Error(`add-co-field-to-simple made ${fresh.length} attributes, expected 1 (the source field may be linked already)`);
+          // the reply lists the attributes it made (§5e)
+          const fresh = (await s.call("v2/co/add-co-field-to-simple", { coId, draftId }, [await link(at.links[0])])) ?? [];
+          if (!Array.isArray(fresh) || fresh.length !== 1) throw new Error(`add-co-field-to-simple made ${fresh.length} attributes, expected 1 (the source field may be linked already)`);
           const coFieldId = fresh[0].coFieldId;
           if (at.links.length > 1) await s.call("v2/co/add-co-field-to-composite", { coId, draftId, coFieldId }, await Promise.all(at.links.slice(1).map(link)));
           if (at.label) await s.call("v2/co/change-co-field-label", { coId, draftId, coFieldId, label: at.label });

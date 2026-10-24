@@ -3699,8 +3699,9 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
   reference, `questionnaires`, `progressSteps`, `fieldTabs`, a checklist's `defaultValue`, `params`; the stand keeps
   that payload as given. **It does not drive what the registry shows**: each cell of the composite's registry
   comes from the SOURCE record's own field, so a dropdown, radio or checklist shows the option of its source even
-  when the attribute's option list lacks it. Different option sets per source are therefore harmless. An attribute
-  merging fields of DIFFERENT types is not known yet `[U]` — keep one type per attribute.
+  when the attribute's option list lacks it. Different option sets per source are therefore harmless. **Keep one
+  type per attribute**: the platform refuses to merge fields of DIFFERENT types into one attribute
+  (`IllegalFieldType`, `MYBPM-UI-API.md` §5e) `[C]`; what an import does with such `boFieldCodes` is not known `[U]`.
 - **The registry columns are all attributes except `STATIC_TEXT` and `TAB_GROUP`** `[C]` — those two may be
   attributes but are never shown. A source not linked to an attribute leaves its cell empty.
 - **An export of a composite gives every attribute a fresh `newId`** `[C]` — the payload is otherwise the archive
