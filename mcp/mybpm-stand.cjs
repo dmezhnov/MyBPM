@@ -791,7 +791,8 @@ async function exportBos(s, ids, o = {}) {
   const others = {
     menuItems: await s.call("struct/count-menu-export-records"),
     globalMethods: await s.call("struct/load-export-is-global-methods"),
-    settingsKinds: await s.call("struct/count-settings-export-kinds")
+    settingsKinds: await s.call("struct/count-settings-export-kinds"),
+    reportItems: await s.call("struct/count-report-export-records")
   };
   if (saved.length)
     await s.call("struct/remove-bo-export-records", {}, saved.map((r) => r.boId));
@@ -2764,7 +2765,7 @@ var tools = [
   },
   {
     name: "structure_export",
-    description: "Export BOs' structure to a .mybpm.zip on this machine (R4a / R8): puts exactly these BOs into the server-side export basket, exports, then puts the user's own basket back. Returns the file path and a summary (DTO tally, BOs), not the JSON — read the file if you need it. Menu items / global methods / settings already selected in the user's other baskets come along and are reported.",
+    description: "Export BOs' structure to a .mybpm.zip on this machine (R4a / R8): puts exactly these BOs into the server-side export basket, exports, then puts the user's own basket back. Returns the file path and a summary (DTO tally, BOs), not the JSON — read the file if you need it. Menu items / report groups / global methods / settings already selected in the user's other baskets come along and are reported (alsoInBaskets).",
     props: {
       boIds: { type: "array", items: { type: "string" } },
       codes: { type: "array", items: { type: "string" } },

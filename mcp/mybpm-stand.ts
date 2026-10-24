@@ -599,8 +599,8 @@ async function exportBos(s: Stand, ids: string[], o: { rights?: boolean; scripts
   }));
   const saved = (await s.call("struct/load-bo-export-records", { offset: 0, limit: 1000 })) ?? [];
   const others = { menuItems: await s.call("struct/count-menu-export-records"), globalMethods: await s.call("struct/load-export-is-global-methods"),
-    settingsKinds: await s.call("struct/count-settings-export-kinds") };
-  // remove-bo-export-records, not clear-export-records: clear also empties the menu and settings baskets (R4a step 6)
+    settingsKinds: await s.call("struct/count-settings-export-kinds"), reportItems: await s.call("struct/count-report-export-records") };
+  // remove-bo-export-records, not clear-export-records: clear also empties the menu, settings and report baskets (R4a step 6)
   if (saved.length) await s.call("struct/remove-bo-export-records", {}, saved.map((r: any) => r.boId));
   try {
     await s.call("struct/save-bo-export-records", {}, records);
@@ -2116,7 +2116,7 @@ const tools: Tool[] = [
     } },
 
   // 4. export
-  { name: "structure_export", description: "Export BOs' structure to a .mybpm.zip on this machine (R4a / R8): puts exactly these BOs into the server-side export basket, exports, then puts the user's own basket back. Returns the file path and a summary (DTO tally, BOs), not the JSON — read the file if you need it. Menu items / global methods / settings already selected in the user's other baskets come along and are reported.",
+  { name: "structure_export", description: "Export BOs' structure to a .mybpm.zip on this machine (R4a / R8): puts exactly these BOs into the server-side export basket, exports, then puts the user's own basket back. Returns the file path and a summary (DTO tally, BOs), not the JSON — read the file if you need it. Menu items / report groups / global methods / settings already selected in the user's other baskets come along and are reported (alsoInBaskets).",
     props: { boIds: { type: "array", items: { type: "string" } }, codes: { type: "array", items: { type: "string" } },
       rights: { type: "boolean", description: "Include AccessStructDto" }, scripts: { type: "boolean", description: "Include scripts" },
       out: { type: "string", description: "Directory for the file (default ~/Downloads, else ~/.cache/mybpm/exports)" } },
