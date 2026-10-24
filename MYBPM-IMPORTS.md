@@ -262,7 +262,7 @@ build it; 0.2a applies only when a **stand id or a stand code** is what is missi
 and a process have rules of their own — 0.17.
 
 Two more rules that need no asking, they are absolute: `Person` / `Department` / `PersonGroup` are
-reserved codes (§6, import dies with «Несоответствие типов объектов»); never use `Company` either — it is the «Аккаунт» BO, invisible to every login but `root`, and whether a BO of that code clashes is `[U]`, and an `AccessStructDto` follows its
+reserved codes — never a BO of your own (§6, import dies with «Несоответствие типов объектов»); a line with one of them is the built-in BO itself, changed only on its export (§6 «Built-in BOs»); never use `Company` either — it is the «Аккаунт» BO, invisible to every login but `root`, and whether a BO of that code clashes is `[U]`, and an `AccessStructDto` follows its
 case of 0.9 rule 10 — it REPLACES the rights set on the stand: carried over on an amendment, absent on a
 blind update unless the user asks, always present for a new BO. The user
 reads ids and codes off the stand (`MYBPM-UI-API.md` R4); an id may start with `~` or contain `@` — copy it
@@ -289,11 +289,11 @@ job is then the whole spec, not «the BOs the spec names». Do these steps in th
 
    | Route | What goes there | Built by |
    |---|---|---|
-   | an archive line | BOs, dictionaries AND their values, fields, links between BOs, tabs and layout, kanban card templates, the menu | 0.3–0.5d, 0.2c |
+   | an archive line | BOs, dictionaries AND their values, fields (on a built-in BO too — on its export, §6 «Built-in BOs»), links between BOs, tabs and layout, kanban card templates, the menu | 0.3–0.5d, 0.2c |
    | a hook script in the archive | computed fields and totals (stock, reserve, balance = a sum over lines), auto-fill, «when X is saved, set Y» | 0.2c step 7, §5d, Part II |
    | a business process in the archive | a path someone RUNS step by step, with forms and branches (approval) | 0.18, §5c |
    | an xlsx after the import | initial records of working BOs (clients, cars, stock) | Part III, 0.2d |
-   | stand-only | rights by role, users and groups, a field on a built-in BO | 0.2d |
+   | stand-only | rights by role, users and groups | 0.2d |
    | not expressible | reports and dashboards, SMS / telephony, anything 0.2d lists | 0.2d |
 
 2. **Model the objects by 0.2c** — every link between two objects of the spec becomes a `BO` field (0.5a),
@@ -406,7 +406,6 @@ your own.
 | A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5c) | not built — say so; a hook on save or a manually started process is the working route |
 | A guard: forbid a save or a status change until a condition («без согласования нельзя начать работы») | no hook that refuses a save or rolls a status back is known `[U]` (§5d) | a path someone RUNS step by step → a business process with an approval branch (0.18); a value that must be there → «Обязательное» (`isRequired`, 0.5); otherwise not built — say so |
 | Users, departments, groups, companies | they are RECORDS of the built-in BOs `Person` / `Department` / `PersonGroup` / `Company` (reserved codes, 0.2a; `Company` only for the `root` login), not structure; an archive carries an org unit only as an `ExportStructInstanceDto` next to the rights or settings that name it; it never CREATES a unit — an unknown one must be mapped onto an existing unit before the apply, and the import writes the archive's name onto that unit (§8) `[C]` | records: an xlsx of records (Part III; group membership from the group side) or the stand by hand; a new user e-mails an invitation (§3) |
-| A field on a built-in BO (`Person`) | untested `[U]` (§6 «Built-in BOs») | the constructor, by hand |
 | Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1) |
 
 ### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code`, `orderIndex` and the two ids)
@@ -527,7 +526,7 @@ Keys a stand export carries that no section here describes — copy them from an
 write them yourself: `accessGroupStruct`, `accessRightsInstanceSource`, `accessSetType`,
 `scriptInstanceSource`, `settingsInstanceSource`, `settingsKind`, `defaultValueEng`, `defaultValueKaz`,
 `defaultValueQaz`, `inSlotsCount`, `outSlotsCount`, `labelDeltaX`, `labelDeltaY`, `needDisableTabs`,
-`showAsStepper`, `columns`, `businessObjectCode`.
+`showAsStepper`, `columns`, `businessObjectCode`, `labelEng`, `labelKaz`, `labelQaz` (an option's label in that language).
 
 ### 0.4b Where each key sits
 
@@ -568,7 +567,7 @@ BoStructDto currentUser.*: code fieldRefs gridPosition label newId tabCode type 
 BoStructDto dynamicFields.*: archetype boFieldCodes boRefStruct bracketFilter chosenAccessRight code copyFromFieldCode dateOnlyFuture dateOnlyPast defaultValue defaultValueEng defaultValueKaz defaultValueMap defaultValueQaz fieldOptionsStruct fieldTabs gantTableLocations gridPosition groupingInfo hideLabel inMigrationTimezoneMinutes isAppendable isClickable isCodeReadonly isHeightDynamic isHistoryTracking isKindAddForSelect isProgressBarSticky isReadonly isRequired isRequiredAll isSelectOnly isSeparated isSystem isUnique kind label linkedCoSettings maxLength needAddToParticipants needChangeParentBoByLinkedBo needFreezeWhenScroll needLoadFromInTables needMarkNew needShowToCalendar needTrackStatus needUploadToOutTable newId oldRefBoId params progressSteps questionnaireIsMultiple questionnaires removeType staticValue tabCodePath tableColOrderIndex tableColToShow tableWidth textCase titleOrderIndex titleToShow trackedFieldCode type unacceptableValue useAsKeyInMigration viewType
 BoStructDto dynamicFilters.*: boiIds businessObjectCode fieldCode fromFieldCodes isCurrentUser isEmptyValue numberFrom numberTo type value
 BoStructDto fieldCodes.*: archetype boRefCode fieldCode fieldCodes ownerFieldArchetype
-BoStructDto fieldOption: code color hiddenInKanban label orderIndex
+BoStructDto fieldOption: code color hiddenInKanban label labelEng labelKaz labelQaz orderIndex
 BoStructDto fieldOptionsStruct: dictionaryBoInfo dictionaryOptionSetting optionSource options
 BoStructDto fieldRefs.*: gridPosition orderIndex tableWidth toShow
 BoStructDto fieldTabs.*: chosenAccessRight code isDefault isRight label newId orderIndex
@@ -1473,7 +1472,8 @@ const RM = /^(STRIKETHROUGH|HIDE|DISCONNECT)$/, DEF_ICON = [], DV = [];
 L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|access\.AccessStructDto)$/.test(o["@class"])
   || fatal(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
 const groups = of("BoGroupStructDto"), order = new Set(), gcodes = new Set(), noBo = !bos.length && (menu.length || gm.length || of("CompanySettingsStructDto").length); // menu lines, global methods or company settings alone (§5d, §5e)
-if (!noBo && !groups.length) fatal(`no BoGroupStructDto line (0.3)`);
+const BUILT = new Map([["Person", "PERSON"], ["Department", "DEPARTMENT"], ["PersonGroup", "PERSON_GROUP"]]); // a built-in BO's line sits in no group (§6 «Built-in BOs»)
+if (!noBo && !groups.length && (!bos.length || bos.some((b) => !BUILT.has(b.code)))) fatal(`no BoGroupStructDto line (0.3)`);
 if (!noBo && !bos.length) fatal(`no BoStructDto line (0.4)`);
 for (const g of groups) {
   if (!g.code) fatal(`group «${g.name}»: no code — renames a fixed stand group (0.9 rule 1)`);
@@ -1515,15 +1515,16 @@ for (const bo of bos) {
   if (!CODE.test(b ?? "")) fatal(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
   else name("BO", b, ...OBJ);
   id(b, bo.oldId);
-  const miss = BOK.filter((k) => !(k in bo) && !(k === "instanceViewType" && cat === "BO_PANEL"));
+  const miss = BOK.filter((k) => !(k in bo) && !(k === "instanceViewType" && cat === "BO_PANEL") && !(k === "boGroupOldId" && BUILT.has(b)));
   if (miss.length) err(`${b}: keys missing — ${miss.join(", ")}; ship every key of 0.4 (0.9 rule 6)`);
   if (!/^BO(_DICTIONARY|_PANEL|_COMPOSITE|_PROCESS)?$/.test(cat)) fatal(`${b}: category ${cat} — BO, BO_DICTIONARY, BO_PANEL, BO_COMPOSITE or BO_PROCESS (0.17)`);
-  if (["Person", "Department", "PersonGroup"].includes(b)) fatal(`${b}: a built-in BO's code — the import dies «Несоответствие типов объектов» (0.2a)`);
+  if (BUILT.has(b) && bo.kind !== BUILT.get(b)) fatal(`${b}: a built-in BO's code — its line must carry "kind": "${BUILT.get(b)}": without kind the import erases the BO's kind and breaks the company, a BO of your own with this code dies «Несоответствие типов объектов» (§6 «Built-in BOs»)`);
+  if (BUILT.has(b) && "boGroupOldId" in bo) err(`${b}: a built-in BO sits in no group — no boGroupOldId on its line (§6 «Built-in BOs»)`);
   if (typeof bo.name?.rus !== "string") err(`${b}: name is not {"rus": "…"} (0.4)`);
   for (const k of ["bos", "printForms", "dictionaryFields"]) if (k in bo && !Array.isArray(bo[k])) err(`${b}.${k}: must be a list [] (0.9 rule 5)`);
   for (const k of ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W])
     if (k in bo && (!bo[k] || typeof bo[k] !== "object" || Array.isArray(bo[k]))) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo[k])} — the stand drops the whole BO (0.9 rule 5)`);
-  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
+  if (!BUILT.has(b) && !groups.some((g) => g.oldId === bo.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
   for (const [c, t] of all(bo.kanbanCardTemplates)) {
     if (!t?.kanbanFields || typeof t.kanbanFields !== "object" || Array.isArray(t.kanbanFields)) err(`${b}: kanbanCardTemplates.${c} must be {"kanbanFields": {…}} — without the wrapper the import sets nothing (0.5c)`);
     else for (const k of Object.keys(t.kanbanFields)) if (!df[k] && !bo.nativeFields?.[k]) err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`);
@@ -4378,10 +4379,23 @@ only, write `email` and `personGroup` as explicit `toShow:false` — because imp
 ### Built-in BOs
 
 Codes `Person`, `Department`, `PersonGroup` are taken — a user BO coded `Department` failed import with
-«Несоответствие типов объектов» `[C]`. **Never reuse them.** No export contains a
-`BoStructDto` for a built-in BO; they appear only as ids in CompanyMetadata. Do not synthesize one (risk
-of overwriting built-in fields). To add a field to a built-in BO, do it by hand in the constructor;
-exporting its real structure and appending to that DTO is untested `[U]` — §18.
+«Несоответствие типов объектов» `[C]`. **Never give them to a BO of your own.**
+
+**A field on a built-in BO travels on that BO's export** `[C]` for `Person`, `[I]` for `Department` and
+`PersonGroup`: the export basket offers the built-in BOs, and the export carries a `BoStructDto` for each —
+`kind` `PERSON` / `DEPARTMENT` / `PERSON_GROUP`, no `boGroupOldId` (a built-in BO sits in no group, so the
+archive needs no group line), every built-in field with its own `kind` (`PERSON_SURNAME` …) and
+`"isSystem": true`. Add the new field entry to that line exactly as on any existing BO (0.7 case 1: a new
+`newId`, `"kind": "GENERAL"`, `"isSystem": false`) and import it: the importer finds the built-in BO by its
+`code` — the line's `oldId` need not be the stand's id — adds the field and leaves the built-in fields as
+they are (fields the line leaves out stay too, §8). Delete such a field in the constructor or by
+`deletedFieldIds` (`MYBPM-UI-API.md` R1).
+
+**The line must carry its `kind`** `[C]`: a `Person` line WITHOUT `kind` passes the analysis, then the apply
+erases the BO's kind — the company's «Пользователи» stop loading (`load-business-object-by-id` fails), and
+the rollback and every later import fail on the same lookup; only a direct repair in the database brings it
+back. Never build a built-in BO's line from the template of 0.4 either: it resets its header settings
+(0.2a «To CHANGE a BO»). The form lint (0.10) stops a built-in code whose `kind` is not the built-in one.
 
 ## 7. Access rights inside the archive (`AccessStructDto`)
 
@@ -6796,7 +6810,8 @@ Archive:
    by `code`, never by name (§0.3, §8). Rollback does not undo the rename.
 7. `removeType: STRIKETHROUGH` is on every field and means nothing.
 8. `oldRefBoId` never equals the target's `oldId` — not a bug.
-9. Built-in codes `Person` / `Department` / `PersonGroup` are reserved; a clash fails the whole import (`Company` — the
+9. Built-in codes `Person` / `Department` / `PersonGroup` are reserved; a clash fails the whole import, and a line of the built-in
+   BO itself without its `kind` breaks the company's users (§6 «Built-in BOs») (`Company` — the
    «Аккаунт» BO, invisible to every login but `root` — never use it either; whether it clashes is `[U]`).
 10. The form grid compacts vertically — holes are eaten and rows drift.
 11. A STATIC_TEXT section heading must not repeat a field name (breaks Excel import).
@@ -6914,8 +6929,6 @@ here; the rules themselves are §0X.4.
   constructor, export, re-import onto a copy, open «Добавить» and read the draft value.
 - `[U]` The archive shape of `calendarCardTemplates` and `timelineTemplates` — check: set each in the
   constructor («Календарь» hover card, «Диаграмма Ганта» columns), export, re-import onto a copy.
-- `[U]` A field added to a built-in BO (Person) through its archive line — check: on a scratch field, export
-  Person's structure if the basket offers it, append a field, import, read `load-business-object-by-id`.
 - `[U]` A key that sets the order of dictionary rows in a dropdown (0.5b) — check: ship rows with an `orderIndex`
   at the line level, open the dropdown.
 - `[U]` Whether a re-import UNWIRES a hook it omits / nulls in `workScripts`, or REMOVES a local method it

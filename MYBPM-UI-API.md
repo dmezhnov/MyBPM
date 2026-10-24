@@ -1491,6 +1491,14 @@ are `isSystem` and carry a field `kind` of their own (a company's added fields h
 A company may hang hooks on these BOs like on any other (`hasScript`), so a test record of them runs the company's
 own scripts.
 
+**A company adds fields of its own to them** `[C]` like to any BO — the constructor, `save-business-object-portion`
+(`bo_fields_save`) — and deletes them the same way; such a field has `kind: GENERAL`, `isSystem: false` and holds
+values like any field, while the built-in fields are `fieldReadonly: true` (their settings are not editable).
+The export basket offers the built-in BOs (R4a, `load-un-exported-bo-records`), and an archive adds a field to
+one on its export line — that line must keep its `kind` (`PERSON` …): a `Person` line without `kind` passes the
+analysis, then the apply erases the BO's kind, «Пользователи» stop loading and the rollback and every later
+import fail, until the kind is put back in the database (`MYBPM-IMPORTS.md` §6 «Built-in BOs»).
+
 **A fourth built-in BO — «Аккаунт» (code `Company`, BO kind `COMPANY`)** `[C]`: the list of the COMPANIES (tenants)
 of one domain — a stand may hold several, each a record of it, and **a record's id IS that company's `companyId`**
 (the one `stand_list` / the session gives). Only the special account with the login `root` sees and edits this BO;
@@ -6836,8 +6844,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   field feeds a kanban or a menu item (`load-field-usage` not empty); nested tab groups (a `TAB_GROUP` on a tab); what `deletedFieldOptionIds` /
   `deletedFieldTabIds` / `deletedFieldProgressStepIds` do to records holding them (delete one, re-read a record);
   `calendarCardTemplates` / `timelineTemplates` through an archive (export shape, re-import onto a copy).
-- A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
-  field, then delete it.
 - Processes: does a `SCHEDULED` run way ever fire (`startTime` a few minutes ahead, poll for a new process
   record); a process local method called from a Script figure, and whether publishing or copying a version
   carries it; what `go` does on a DEV record standing in a Form; a Form timer (`createTimer` 1 min, watch
