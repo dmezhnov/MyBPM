@@ -608,6 +608,7 @@ MenuItemStructDto boPages: calendarIndex groupingIndex isCalendarEnabled isGroup
 MenuItemStructDto bracketFilter: boCode brackets type
 MenuItemStructDto brackets.*: connectionType dynamicFilters nativeFilters notType order parentTreeIds
 MenuItemStructDto nativeFilters.*: isCurrentUser isEmptyValue orgUnitIds type
+ReportGroupStructDto (top): @class groupKey isGeneral name nameEng nameKaz nameQaz
 ScriptDefStructDto (top): @class blocks compositeId expressions
 ScriptDefStructDto args.*: exprId name order
 ScriptDefStructDto blocks.*: @class bodyBlockId branches downBlockId elementVarName exitType ifExprId leftExprId methodName params returnExprId returnType rightExprId srcExprId targetArrowId thenBlockId valueExprId varName x y
@@ -2942,6 +2943,11 @@ from a spec reads §0 and nothing else of Part I.
   `ScriptDefStructDto`s followed by one `CompanyGlobalMethodsStructDto` (§5d «Company-global methods» —
   importing it REPLACES the stand's whole list). A one-BO export
   = 3 lines + its `AccessStructDto` if any. `[C]`
+- **A report group** (the export page's «Аналитика» basket) is one `ReportGroupStructDto` line `[C]` — the
+  general group:
+  `{"@class":"kz.greetgo.mybpm.reg.structure.model.dto.ReportGroupStructDto","groupKey":"GENERAL","name":"Общая группа","nameEng":"General group","nameKaz":"Жалпы топ","nameQaz":"Jalpy top","isGeneral":true}`.
+  What an import does with it is unverified `[U]` — leave such a line out of an archive you build; in an
+  export you amend, keep it as it is.
 - `CompanyMetadataStructDto` carries the company ids `personBoId`, `departmentBoId`, `personGroupBoId`
   (different per company). It has **no** stand host/URL, so record the stand URL in project memory.
   CompanyMetadata ids copied from another company import fine, and the line can be left out. `[C]`
@@ -2976,9 +2982,11 @@ subheading. A build from a spec skips it.
 #### Taking a fresh export — the minimum `[C]`
 
 Taking an export is a stand operation (`MYBPM-UI-API.md` §5 «Export tab», R4a). For the file it means: the
-export page has four baskets — «Бизнес-объекты», «Элементы меню», «Аналитика», «Настройки» — and each BO row
-three checkboxes **Структура / Права доступа / Скрипты** = the `BoStructDto` / `AccessStructDto` /
-`BoScriptVersionsStructDto` + `ScriptDefStructDto` lines. An export pulls in no BO line for menu items'
+export page has four baskets — «Бизнес-объекты», «Элементы меню» (`MenuItemStructDto`), «Аналитика» (report
+groups, `ReportGroupStructDto`), «Настройки» (one `CompanySettingsStructDto` per ticked kind; its last box,
+«Глобальные методы», adds the company-global methods, §5d) — and each BO row three checkboxes **Структура /
+Права доступа / Скрипты** = the `BoStructDto` / `AccessStructDto` / `BoScriptVersionsStructDto` +
+`ScriptDefStructDto` lines. An export pulls in no BO line for menu items'
 BOs, and unconfirmed dependencies do not block it — the archive holds only what the baskets hold.
 
 ### What an export carries per BO — the map list `[C]`

@@ -544,15 +544,21 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 | 5 | `struct/export-company-structure` | params `{processId}`, body `{}` | the response body IS the `.mybpm.zip` |
 | 6 | `struct/remove-bo-export-records` | **body** = an ARRAY OF `boId` STRINGS | take out what you added, put back what you took out |
 
+- **The three flags of a record already in the basket** change one at a time: `struct/change-export-is-access-rights`
+  P `{boId, value}` `[C]` (what the row's «Права доступа» box sends; the screen keeps at least one flag on).
+  The BOs not yet in the basket: `v2/business-objects/load-un-exported-bo-records {}` → `[{id, name, boCategory,
+  kind, hasScript, isSelected, boFieldRecords}]` `[C]`.
+
 - **An export taken right after a rights write may come out without the `AccessStructDto`** `[I]` (the same
   late write as R5's read-back): check the DTO tally and export again.
 - **Read the basket first and restore it afterwards** — it is the user's own selection on the
   «Импорт/Экспорт» screen, not scratch space. Take out only the user's BOs (`remove-bo-export-records` with their
   ids), add yours, export, remove yours, save the user's records back.
-- **`struct/clear-export-records` `{}` empties EVERY basket** `[C]` — the BOs, the menu items and the ticked
-  company settings, not only the BO basket; the «Глобальные методы» switch stays as it was. An export that
-  clears first loses the user's menu items and settings and exports without them. Use it only when the user
-  asked for an empty basket.
+- **`struct/clear-export-records` `{}` empties EVERY basket** `[C]` — the BOs, the menu items, the report
+  groups and the ticked company settings, not only the BO basket; the «Глобальные методы» switch stays as it was.
+  An export that clears first loses the user's menu items, reports and settings and exports without them. Use it
+  only when the user asked for an empty basket. It is also what the BO basket's «Очистить все» sends (trap 87).
+  Each other basket has a clear of its own (below).
 - **Both basket writes work over the API** `[C]`: **`remove-*` takes an array of id STRINGS**
   (`["zm8ufIOguCPru0bu"]`), not the records that `save-*` takes. Sending records to `remove-*` — with or
   without the `isMenuExport:true` flag the basket adds — gives HTTP 400 «Failed to read request».
@@ -567,16 +573,24 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
   those rows. Steps 4–5 then export BOTH baskets together; a menu item comes out as a `MenuItemStructDto`
   line (`MYBPM-IMPORTS.md` §5e). The export pulls in no BO line for the items' BOs — only what the BO
   basket holds.
-- The same set exists for the report basket, unexercised `[U]`: `count/load/save/remove/clear-report-export-records`,
-  `load-unexported-report-records`.
+- **Report groups («Аналитика») have a basket of their own** `[C]` — the same set with `report` in the name:
+  `struct/count-report-export-records`, `load-report-export-records {paging}`, `save-report-export-records`
+  (an ARRAY of picker rows + `isReportExport: true`), `remove-report-export-records` (array of `recordId`
+  strings), `clear-report-export-records`, and the picker `struct/load-unexported-report-records {}` →
+  `[{recordId, type: "GROUP", code, displayName, groupId, groupName, isGeneral}]`. A group exports as one
+  `ReportGroupStructDto {groupKey, name, nameEng, nameKaz, nameQaz, isGeneral}` line (the general group:
+  `groupKey: "GENERAL"`, `isGeneral: true`); what an import does with it is unverified `[U]`
+  (`MYBPM-IMPORTS.md` §1 «Zip layout and parsing»).
 - **The «Глобальные методы» switch** `[C]`: `struct/load-export-is-global-methods {}` → `true|false`,
-  `struct/change-export-is-global-methods` P `{value}`. With it on (and every basket empty) steps 4–5 export
+  `struct/change-export-is-global-methods` P `{value}` — on screen it is the last box of the «Настройки» list
+  (§5 «Export tab»). With it on (and every basket empty) steps 4–5 export
   `CompanyMetadataStructDto` + one `ScriptDefStructDto` per global method + one `CompanyGlobalMethodsStructDto`
   (`MYBPM-IMPORTS.md` §5d «Company-global methods»: an import REPLACES the stand's whole list and does not
   refresh the running copy — §5g). Switch it back off afterwards — it is the user's selection.
 - **The company-settings basket** `[C]`: `load-settings-export-kinds` → `[{kind, selected}]` (14 kinds),
   `change-settings-export-kind` **P** `{kind, value}` (in B it does nothing), `count-settings-export-kinds`,
-  `clear-settings-export-kinds`. A ticked kind exports as one `CompanySettingsStructDto {kind, payloadJson}` line;
+  `clear-settings-export-kinds` (the «Очистить все» of «Настройки» sends it AND switches «Глобальные методы» off).
+  A ticked kind exports as one `CompanySettingsStructDto {kind, payloadJson}` line;
   see §5o (`SCRIPT_SETTINGS`) and §5n «Every kind of the settings basket».
   Untick it afterwards — it is the user's selection too.
 - Getting the bytes OUT of the browser: fetch the zip inside the page and POST the `arrayBuffer` to a
@@ -780,7 +794,8 @@ MCP connected → `structure_export` (§0U.8) does steps 1–3 for the BOs you n
 1. Pick what to export. The export basket is **server-side, persisted state** — it still holds whatever
    was selected in some earlier session. In the UI:
    `/settings?settingsOpenPageUrl=import_export&formType=export`, the grey ⊕ right of «Бизнес-объекты (N)»
-   adds BOs, the row's trash icon removes them (unticking in the ⊕ dropdown does NOT).
+   adds BOs (it lists only the BOs not yet in the basket and saves the ticks when it closes), the row's trash
+   icon removes one.
 2. `POST /web/v2/process-indicator/pre-create-process` — `P {}` → `processId`.
 3. `POST /web/struct/export-company-structure?processId=<id>` with body `{}` → the zip bytes;
    `Content-Disposition` carries the generated name. **Under browser automation the «Выгрузить» button's
@@ -1253,7 +1268,7 @@ do is plain HTTP by §0U.4.
 | `import_cancel` ✎ | drops an analysed import; `remove` also hides its log row; refuses an `APPLIED` import (trap 81) | §5 «Import through the API» |
 | `import_rollback` ✎ | the rollback preview; with `confirm` the rollback | §5 «Rollback trap» |
 | `import_log` | the import log and the open import | `load-import-file-records`, `load-import-state` |
-| `structure_export` | exactly these BOs into the export basket, the file to the user's disk, the user's basket put back | R4a, R8 |
+| `structure_export` | exactly these BOs into the export basket, the file to the user's disk, the user's basket put back; what the user's other baskets hold (menu items, report groups, settings, global methods) comes along and is reported | R4a, R8 |
 | `bo_create` ✎ | a BO / dictionary / panel / process BO with its fields laid out, coded, window set, read back | R1 steps 1–8 + «Layout», rule 4 + 12 |
 | `bo_fields_save` ✎ | add, edit, delete fields of an existing BO in one save; a key the tool does not name goes inside `set`, an unknown one is refused | R1 step 7, §5h |
 | `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
@@ -2102,23 +2117,52 @@ block). The page then does
 
 ### Export tab
 
-- Layout `[C]`: **four baskets, each with its own grey ⊕** —
-  «Бизнес-объекты (N)», «Элементы меню», «Аналитика», «Настройки». Each basket has
-  an API (§0U R4a). The BO basket has «Очистить все» — each row labelled **`<группа БО>/<имя БО>`** (e.g.
-  «Бизнес-объект/БО с текстом») with three checkboxes **Структура / Права доступа / Скрипты** (they decide
-  which DTO lines the archive gets: `BoStructDto` / `AccessStructDto` / `BoScriptVersionsStructDto` +
-  `ScriptDefStructDto`, `MYBPM-IMPORTS.md` §5d) and two
-  per-row icons; a right pane **«Зависимости:»** («Зависимости не найдены» when none); button **«Выгрузить»**.
-- The basket is PERSISTED state — it keeps a selection from an earlier session. Check/clear it
+- Layout `[C]`: **four baskets** — «Бизнес-объекты», «Элементы меню» and «Аналитика» each with a grey ⊕ right of
+  the caption, «Настройки» with a chevron instead; a right pane **«Зависимости:»** («Зависимости не найдены» when
+  none); button **«Выгрузить»**. A filled basket's caption carries its count — «Бизнес-объекты (N)» — and a link
+  **«Очистить все»** at its right; an empty basket shows the caption alone. Each basket has an API (§0U R4a); the
+  page loads with `struct/load-report-export-records {paging}`, `v2/business-objects/load-business-object-groups
+  {forEdit:false}` and `v2/business-objects/load-un-exported-bo-records {}`.
+- The baskets are PERSISTED state — they keep a selection from an earlier session. Check/clear them
   before exporting so you do not ship someone else's selection.
-- **BOs get into the basket through the grey ⊕ right of the «Бизнес-объекты (N)» caption** `[C]`
- : it opens a dropdown «Какой элемент хотите найти?» — a search box over ALL BOs of the
-  company with a checkbox per row plus «Выбрать все». Ticking a row adds it to the basket immediately
-  (the counter goes up); the dropdown does not close on Escape — click elsewhere on the page.
-  The sidebar's drop hint «перетащите бизнес объекты сюда» belongs to the MENU editor, not here.
-- **To take a BO OUT of the basket use the row's trash icon**, not the ⊕ dropdown `[C]`: unticking the
-  row there does NOT remove it. The trash icon asks «Удаление элемента — Удаление элемента `<имя БО>`»
-  with ДА / НЕТ; ДА only drops it from the basket — **the BO itself is untouched**. The other per-row icon is a collapse chevron.
+- **The ⊕ pickers** (БО, меню, Аналитика) `[C]` open a popover «Какой элемент хотите найти?» — a search box,
+  «Выбрать все» and a checkbox per item **NOT yet in that basket**: an item already in the basket is not listed, so
+  the picker only adds. **Ticking saves nothing; ONE save of every ticked row goes when the popover closes** — click
+  elsewhere on the page (Escape does not close it). The sidebar's drop hint «перетащите бизнес объекты сюда»
+  belongs to the MENU editor, not here.
+  - БО: source `v2/business-objects/load-un-exported-bo-records {}` → `[{id, name, boCategory, kind, hasScript,
+    isSelected, boFieldRecords}]` + the groups; on close `struct/save-bo-export-records` BODY `[{boId, boName,
+    boCategory, hasScript, isStructureExport: true, isAccessRightsExport: true, isScriptsExport: false}]`.
+  - Элементы меню: source `struct/load-unexported-menu-records {}`; the labels are localized (code `analytic` →
+    «Аналитика», `business_objects` → «Бизнес», `company` → «Компания», `settings` → «Настройки»); on close
+    `struct/save-menu-export-records` BODY = the picked rows + `isMenuExport: true`.
+  - Аналитика: source `struct/load-unexported-report-records {}` → report groups, each row «Группа отчётов/<имя>»;
+    on close `struct/save-report-export-records` BODY = the picked rows + `isReportExport: true`.
+  - Each save is followed by `load-*-export-records`, `count-*-export-records` and `struct/load-bo-dependencies {}`.
+- **A BO row** reads **`<группа БО>/<имя БО>`** (e.g. «Бизнес-объект/БО с текстом») with three checkboxes
+  **Структура / Права доступа / Скрипты** — they decide which DTO lines the archive gets: `BoStructDto` /
+  `AccessStructDto` / `BoScriptVersionsStructDto` + `ScriptDefStructDto`, `MYBPM-IMPORTS.md` §5d. A click saves at
+  once: «Права доступа» → `struct/change-export-is-access-rights` P `{boId, value}` `[C]`. «Скрипты» is disabled
+  on a BO without a script, and **the last ticked box of a row is disabled** — a row exports at least one part. The
+  row also has a collapse chevron and a trash icon.
+- **The trash icon takes ONE item out of its basket** `[C]` — confirm «Удаление элемента — Удаление элемента
+  `<имя>`» (for a menu item the confirm names its CODE, e.g. «company», not the label) with ДА / НЕТ; ДА →
+  `struct/remove-{bo,menu,report}-export-records` BODY `["<id>"]` — **the item itself is untouched**.
+- **«Настройки»** `[C]`: the chevron expands an inline list of 15 checkboxes (no popover, no call): the 14
+  settings kinds — Поддержка языков, Мобильное приложение, Физическое удаление, Телефония, Оффлайн режим,
+  IN Миграция, OUT Миграция, Мессенджеры, OTP-аутентификация, Навигатор, Аудиторский след, Мониторинг миграции,
+  Выставление сервисов, Внешний вид — and, last, **«Глобальные методы» — this is the global-methods switch**
+  (there is no separate one on this tab). A tick saves at once: a kind → `struct/change-settings-export-kind`
+  P `{kind, value}`, «Глобальные методы» → `struct/change-export-is-global-methods` P `{value}`. The list scrolls
+  inside the left pane — the last rows are clipped until scrolled. **The caption «Настройки (N)» counts the ticked
+  kinds PLUS one for «Глобальные методы»**, while `count-settings-export-kinds` counts the kinds only.
+- **«Очистить все» is per basket, but the BO one clears them all** `[C]` — every one confirms «Удаление —
+  Удаление списка» ДА / НЕТ, then:
+  - Бизнес-объекты → `struct/clear-export-records` — on the server it empties EVERY basket (BOs, menu items,
+    settings kinds, report groups; «Глобальные методы» stays as it was), **while the screen keeps showing the
+    other baskets until a reload** (trap 87);
+  - Элементы меню → `struct/clear-menu-export-records`; Аналитика → `struct/clear-report-export-records`;
+  - Настройки → `struct/clear-settings-export-kinds` + `struct/change-export-is-global-methods {value: false}`.
 - **The whole screen has an API** — baskets + download, see §0U R4a; the basket writes included (`remove-*` takes id strings).
 
 ### Checking the result of a structure import
@@ -5930,6 +5974,14 @@ The stand's own behaviour under automation `[C]`:
   - **The confirm dialogs animate in** — a coordinate click right after one opens misses «Да»; click the element
     with that text (`.ok-btn`).
   - The confirm buttons are `div.btn.ok-btn` / `.no-btn`, not `<button>` — the accessibility tree lists only «Нет».
+- **The structure export screen** (§5 «Export tab»):
+  - **A ⊕ picker saves only when it closes** — after ticking, click outside the popover and wait for
+    `save-*-export-records` in the network log before reading the basket; Escape does not close it.
+  - **The «Настройки» list is clipped by the left pane** — scroll it before a coordinate click on the last rows
+    («Внешний вид», «Глобальные методы»), or click the checkbox element.
+  - The confirm dialogs animate in, as on the import screen — click «Да» by element after it has appeared.
+  - **After the BO basket's «Очистить все» the other baskets on screen are stale** (trap 87) — reload before
+    reading them from the DOM.
 
 ## 11. Traps and defects — the short list
 
@@ -6213,12 +6265,16 @@ The stand's own behaviour under automation `[C]`:
 84. **A rollback does not undo a conflict's rename** `[C]` — the apply wrote the archive's name onto the chosen group;
     the rollback deletes or restores the BOs but the group keeps the archive's name. Note the old name before
     resolving. §5 «Conflicts», `MYBPM-IMPORTS.md` §8.
-85. **`struct/clear-export-records` empties every export basket** `[C]` — BOs, menu items and the ticked settings
-    kinds; an export that starts with it loses the user's selection and exports without the menu and the
-    settings. Use `remove-bo-export-records` with ids. §0U R4a.
+85. **`struct/clear-export-records` empties every export basket** `[C]` — BOs, menu items, report groups and the
+    ticked settings kinds; an export that starts with it loses the user's selection and exports without the menu,
+    the reports and the settings. Use `remove-bo-export-records` with ids. §0U R4a.
 86. **A crashed structure analysis says nothing in the UI** `[C]` — the row reads «Возникла ошибка, при анализе
     импорта», the dialog's «Ошибки» is empty; the message (a Java exception) is only in `load-import-data` →
     `error`. §5 «The dry run as a VALIDATOR».
+87. **«Очистить все» of the BO basket clears every basket, and the screen hides it** `[C]` — it sends
+    `struct/clear-export-records` (trap 85); the menu, report and settings baskets stay on screen, ticks included,
+    until a reload, and «Выгрузить» then exports without them. Take BOs out with the row's trash icon, or reload and
+    rebuild the other baskets. §5 «Export tab».
 
 ## 12. Open questions
 
