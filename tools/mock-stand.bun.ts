@@ -37,7 +37,7 @@ function answer(path: string, params: any, body: any): any {
 
 // ── the MCP server's routes: a stateful import, export and bell ──────────────────────────────────────────
 type Bo = { id: string; code: string; name: string; boCategory: string; fields?: any[]; deleted?: boolean; co?: Co; window?: unknown; kanban?: Record<string, any> };
-type CoField = { coFieldId: string; label: string; code: string; links: { boId: string; fieldId: string }[] };
+type CoField = { coFieldId: string; label: string; code: string; type?: string; links: { boId: string; fieldId: string }[] };
 type Co = { sources: string[]; fields: CoField[] };
 const bos = new Map<string, Bo>(); // id → BO present on the stand
 const live = () => [...bos.values()].filter((b) => !b.deleted);
@@ -320,17 +320,30 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/co/load-bo-records-for-co": return drafts.get(params.draftId)!.sources.map((id) => ({ id, name: bos.get(id)?.name }));
     case "v2/co/load-bo-fields-for-co": return (bos.get(params.boId)?.fields ?? []).map((x) => ({ fieldId: x.fieldId, label: x.label, code: x.code, type: x.type }));
     case "v2/co/load-co-fields-simple": case "v2/co/load-co-fields-composite":
-      return drafts.get(params.draftId)!.fields.filter((x) => (x.links.length > 1) === route.endsWith("composite"));
+      return drafts.get(params.draftId)!.fields.filter((x) => (x.links.length !== 1) === route.endsWith("composite")); // no links → the composite list too
     case "v2/co/add-co-field-to-simple": {
       const d = drafts.get(params.draftId)!;
+      const made: any[] = [];
       for (const l of body) {
         const src = bos.get(l.boId)?.fields?.find((x) => x.fieldId === l.fieldId);
         if (!src || d.fields.some((x) => x.links.some((y) => y.fieldId === l.fieldId))) return fail("bad link");
-        d.fields.push({ coFieldId: nextId("COF"), label: src.label, code: `co_${src.code}`, links: [l] });
+        // the attribute takes the source field's code and label; the reply lists the new attributes, code null
+        const f = { coFieldId: nextId("COF"), label: src.label, code: src.code, type: src.type, links: [l] };
+        d.fields.push(f);
+        made.push({ ...f, code: null });
       }
-      return null;
+      return made;
     }
-    case "v2/co/add-co-field-to-composite": drafts.get(params.draftId)!.fields.find((x) => x.coFieldId === params.coFieldId)!.links.push(...body); return null;
+    case "v2/co/add-co-field-to-composite": {
+      // appends with dedup, refuses another field type, answers the updated attribute
+      const x = drafts.get(params.draftId)!.fields.find((y) => y.coFieldId === params.coFieldId)!;
+      for (const l of body) {
+        const src = bos.get(l.boId)?.fields?.find((y) => y.fieldId === l.fieldId);
+        if (src && x.type && src.type !== x.type) return fail(`IllegalFieldType: ${params.coFieldId} :: type1 = ${src.type}, type2 = ${x.type}`);
+        if (!x.links.some((y) => y.fieldId === l.fieldId)) x.links.push(l);
+      }
+      return x;
+    }
     case "v2/co/change-co-field-label": case "v2/co/change-co-field-code": {
       const x = drafts.get(params.draftId)!.fields.find((y) => y.coFieldId === params.coFieldId)!;
       if (params.label !== undefined) x.label = params.label; else x.code = params.code;
