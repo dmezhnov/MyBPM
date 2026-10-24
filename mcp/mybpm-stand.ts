@@ -578,10 +578,13 @@ async function resolveConflicts(s: Stand, importId: string, resolve: Record<stri
 
 /** Description + apply-import, waited for (R3 steps 5-7). */
 async function applyImport(s: Stand, importId: string, description: string, resolve?: Record<string, string>) {
+  // without a description apply-import answers DESCRIPTION_ERROR and starts no process (UI-API trap 82)
+  if (!String(description ?? "").trim()) throw new Error("description is empty — the stand would answer DESCRIPTION_ERROR and apply nothing");
   await resolveConflicts(s, importId, resolve);
   await s.call("import-structure/save-import-description", { importId, value: description });
   const processId = await s.call("v2/process-indicator/pre-create-process");
   const applied = await s.call("import-structure/apply-import", { importId, processId });
+  if (applied?.type && applied.type !== "APPLIED") throw new Error(`apply-import answered ${applied.type} — nothing was applied, the import stays ANALYZED`);
   const st = await waitProcess(s, processId);
   const data = await s.call("import-structure/load-import-data", { importId });
   return { importId, applied, process: { label: st?.label, percentage: st?.percentage }, status: data?.status, error: cut(data?.error), log: await logRow(s, importId) };
@@ -595,15 +598,17 @@ async function exportBos(s: Stand, ids: string[], o: { rights?: boolean; scripts
       isAccessRightsExport: !!o.rights, isScriptsExport: !!o.scripts && !!bo.hasScript };
   }));
   const saved = (await s.call("struct/load-bo-export-records", { offset: 0, limit: 1000 })) ?? [];
-  const others = { menuItems: await s.call("struct/count-menu-export-records"), globalMethods: await s.call("struct/load-export-is-global-methods") };
-  await s.call("struct/clear-export-records");
+  const others = { menuItems: await s.call("struct/count-menu-export-records"), globalMethods: await s.call("struct/load-export-is-global-methods"),
+    settingsKinds: await s.call("struct/count-settings-export-kinds") };
+  // remove-bo-export-records, not clear-export-records: clear also empties the menu and settings baskets (R4a step 6)
+  if (saved.length) await s.call("struct/remove-bo-export-records", {}, saved.map((r: any) => r.boId));
   try {
     await s.call("struct/save-bo-export-records", {}, records);
     const processId = await s.call("v2/process-indicator/pre-create-process");
     const { data, name } = await s.bytes("struct/export-company-structure", { processId });
     return { data, name, others };
   } finally {
-    await s.call("struct/clear-export-records");
+    await s.call("struct/remove-bo-export-records", {}, records.map((r) => r.boId));
     if (saved.length) await s.call("struct/save-bo-export-records", {}, saved);
   }
 }
@@ -2055,7 +2060,7 @@ const tools: Tool[] = [
   { name: "archive_lint", description: "Run the form lint of MYBPM-IMPORTS.md 0.10 (the skill's lint-archive.js) on an archive and summarise what it holds. Every line other than `form lint: OK` and REMINDER is a defect to fix before importing.",
     props: { path: { type: "string" }, name: { type: "string" }, source: { type: "string", description: "On an amendment: path of the export this archive amends (0.7 case 1) — lines on what it carries unchanged become one REMINDER" } },
     run: async (a) => { const f = archivePath(a); const l = lint(f, a.source && archivePath({ path: a.source })); return { ...summarize(f), lintOk: l.ok, lint: l.out }; } },
-  { name: "import_analyze", description: "Upload an archive and run the stand's analysis (R3 steps 1-4) — the dry run: NOTHING is written, the import stays ANALYZED. Lints first and stops on a defect unless `skipLint`. Returns importId, status, analysis errors, conflicts and one row per BO. Next: import_apply (writes) or import_cancel. Only one import may be open per company.",
+  { name: "import_analyze", description: "Upload an archive and run the stand's analysis (R3 steps 1-4) — the dry run: NOTHING is written, the import stays ANALYZED. Lints first and stops on a defect unless `skipLint`. Returns importId, status, analysis errors, conflicts and one row per BO. Next: import_apply (writes) or import_cancel. Several analysed imports may wait side by side; each one applies on its own.",
     props: { path: { type: "string", description: "A .mybpm.zip on this machine" }, name: { type: "string", description: "An archive built with archive_put" },
       source: { type: "string", description: "On an amendment: path of the export this archive amends (0.7 case 1) — lines on what it carries unchanged become one REMINDER" }, skipLint: { type: "boolean" } },
     run: async (a) => {
@@ -2073,18 +2078,22 @@ const tools: Tool[] = [
       if (a.recordId) return s.call("import-structure/load-import-bo-record", { importId: a.importId, recordId: a.recordId });
       return { ...(await importReport(s, a.importId)), log: await logRow(s, a.importId) };
     } },
-  { name: "import_apply", write: true, description: "APPLY an analysed import — the one call that writes the structure to the stand (R3 steps 5-7). Ask the user first and give them the description. Conflicts (§5 «Conflicts»: a group or user the archive names in its rights that the stand does not know) must each be mapped onto an EXISTING unit first — `resolve` {conflictId: unit id or its shown text} from the candidates import_analyze listed; the import never creates a unit and the apply WRITES the archive's name onto the chosen one, so ask the user which unit. Any conflict left open refuses. Waits for the apply process, then reads the import log back (status APPLIED, canRollback).",
+  { name: "import_apply", write: true, description: "APPLY an analysed import — the one call that writes the structure to the stand (R3 steps 5-7). Ask the user first and give them the description. Conflicts (§5 «Conflicts»: a group or user the archive names in its rights that the stand does not know) must each be mapped onto an EXISTING unit first — `resolve` {conflictId: unit id or its shown text} from the candidates import_analyze listed; the import never creates a unit and the apply WRITES the archive's name onto the chosen one (a rollback does not undo that rename), so ask the user which unit. Any conflict left open refuses. Waits for the apply process, then reads the import log back (status APPLIED, canRollback).",
     props: { importId: { type: "string" }, description: { type: "string", description: "What and why — required by the stand" },
       resolve: { type: "object", description: "{conflictId: unit id | shown text of a candidate}" } }, required: ["importId", "description"],
     run: async (a) => ({ ...(await applyImport(stand(a), a.importId, a.description, a.resolve)),
       next: "verify with bo_find / bo_read; then notifications_read + notifications_clear" }) },
-  { name: "import_cancel", write: true, description: "Drop an analysed (not applied) import: cancel-import, status CANCELED; `remove: true` also deletes its log row.",
+  { name: "import_cancel", write: true, description: "Drop an analysed (not applied) import: cancel-import, status CANCELED; `remove: true` also deletes its log row (also of a CANCELED or failed import). Refuses an APPLIED import: the stand ignores the cancel, and removing its row strands it — it can no longer be rolled back (UI-API §5); undo it with import_rollback.",
     props: { importId: { type: "string" }, remove: { type: "boolean" } }, required: ["importId"],
     run: async (a) => {
       const s = stand(a);
-      await s.call("import-structure/cancel-import", { importId: a.importId });
+      const status = (await s.call("import-structure/load-import-data", { importId: a.importId }))?.status;
+      if (status === "APPLIED") throw new Error("the import is APPLIED — cancel does nothing to it and remove would strand it (no rollback any more); undo it with import_rollback");
+      // the stand takes cancel-import only from an import still waiting for the apply, on any other status it is a no-op
+      const cancelled = status === "ANALYZED" || status === "UPLOADED";
+      if (cancelled) await s.call("import-structure/cancel-import", { importId: a.importId });
       if (a.remove) await s.call("import-structure/remove-import", { importId: a.importId });
-      return { importId: a.importId, cancelled: true, removed: !!a.remove };
+      return { importId: a.importId, status, cancelled, removed: !!a.remove };
     } },
   { name: "import_rollback", write: true, description: "Undo an APPLIED import. Without `confirm` it only returns the preview (what would be deleted / restored, canRollback). With `confirm: true` — after the user agreed — it rolls back. Only the import with canRollback:true can be undone; read MYBPM-UI-API.md §5 «Rollback trap» before undoing anything but a single import.",
     props: { importId: { type: "string" }, confirm: { type: "boolean" } }, required: ["importId"],

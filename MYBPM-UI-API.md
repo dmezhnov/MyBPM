@@ -455,7 +455,7 @@ Everything is written into a draft as you go; the bottom bar of the editor only 
 How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. MCP connected → `import_analyze`
 (steps 1–4), `import_apply` (5–7), `import_rollback` (§0U.8). The controller prefix is
 **`import-structure`**, not `v2/…`: `POST <stand>/web/import-structure/<method>`.
-**Only one import may be open on a company at a time.**
+**Several analysed imports may wait side by side** `[C]`, each applies on its own — keep each `importId`.
 **Any user of the company may run it** `[C]`: the API checks no rights — only the UI hides the import page from a non-admin.
 
 1. `POST /web/import-structure/import-file` — **multipart**, the zip under the field name `file` → `"<importId>"` (bare string).
@@ -483,11 +483,15 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. MCP
    cancel, create any process with `create-bo {boGroupId, boCategory:"BO_PROCESS"}` (R2), delete it with
    `delete-business-object` — the dictionary stays — and import again (§5f) `[C]`.
 5. `save-import-description` — `P {"importId":…,"value":"что и зачем импортируем"}` → empty body.
-   The description is **required**: applying without it gives status `DESCRIPTION_ERROR`.
+   The description is **required**: `apply-import` without it answers `{"type":"DESCRIPTION_ERROR"}` and
+   starts nothing — the status stays `ANALYZED` and the `processId` never runs (do not poll it); save the
+   description and apply again `[C]`.
 6. `POST /web/v2/process-indicator/pre-create-process` — `P {}` → `"<processId>"`.
 7. `apply-import` — `P {"importId":…,"processId":…}` → `{"type":"APPLIED"}`. Poll the process. **This is
    the only call that writes.**
-   To abandon instead: `cancel-import` — `P {"importId":…}`; `remove-import` deletes the log row too.
+   To abandon instead: `cancel-import` — `P {"importId":…}` → `CANCELED` (on any status but `ANALYZED` it
+   does nothing); `remove-import` hides the log row too — **never on an `APPLIED` import**: it can then no
+   longer be rolled back (trap 81).
 8. **Verify** with R4. Statuses: `IN_PROGRESS|ANALYZED|APPLIED|ROLLED_BACK|DESCRIPTION_ERROR|
    INTERNAL_ERROR|CANCELED`. An applied import can be undone: `load-import-rollback-preview` then
    `rollback-import` — `P {"importId":…,"processId":…}` (a fresh `processId` from
@@ -538,12 +542,17 @@ takes it for data; only `pre-create-process` (step 4) is `/web/v2`:
 | 3 | `struct/save-bo-export-records` | **body** = an ARRAY of those records | adds to the basket; answers `""` |
 | 4 | `v2/process-indicator/pre-create-process` | `{}` | → processId |
 | 5 | `struct/export-company-structure` | params `{processId}`, body `{}` | the response body IS the `.mybpm.zip` |
-| 6 | `struct/remove-bo-export-records` / `struct/clear-export-records` | **body** = an ARRAY OF `boId` STRINGS / `{}` | put the basket back as you found it |
+| 6 | `struct/remove-bo-export-records` | **body** = an ARRAY OF `boId` STRINGS | take out what you added, put back what you took out |
 
 - **An export taken right after a rights write may come out without the `AccessStructDto`** `[I]` (the same
   late write as R5's read-back): check the DTO tally and export again.
 - **Read the basket first and restore it afterwards** — it is the user's own selection on the
-  «Импорт/Экспорт» screen, not scratch space.
+  «Импорт/Экспорт» screen, not scratch space. Take out only the user's BOs (`remove-bo-export-records` with their
+  ids), add yours, export, remove yours, save the user's records back.
+- **`struct/clear-export-records` `{}` empties EVERY basket** `[C]` — the BOs, the menu items and the ticked
+  company settings, not only the BO basket; the «Глобальные методы» switch stays as it was. An export that
+  clears first loses the user's menu items and settings and exports without them. Use it only when the user
+  asked for an empty basket.
 - **Both basket writes work over the API** `[C]`: **`remove-*` takes an array of id STRINGS**
   (`["zm8ufIOguCPru0bu"]`), not the records that `save-*` takes. Sending records to `remove-*` — with or
   without the `isMenuExport:true` flag the basket adds — gives HTTP 400 «Failed to read request».
@@ -1171,7 +1180,7 @@ do is plain HTTP by §0U.4.
   `import_analyze` / `import_report` give one row per unknown org unit — `conflictId`, type, the archive's
   name and id, `candidates` `[{id, text, removed}]`; `import_apply {resolve: {<conflictId>: <unit id or its
   name>}}` maps them and is refused while one is open. The apply writes the archive's name onto the chosen
-  unit; `removed: true` = a deleted group the stand still offers — never map onto it.
+  unit, and a rollback keeps it (trap 84); `removed: true` = a deleted group the stand still offers — never map onto it.
 - **The record tools make §6a / §6b whole.** `record_save` takes values by field code, fieldId or label in
   plain form (text, number, `true`/`false`, an ISO date, the option label or code, a record id or an array of
   them, `{RUS, KAZ, ENG}` …) and converts each by the §6b value table. `scripts: true` (the default) = the
@@ -1241,7 +1250,7 @@ do is plain HTTP by §0U.4.
 | `import_analyze` | lint, upload, insert, analyze — nothing written, the import stays ANALYZED | R3 steps 1–4 |
 | `import_report` | status, errors, conflicts, BOs; with `recordId` the per-BO diff | R3; `load-import-bo-record` |
 | `import_apply` ✎ | description, apply, waits, reads the log row back; `resolve` maps the conflicts first | R3 steps 5–7, §5 «Conflicts» |
-| `import_cancel` ✎ | drops an analysed import; `remove` also deletes its log row | §5 «Import through the API» |
+| `import_cancel` ✎ | drops an analysed import; `remove` also hides its log row; refuses an `APPLIED` import (trap 81) | §5 «Import through the API» |
 | `import_rollback` ✎ | the rollback preview; with `confirm` the rollback | §5 «Rollback trap» |
 | `import_log` | the import log and the open import | `load-import-file-records`, `load-import-state` |
 | `structure_export` | exactly these BOs into the export basket, the file to the user's disk, the user's basket put back | R4a, R8 |
@@ -1781,7 +1790,19 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
 
 - Button **«Импортировать файл»** plus a search box and a log table: Импортированный файл / Описание
   импорта / Автор импорта / Дата импорта / Статус импорта. The log is per company and
-  keeps years of history — read it to see what was ever imported and by whom.
+  keeps years of history — read it to see what was ever imported and by whom. `[C]` The table is
+  `load-import-file-records` B `{searchValue, paging:{offset:0, limit:20}}` (the search box fills `searchValue`,
+  scrolling to the end loads the next page). Status labels: «Импорт проанализирован» `ANALYZED`, «Импорт выполнен»
+  `APPLIED`, «Откат выполнен» `ROLLED_BACK`, «Импорт отменен» `CANCELED`, «Возникла ошибка, при анализе импорта»
+  `INTERNAL_ERROR`.
+- **A row's icons show only while the mouse is over the row** `[C]` (opacity 0, slid off to the right until a
+  hover — a real mouse move, §10): **↺ «Откатить импорт»** on the import with `canRollback:true` (an `APPLIED` one)
+  and **−** on a failed one (`INTERNAL_ERROR`, `DESCRIPTION_ERROR`). Other rows have none.
+  - ↺ → confirm «Откатить импорт» + the file name, Да / Нет → Да runs the rollback (`pre-create-process` →
+    `rollback-import` → polling), a toast, and the page reloads. No preview is shown on this route.
+  - − → confirm «Удаление элемента "<file>"», ДА / НЕТ (`div.btn.ok-btn` / `.no-btn`, not buttons) → `remove-import
+    {importId}`; the row leaves the list at once, nothing reloads. The import record stays readable by
+    `load-import-data` (a soft removal).
 - **The hidden file input is `input[type=file]` with `accept=".mybpm.zip, .mybpm"`, `multiple: false`.**
   Do NOT click the button (it opens the operating system's file picker, which automation cannot fill) —
   set the input's files with the tool's file-upload call (CDP `DOM.setFileInputFiles`, Playwright
@@ -1797,7 +1818,10 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
 
 1. Setting the files of that input is enough to submit — no button click, no dialog. The page shows
    «Анализ структуры… N/N», then a toast «Анализ импорта завершен» and a **new log row with the status
-   «Импорт проанализирован»**. *Nothing has been written to the stand yet.*
+   «Импорт проанализирован»**. *Nothing has been written to the stand yet.* The import dialog does NOT open by
+   itself, the conflict dialog neither — both wait for a click on the row `[C]`. Several analysed imports may
+   wait side by side, each applies on its own `[C]`. An analysis that crashes gives a row «Возникла ошибка, при
+   анализе импорта» and no message at all (trap 86).
 2. **Click that log row** → a full-screen dialog opens:
    - left tree: **«Информация»**, **«Ошибки»**, then one node per BO in the archive, labelled
      **`<вид объекта>/<имя БО>`** — the first half is the object's CATEGORY (a `BO_DICTIONARY` is
@@ -1810,14 +1834,34 @@ Sidebar item **«Настройки»** (top level by default, or inside the com
    - a BO node = the **pre-apply diff**: «Добавленные поля» (метка / код / тип), «Изменённые поля»,
      «Добавленные вкладки», «Добавленные виджеты», «Изменённые виджеты», each «Не найдено» when empty.
    - buttons **ПРИМЕНИТЬ** (green, left) / **ПРЕКРАТИТЬ** (right).
+   - a settings item of the archive (§5n) is a node «Настройки/<kind name>» — e.g. «Настройки/Выставление
+     сервисов»: «Статус импорта» «Будет обновлён», «Изменения» «Содержимое настроек», «Параметры настройки»
+     (`load-import-bo-record` → `settingsInfo {kind, displayName, settingsState:"UPDATE", changedAspects}`, shown
+     as an update even when the archive equals the stand) `[C]`.
 3. Only ПРИМЕНИТЬ writes; the row then flips to «Импорт выполнен». So an archive can be inspected
-   against the stand before it touches anything — use it as a dry run.
+   against the stand before it touches anything — use it as a dry run. `[C]`:
+   - **«Описание импорта»** is saved while you type (one `save-import-description` after a pause; leaving the
+     field sends nothing) and once more by ПРИМЕНИТЬ before the apply.
+   - ПРИМЕНИТЬ → `save-import-description` → `pre-create-process` → `apply-import` → polling («Применение
+     структуры») → **the page reloads** — in-page helpers and the request log are gone.
+   - **ПРИМЕНИТЬ with an empty description hangs the screen** (trap 82): `apply-import` answers
+     `DESCRIPTION_ERROR`, a «Загрузка 0%» window polls forever, no message; its ОТМЕНИТЬ closes it, the import
+     stays `ANALYZED` — type the description and apply again.
+   - **ПРЕКРАТИТЬ** and the × top right of an analysed import: «Вы уверены, что хотите отменить импорт?» Да →
+     `cancel-import`, row «Импорт отменен», no reload. On any other import the dialog has no buttons, the
+     description is read-only, and × closes it — sending `cancel-import` with no confirm, which the stand ignores.
+   - **An applied import's dialog offers the rollback**: an orange panel «Откатить импорт — Это необратимая
+     операция…» with «Откатить импорт» and «Посмотреть, что будет откачено», and a tree node «Откат». The second
+     button (or the node) is the one place the UI calls `load-import-rollback-preview`: «Что изменится при
+     откате», one tab per category «<title> (N)» («Бизнес-объекты», «Справочники», «Настройки», «Прочее»),
+     sections «Будет удалено (создано этим импортом)» and «Будет восстановлено к состоянию до применения».
+     «Откатить импорт» → the same confirm as the list's ↺ → rollback, the dialog closes, the page reloads.
+   - A failed analysis opens with Информация (description disabled, no buttons) and an empty «Ошибки» — the
+     analyzer's message is only in `load-import-data` → `error` (trap 86).
 - API behind the screen: the same endpoints the API route drives — the full list, the upload call and the
   order are in «Import through the API» below. The upload is `postFileJson("/import-file", file, {})`.
 - **The outer file name is free** — Cyrillic and spaces included. `[C]`
 - **Cross-tenant import works**: an archive exported from one company imports into another. `[C]`
-- «Описание импорта» is a free-text field stored per import — so the dialog asks for a description
-  (the field was never opened; the dialog's exact contents are `[U]`).
 
 ### Import through the API — the whole cycle without a browser `[C]`
 
@@ -1829,7 +1873,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 
 | # | call | params | returns |
 |---|------|--------|---------|
-| 0 | `/import-structure/load-import-state` | `{}` | `{importExists,importId,fileName}` — **only ONE import may be open at a time** |
+| 0 | `/import-structure/load-import-state` | `{}` | `{importExists,importId,fileName}` — says `false` while an analysed import waits (trap 35); several `ANALYZED` imports may coexist, each applies `[C]` |
 | 1 | `/import-structure/import-file` | multipart, field **`file`** (filename = the outer name) | `importId` (a bare JSON string) |
 | 2 | `/import-structure/insert-file-data` | `{importId}` | `processId` → poll |
 | 3 | `/import-structure/analyze-file-data` | `{importId}` | `processId` → poll |
@@ -1837,7 +1881,7 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
 |   | `/import-structure/load-import-errors` | `{importId,pageId}` — first page: OMIT `pageId` (`pageId: 0` answers `IllegalId` «strId = `0`») `[C]`, then the `nextPageId` it returns | `{errorRecords:[]}` when clean |
 |   | `/import-structure/load-import-bo-infos` | body `{importId}` (**body, not params**) | `[{importRecordId,name,boCategory,structTypes}]` |
 |   | `/import-structure/load-import-bo-record` | `{importId,recordId}` | the per-BO pre-apply diff |
-| 5 | `/import-structure/save-import-description` | `{importId,value}` | `null`; status `DESCRIPTION_ERROR` exists, so set it before applying |
+| 5 | `/import-structure/save-import-description` | `{importId,value}` | `null`; set it before applying — without it `apply-import` answers `{type:"DESCRIPTION_ERROR"}` and starts nothing `[C]` |
 | 6 | `/v2/process-indicator/pre-create-process` | `{}` | `processId` for the apply |
 | 7 | `/import-structure/apply-import` | `{importId,processId}` | `{"type":"APPLIED"}` → poll the process |
 
@@ -1846,19 +1890,28 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   return their own processId.
 - **Everything up to step 4 writes nothing to the stand** — status stays `ANALYZED`. So the API route is a
   real dry run: upload, read `load-import-errors` + `load-import-bo-infos`, and only then decide.
-  `/import-structure/cancel-import {importId}` drops it, `/remove-import` deletes the log row.
+  `/import-structure/cancel-import {importId}` drops it (`CANCELED`; on any other status it does nothing) `[C]`.
+- **`/remove-import {importId}` hides the log row** `[C]` — on any status, the record itself stays readable by
+  `load-import-data`. The UI offers it only on a failed import. **On an `APPLIED` import it strands that import
+  for good**: the log is recomputed without it, the previous applied import becomes «latest», and
+  `rollback-import` on the removed one answers «Rollback is allowed only for the latest applied import» (trap 81).
 - **Rollback exists** `[C]`: after apply the record carries `rollbackAvailable:true,canRollback:true`, and
   `/import-structure/load-import-rollback-preview {importId}` + `/rollback-import {importId,processId}`
-  undo the import (a rollback control in the UI import log: not known yet `[U]` — §12). **Only the import the
-  stand considers the latest can be rolled back** `[C]`: the others
+  undo the import (the UI: the row's ↺ and the applied import's dialog, «Import tab» and «Import is TWO-PHASE»
+  above). **Only the import the stand considers the latest can be rolled back** `[C]`: the others
   carry `canRollback:false` + `newerAppliedImportsCount:N`, and `rollback-import` on them answers the body
   `{"message":"RwFGhT3idZ :: Rollback is allowed only for the latest applied import", …}` — and the
   `processId` you passed is then never finished, so a poll loop on it spins until your timeout.
   The preview answers `[C]`
-  `{rollbackAvailable, canRollback, newerAppliedImportsCount, restoreItems:[], deleteItems:[{action:"DELETE",
-  category:"BUSINESS_OBJECT"|"MENU", code:"<code>#BUSINESS_OBJECT"|"<code>#MENU", name, structTypes}]}` —
-  exactly what was created, nothing else; after `rollback-import` the BO answers `NoBoWithId` and the menu
-  items are gone. The process finishes with `percentage: 25` and `isFinished: true` — do not wait for 100.
+  `{rollbackAvailable, canRollback, newerAppliedImportsCount, restoreItems:[…], deleteItems:[…]}`, each item
+  `{action:"DELETE"|"RESTORE", category, entityKind, code, name, parentId, count, accessRightsBoChanged,
+  accessRightsFieldCount, structTypes}`. `deleteItems` = exactly what the import created: `category`
+  `BUSINESS_OBJECT` / `DICTIONARY` (code `<code>#BUSINESS_OBJECT` / `<code>#DICTIONARY`), `MENU` (`<code>#MENU`),
+  `OTHER` with `entityKind:"BO_GROUP"` (code = the group id) — **a BO group the import created is deleted
+  too**. `restoreItems` = what it changed: a BO it updated (`accessRightsBoChanged:true` when only its rights
+  changed), a settings kind (`category:"SETTINGS"`, code `__SETTINGS__<KIND>#SETTINGS`). After `rollback-import`
+  the BO answers `NoBoWithId` and the menu items are gone. The process ends `isFinished: true` at whatever
+  percentage (0, 25 and 75 are seen, for the apply too) — do not wait for 100.
 - **An import never deletes** `[C]` (`MYBPM-IMPORTS.md` §8): fields, TAB_GROUPs and single tabs that a
   re-imported archive no longer carries stay on the BO with the same ids, and the fields on a dropped tab
   keep their `tabId`. Delete them with `deletedFieldIds` of `save-business-object-portion` (R1).
@@ -1920,14 +1973,29 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   `SELECT_INSTANCE` — an org unit of the archive (`ExportStructInstanceDto` of a group named in its rights) whose
   id the stand does not know: `{selectInstance:{boId, exportedOrgUnitType, exportedOrgUnitName,
   exportedOrgUnitId, selectFromIds}, isResolved, sourceMap}` `[C]`. `apply-import` refuses while one is open
-  («Conflicts have to be resolved before applying») `[C]`; the UI opens its conflict dialog right after the
-  analysis, and cancelling it closes the import. Candidates: `load-select-instance-table` B `{importId,
+  («Conflicts have to be resolved before applying») `[C]`.
+  **Conflict or error** `[C]`: when the stand has no unit with the archive's id, the analyzer looks for units of
+  that KIND in the company — **at least one** (any group, for a group) → a `SELECT_INSTANCE` conflict with them as
+  candidates; **none at all** → no conflict but an analysis error `ACCESS_RIGHTS_ORG_UNIT_NOT_MAPPED` («В правах
+  доступа указан пользователь, группа или департамент без сопоставления в целевой системе», Элемент = the BO
+  code), which does NOT block the apply: the unit is dropped from the right, and a right left with no one
+  becomes «nobody».
+  **The conflict dialog in the UI** `[C]` opens over the import dialog when the row is clicked: «Во время импорта,
+  в системе появились конфликты…», «Тип конфликта : Выбор инстанции», the source («Права доступа», «Права на :
+  Просмотр», «В бизнес-объекте : <BO>»), «В целевой компании не найден группы: <archive name>», a search box
+  (`load-select-instance-table` with `searchValue`; «Не найдено»), a table «Имя» with a radio per row, a pager
+  «1 / N» over the conflicts, **РАЗРЕШИТЬ КОНФЛИКТЫ** (enabled once a radio is picked → `resolve-conflicts`, the
+  conflict dialog closes and the import dialog stays for the description and ПРИМЕНИТЬ) and **ОТМЕНИТЬ ИМПОРТ** —
+  which closes both dialogs and sends nothing: the import stays `ANALYZED` (trap 83). Candidates: `load-select-instance-table` B `{importId,
   conflictId, searchValue:"", paging:{limit:20, offset:0}}` → the unit BO's registry rows `{businessObjectId, heads, records:[{instanceId,
   values:[{fieldId, value, displayValue}], state}], totalHits}` — the shown name is `values[].displayValue`, and DELETED
-  units are listed too, with `state:"REMOVED"` (do not map onto one) `[C]`. Resolve: `resolve-conflicts` P `{importId}` B `[{conflictId, selectInstance:{selectedBoiId}}]` →
+  units are listed too, with `state:"REMOVED"` (do not map onto one; the UI shows such a row exactly like a live
+  one, trap 83) `[C]`. The candidates are fixed at the analysis: a unit created later is not offered — analyse
+  again. Resolve: `resolve-conflicts` P `{importId}` B `[{conflictId, selectInstance:{selectedBoiId}}]` →
   `isResolved:true` `[C]`. There is NO «create» choice — the import never creates a group; and **the apply
   writes the archive's name onto the chosen group** (also onto a group whose id matches) `[C]`
-  (`MYBPM-IMPORTS.md` §8).
+  (`MYBPM-IMPORTS.md` §8) — **and a rollback of that import keeps the new name**: its preview lists only the
+  BO (trap 84); rename the unit back in its own record.
 - The BO-side `/web/v2/business-objects/import-structure` (`postFileJson`, param `startTestProcess:false`)
   is a DIFFERENT, single-call endpoint of the BO controller — not used here, untried `[U]`.
 - **The import log** (the «Импорт» tab's table): `/import-structure/load-import-file-records` with `B {paging:
@@ -2901,7 +2969,7 @@ It can be filled **from the shell too** `[C]`, no UI needed — controller `stru
 lives at `/web/struct/...`, NOT under `/web/v2`:
 
 ```
-POST /web/struct/clear-export-records        {}                        ← empty the basket
+POST /web/struct/clear-export-records        {}                        ← empties EVERY basket (R4a)
 POST /web/struct/save-bo-export-records      BODY [ {boId, boName, boCategory, hasScript:false,
                                                     isStructureExport:true,
                                                     isAccessRightsExport:false,
@@ -5058,7 +5126,8 @@ The company code is the tenant's code (the dialog prints both full URLs).
 - **TEST mode runs the BO's TEST script version** (no TEST version → none runs); its records are ORDINARY records
   (`state` ALL, the «Тестовые»/DEV registry stays empty) with MODE = `TEST`.
 - Scripts: only «Создание» runs (no form is opened); it reads the request fields and writes the result fields
-  with ordinary `BlockAssign`s (`MYBPM-IMPORTS.md` §0S.7). Without any script the answer is 501.
+  with ordinary `BlockAssign`s (`MYBPM-IMPORTS.md` §0S.7). Without any script the answer depends on RESULT_CODE
+  `[C]`: unmapped → 200 with an empty body; mapped (and so left empty) → 501 with an empty body.
 - **File answer** `[C]` (`RESULT_FILE` mapped to a single-mode FILE_UPLOAD): the «Создание» script makes a file and assigns it to the field's
   `#Значение` — `<text>.#Записать в файл(fileName)` (`F-writeToFile-K-FIX-T-String`, the text as UTF-8) or
   `<base64>.#Base64 преобразовать в файл(fileName)` (`F-textToFile-K-FIX-T-String`, binary, byte-exact). The answer is then the file: status = RESULT_CODE, **body = the file bytes (RESULT_TXT is
@@ -5088,18 +5157,29 @@ The company code is the tenant's code (the dialog prints both full URLs).
 
 Saves answer `""`; **loaders lag a few seconds** — right after the save a read still returns the old value; wait ~2 s before reading it back.
 
+**The row dialog in the UI** `[C]`: a slot or header is a chip with the field's label and an ×; × empties it on the
+page only, «Выберите» opens a popover of the BO's fields of the allowed kind (by label). **Nothing is sent until
+СОХРАНИТЬ**, and the СОХРАНИТЬ / ОТМЕНИТЬ bar appears only while something has changed; Escape or closing the dialog
+drops the edits without a word. СОХРАНИТЬ → `save-script-settings` (the whole row) + `save-field-values` with ONLY the
+changed slots + `save-header-values` with the WHOLE header list. **A dead slot or header** (a field CODE where the
+id belongs — after a rollback, trap 67) shows as an EMPTY chip, only the × on it; the list itself looks normal.
+Repair it in the UI: × on the empty chip → «Выберите» → the field → СОХРАНИТЬ — every dead chip of the row, then the
+next row.
+
 **Archive** — the rows travel in the company-settings basket, NOT with the BO:
 `struct/change-settings-export-kind` **P** `{kind:"SCRIPT_SETTINGS", value:true}` (in B it silently does nothing;
 `count-settings-export-kinds` must say 1), then the usual export (R4a). The line is
 `CompanySettingsStructDto {kind:"SCRIPT_SETTINGS", payloadJson:"<json string>"}` whose
 `scriptControllerSettings` lists **every row of the company** as `{serviceBoCode, orderIndex, entryPointTemplate,
-baseFields:{<slot>:<field CODE>}, headerFields:{<header>:<field CODE>}}` (an unmapped slot is absent). Import
+baseFields:{<slot>:<field CODE>}, headerFields:{<header>:<field CODE>}, isProtected}` (an unmapped slot is absent). Import
 (`MYBPM-IMPORTS.md` §2 «Exposed services»): the analyzer shows it as one item «Выставление сервисов», `structTypes
 ["SETTINGS"]`, `settingsState:"UPDATE"`; **apply REPLACES the whole list** — rows not in the archive are deleted,
 every row is recreated with a new id, codes are resolved to field ids. Rollback (`restoreItems` category
 `SETTINGS`) brings the old rows back (new ids again) **but with field CODES where ids belong** — the slots and
 headers are then dead (the service runs and answers 200 with an EMPTY body). Repair after a rollback: re-send
-`save-field-values` + `save-header-values` with ids for every row. Trap 67.
+`save-field-values` + `save-header-values` with ids for every row, or re-pick each empty chip in the row dialog
+(«The row dialog in the UI» above). In the analysis the item is the node «Настройки/Выставление сервисов», in the
+rollback preview the tab «Настройки (1)» with «Выставление сервисов» under «Будет восстановлено…». Trap 67.
 
 **Script versions trap — right after a BO is created its first, implicit script version cannot see any BO**
 `[C]`: on a constructor-made BO, `load-bo-script-versions` returns one version (`isTest:true`);
@@ -5842,6 +5922,14 @@ The stand's own behaviour under automation `[C]`:
     the hour click — re-read the rect before every click, never reuse a point.
   - **ПРИМЕНИТЬ of an xlsx import reloads the registry page two seconds later** — in-page helpers and the request
     log are gone; re-inject them.
+- **The structure import screen** (§5):
+  - **The log row's ↺ and − appear only on a real mouse hover** over the row (opacity 0, slid off to the right);
+    a dispatched event does not reveal them. Hover, re-read the icon's rect, then click.
+  - **ПРИМЕНИТЬ and a rollback reload the page** — keep the request log outside the page (POST it to the local
+    bridge after every call) or it is lost with the reload.
+  - **The confirm dialogs animate in** — a coordinate click right after one opens misses «Да»; click the element
+    with that text (`.ok-btn`).
+  - The confirm buttons are `div.btn.ok-btn` / `.no-btn`, not `<button>` — the accessibility tree lists only «Нет».
 
 ## 11. Traps and defects — the short list
 
@@ -6067,7 +6155,8 @@ The stand's own behaviour under automation `[C]`:
 67. **An import of «Выставление сервисов» replaces the whole list, and its rollback leaves dead rows** `[C]`
     — rows missing from the archive are deleted; after `rollback-import` the old rows return with
     field CODES in place of ids, so every service answers 200 with an empty body until each row's slots and
-    headers are re-saved with ids. Export the current list first and put every row into the archive. §5o.
+    headers are re-saved with ids (API, or re-pick each empty chip in the row dialog and СОХРАНИТЬ). Export the
+    current list first and put every row into the archive. §5o.
 68. **The first script version of a BO that never had scripts is blind** `[C]` — its module's
     `load-bo-def-list` is empty, so every field read/write fails `translate-script` and the script cannot be
     published. `copy-bo-script-version` and work on the copy. §5o.
@@ -6110,6 +6199,26 @@ The stand's own behaviour under automation `[C]`:
     it; only `restore-bo-instance` P `{businessObjectId, boInstanceId:[id]}` brings it back. §6c.
 80. **⋮ on a SINGLE reference chip, then ВЫБРАТЬ, CLEARS the field** `[C]` — the picker opens with nothing ticked and
     ВЫБРАТЬ sends an empty list. Use the chip's ⋮ only to pick another record; tick one before ВЫБРАТЬ. §6c.
+81. **`remove-import` on an APPLIED import strands it** `[C]` — the row leaves the log, the previous applied import
+    becomes the latest, and the removed one can never be rolled back («Rollback is allowed only for the latest
+    applied import»); undo by hand what it brought. Remove only a cancelled or failed import's row; the UI
+    offers − only on a failed one. §5.
+82. **ПРИМЕНИТЬ with an empty «Описание импорта» hangs the screen** `[C]` — `apply-import` answers
+    `DESCRIPTION_ERROR` and starts no process, the client polls a «Загрузка 0%» window forever with no message, the
+    import stays `ANALYZED` (not `DESCRIPTION_ERROR`). ОТМЕНИТЬ the window, type a description, apply again. §5.
+83. **The conflict dialog's ОТМЕНИТЬ ИМПОРТ cancels nothing, and a deleted candidate looks alive** `[C]` — the button
+    closes both dialogs and sends no call (the import stays `ANALYZED`; cancel it with ПРЕКРАТИТЬ); a candidate with
+    `state:"REMOVED"` has the same look and an enabled radio as a live one — check `load-select-instance-table`
+    before picking. §5 «Conflicts».
+84. **A rollback does not undo a conflict's rename** `[C]` — the apply wrote the archive's name onto the chosen group;
+    the rollback deletes or restores the BOs but the group keeps the archive's name. Note the old name before
+    resolving. §5 «Conflicts», `MYBPM-IMPORTS.md` §8.
+85. **`struct/clear-export-records` empties every export basket** `[C]` — BOs, menu items and the ticked settings
+    kinds; an export that starts with it loses the user's selection and exports without the menu and the
+    settings. Use `remove-bo-export-records` with ids. §0U R4a.
+86. **A crashed structure analysis says nothing in the UI** `[C]` — the row reads «Возникла ошибка, при анализе
+    импорта», the dialog's «Ошибки» is empty; the message (a Java exception) is only in `load-import-data` →
+    `error`. §5 «The dry run as a VALIDATOR».
 
 ## 12. Open questions
 
@@ -6142,8 +6251,6 @@ The record-format questions moved with the format itself — `MYBPM-IMPORTS.md` 
   `save-business-object-group`).
 - A field on a built-in BO (Person): `generate-business-form-field {boId:<Person boId>}` + portion save on a scratch
   field, then delete it.
-- Structure import UI: whether the import log has a rollback control (open an applied import's row); what status
-  «ПРЕКРАТИТЬ» leaves on a dry run (`load-import-data`).
 - Script and process versions: the UI control that publishes a version (open the version selector, capture
   `in-work-*`); `change-bo-process-version-comment`, `unset-in-work-version`, `remove-bo-process-version` on a
   scratch BO, read the versions back.
