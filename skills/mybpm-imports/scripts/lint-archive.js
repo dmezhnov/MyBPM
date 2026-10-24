@@ -29,7 +29,8 @@ const RM = /^(STRIKETHROUGH|HIDE|DISCONNECT)$/, DEF_ICON = [], DV = [];
 L.forEach((o, i) => /^kz\.greetgo\.mybpm\.reg\.structure\.model\.(dto\.\w+|access\.AccessStructDto)$/.test(o["@class"])
   || fatal(`line ${i + 1}: @class ${o["@class"]} — copy it from its template (0.9 rule 4)`));
 const groups = of("BoGroupStructDto"), order = new Set(), gcodes = new Set(), noBo = !bos.length && (menu.length || gm.length || of("CompanySettingsStructDto").length); // menu lines, global methods or company settings alone (§5d, §5e)
-if (!noBo && !groups.length) fatal(`no BoGroupStructDto line (0.3)`);
+const BUILT = new Map([["Person", "PERSON"], ["Department", "DEPARTMENT"], ["PersonGroup", "PERSON_GROUP"]]); // a built-in BO's line sits in no group (§6 «Built-in BOs»)
+if (!noBo && !groups.length && (!bos.length || bos.some((b) => !BUILT.has(b.code)))) fatal(`no BoGroupStructDto line (0.3)`);
 if (!noBo && !bos.length) fatal(`no BoStructDto line (0.4)`);
 for (const g of groups) {
   if (!g.code) fatal(`group «${g.name}»: no code — renames a fixed stand group (0.9 rule 1)`);
@@ -71,15 +72,16 @@ for (const bo of bos) {
   if (!CODE.test(b ?? "")) fatal(`${b}: BO code — at most 30 of A-Za-z0-9_ (0.9 rule 7)`);
   else name("BO", b, ...OBJ);
   id(b, bo.oldId);
-  const miss = BOK.filter((k) => !(k in bo) && !(k === "instanceViewType" && cat === "BO_PANEL"));
+  const miss = BOK.filter((k) => !(k in bo) && !(k === "instanceViewType" && cat === "BO_PANEL") && !(k === "boGroupOldId" && BUILT.has(b)));
   if (miss.length) err(`${b}: keys missing — ${miss.join(", ")}; ship every key of 0.4 (0.9 rule 6)`);
   if (!/^BO(_DICTIONARY|_PANEL|_COMPOSITE|_PROCESS)?$/.test(cat)) fatal(`${b}: category ${cat} — BO, BO_DICTIONARY, BO_PANEL, BO_COMPOSITE or BO_PROCESS (0.17)`);
-  if (["Person", "Department", "PersonGroup"].includes(b)) fatal(`${b}: a built-in BO's code — the import dies «Несоответствие типов объектов» (0.2a)`);
+  if (BUILT.has(b) && bo.kind !== BUILT.get(b)) fatal(`${b}: a built-in BO's code — its line must carry "kind": "${BUILT.get(b)}": without kind the import erases the BO's kind and breaks the company, a BO of your own with this code dies «Несоответствие типов объектов» (§6 «Built-in BOs»)`);
+  if (BUILT.has(b) && "boGroupOldId" in bo) err(`${b}: a built-in BO sits in no group — no boGroupOldId on its line (§6 «Built-in BOs»)`);
   if (typeof bo.name?.rus !== "string") err(`${b}: name is not {"rus": "…"} (0.4)`);
   for (const k of ["bos", "printForms", "dictionaryFields"]) if (k in bo && !Array.isArray(bo[k])) err(`${b}.${k}: must be a list [] (0.9 rule 5)`);
   for (const k of ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W])
     if (k in bo && (!bo[k] || typeof bo[k] !== "object" || Array.isArray(bo[k]))) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo[k])} — the stand drops the whole BO (0.9 rule 5)`);
-  if (!groups.some((g) => g.oldId === bo.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
+  if (!BUILT.has(b) && !groups.some((g) => g.oldId === bo.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
   for (const [c, t] of all(bo.kanbanCardTemplates)) {
     if (!t?.kanbanFields || typeof t.kanbanFields !== "object" || Array.isArray(t.kanbanFields)) err(`${b}: kanbanCardTemplates.${c} must be {"kanbanFields": {…}} — without the wrapper the import sets nothing (0.5c)`);
     else for (const k of Object.keys(t.kanbanFields)) if (!df[k] && !bo.nativeFields?.[k]) err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`);

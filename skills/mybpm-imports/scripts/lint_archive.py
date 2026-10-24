@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 598ec3a90b1b
+# lintArchive sha256: 80c024e60a30
 import json
 import math
 import os
@@ -433,7 +433,9 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             fatal(f"line {i + 1}: @class {s(g(o, '@class'))} — copy it from its template (0.9 rule 4)")
     groups, order, gcodes = of("BoGroupStructDto"), set(), set()
     noBo = not bos and (menu or gm or of("CompanySettingsStructDto"))  # menu lines, global methods or company settings alone (§5d, §5e)
-    if not noBo and not groups:
+    BUILT = {"Person": "PERSON", "Department": "DEPARTMENT", "PersonGroup": "PERSON_GROUP"}  # a built-in BO's line sits in no group (§6 «Built-in BOs»)
+    isBuilt = lambda c: isinstance(c, str) and c in BUILT
+    if not noBo and not groups and (not bos or any(not isBuilt(g(x, "code")) for x in bos)):
         fatal("no BoGroupStructDto line (0.3)")
     if not noBo and not bos:
         fatal("no BoStructDto line (0.4)")
@@ -502,13 +504,15 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         else:
             name("BO", b, *OBJ)
         idf(bs, g(bo, "oldId"))
-        miss = [k for k in BOK if k not in bo and not (k == "instanceViewType" and cat == "BO_PANEL")]
+        miss = [k for k in BOK if k not in bo and not (k == "instanceViewType" and cat == "BO_PANEL") and not (k == "boGroupOldId" and isBuilt(b))]
         if miss:
             err(f"{bs}: keys missing — {', '.join(miss)}; ship every key of 0.4 (0.9 rule 6)")
         if not T(R("^BO(_DICTIONARY|_PANEL|_COMPOSITE|_PROCESS)?$"), cat):
             fatal(f"{bs}: category {s(cat)} — BO, BO_DICTIONARY, BO_PANEL, BO_COMPOSITE or BO_PROCESS (0.17)")
-        if b in BUILTIN:
-            fatal(f"{bs}: a built-in BO's code — the import dies «Несоответствие типов объектов» (0.2a)")
+        if isBuilt(b) and not seq(g(bo, "kind"), BUILT[b]):
+            fatal(f'{bs}: a built-in BO\'s code — its line must carry "kind": "{BUILT[b]}": without kind the import erases the BO\'s kind and breaks the company, a BO of your own with this code dies «Несоответствие типов объектов» (§6 «Built-in BOs»)')
+        if isBuilt(b) and "boGroupOldId" in bo:
+            err(f"{bs}: a built-in BO sits in no group — no boGroupOldId on its line (§6 «Built-in BOs»)")
         if not isinstance(g(bo, "name", "rus"), str):
             err(f'{bs}: name is not {{"rus": "…"}} (0.4)')
         for k in ["bos", "printForms", "dictionaryFields"]:
@@ -517,7 +521,7 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         for k in ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", *W]:
             if k in bo and not isinstance(bo[k], dict):
                 err(f"{bs}.{k}: must be an object {{}}, not {s(jj(bo[k]))} — the stand drops the whole BO (0.9 rule 5)")
-        if not any(seq(g(x, "oldId"), g(bo, "boGroupOldId")) for x in groups):
+        if not isBuilt(b) and not any(seq(g(x, "oldId"), g(bo, "boGroupOldId")) for x in groups):
             fatal(f"{bs}: boGroupOldId names no group line (0.7)")
         for c, t in ents(g(bo, "kanbanCardTemplates")):
             kf = g(t, "kanbanFields")
