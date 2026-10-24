@@ -211,9 +211,17 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["archive_put", { name: "lint", part: 1, lines }, (r) => r.linesSoFar > 0],
   ["archive_put", { name: "lint", part: 2, lines: "", last: true }, (r) => String(r.lint).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER ")) && r.bos[0].code === "Lint_dict"],
   ["import_analyze", { name: "lint" }, (r) => r.status === "ANALYZED" && r.bos.length === 1],
+  ["import_apply", { importId: "@import_analyze.importId", description: "  " }, (r) => /description is empty/.test(r)],
   ["import_apply", { importId: "@import_analyze.importId", description: "mcp test" }, (r) => r.status === "APPLIED" && r.log.canRollback],
+  // an applied import is refused: removing its row would strand it (the rollback preview below still says canRollback)
+  ["import_cancel", { importId: "@import_analyze.importId", remove: true }, (r) => /APPLIED.*import_rollback/.test(r)],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === true],
-  ["structure_export", { codes: ["Lint_dict"], out: "dist/mcp-test/export" }, (r) => r.bos[0].code === "Lint_dict"],
+  // the user's baskets (one BO of their own, SCRIPT_SETTINGS ticked, one menu item) come along and survive the export
+  ["structure_export", { codes: ["Lint_dict"], out: "dist/mcp-test/export" }, (r) => r.bos.length === 1 && r.bos[0].code === "Lint_dict"
+    && r.types.CompanySettingsStructDto === 1 && r.alsoInBaskets.settingsKinds === 1 && r.alsoInBaskets.menuItems === 1],
+  ["stand_read", { path: "struct/count-settings-export-kinds" }, (r) => r === 1],
+  ["stand_read", { path: "struct/count-menu-export-records" }, (r) => r === 1],
+  ["stand_read", { path: "struct/load-bo-export-records", params: { offset: 0, limit: 100 } }, (r) => r.length === 1 && r[0].boId === "USERBO0000000001"],
   ["import_rollback", { importId: "@import_analyze.importId" }, (r) => r.preview.canRollback && !r.result],
   ["import_rollback", { importId: "@import_analyze.importId", confirm: true }, (r) => r.log.status === "ROLLED_BACK"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
@@ -431,9 +439,18 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["import_apply", { importId: "@import_analyze.importId", description: "mcp conflict" }, (r) => /conflicts still open/.test(r)],
   ["import_apply", { importId: "@import_analyze.importId", description: "mcp conflict", resolve: { CONFLICT00000001: "Менеджеры" } }, (r) => r.status === "APPLIED"],
   ["import_rollback", { importId: "@import_analyze.importId", confirm: true }, (r) => r.log.status === "ROLLED_BACK"],
+  ["import_cancel", { importId: "@import_analyze.importId" }, (r) => r.status === "ROLLED_BACK" && !r.cancelled && !r.removed],
   ["bo_find", { code: "Conflict_probe" }, (r) => r.exists === false],
   // only the conflict import rang: the kanban card saves leave no bell entry
   ["notifications_read", {}, (r) => r.items.filter((n: any) => n.newThisSession).length === 1],
+  ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.deleted === 1],
+  // an analysed import is cancelled and its log row removed
+  ["archive_put", { name: "cancel", part: 1, last: true, lines: JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto", code: "Cancel_probe", category: "BO", name: { rus: "Cancel" } }) },
+    (r) => r.bos[0].code === "Cancel_probe"],
+  ["import_analyze", { name: "cancel", skipLint: true }, (r) => r.status === "ANALYZED"],
+  ["import_cancel", { importId: "@import_analyze.importId", remove: true }, (r) => r.status === "ANALYZED" && r.cancelled && r.removed],
+  ["import_log", {}, (r) => !r.open.importExists && !r.log.some((x: any) => x.fileName && x.status === "CANCELED")],
+  ["notifications_read", {}, (r) => r.items[0].header === "Анализ импорта завершен"],
   ["notifications_clear", { ids: ["@notifications_read.items.0.id"] }, (r) => r.deleted === 1],
   ["menu_read", {}, (r) => r.items.length === 1 && r.items[0].code === "mcp_menu"],
   ["bo_create", { group: "Бизнес-объект", name: "MCP probe rights", code: "mcp_probe_rights", window: false, fields: [
@@ -496,7 +513,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|no figure|no slot|forward needs arrowId|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not

@@ -4441,10 +4441,16 @@ BO — is 0.9 rule 10.
   = the candidates), and the apply is refused («Conflicts have to be resolved before applying») until the
   conflict is mapped onto an EXISTING group (the UI's conflict dialog, `MYBPM-UI-API.md` §5). So create the
   groups on the target first (records of `PersonGroup`, §3), then import and map each conflict.
+- **No unit of that kind on the target at all → no conflict, the right goes to nobody** `[C]`. The conflict needs
+  candidates: when the company has not a single group (department, user) the analysis reports instead an error
+  `ACCESS_RIGHTS_ORG_UNIT_NOT_MAPPED` per unit, which does NOT block the apply — the unit is dropped from the
+  right, and an action left with no one is «nobody». Read the analysis errors; on such a target create the units
+  first and analyse again.
 - **Trap: the import writes the archive's group name onto the stand's group** `[C]` — onto the group the
   line's id matches (no conflict), and onto the group a conflict was mapped to. An old export re-imported
   reverts a group renamed since; an archive from another stand renames the groups it is mapped onto. Set
-  `fieldMap.name.storedValue` to the TARGET group's current name before importing.
+  `fieldMap.name.storedValue` to the TARGET group's current name before importing — **a rollback of the import
+  does NOT give the old name back** `[C]`.
 - Getting group ids for an archive: set probe rights on one BO with a DIFFERENT group per action
   (view/edit/delete/archive/export), export the structure, map ids by action; or call
   `load-org-unit-record-list`. Archive ids are `G-<id>`, API ids have no prefix.
@@ -6910,8 +6916,6 @@ here; the rules themselves are §0X.4.
   a telephony provider / Kafka; export, re-import, read the settings page.
 - `[U]` Run time of `#Удалить` / `#Архивировать` / `#Восстановить` / `#Дублировать` (§12a) — check: a BUTTON
   script on a probe BO calling each, then read the record's state in the registry filters.
-- `[U]` «ПРЕКРАТИТЬ» in the import dialog — which status it leaves (`MYBPM-UI-API.md` §5) — check: press it on a dry run, read
-  `load-import-file-records`.
 
 ---
 
