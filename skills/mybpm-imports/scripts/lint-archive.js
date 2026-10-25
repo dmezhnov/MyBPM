@@ -479,10 +479,10 @@ if (NAME.length) err(`REMINDER ${NAME.length} code(s) off the naming convention 
 const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$/;
 const named = new Map(), invented = new Map(); // a key this document names as "key" or `key`; the others with where they sit
 const keyOk = (k) => named.get(k) ?? named.set(k, String(doc ?? "").includes(`"${k}"`) || String(doc ?? "").includes("`" + k + "`")).get(k);
-const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data
+const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data, so are those of a calendar card zone
   if (Array.isArray(o)) return o.forEach((x) => walk(x, at, p, up));
   if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
-    if (!MAP.test(p) && up !== "massPrintFormCodes" && !ID.test(k) && !keyOk(k)) invented.set(k, [...(invented.get(k) ?? []), `${at}${p ? "." + p : ""}`]);
+    if (!MAP.test(p) && up !== "massPrintFormCodes" && up !== "calendarCardTemplates" && !ID.test(k) && !keyOk(k)) invented.set(k, [...(invented.get(k) ?? []), `${at}${p ? "." + p : ""}`]);
     walk(v, at, k, p);
   }
 };

@@ -2184,7 +2184,7 @@ const tools: Tool[] = [
         x: { type: "number" }, y: { type: "number" }, cols: { type: "number" }, rows: { type: "number" },
         html: { type: "string", description: "STATIC_TEXT: the new HTML" },
         optionCodes: { type: "object", description: "DROPDOWN_SINGLE / RADIO_BUTTON_GROUP: {\"<option label or current code>\": \"new_code\"}" },
-        steps: { type: "array", items: {}, description: "PROGRESS_BAR: the whole new step list (string or {label, code}); a step with an old one's code or label keeps its id, new ones get minted ids" },
+        steps: { type: "array", items: {}, description: "PROGRESS_BAR: the whole new step list (string or {label, code}); a step with an old one's code or label keeps its id, new ones get minted ids, an old step left out is deleted (records that hold it keep its code, shown as no step)" },
         set: { type: "object", description: "Any other key of the field DTO (a move to another tab: {\"tabId\": …}; the toolbar of a TEXTAREA: {\"params\": {\"buttonTypes\": …}})" } } } },
       delete: { type: "array", items: { type: "string" }, description: "fieldIds" },
       window: { description: "As in bo_create; applies with `add`." } },
@@ -2224,7 +2224,11 @@ const tools: Tool[] = [
           }
           if (e.steps !== undefined) {
             if (f.type !== "PROGRESS_BAR") throw new Error(`${f.label ?? f.fieldId}: steps belong to a PROGRESS_BAR`);
-            set("progressSteps", await progressSteps(s, e.steps, f.progressSteps ?? []));
+            const old: any[] = f.progressSteps ?? [], steps = await progressSteps(s, e.steps, old);
+            set("progressSteps", steps);
+            // the stand only adds and updates the steps sent; a step is removed only by its id here (§5b «Progress steps»)
+            const gone = old.map((x) => x.id).filter((id) => id && !steps.some((x) => x.id === id));
+            if (gone.length) edit.deletedFieldProgressStepIds = gone;
           }
           for (const [k, v] of Object.entries(e.set ?? {})) set(k, v);
           edits.push(edit);
@@ -2238,7 +2242,8 @@ const tools: Tool[] = [
       const lost = (a.delete ?? []).filter((id: string) => (bo.formFields ?? []).some((f: any) => f.fieldId === id));
       if (lost.length) notes.push(`still on the BO after the delete: ${lost.join(", ")}`);
       for (const e of (a.edit ?? []).filter((x: any) => x.steps)) {
-        const got = ((bo.formFields ?? []).find((f: any) => f.fieldId === e.fieldId)?.progressSteps ?? []).map((x: any) => x.label);
+        const got = [...((bo.formFields ?? []).find((f: any) => f.fieldId === e.fieldId)?.progressSteps ?? [])]
+          .sort((x: any, y: any) => (x.orderIndex ?? 0) - (y.orderIndex ?? 0)).map((x: any) => x.label);
         const want = e.steps.map((o: Opt) => (typeof o === "string" ? o : o.label));
         if (got.join("\u0001") !== want.join("\u0001")) notes.push(`steps of ${e.fieldId} read back as ${got.join(", ") || "none"}, not ${want.join(", ")}`);
       }

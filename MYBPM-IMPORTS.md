@@ -406,7 +406,7 @@ your own.
 | A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5c) | not built — say so; a hook on save or a manually started process is the working route |
 | A guard: forbid a save or a status change until a condition («без согласования нельзя начать работы») | no hook that refuses a save or rolls a status back is known `[U]` (§5d) | a path someone RUNS step by step → a business process with an approval branch (0.18); a value that must be there → «Обязательное» (`isRequired`, 0.5); otherwise not built — say so |
 | Users, departments, groups, companies | they are RECORDS of the built-in BOs `Person` / `Department` / `PersonGroup` / `Company` (reserved codes, 0.2a; `Company` only for the `root` login), not structure; an archive carries an org unit only as an `ExportStructInstanceDto` next to the rights or settings that name it; it never CREATES a unit — an unknown one must be mapped onto an existing unit before the apply, and the import writes the archive's name onto that unit (§8) `[C]` | records: an xlsx of records (Part III; group membership from the group side) or the stand by hand; a new user e-mails an invitation (§3) |
-| Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1) |
+| Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1): an option or a progress step goes only through `deletedFieldOptionIds` / `deletedFieldProgressStepIds` and the records keep its id `[C]`; a tab's fields go into `deletedFieldIds` with it or stay orphaned — off the form, values still stored `[C]` (`MYBPM-UI-API.md` §5b) |
 
 ### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code`, `orderIndex` and the two ids)
 
@@ -1922,10 +1922,10 @@ if (NAME.length) err(`REMINDER ${NAME.length} code(s) off the naming convention 
 const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$/;
 const named = new Map(), invented = new Map(); // a key this document names as "key" or `key`; the others with where they sit
 const keyOk = (k) => named.get(k) ?? named.set(k, String(doc ?? "").includes(`"${k}"`) || String(doc ?? "").includes("`" + k + "`")).get(k);
-const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data
+const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data, so are those of a calendar card zone
   if (Array.isArray(o)) return o.forEach((x) => walk(x, at, p, up));
   if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
-    if (!MAP.test(p) && up !== "massPrintFormCodes" && !ID.test(k) && !keyOk(k)) invented.set(k, [...(invented.get(k) ?? []), `${at}${p ? "." + p : ""}`]);
+    if (!MAP.test(p) && up !== "massPrintFormCodes" && up !== "calendarCardTemplates" && !ID.test(k) && !keyOk(k)) invented.set(k, [...(invented.get(k) ?? []), `${at}${p ? "." + p : ""}`]);
     walk(v, at, k, p);
   }
 };
@@ -3094,9 +3094,16 @@ The registry views «Календарь», «Карта», «Группиров�
   (`MYBPM-UI-API.md` §5l, trap 62). The flag and `groupingInfo` store and travel; do not promise a user a grouping view.
 - **The calendar's event-title fields do NOT travel** — no key in the export; a re-import leaves the stand's titles,
   a new BO gets a default. Set them on the stand (`v2/calendar/save-calendar-view-titles`, §8 «After the import — the stand-side calls»). The
-  calendar hover card is `calendarCardTemplates` (travels), the Gantt columns `timelineTemplates` (what each does on screen:
-  `MYBPM-UI-API.md` §5l); their archive shape beyond the empty templates of 0.4 is not known yet `[U]` — §18; ship
-  both as 0.4 prints them and set them on the stand.
+  calendar hover card is `calendarCardTemplates`, the Gantt columns `timelineTemplates` (what each does on screen:
+  `MYBPM-UI-API.md` §5l). Both travel `[C]`: `calendarCardTemplates {header, content, footer, headerDelFieldCodes,
+  contentFieldCodes, footerDelFieldCodes}` — each zone keyed by FIELD CODE, `{"<code>": {"label": "…", "orderIndex": 0,
+  "kind": "DYNAMIC"}}`, the header holding one field; the three `*FieldCodes` keys are bookkeeping, write them `{}`
+  (the middle one really is spelled `contentFieldCodes`). `timelineTemplates {"<PERIOD field code>": {"columns":
+  {"<field code>": {"order": 0, "archetype": "DYNAMIC"}}}}`, and each column field carries `gantTableLocations
+  {"<PERIOD field code>": {"colToShow": true, "colOrderIndex": 0}}` (other fields `{}`). A new BO gets both as shipped;
+  **a re-import MERGES per field and never removes** — a listed field is added or updated, an unlisted one stays with
+  its old order, empty zones and `timelineTemplates: {}` change nothing `[C]`. A card field or a Gantt column is removed
+  only on the stand (`MYBPM-UI-API.md` §5l).
 - Nothing checks that a map has a `GEO_POINT` or a grouping a reference field — the flag is accepted either way.
 - Generator: `tools/make-probe-archive.bun.ts --calendar --map --grouping`, a level by
   `--field "Связь:BO@<boId>@Code!viewType=SINGLE,groupingInfo.nodeTreeActive=true,groupingInfo.nodeTreeLevel=0"`.
@@ -6956,8 +6963,6 @@ here; the rules themselves are §0X.4.
   read the composite's fields in `load-business-object-by-id`.
 - `[U]` Scalar `defaultValue` / `defaultValueMap` (text, number, date, checkbox) — check: set one in the
   constructor, export, re-import onto a copy, open «Добавить» and read the draft value.
-- `[U]` The archive shape of `calendarCardTemplates` and `timelineTemplates` — check: set each in the
-  constructor («Календарь» hover card, «Диаграмма Ганта» columns), export, re-import onto a copy.
 - `[U]` A key that sets the order of dictionary rows in a dropdown (0.5b) — check: ship rows with an `orderIndex`
   at the line level, open the dropdown.
 - `[U]` Whether a re-import UNWIRES a hook it omits / nulls in `workScripts`, or REMOVES a local method it

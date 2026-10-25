@@ -285,8 +285,19 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
           .map((x: any) => (x.options?.length ? { ...x, options: x.options.map((o: any, j: number) => ({ ...o, code: `Gen_${j}` })) } : x));
         bo.fields = [...(bo.fields ?? []).filter((x) => !drop.has(x.fieldId)), ...added];
         for (const e of p.editedFields ?? []) {
-          const { options, ...rest } = e;
-          Object.assign(bo.fields.find((x) => x.fieldId === e.fieldId) ?? {}, add.has(e.fieldId) ? rest : e);
+          const { options, ...rest } = e, f = bo.fields.find((x) => x.fieldId === e.fieldId) ?? ({} as any);
+          if (add.has(e.fieldId)) { Object.assign(f, rest); continue; }
+          // the stand: options[] / progressSteps[] of an edit only add and update by id; an item is removed only by
+          // its id in deletedFieldOptionIds / deletedFieldProgressStepIds — an item merely left out stays
+          const { progressSteps, deletedFieldOptionIds, deletedFieldProgressStepIds, ...plain } = rest;
+          Object.assign(f, plain);
+          const merge = (old: any[] = [], upd: any[] | undefined, del: string[] = []) => {
+            const out = old.map((x) => ({ ...x, ...(upd?.find((y) => y.id === x.id) ?? {}) }));
+            for (const y of upd ?? []) if (!out.some((x) => x.id === y.id)) out.push(y);
+            return out.filter((x) => !del.includes(x.id));
+          };
+          if (options || deletedFieldOptionIds) f.options = merge(f.options, options, deletedFieldOptionIds);
+          if (progressSteps || deletedFieldProgressStepIds) f.progressSteps = merge(f.progressSteps, progressSteps, deletedFieldProgressStepIds);
         }
       }
       return acc;

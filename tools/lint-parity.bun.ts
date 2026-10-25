@@ -53,6 +53,7 @@ const variants: [string, string[]][] = [
     "--field", "Чек:CHECKLIST#Пункт 1|+Пункт 2", "--field", "Вкладки:TAB_GROUP#Шаг 1|Шаг 2",
     "--field", "Заметки:TEXTAREA!tab=Vkladki/Shag_1", "--field", "Клиент:BO@AAAAAAAAAAAAAAAA@Parity_dict!tab=Vkladki/Shag_2,show=Naimenovanie",
     "--kanban", "Статус:HEADER=Наименование;CONTENT=Срок,CREATED_BY;FOOTER=Телефон", "--native", "CREATED_BY", "--menu", "Заявки:BO@parity_bo",
+    "--calendar-card", "header=Naimenovanie;content=Gotovo,Srok;footer=Otvet", // zone keys = field codes the document never names
     "--widget", "BUTTON:Отправить:send_btn", "--widget", "IFRAME:Карта:map_frame:https://example.com/map"]],
   ["panel", ["--code", "parity_panel", "--name", "Панель", "--category", "BO_PANEL", "--field", "Заявки:BO@AAAAAAAAAAAAAAAA@parity_bo"]],
   ["composite", ["--code", "parity_co", "--name", "Состав", "--category", "BO_COMPOSITE", "--source", "parity_bo:Заявки",
@@ -95,7 +96,8 @@ const xss = ["<p style=\"text-transform: uppercase\">x</p>", "buttonstart", "<p>
   "EVAL(\n1)", "x eval(1)", "javascript:", "javascript:\n", "JavaScript:", "vbscript:x", "onLoad = 1", "ONERROR\n=", "onerror", "on\u0000click", "OnMouseOver",
   "<a\u0085 script>x</a>", "<x\u2028 script>y</z>", "<x\n script>y</z>", "<b \\s x>a</b>", "<p \\s x>a</p>", "<b \\s onx=>a</b>", "<x\f\fon>a</b>",
   "<a ſcript>x</a>", "javaſcript:", "<scrİpt>x</a>", "<\ud83d\ude00 script>x</a>", "<object>x</object>", "<b embed:1>x</b>", "</script>", "<SCRIPT\n>",
-  "{\"a\":\"onclick\"}", "[\"<script>1</script>\"]", "\"onclick\"", "{\"a\":{\"b\":\"[\\\"eval(2)\\\"]\"}}", "<p>plain</p>", "expression(1)", "expressions"];
+  "{\"a\":\"onclick\"}", "[\"<script>1</script>\"]", "\"onclick\"", "{\"a\":{\"b\":\"[\\\"eval(2)\\\"]\"}}", "<p>plain</p>", "expression(1)", "expressions",
+  "x onpointerdown y", "ONTOUCHSTART", "<b>scripts</b>", "a eval (1)", "EXPRESSION\t(", "x\fy", "<p \\ x>y</p>", "<p>\\</p>", "<applet", "vbScript:", "person_search", "<p>Platform</p>"];
 const scalars = [null, "", 0, -1, 1, 1.5, 1e21, true, false, {}, [], "x", "0", "1", "Gen_1", "BO", "NONE", "DEFAULT", "MANUAL", " "];
 
 function mutateObject(o: any): any {
