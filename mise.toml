@@ -179,6 +179,19 @@ if (Bun.which("python3")) {
   await $`mise run lint-parity`;
 } else if (Bun.env.CI) { console.error("no python3 — the Python port of the lint is untested"); process.exit(1); }
 else console.warn("WARNING: no python3 here — lint_archive.py and lint-parity skipped (CI runs them)");
+// the reject-check categories (0.10): one field per category gets exactly its ERROR, the near misses get none — in both lints
+await $`rm -rf dist/lint-xss && bun tools/make-probe-archive.bun.ts --group-code Xss_group --group-name Xss --group-order 1 --code Lint_xss --name Xss --salt xss --bo-order 1 --out dist/lint-xss --field ${"Мышь onmouseover:INPUT_TEXT"} --field ${"Жест onpointerdown:INPUT_TEXT"} --field ${"Ссылка javascript:x:INPUT_TEXT"} --field ${"Расчёт eval (1):INPUT_TEXT"} --field ${"<p>Platform: X</p>:INPUT_TEXT"} --field ${"Тег <object:INPUT_TEXT"} --field ${"Кнопка button_start:INPUT_TEXT"} --field ${"Medieval 1200:INPUT_TEXT"} --calendar --calendar-card "header=Medieval_1200;content=Knopka_button_start,Medieval_1200"`.quiet();
+const xssZip = [...new Bun.Glob("dist/lint-xss/*.zip").scanSync()][0];
+const xssWant = ["onmouseover", "onpointerdown", "javascript: or vbscript:", "eval( or expression(", "form:, object:, embed: or applet: after a <", "an <object>, <applet>, <embed> or <form> tag"];
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
+  const r = await $`${cmd} ${xssZip}`.nothrow().quiet();
+  const got = r.stdout.toString().split("\n").filter((l) => l.includes("a kind of string the stand refuses"));
+  const miss = xssWant.filter((w) => got.filter((l) => l.includes(w)).length !== 1);
+  // the calendar card zones are keyed by FIELD CODE — a code is data, never an invented key (0.4a)
+  const keyErr = r.stdout.toString().split("\n").filter((l) => l.includes("is not in this document"));
+  if (keyErr.length) { console.error(`${cmd[1]}: field codes in calendarCardTemplates taken for invented keys:\n${keyErr.join("\n")}`); process.exit(1); }
+  if (got.length !== xssWant.length || miss.length) { console.error(`${cmd[1]}: reject-check ERRORs ${got.length}, want ${xssWant.length}, wrong for ${JSON.stringify(miss)}:\n${got.join("\n")}${r.stderr}`); process.exit(1); }
+}
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
@@ -481,7 +494,9 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["bo_read", { code: "mcp_probe_rights", raw: true }, (r) => { const s = r.formFields.find((f: any) => f.code === "stage")?.progressSteps ?? [];
     barIds = s.map((x: any) => x.id); return s.map((x: any) => `${x.label}:${x.code ?? ""}`).join() === "Начало:,Конец:end" && barIds.every(Boolean); }],
   ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", steps: ["Середина", { label: "Финиш", code: "end" }] }] }, (r) => !r.notes?.length],
-  ["bo_read", { code: "mcp_probe_rights", raw: true }, (r) => { const s = r.formFields.find((f: any) => f.code === "stage")?.progressSteps ?? [];
+  // a step left out of the list is deleted (the stand keeps it unless its id is in deletedFieldProgressStepIds)
+  ["bo_read", { code: "mcp_probe_rights", raw: true }, (r) => { const s = [...(r.formFields.find((f: any) => f.code === "stage")?.progressSteps ?? [])]
+      .sort((x: any, y: any) => x.orderIndex - y.orderIndex);
     return s.map((x: any) => x.label).join() === "Середина,Финиш" && s[1].id === barIds[1] && !!s[0].id && !barIds.includes(s[0].id); }],
   ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Лишнее", type: "INPUT_TEXT", requried: true }] }, (r) => /unknown key «requried»/.test(r)],
   ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Не бар", type: "INPUT_TEXT", steps: ["a"] }] }, (r) => /steps belong to a PROGRESS_BAR/.test(r)],

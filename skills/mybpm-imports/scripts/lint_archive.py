@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 7f87a31ed490
+# lintArchive sha256: 30a5e20f93ab
 import json
 import math
 import os
@@ -1199,13 +1199,13 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             named[k] = f'"{k}"' in dtext or f"`{k}`" in dtext
         return named[k]
 
-    def walk(o, at, p, up):  # p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data
+    def walk(o, at, p, up):  # p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data, so are those of a calendar card zone
         if isinstance(o, list):
             for x in o:
                 walk(x, at, p, up)
         elif isinstance(o, dict):
             for k, v in ents(o):
-                if not T(MAP, p) and up != "massPrintFormCodes" and not T(ID, k) and not keyOk(k):
+                if not T(MAP, p) and up != "massPrintFormCodes" and up != "calendarCardTemplates" and not T(ID, k) and not keyOk(k):
                     invented.setdefault(k, []).append(f"{at}{'.' + p if p else ''}")
                 walk(v, at, k, p)
 

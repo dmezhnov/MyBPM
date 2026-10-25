@@ -32,6 +32,8 @@
  *   --field "Офис:BO@<boId>@Ofis!show=Strana|Gorod"            — the columns of a nested-object table, by
  *     the TARGET's field codes (without it the importer shows none)
  *   --calendar                                                — the BO's «Календарь» view (isCalendarEnabled)
+ *   --calendar-card "header=<code>;content=<code>,<code>"     — the calendar hover card (calendarCardTemplates): each
+ *     zone (header / content / footer) lists FIELD CODES in order, written in the export shape (MYBPM-IMPORTS.md §2 «BO views»)
  *   --map / --grouping                                        — the «Карта» / «Группировка» views (isMapEnabled /
  *     isGroupingEnabled); a grouping level is a field key: "Связь:BO@<boId>@Code!viewType=SINGLE,
  *     groupingInfo.nodeTreeActive=true,groupingInfo.nodeTreeLevel=0" (MYBPM-IMPORTS.md §2 «BO views»)
@@ -715,6 +717,15 @@ function formRows(): number {
   return Math.max(0, ...(Object.values(dynamicFields) as any[])
     .filter(f => !f.tabCodePath && f.gridPosition).map(f => f.gridPosition.y + f.gridPosition.rows));
 }
+/** `--calendar-card "header=a;content=b,c"` → one zone of calendarCardTemplates, keyed by field code (the export shape). */
+function calendarZone(zone: string): Record<string, object> {
+  const codes = flag("calendar-card", "").split(";").find((z) => z.startsWith(`${zone}=`))?.slice(zone.length + 1).split(",").filter(Boolean) ?? [];
+  return Object.fromEntries(codes.map((code, orderIndex) => {
+    const f = dynamicFields[code] as any;
+    if (!f) throw new Error(`--calendar-card: no field "${code}" in this BO`);
+    return [code, { label: f.label.rus, orderIndex, kind: "DYNAMIC" }];
+  }));
+}
 /** TAB_GROUPs without `!rows=N`, resized to their tallest tab once every field is placed (0.8a). */
 const autoTabGroups = new Set<string>();
 /** System fields first (a dictionary owns rows 0-7), then whatever `--field` asked for. */
@@ -1216,9 +1227,9 @@ lines.push({
   kanbanCardTemplates,
   timelineTemplates: {},
   calendarCardTemplates: {
-    header: {},
-    content: {},
-    footer: {},
+    header: calendarZone("header"),
+    content: calendarZone("content"),
+    footer: calendarZone("footer"),
     headerDelFieldCodes: {},
     contentFieldCodes: {},
     footerDelFieldCodes: {},
