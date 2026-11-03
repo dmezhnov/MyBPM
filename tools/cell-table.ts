@@ -59,3 +59,8 @@ export const minColsOf = (cell: CellRule | undefined, win: number, lvl = 0) =>
 
 /** The most columns a kind may take: 5 for a `narrow` one (a third of the form), else 15. */
 export const maxColsOf = (cell: CellRule | undefined) => (cell?.width === "narrow" ? 5 : 15);
+
+/** The cols a field alone in its row may take, the preferred first (0.8): a `narrow` kind 5, a short (`pairs`) one `x 0, cols 8`
+ *  — or 15 where a cell of the row below would float up into columns 8–14 — any other 15. The caller drops what is under its min. */
+export const loneColsOf = (cell: CellRule | undefined) =>
+  cell?.width === "narrow" ? [5] : cell?.place === "pairs" ? [8, 15] : [15];

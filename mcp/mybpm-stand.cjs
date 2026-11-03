@@ -115,6 +115,7 @@ var rowsOf = (cell, n = 0) => !cell ? 0 : cell.items ? Math.ceil((cell.items.bas
 var colPx = (win, lvl = 0) => (72 * win - 69 - 39 * lvl) / 15;
 var minColsOf = (cell, win, lvl = 0) => cell?.minPx ? Math.ceil((cell.minPx + 1) / colPx(win, lvl)) : 0;
 var maxColsOf = (cell) => cell?.width === "narrow" ? 5 : 15;
+var loneColsOf = (cell) => cell?.width === "narrow" ? [5] : cell?.place === "pairs" ? [8, 15] : [15];
 // tools/menu-icons.json
 var menu_icons_default = {
   chunk: "956.1e3677ced41740f7.js",
@@ -923,7 +924,7 @@ var FIELD_SPEC = { type: "object", required: ["type"], properties: {
   unique: { type: "boolean" },
   readonly: { type: "boolean", description: "Never together with required." },
   column: { type: "boolean", description: "A registry column. Default: the first field, plus required / unique ones; 6 at most (R1 «Layout»)." },
-  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15. Held to the table of IMPORTS 0.8: a narrow INPUT_NUMBER gets at most 5, a kind with a min px (INPUT_PHONE, DATE, PERIOD …) at least the cols its box needs in the record window (W 10 unless `window.w` says otherwise; a tab is narrower) — a change shows in notes." },
+  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15; a short field left alone in its row gets x 0, cols 8 instead (15 when the row below would float up into the empty half) — give `cols` to pair fields by meaning, a lone field is at most 2 per form. Held to the table of IMPORTS 0.8: a narrow INPUT_NUMBER gets at most 5, a kind with a min px (INPUT_PHONE, DATE, PERIOD …) at least the cols its box needs in the record window (W 10 unless `window.w` says otherwise; a tab is narrower) — a change shows in notes." },
   rows: { type: "number", description: "Height; default by type (R1 «Layout»: 3 one-line, 6 text/table/file, 8 questionnaire/map)." },
   x: { type: "number" },
   y: { type: "number", description: "x / y on every field = you own the layout; otherwise it is packed for you." },
@@ -984,6 +985,16 @@ function colsOf(f, win, lvl, notes, where) {
     notes.push(`${where}: «${f.label ?? f.type}» cols ${cols} → ${fit} — ${fit < cols ? `a ${k.kind} is narrow, at most 5 columns` : `a ${k.kind} box needs ${k.minPx} px in a window w ${win}${lvl ? " on a tab" : ""}`} (IMPORTS 0.8)`);
   return fit;
 }
+function shortenLone(specs, cells, win, lvl) {
+  const ys = [...new Set(cells.map((c) => c.y))];
+  ys.forEach((y, i) => {
+    const row = cells.filter((c) => c.y === y), f = specs[cells.indexOf(row[0])], k = cellSpec(f);
+    if (row.length !== 1 || f.cols !== undefined || loneColsOf(k)[0] !== 8 || win && minColsOf(k, win, lvl) > 8)
+      return;
+    if (!cells.some((c) => c.y === ys[i + 1] && c.x >= 8))
+      row[0].cols = 8;
+  });
+}
 function pack(specs, y0, notes, where, win, lvl) {
   const cells = [];
   let y = y0, row = [];
@@ -1003,6 +1014,7 @@ function pack(specs, y0, notes, where, win, lvl) {
     cells.push(c);
   }
   close();
+  shortenLone(specs, cells, win, lvl);
   if (specs.filter(visible).length > 12)
     notes.push(`${where}: ${specs.filter(visible).length} visible fields — over 12 asks for tabs (pass \`tab\`)`);
   return { cells, bottom: y };

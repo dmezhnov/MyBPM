@@ -35,7 +35,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { inflateRawSync } from "node:zlib";
 import { zip } from "../tools/zip.ts";
-import { cellOf as cellRuleOf, cellTable, maxColsOf, minColsOf, rowsOf, type CellRule } from "../tools/cell-table.ts";
+import { cellOf as cellRuleOf, cellTable, loneColsOf, maxColsOf, minColsOf, rowsOf, type CellRule } from "../tools/cell-table.ts";
 import ICONS from "../tools/menu-icons.json";
 import { PAGE_HTML } from "./accounts-page.ts";
 
@@ -712,7 +712,7 @@ const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   options: { type: "array", items: {}, description: "DROPDOWN_SINGLE / RADIO_BUTTON_GROUP: the local list (FROM_FIELD); CHECKLIST: its items. A string or {label, code, color}." },
   required: { type: "boolean" }, unique: { type: "boolean" }, readonly: { type: "boolean", description: "Never together with required." },
   column: { type: "boolean", description: "A registry column. Default: the first field, plus required / unique ones; 6 at most (R1 «Layout»)." },
-  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15. Held to the table of IMPORTS 0.8: a narrow INPUT_NUMBER gets at most 5, a kind with a min px (INPUT_PHONE, DATE, PERIOD …) at least the cols its box needs in the record window (W 10 unless `window.w` says otherwise; a tab is narrower) — a change shows in notes." },
+  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15; a short field left alone in its row gets x 0, cols 8 instead (15 when the row below would float up into the empty half) — give `cols` to pair fields by meaning, a lone field is at most 2 per form. Held to the table of IMPORTS 0.8: a narrow INPUT_NUMBER gets at most 5, a kind with a min px (INPUT_PHONE, DATE, PERIOD …) at least the cols its box needs in the record window (W 10 unless `window.w` says otherwise; a tab is narrower) — a change shows in notes." },
   rows: { type: "number", description: "Height; default by type (R1 «Layout»: 3 one-line, 6 text/table/file, 8 questionnaire/map)." },
   x: { type: "number" }, y: { type: "number", description: "x / y on every field = you own the layout; otherwise it is packed for you." },
   tab: { type: "string", description: "The tab label this field goes on: every field with a `tab` lands in one TAB_GROUP (code `tabs`) placed where the first of them stands; tabs in order of appearance, the first is the default." },
@@ -792,6 +792,17 @@ function colsOf(f: FieldSpec, win: number, lvl: number, notes: string[], where: 
   return fit;
 }
 
+/** A short field the caller gave no `cols` and that stands alone in its row → `x 0, cols 8` (IMPORTS 0.8), unless its box needs
+ *  more there or a cell of the row right below starts in columns 8–14 (it would float up into the empty half) — then it keeps 15. */
+function shortenLone(specs: FieldSpec[], cells: Cell[], win: number, lvl: number) {
+  const ys = [...new Set(cells.map((c) => c.y))];
+  ys.forEach((y, i) => {
+    const row = cells.filter((c) => c.y === y), f = specs[cells.indexOf(row[0])], k = cellSpec(f);
+    if (row.length !== 1 || f.cols !== undefined || loneColsOf(k)[0] !== 8 || (win && minColsOf(k, win, lvl) > 8)) return;
+    if (!cells.some((c) => c.y === ys[i + 1] && c.x >= 8)) row[0].cols = 8;
+  });
+}
+
 /** Pack the fields of one container (the form or a tab, `lvl` 0 / 1) into rows of 15 columns, from `y0` down (R1 «Layout»). */
 function pack(specs: FieldSpec[], y0: number, notes: string[], where: string, win: number, lvl: number): { cells: Cell[]; bottom: number } {
   const cells: Cell[] = [];
@@ -808,6 +819,7 @@ function pack(specs: FieldSpec[], y0: number, notes: string[], where: string, wi
     row.push(c); cells.push(c);
   }
   close();
+  shortenLone(specs, cells, win, lvl);
   if (specs.filter(visible).length > 12) notes.push(`${where}: ${specs.filter(visible).length} visible fields — over 12 asks for tabs (pass \`tab\`)`);
   return { cells, bottom: y };
 }
