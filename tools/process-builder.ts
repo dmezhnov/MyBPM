@@ -34,6 +34,10 @@
  *                                                       //   {setOption: <path>, boCode, fieldCode, optionId} —
  *                                                       //     <path>.#Значение := the option <optionId> (its CODE)
  *                                                       //     of the DROPDOWN_SINGLE <fieldCode> of BO <boCode>
+ *                                                       //   {processAct: <path>, act: "terminateProcess"} —
+ *                                                       //     <path>.#Терминируй процесс (goForProcess,
+ *                                                       //     continueProcess); [] = ЭТОТ_ПРОЦЕСС itself, a
+ *                                                       //     reference path ends at the record (#Значение)
  *                          | {exit: "<arrow key>"}      // Switch: «… по стрелке»
  *                          | {if: [<path>], then: "<arrow key>", else: "<arrow key>"}}}
  *   A path starts at ЭТОТ_ПРОЦЕСС: its first element is `@<field key>` (a process field of this spec) or a
@@ -48,7 +52,8 @@ export type FigureType = "Enter" | "Exit" | "Switch" | "SingleToParallel" | "Par
 
 /** A statement run before a script's exit. Paths as in `if` (below); `unit` is a DateDeltaUnit (§12 enums). */
 export type ScriptStep = { setDate: string[]; plus: number; unit: string } | { updateTrap: string[] }
-  | { setOption: string[]; boCode: string; fieldCode: string; optionId: string };
+  | { setOption: string[]; boCode: string; fieldCode: string; optionId: string }
+  | { processAct: string[]; act: "goForProcess" | "continueProcess" | "terminateProcess" };
 
 export type ScriptSpec = { exit: string; steps?: ScriptStep[] } | { if: string[]; then: string; else: string };
 
@@ -124,6 +129,13 @@ export function scriptBody(spec: ScriptSpec, arrowId: (key: string) => string, f
     if ("updateTrap" in st) {
       blocks[id] = { leftExprId: expr({ leftExprId: path(st.updateTrap, false),
         actId: "F-updateTrapDate-K-FIX-T-BoiFieldRefCode", type: "ExprAct" }), downBlockId: down, type: "BlockAssign" };
+      return id;
+    }
+    if ("processAct" in st) {
+      // a void action on a process record (MYBPM-IMPORTS.md §12 «Actions that exist only on a PROCESS record»)
+      const rec = st.processAct.length ? path(st.processAct, true) : path([], false);
+      blocks[id] = { leftExprId: expr({ leftExprId: rec, actId: `F-${st.act}-K-FIX-T-BoiRefCode`, type: "ExprAct" }),
+        downBlockId: down, type: "BlockAssign" };
       return id;
     }
     if ("setOption" in st) {

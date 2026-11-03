@@ -2937,6 +2937,16 @@ A configured process (Enter → Form «Заявка» → Script → Switch on �
 - **A run is over only when no step is `STAND`, `GO` or `WAITING` and no Timer is `STOPPED`** `[C]` (a stopped Timer still fires, trap 107): right after the Form is released the
   Switch reads `GO` for a moment; a poll that stops at «no `STAND`» reports an unfinished run.
   `runOnTestRecord` waits for both.
+- **«Статус процесса» of a run that is over is «Завершён» (`FINISHED`) only if the run passed an Exit**
+  `[C]`. A run over without any Exit `PASSED` keeps «В исполнении» (`EXECUTING`) for good: a path ending in
+  a Terminator, a figure with no outgoing arrow (a dead end; `validate-def` does not object), a Terminator
+  that cut another branch before its Exit. A Terminator in one branch while the other branch passes its
+  Exit in the same run reads «Завершён». A `FAILED` step gives «Завершён с ошибкой», a `STAND` / `WAITING`
+  step or a `STOPPED` Timer «В ожидании». A loop with no wait in it (Script → Script → back) stops at the 1000th step of one run: that step turns `FAILED` with the diagnostic `step.limit.reached.cycle` «Достигнут максимальное кол-во пройденных шагов в процессе. Возможно в процессе присутствует цикл», so «Завершён с ошибкой» `[C]`; the count is per run, so a Timer whose date is still ahead ends the run and a loop through it is never stopped by that limit — it runs on forever «В ожидании» `[C]` (the same through a Form `[I]`), while a Timer whose date has already come passes at once in the same run and counts like a Script `[C]`. **«#Терминируй процесс» (`F-terminateProcess-K-FIX-T-BoiRefCode`)
+  never gives «Завершён»** `[C]`: in the process's own Script, that Script passes, the figure after it (an
+  Exit too) turns `STOPPED` and the status is «В ожидании» for good; from another process's Script on a
+  record standing on a Timer, that Timer turns `PASSED` with no next step, does not fire at its due
+  time, and the record keeps «В ожидании» for good. So every path of a process ends in an Exit.
 
 #### Configuring the figures — what each settings dialog writes `[C]`
 
@@ -2977,7 +2987,10 @@ followed by `validate-def {boProcessId, testMode:true}`; nothing else is written
   `left`/`right`/`top`/`bottom`, nothing to configure. In the archive it is `FigureTerminatorStruct {x, y}`.
   Run: **it ends the whole process** — a Timer standing in the other parallel branch turns `PASSED` with
   no next step the moment the Terminator is passed, and that branch's later figures never run
-  (`MYBPM-IMPORTS.md` §16 «A Terminator ends the WHOLE process»). **An Exit ends only its own branch**
+  (`MYBPM-IMPORTS.md` §16 «A Terminator ends the WHOLE process»). **A run ended by a Terminator with no
+  Exit passed keeps «Статус процесса» «В исполнении»** `[C]` (the point «„Статус процесса“ of a run that is
+  over» under «The same configured process through an ARCHIVE»).
+  **An Exit ends only its own branch**
   `[C]`: a process may hold
   several Exits (`validate-def` → `[]`), and after one branch passes its Exit the other still stands on
   its Timer and later reaches its own Exit (`MYBPM-IMPORTS.md` §16 «An Exit inside one branch»).
@@ -3143,7 +3156,8 @@ cycle from inside the page and read the result back with `load-process-steps`.
    no result, so each is a `BlockAssign` with only `leftExprId`:
    `F-goForProcess-K-FIX-T-BoiRefCode` «#Запустить процесс»; `F-continueProcess-K-FIX-T-BoiRefCode`
    «#Продолжить процесс» (a Form or a Timer it waits on passes at once); `F-terminateProcess-K-FIX-T-BoiRefCode`
-   «#Терминируй процесс» (stops the whole process). On a process FIELD (`ЭТОТ_ПРОЦЕСС.<field>`, no `#Значение`
+   «#Терминируй процесс» (stops the whole process; the status stays «В ожидании», point «„Статус процесса“ of a
+  run that is over» under «The same configured process through an ARCHIVE»). On a process FIELD (`ЭТОТ_ПРОЦЕСС.<field>`, no `#Значение`
    hop): `F-updateTrapDate-K-FIX-T-BoiFieldRefCode` «#Обновить таймер для процесса» — call it right after changing
    a Timer's date field, or the Timer keeps the date it read on entry.
 
