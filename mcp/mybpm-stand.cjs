@@ -703,8 +703,9 @@ async function layoutLint(s, boId, code) {
     if (/NOT RUN/.test(out))
       return [`layout lint: ${out}`];
     const mine = (l) => [".", ":", " "].some((c) => l.startsWith(code + c));
+    const type = (l) => l.startsWith(`REMINDER ${code}.`) && /\(0\.5 «Field type by meaning»\)$/.test(l);
     return out.split(`
-`).filter((l) => mine(l) && (/\(0\.8a?( step \d+)?\)$/.test(l) || /overlaps the cell before it/.test(l))).map((l) => `layout lint: ${l}`);
+`).filter((l) => mine(l) && (/\(0\.8a?( step \d+)?\)$/.test(l) || /overlaps the cell before it/.test(l)) || type(l)).map((l) => type(l) ? `field type: ${l}` : `layout lint: ${l}`);
   } catch (e) {
     return [`layout lint NOT RUN (${e.message}) — structure_export the BO and archive_lint it`];
   } finally {
@@ -2938,7 +2939,7 @@ var tools = [
   {
     name: "bo_create",
     write: true,
-    description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
+    description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols; a «field type: REMINDER …» note is a text field whose name holds a date, a month, a year, a range or a quantity — the typed field, or say in the reply why text, IMPORTS 0.5 «Field type by meaning»). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
     props: {
       group: { type: "string", description: "The BO group, by id or exact name (bo_groups); it must exist." },
       kind: { type: "string", enum: ["BO", "BO_DICTIONARY", "BO_PANEL", "BO_PROCESS"], description: "Default BO." },
@@ -2996,7 +2997,7 @@ var tools = [
   {
     name: "bo_fields_save",
     write: true,
-    description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» in notes). Ask the user first.",
+    description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» and «field type: …» in notes). Ask the user first.",
     props: {
       boId: { type: "string" },
       code: { type: "string", description: "The BO code instead of boId" },

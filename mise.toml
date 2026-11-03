@@ -388,6 +388,43 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
       if (got.join("\n") !== lines.join("\n")) { console.error(`${cmd[1]} on dist/lint-items/${name}.jsonl: item rows lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
     }
 }
+// field type by meaning (IMPORTS 0.5, issue #14): a text field whose label or code holds a month, a quantity, a day, a moment,
+// a range's start or a time gets one REMINDER with the type, a label with a format hint another; a comment, a typed field, a
+// weekday, «account» (no «count» token), a number code, «delivery_time» (a time code needs a start or an end beside it) and
+// «Итог проверки» (only «итого» is a sum) get none — in both lints. On an amendment a line on a field the
+// source carries unchanged folds into «left as exported»; a field changed since the source keeps its line
+{
+  const TYPED: [string, string, string][] = [["month_key", "INPUT_TEXT", "Месяц"], ["hours_spent", "INPUT_TEXT", "Потрачено"], ["deadline", "INPUT_TEXT", "Срок (ДД.ММ)"],
+    ["period_start", "INPUT_TEXT", "Начало"], ["created_at", "INPUT_TEXT", "Создано"], ["length_mm", "TEXTAREA", "Длина (мм)"], ["start_time", "INPUT_TEXT", "Начало приёма"],
+    ["month", "YEAR_AND_MONTH", "Месяц (ММ.ГГГГ)"], ["payDay", "INPUT_TEXT", "Оплата"], ["comment", "TEXTAREA", "Комментарий"], ["due_date", "DATE", "Срок"],
+    ["period_comment", "INPUT_TEXT", "Комментарий к периоду"], ["account", "INPUT_TEXT", "Счёт"], ["weekday", "INPUT_TEXT", "День недели"], ["contract_number", "INPUT_TEXT", "Номер договора"],
+    ["delivery_time", "INPUT_TEXT", "Сроки доставки"], ["result", "INPUT_TEXT", "Итог проверки"]];
+  await $`rm -rf dist/lint-type && bun tools/make-probe-archive.bun.ts --group-code Type_group --group-name Type --group-order 1 --code Lint_type --name LintType --salt linttype --bo-order 1 --out dist/lint-type ${TYPED.flatMap(([c, t]) => ["--field", `${c.toLowerCase()}:${t}`])}`.quiet();
+  const typeLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-type/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const typed = async (name: string, label: (code: string, label: string) => string) => {
+    await Bun.write(`dist/lint-type/${name}.jsonl`, typeLines.map((l) => {
+      const o = JSON.parse(l);
+      if (o.dynamicFields) o.dynamicFields = Object.fromEntries(Object.values<any>(o.dynamicFields).map((f) => {
+        const row = TYPED.find(([c]) => c.toLowerCase() === f.code);
+        if (!row) { console.error(`lint-type: make-probe-archive coded ${f.code}`); process.exit(1); }
+        return [row[0], { ...f, code: row[0], label: { ...f.label, rus: label(row[0], row[2]) } }];
+      }));
+      return JSON.stringify(o);
+    }).join("\n") + "\n");
+    return `dist/lint-type/${name}.jsonl`;
+  };
+  const built = await typed("built", (c, l) => l), source = await typed("source", (c, l) => (c === "month_key" ? "Отчётный месяц" : l));
+  const R = (c: string, l: string, what: string, t: string) => `REMINDER Lint_type.${c} «${l}»: ${c === "length_mm" ? "TEXTAREA" : "INPUT_TEXT"} — by its name ${what}, so ${t}, or report «текстом, потому что …» (0.5 «Field type by meaning»)`;
+  const H = (c: string, l: string) => `REMINDER Lint_type.${c} «${l}»: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`;
+  const want = [R("month_key", "Месяц", "a month", "YEAR_AND_MONTH"), R("hours_spent", "Потрачено", "a quantity", "INPUT_NUMBER"), R("deadline", "Срок (ДД.ММ)", "a day", "DATE"), H("deadline", "Срок (ДД.ММ)"),
+    R("period_start", "Начало", "a day", "DATE"), R("created_at", "Создано", "a moment, day and time", "FULL_DATE"), R("length_mm", "Длина (мм)", "a quantity", "INPUT_NUMBER"),
+    R("start_time", "Начало приёма", "a time of day", "TIME"), H("month", "Месяц (ММ.ГГГГ)"), R("payDay", "Оплата", "a day", "DATE")];
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+    for (const [args, lines, folded] of [[[built], want, ""], [[built, "--source", built], [], "Lint_type.month_key, Lint_type.hours_spent"], [[built, "--source", source], [want[0]], "Lint_type.hours_spent"]] as const) {
+      const r = await $`${cmd} ${args}`.nothrow().quiet(), out = r.stdout.toString(), got = out.split("\n").filter((l) => /\(0\.5 «Field type by meaning»\)$/.test(l));
+      if (got.join("\n") !== lines.join("\n") || (folded && !out.includes(folded))) { console.error(`${cmd[1]} ${args.join(" ")}: field type lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${folded ? `\nand «${folded}» left as exported` : ""}\n${out}${r.stderr}`); process.exit(1); }
+    }
+}
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
@@ -743,6 +780,9 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   // an edit is taken as given, and the export's lint sees the window and the tab: the phone back at cols 6 is a width line
   ["bo_fields_save", { code: "mcp_probe_widths", edit: [{ fieldId: "@bo_create.fields.4.fieldId", cols: 6 }] },
     (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_widths\.phone: cols 6 is 243 px in a window w 10 on a tab — a INPUT_PHONE box needs 245 px, cols ≥ 7 \(0\.8\)/.test(n))],
+  // a text field named as a month: the lint's field type REMINDER comes back as a note (IMPORTS 0.5 «Field type by meaning»)
+  ["bo_fields_save", { code: "mcp_probe_widths", add: [{ label: "Месяц", type: "INPUT_TEXT", code: "month_key" }] },
+    (r) => r.notes?.some((n: string) => n === "field type: REMINDER mcp_probe_widths.month_key «Месяц»: INPUT_TEXT — by its name a month, so YEAR_AND_MONTH, or report «текстом, потому что …» (0.5 «Field type by meaning»)")],
   ["bo_delete", { code: "mcp_probe_widths", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
