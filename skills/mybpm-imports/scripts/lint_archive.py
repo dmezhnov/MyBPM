@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 33e0e9d04c21
+# lintArchive sha256: c3253e2e05d6
 import json
 import math
 import os
@@ -898,10 +898,30 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         for ic, ms in icon(sib):
             if len(ms) >= 3:
                 err(f"menu {join([g(m, 'menuItemCode') for m in ms], ', ')}: {len(ms)} siblings with icon {ic} — each by what it lists (0.5d)")
-    R3 = R("^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$")
-    FIXED = R("^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$")
-    R6, R8 = R("^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$"), R("^(QUESTIONNAIRE|GEO_POINT)$")
-    FULL = R("^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$")
+    CELL = {}  # the table «Cell of each type» of 0.8: kind → rows, place in a row, width
+    p8 = s(nn(doc, "")).split("\n### 0.8 ")
+    for ln in (p8[1].split("\n### ")[0] if len(p8) > 1 else "").split("\n"):
+        c = [js_trim(x) for x in ln.split("|")]
+        r = R("^(≥ )?(\\d+)$").search(c[3] if len(c) > 3 else "")
+        m = R("^(\\d+) \\+ (\\d+)·n, n = `([^`]+)`").search(c[2] if len(c) > 2 else "")
+        if len(c) == 7 and c[1].startswith("`"):
+            for k in re.findall("`[^`]+`", c[1]):
+                CELL[k[1:-1]] = {"kind": k[1:-1], "rows": int(r.group(2)) if r else 0, "least": bool(r and r.group(1)),
+                                 "items": {"base": int(m.group(1)), "per": int(m.group(2)), "key": m.group(3)} if c[3] == "items" and m else None,
+                                 "place": c[4], "width": c[5]}
+    if not CELL:
+        err("rows and widths not checked — call lintArchive(<the archive text>, <the text of this document>) (0.8)")
+
+    def cellOf(f):
+        return CELL.get(js_trim(f"{s(g(f, 'type'))} {s(nn(g(f, 'viewType'), nn(g(f, 'params', 'viewType'), '')))}")) or CELL.get(s(g(f, "type")))
+
+    def count(v):
+        try:
+            v = jparse(v) if isinstance(v, str) else v
+        except (ValueError, RecursionError):
+            return 0
+        return len(v) if isinstance(v, list) else len(keys(v)) if isinstance(v, dict) else 0
+
     for bo in [x for x in bos if g(x, "category") != "BO_COMPOSITE"]:
         bc, fs, forms = s(g(bo, "code")), vals(g(bo, "dynamicFields")), {}
 
@@ -911,7 +931,8 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         for f in fs:
             t, gp, ty = f"{bc}.{s(g(f, 'code'))}", g(f, "gridPosition"), g(f, "type")
             text = T(R("^TEXTAREA"), ty)
-            short = g(f, "viewType") == "SINGLE" if isRef(f) else T(R3, ty)
+            k = cellOf(f)
+            short = bool(k) and k["place"] == "pairs"
             table = isRef(f) and g(f, "viewType") == "TABLE"
             if g(f, "archetype") != "DYNAMIC" or not tr(g(f, "kind")):
                 err(f'{t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)')
@@ -926,12 +947,12 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             if g(f, "code") == "PROCESS_STATUS":  # its own box, but its rows stack (0.8)
                 put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "box": True})
                 continue
-            want = 3 if short else 8 if T(R8, ty) else 6 if T(R6, ty) else 0
-            mn = 6 if text or (isRef(f) and not short) else 3 if ty == "STATIC_TEXT" else 0
-            if (not seq(g(gp, "rows"), want)) if want else lt(g(gp, "rows"), mn):
-                err(f"{t}: rows {s(g(gp, 'rows'))}, a {s(ty)} takes {want or 'at least ' + str(mn)} (0.8)")
-            put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": T(FULL, ty) or table,
-                                                 "fixed": short if ty == "BO" else T(FIXED, ty), "stretch": T(R("^INPUT_"), ty), "ty": "BO SINGLE" if ty == "BO" else ty})
+            n = count(g(f, *k["items"]["key"].split("."))) if k and k["items"] else 0  # items: ⌈(painted + 15) / 30⌉ (0.8)
+            need = 0 if not k else -(-(k["items"]["base"] + k["items"]["per"] * n + 15) // 30) if k["items"] else k["rows"]
+            if need and (lt(g(gp, "rows"), need) if k["least"] else not seq(g(gp, "rows"), need)):
+                err(f"{t}: rows {s(g(gp, 'rows'))}, a {k['kind']} takes {'at least ' if k['least'] else ''}{need}{' for ' + str(n) + ' in ' + k['items']['key'] if k['items'] else ''} (0.8)")
+            put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": bool(k) and k["place"] == "alone",
+                                                 "fixed": bool(k) and k["width"] == "own", "stretch": bool(k) and k["width"] == "stretches", "ty": k["kind"] if k else ty})
         for w in [*[w for m in W for w in vals(g(bo, m))], *vals(g(bo, "nativeFields"))]:
             if tr(g(w, "gridPosition")):
                 put(g(nn(g(w, "tabCode"), g(w, "tabCodePath")), "tabCode"), {"t": f"{bc}.{s(nn(g(w, 'code'), g(w, 'nativeFieldId')))}", "g": g(w, "gridPosition"), "box": True})

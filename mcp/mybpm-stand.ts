@@ -35,6 +35,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { inflateRawSync } from "node:zlib";
 import { zip } from "../tools/zip.ts";
+import { cellOf as cellRuleOf, cellTable, rowsOf, type CellRule } from "../tools/cell-table.ts";
 import ICONS from "../tools/menu-icons.json";
 import { PAGE_HTML } from "./accounts-page.ts";
 
@@ -656,9 +657,17 @@ const BO_ = "v2/business-objects/";
 const ru = (v: string | null) => ({ KAZ: null, ENG: null, RUS: v, QAZ: null });
 const WIDGETS = ["BUTTON", "IFRAME", "SIGNATURE", "CAPTCHA", "CURRENT_DATE", "CURRENT_DAY", "CURRENT_MONTH", "CURRENT_DAY_AND_MONTH", "CURRENT_YEAR", "CURRENT_USER"];
 const NATIVES = ["CREATED_AT", "CREATED_BY", "LAST_MODIFIED_AT", "LAST_MODIFIED_BY", "OPEN_COUNT", "IN_MIGRATION_UPDATED_AT"];
-const ROWS_6 = ["TEXTAREA", "TEXTAREA_LANG", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR", "SIGNATURE", "CAPTCHA", "CURRENT_USER"];
-const ROWS_8 = ["QUESTIONNAIRE", "GEO_POINT", "IFRAME"];
-const ALONE = ["TEXTAREA", "TEXTAREA_LANG", "TAB_GROUP", "CHECKLIST", "QUESTIONNAIRE", "GEO_POINT", "PROGRESS_BAR", "IFRAME"];
+/** The table «Cell of each type» (MYBPM-IMPORTS.md 0.8): the document beside the server in the repository and the .mcpb, beside the skill in the plugin zip. */
+let CELLS: Record<string, CellRule> | undefined;
+function cells(): Record<string, CellRule> {
+  if (CELLS) return CELLS;
+  const tries = [join(HERE, "..", "MYBPM-IMPORTS.md"), join(HERE, "..", "skills", "mybpm-imports", "MYBPM-IMPORTS.md")];
+  const doc = tries.find(existsSync);
+  if (!doc) throw new Error(`MYBPM-IMPORTS.md not found (tried ${tries.join(", ")}) — the cell heights and widths come from its table «Cell of each type» (0.8)`);
+  CELLS = cellTable(readFileSync(doc, "utf8"));
+  if (!Object.keys(CELLS).length) throw new Error(`${doc} holds no table «Cell of each type» in 0.8`);
+  return CELLS;
+}
 const HEADING = (t: string) => `<div style="font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px">${t}</div>`;
 const WIDGET_CODE: Record<string, [controller: string, method: string, idKey: string]> = {
   SIGNATURE: ["signature", "save-signature-code", "signatureId"], BUTTON: ["button", "save-button-code", "buttonId"],
@@ -760,9 +769,9 @@ async function boFieldRefs(s: Stand, refBoId: string) {
 }
 
 const isRef = (f: FieldSpec) => f.type === "BO" || f.type === "CO";
-const heightOf = (f: FieldSpec) => f.rows ?? (ROWS_8.includes(f.type) ? 8 : ROWS_6.includes(f.type) ? 6
-  : isRef(f) || f.type === "CREATED_BY" || f.type === "LAST_MODIFIED_BY" ? (f.viewType === "SINGLE" ? 3 : 6) : 3);
-const aloneOf = (f: FieldSpec) => ALONE.includes(f.type) || (isRef(f) && f.viewType !== "SINGLE") || (f.type === "STATIC_TEXT" && f.heading);
+const cellSpec = (f: FieldSpec) => cellRuleOf(cells(), f.type, f.viewType ?? (f.set?.params as any)?.viewType);
+const heightOf = (f: FieldSpec) => f.rows ?? (rowsOf(cellSpec(f), f.options?.length ?? 0) || 3);
+const aloneOf = (f: FieldSpec) => cellSpec(f)?.place === "alone";
 const visible = (f: FieldSpec) => !["STATIC_TEXT", "TAB_GROUP"].includes(f.type) && !NATIVES.includes(f.type);
 
 type Cell = { x: number; y: number; cols: number; rows: number };

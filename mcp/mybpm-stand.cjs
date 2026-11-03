@@ -86,6 +86,31 @@ function zip(entries, now = new Date) {
   }
   return out;
 }
+
+// tools/cell-table.ts
+function cellTable(doc) {
+  const out = {};
+  for (const l of (doc.split(`
+### 0.8 `)[1]?.split(`
+### `)[0] ?? "").split(`
+`)) {
+    const c = l.split("|").map((s) => s.trim()), r = /^(≥ )?(\d+)$/.exec(c[3] ?? ""), m = /^(\d+) \+ (\d+)·n, n = `([^`]+)`/.exec(c[2] ?? "");
+    if (c.length !== 7 || !c[1].startsWith("`"))
+      continue;
+    for (const k of c[1].match(/`[^`]+`/g) ?? [])
+      out[k.slice(1, -1)] = {
+        kind: k.slice(1, -1),
+        rows: r ? +r[2] : 0,
+        least: !!r?.[1],
+        items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null,
+        place: c[4],
+        width: c[5]
+      };
+  }
+  return out;
+}
+var cellOf = (table, type, viewType) => (viewType ? table[`${type} ${viewType}`] : undefined) ?? table[type];
+var rowsOf = (cell, n = 0) => !cell ? 0 : cell.items ? Math.ceil((cell.items.base + cell.items.per * n + 15) / 30) : cell.rows;
 // tools/menu-icons.json
 var menu_icons_default = {
   chunk: "956.1e3677ced41740f7.js",
@@ -847,9 +872,19 @@ var BO_ = "v2/business-objects/";
 var ru = (v) => ({ KAZ: null, ENG: null, RUS: v, QAZ: null });
 var WIDGETS = ["BUTTON", "IFRAME", "SIGNATURE", "CAPTCHA", "CURRENT_DATE", "CURRENT_DAY", "CURRENT_MONTH", "CURRENT_DAY_AND_MONTH", "CURRENT_YEAR", "CURRENT_USER"];
 var NATIVES = ["CREATED_AT", "CREATED_BY", "LAST_MODIFIED_AT", "LAST_MODIFIED_BY", "OPEN_COUNT", "IN_MIGRATION_UPDATED_AT"];
-var ROWS_6 = ["TEXTAREA", "TEXTAREA_LANG", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR", "SIGNATURE", "CAPTCHA", "CURRENT_USER"];
-var ROWS_8 = ["QUESTIONNAIRE", "GEO_POINT", "IFRAME"];
-var ALONE = ["TEXTAREA", "TEXTAREA_LANG", "TAB_GROUP", "CHECKLIST", "QUESTIONNAIRE", "GEO_POINT", "PROGRESS_BAR", "IFRAME"];
+var CELLS;
+function cells() {
+  if (CELLS)
+    return CELLS;
+  const tries = [import_node_path.join(HERE, "..", "MYBPM-IMPORTS.md"), import_node_path.join(HERE, "..", "skills", "mybpm-imports", "MYBPM-IMPORTS.md")];
+  const doc = tries.find(import_node_fs.existsSync);
+  if (!doc)
+    throw new Error(`MYBPM-IMPORTS.md not found (tried ${tries.join(", ")}) — the cell heights and widths come from its table «Cell of each type» (0.8)`);
+  CELLS = cellTable(import_node_fs.readFileSync(doc, "utf8"));
+  if (!Object.keys(CELLS).length)
+    throw new Error(`${doc} holds no table «Cell of each type» in 0.8`);
+  return CELLS;
+}
 var HEADING = (t) => `<div style="font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px">${t}</div>`;
 var WIDGET_CODE = {
   SIGNATURE: ["signature", "save-signature-code", "signatureId"],
@@ -933,8 +968,9 @@ async function boFieldRefs(s, refBoId) {
   return refs;
 }
 var isRef = (f) => f.type === "BO" || f.type === "CO";
-var heightOf = (f) => f.rows ?? (ROWS_8.includes(f.type) ? 8 : ROWS_6.includes(f.type) ? 6 : isRef(f) || f.type === "CREATED_BY" || f.type === "LAST_MODIFIED_BY" ? f.viewType === "SINGLE" ? 3 : 6 : 3);
-var aloneOf = (f) => ALONE.includes(f.type) || isRef(f) && f.viewType !== "SINGLE" || f.type === "STATIC_TEXT" && f.heading;
+var cellSpec = (f) => cellOf(cells(), f.type, f.viewType ?? f.set?.params?.viewType);
+var heightOf = (f) => f.rows ?? (rowsOf(cellSpec(f), f.options?.length ?? 0) || 3);
+var aloneOf = (f) => cellSpec(f)?.place === "alone";
 var visible = (f) => !["STATIC_TEXT", "TAB_GROUP"].includes(f.type) && !NATIVES.includes(f.type);
 function pack(specs, y0, notes, where) {
   const cells = [];
@@ -1392,7 +1428,7 @@ function xlsxDate(v, time) {
   }
   return `${m[3]}.${m[2]}.${m[1]}` + (time ? ` ${m[4] ?? "00"}:${m[5] ?? "00"}` : "");
 }
-function cellOf(f, v, warn) {
+function cellOf2(f, v, warn) {
   const t = f.type;
   if (v === null || v === undefined || v === "")
     return "";
@@ -1486,7 +1522,7 @@ async function buildRows(s, bo, rows, warn) {
     for (const [k, v] of Object.entries(r)) {
       const f = fieldBy(fields, k);
       if (f.type !== "BO") {
-        base[subsOf(f)[0].i] = cellOf(f, v, warn);
+        base[subsOf(f)[0].i] = cellOf2(f, v, warn);
         continue;
       }
       const items = v === null || v === undefined || v === "" ? [] : Array.isArray(v) ? v : [v];

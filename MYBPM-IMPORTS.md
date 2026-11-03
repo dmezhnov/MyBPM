@@ -820,9 +820,8 @@ The types that need extra keys — every shape `[C]`:
 
 Cell heights the constructor itself assigns: 3 rows for a one-line input, 4 for other plain fields, **6** for
 `BO` / `CO` / `LINK` / `FILE_UPLOAD` / `CHECKLIST` / `RADIO_BUTTON_GROUP` / `PROGRESS_BAR`, **8** for
-`STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets: a heading
-and a `SINGLE` reference need 3, a `TEXTAREA` 6, a `TAB_GROUP` its tallest tab + 3 (+ 6 on a `TAB` page) — write the heights of
-0.8 and 0.8a.
+`STATIC_TEXT` / `QUESTIONNAIRE` / `TAB_GROUP` / `GEO_POINT`. These are defaults, not targets — write the
+`rows` of the table «Cell of each type» (0.8).
 
 > **Your first read most likely ended near here — the core is only half read.** Still ahead, and every
 > system needs them: links 0.5a (right below), dictionary 0.5b, kanban 0.5c, **menu 0.5d**, ids 0.7, layout
@@ -1193,11 +1192,49 @@ below float up. Lay the form out in ROWS `[C]`:
 > **15**. The first row starts at `y: 0`, the next row's `y` = this row's `y` + its `rows`. Fields on a tab
 > count `y` from 0 again, separately per tab (0.5 `TAB_GROUP`).
 >
-> `rows` = **3** for a one-line input (`INPUT_*`, the date and time types, `DROPDOWN_SINGLE`, `CHECKBOX`),
-> a one-line `STATIC_TEXT` heading and a `BO` / `CO` `SINGLE` reference; **6** for `TEXTAREA` /
-> `TEXTAREA_LANG` (4 shows only about two lines of text), a `BO` `TABLE`, `LINK`, `FILE_UPLOAD`, `CHECKLIST`,
-> `RADIO_BUTTON_GROUP`, `PROGRESS_BAR`; **8** for `QUESTIONNAIRE` / `GEO_POINT`; a `TAB_GROUP` = its
-> tallest tab + 3, + 6 on `instanceViewType: "TAB"` (0.8a).
+> `rows`, the place in a row and the width of every field and widget come from the table **Cell of each
+> type** right below.
+
+**Cell of each type** `[C]` — the one source of these values; the form lint (0.10) reads them from this
+table. A kind is the `type`, followed by its `viewType` (`params.viewType` for a `FILE_UPLOAD`) where that
+changes the cell; a kind without one is the fallback. *painted* = the height the record window draws from the
+cell's top edge, label included, at `w: 12`; a cell needs **`rows` = ⌈(painted + 15) / 30⌉** (one grid row
+= 30 px; less and the content scrolls inside the cell, more leaves an empty band). `rows`: `N` = exactly N;
+`≥ N` = at least N; `items` = by that formula with `n` taken from the named key of the field (its items
+or options); `tabs` = the tallest tab + 3, + 6 on `instanceViewType: "TAB"` (0.8a step 5). *in a row*:
+`pairs` = a short one-line field — shares a row with other `pairs` fields, alone only at `x 0, cols 8`
+(below); `alone` = alone in its row at full width; `free` = alone at any width or beside cells of the same
+`rows`. *width*: `stretches` = the box fills its cell; `own` = the box keeps its own width whatever `cols`
+says; `fills` = a frame that fills the cell both ways; `—` = not measured.
+
+| kind | painted, px | rows | in a row | width |
+|---|---|---|---|---|
+| `INPUT_TEXT` / `INPUT_TEXT_LANG` / `INPUT_NUMBER` / `INPUT_PHONE` / `INPUT_EMAIL` / `LINK` | 58 | 3 | pairs | stretches |
+| `DATE` / `FULL_DATE` / `TIME` / `CHECKBOX` / `DROPDOWN_SINGLE` / `BO SINGLE` | 58 | 3 | pairs | own |
+| `YEAR` / `YEAR_AND_MONTH` / `PERIOD` / `PERIOD_TIME` / `CO SINGLE` | 58 `[I]` | 3 | pairs | — |
+| `TEXTAREA` / `TEXTAREA_LANG` | — | ≥ 6 | alone | stretches |
+| `BO TABLE` / `CO TABLE` / `BO` / `CO` | — | ≥ 6 | alone | stretches |
+| `STATIC_TEXT` | 46 a heading | ≥ 3 | alone | stretches |
+| `TAB_GROUP` | — | tabs | alone | stretches |
+| `FILE_UPLOAD SINGLE` | 77 with its file, 49 empty | 4 | free | own |
+| `FILE_UPLOAD MULTIPLE` / `FILE_UPLOAD` | 49 + 20 per file | ≥ 4 | free | own |
+| `FILE_UPLOAD TILE` | 120 | 5 | free | own |
+| `CHECKLIST` | 53 + 34·n, n = `defaultValue` | items | alone | own |
+| `RADIO_BUTTON_GROUP` | 22 + 24·n, n = `fieldOptionsStruct.options` | items | free | own |
+| `PROGRESS_BAR` | 115 | 5 | alone | stretches |
+| `QUESTIONNAIRE` / `GEO_POINT` | — `[I]` | 8 | alone | stretches |
+| `SIGNATURE` | 91 | ≥ 4 | free | fills |
+| `CAPTCHA` | 164 | 6 | free | own |
+| `CURRENT_USER` | 90 | 4 | free | stretches |
+| `IFRAME` | — `[I]` | 8 | alone | stretches |
+| `BUTTON` / `CURRENT_DATE` / `CURRENT_DAY` / `CURRENT_MONTH` / `CURRENT_DAY_AND_MONTH` / `CURRENT_YEAR` | — `[I]` | 3 | free | — |
+| `CREATED_BY SINGLE` / `LAST_MODIFIED_BY SINGLE` | 58 `[I]` | 3 | pairs | own |
+| `CREATED_BY` / `LAST_MODIFIED_BY` | — | ≥ 6 | alone | stretches |
+| `CREATED_AT` / `LAST_MODIFIED_AT` / `OPEN_COUNT` / `IN_MIGRATION_UPDATED_AT` | 58 `[I]` | 3 | free | — |
+
+A `LINK` draws exactly like an `INPUT_TEXT`: one line, the value as a link inside the box, a long URL cut with
+«…» `[C]`. A `TEXTAREA` at 4 rows shows only about two lines of text. A `CHECKLIST` of 3 items takes 6
+rows, a `RADIO_BUTTON_GROUP` of 3 options 4.
 
 A dictionary's two system fields «Код» and «Значение» are the exception to everything below: each alone
 in its row at `x 0, cols 15` (0.5b), so the two boxes have one width — never «Код» at cols 8 under a cols-15 «Значение».
@@ -1205,16 +1242,14 @@ in its row at `x 0, cols 15` (0.5b), so the two boxes have one width — never �
 **Which fields share a row — decide it by meaning, unasked.** Short one-line fields that belong together
 stand 3 per row (`cols` 5 + 5 + 5) or 2 per row (5 + 10 / 10 + 5, the wide cell to the field with the longer
 value): марка + модель + год, дата + сумма + оплачено, телефон + email, a `SINGLE` reference + a dropdown.
-`INPUT_TEXT` / `_TEXT_LANG` / `_NUMBER` / `_PHONE` / `_EMAIL` stretch over their cell; `DATE` / `FULL_DATE` (≈ 165 px),
-`TIME` (≈ 125 px), `CHECKBOX`, `DROPDOWN_SINGLE` and a `BO` `SINGLE` reference (a «Выберите» link) keep their own
-width whatever `cols` says `[C]` — in a row with an input the wider cell goes to the input.
+A `stretches` box fills its cell; an `own` one (`DATE` / `FULL_DATE` ≈ 165 px, `TIME` ≈ 125 px, a `BO` `SINGLE`
+reference = a «Выберите» link) keeps its own width `[C]` — in a row with a `stretches` field the wider cell goes to it.
 **One grid per form (per tab):** of two rows of ≥ 2 cells one right under the other, the column starts of
 one are a part of the other's — 5 + 10 under 5 + 5 + 5, 4 + 4 + 7 under 4 + 4 + 4 + 3, never 8 + 7 under
 5 + 5 + 5: its labels start at 0, 8 against 0, 5, 10 and the boxes stand as a staircase with holes. 8 + 7 only
 when every row of ≥ 2 cells next to it is 8 + 7 too. A form whose every field is full width is a defect —
-each box stretches over 1000+ px for a 20-character value. **Full width, alone in the row:** `TEXTAREA` /
-`TEXTAREA_LANG`, a `BO` `TABLE`, a `STATIC_TEXT` heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
-`GEO_POINT`, `PROGRESS_BAR`.
+each box stretches over 1000+ px for a 20-character value. **Full width, alone in the row:** the kinds
+marked `alone` in the table.
 
 **Building the file with a script? Give it the layout as a list of ROWS, never as a list of fields.** Per
 form (and per tab) write the rows you decided by meaning — e.g. `[["phone", "email"], ["make", "model",
@@ -1224,7 +1259,7 @@ field alone → `x 0, cols 8`), three → 5 + 5 + 5, two → 5 + 10 (8 + 7 only 
 loop over the fields that gives each one `x 0, cols 15` and `y += rows` builds exactly the «every field full
 width» defect, however the rows were planned.
 
-- **A short field with no partner by meaning stands alone at `x: 0`, `cols: 8`** — never stretched to 15; the
+- **A short field (`pairs`) with no partner by meaning stands alone at `x: 0`, `cols: 8`** — never stretched to 15; the
   right half stays empty and the row is the one exception to «cols sum to 15». It is an EXCEPTION: **at most 2
   lone short fields per form (per tab)**. Three or more is the «one field per row» defect, cols 8 or not —
   find their partners by meaning (контакты, суммы, даты, техданные). The hole is safe only while no
@@ -1744,23 +1779,32 @@ else for (const m of menu) {
 }
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
-const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/, FIXED = /^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
-const R6 = /^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$/, R8 = /^(QUESTIONNAIRE|GEO_POINT)$/, FULL = /^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$/;
+const CELL = {}; // the table «Cell of each type» of 0.8: kind → rows, place in a row, width
+for (const l of (String(doc ?? "").split("\n### 0.8 ")[1]?.split("\n### ")[0] ?? "").split("\n")) {
+  const c = l.split("|").map((s) => s.trim()), r = /^(≥ )?(\d+)$/.exec(c[3] ?? ""), m = /^(\d+) \+ (\d+)·n, n = `([^`]+)`/.exec(c[2] ?? "");
+  if (c.length === 7 && c[1].startsWith("`")) for (const k of c[1].match(/`[^`]+`/g)) CELL[k.slice(1, -1)] = { kind: k.slice(1, -1),
+    rows: r ? +r[2] : 0, least: !!r?.[1], items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null, place: c[4], width: c[5] };
+}
+if (!Object.keys(CELL).length) err(`rows and widths not checked — call lintArchive(<the archive text>, <the text of this document>) (0.8)`);
+const cellOf = (f) => CELL[`${f.type} ${f.viewType ?? f.params?.viewType ?? ""}`.trim()] ?? CELL[f.type];
+const count = (v) => { try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; } return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0; };
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
   for (const f of fs) {
     const t = `${bo.code}.${f.code}`, g = f.gridPosition, text = /^TEXTAREA/.test(f.type);
-    const short = isRef(f) ? f.viewType === "SINGLE" : R3.test(f.type), table = isRef(f) && f.viewType === "TABLE";
+    const k = cellOf(f), short = k?.place === "pairs", table = isRef(f) && f.viewType === "TABLE";
     if (f.archetype !== "DYNAMIC" || !f.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
     if (text && f.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
     if (g && f.type === "TAB_GROUP" && f.trackedFieldCode && g.rows !== 4) err(`${t}: rows ${g.rows}, a tracked-status wrapper takes 4 (§3)`);
     if (!g || f.trackedFieldCode) continue;
     if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
-    const want = short ? 3 : R8.test(f.type) ? 8 : R6.test(f.type) ? 6 : 0, min = text || (isRef(f) && !short) ? 6 : f.type === "STATIC_TEXT" ? 3 : 0;
-    if (want ? g.rows !== want : g.rows < min) err(`${t}: rows ${g.rows}, a ${f.type} takes ${want || "at least " + min} (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table,
-      fixed: f.type === "BO" ? short : FIXED.test(f.type), stretch: /^INPUT_/.test(f.type), ty: f.type === "BO" ? "BO SINGLE" : f.type });
+    const n = k?.items ? count(k.items.key.split(".").reduce((o, p) => o?.[p], f)) : 0; // items: ⌈(painted + 15) / 30⌉ (0.8)
+    const need = !k ? 0 : k.items ? Math.ceil((k.items.base + k.items.per * n + 15) / 30) : k.rows;
+    if (need && (k.least ? g.rows < need : g.rows !== need))
+      err(`${t}: rows ${g.rows}, a ${k.kind} takes ${k.least ? "at least " : ""}${need}${k.items ? ` for ${n} in ${k.items.key}` : ""} (0.8)`);
+    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
+      fixed: k?.width === "own", stretch: k?.width === "stretches", ty: k?.kind ?? f.type });
   }
   for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
@@ -2182,7 +2226,7 @@ keyed by the native type, which is also the field's code and its `nativeFieldId`
 |---|---|---|---|
 | `CREATED_AT` | Дата создания | `FULL_DATE` | |
 | `LAST_MODIFIED_AT` | Дата последнего изменения | `FULL_DATE` | |
-| `CREATED_BY` | Автор | `BO` | + `viewType: "SINGLE"` and `boRefStruct.boInfo` = `Person` / «Пользователи» / `BO`, 6 rows; **no `oldRefBoId`** — the target is resolved by that code, so no stand id is needed `[C]` |
+| `CREATED_BY` | Автор | `BO` | + `viewType: "SINGLE"` and `boRefStruct.boInfo` = `Person` / «Пользователи» / `BO`, the cell of a `BO SINGLE` (0.8 «Cell of each type»); **no `oldRefBoId`** — the target is resolved by that code, so no stand id is needed `[C]` |
 | `LAST_MODIFIED_BY` | Автор последнего изменения | `BO` | same |
 | `OPEN_COUNT` | Счетчик открытий | `INPUT_NUMBER` | |
 | `IN_MIGRATION_UPDATED_AT` | Дата обновления IN миграции | `FULL_DATE` | |
