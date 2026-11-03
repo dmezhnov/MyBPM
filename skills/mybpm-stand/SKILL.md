@@ -13,7 +13,7 @@ without one, search the file for the heading text.
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.68**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.69**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -119,6 +119,11 @@ reaches the stand.
 4. When the stand behaves impossibly, read `## 11. Traps and defects` before guessing; before driving the UI
    through a browser-automation tool read `## 10. Browser-automation traps` first.
 5. `[C]` confirmed, `[I]` inferred, `[U]` unverified — say so when you rely on `[I]`/`[U]`.
+6. **Does it do the user's job? — the last check.** Read-backs, lint and tests prove the stand holds what you
+   sent, not that it solves the user's task. Before saying it worked, check that it does — it works as asked,
+   it is convenient, it looks right to the people who will use it — choosing how to check yourself, with
+   whatever you have (the last item of `### 0U.6 Self-check before you say it worked`). Report what you
+   checked, how, and what you could not check and why.
 
 ## Tools (only when the repository is at hand)
 

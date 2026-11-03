@@ -2,19 +2,26 @@
 bun = "1.4.4"
 
 [tasks.skills-check]
-description = "Check that every heading a SKILL.md routes to still exists in its document"
+description = "Check that every heading a SKILL.md routes to still exists in its document, and that every cookbook (## 0….COOKBOOK) and every SKILL.md carries the last check «Does it do the user's job?»"
 shell = "bun -e"
 run = '''
 const skills = [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]];
+const LAST_CHECK = "Does it do the user's job? — the last check";
 let bad = 0;
 for (const [name, doc] of skills) {
   const skill = await Bun.file(`skills/${name}/SKILL.md`).text();
-  const lines = (await Bun.file(doc).text()).split("\n");
+  const text = await Bun.file(doc).text(), lines = text.split("\n");
   const anchors = [...skill.matchAll(/`(#+ [^`]+)`/g)].map((m) => m[1]);
   for (const a of anchors) {
     if (!lines.some((l) => l.startsWith(a))) { console.error(`${name}: no heading "${a}" in ${doc}`); bad++; }
   }
-  console.log(`${name}: ${anchors.length} anchors checked`);
+  if (!skill.includes(LAST_CHECK)) { console.error(`${name}: SKILL.md has no «${LAST_CHECK}»`); bad++; }
+  // a cookbook runs from its "## 0….COOKBOOK" heading to the next "## " or "# " heading
+  const cookbooks = text.split(/^(?=#{1,2} )/m).filter((s) => /^## 0\w*\. COOKBOOK/.test(s));
+  for (const c of cookbooks) {
+    if (!c.includes(LAST_CHECK)) { console.error(`${doc}: ${c.split("\n")[0]} has no «${LAST_CHECK}»`); bad++; }
+  }
+  console.log(`${name}: ${anchors.length} anchors, ${cookbooks.length} cookbook(s) checked`);
 }
 if (bad) process.exit(1);
 '''

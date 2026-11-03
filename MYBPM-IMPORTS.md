@@ -2205,6 +2205,13 @@ return out.length ? out.join("\n") : "form lint: OK";
       no number, sum or date typed as a dropdown; every computed value of the spec has its hook line or a
       closed-list reason; every child document (payments, records of a stage) that points at a header with a
       `SINGLE` has the header's `TABLE` back (0.2c step 2).
+- [ ] **Does it do the user's job? — the last check.** The lint and the checks above prove the file is
+      well-formed; they do not prove it solves the user's task. Before handing it over, check that it does: it
+      works as asked, it is convenient for the people who will use it, it looks right to them. Choose how to
+      check yourself, with whatever you have — e.g. drawing each tab of each form as its 15-column grid and
+      reading it as a designer would, walking the user's job through the forms, menu and process step by step,
+      importing it on a stand and working a record as each role; none of these is required and none is the
+      whole check. Fix what you find before the file goes out.
 
 #### The report — what you tell the user along with the archive
 
@@ -2221,6 +2228,8 @@ return out.length ? out.join("\n") : "form lint: OK";
   as it printed — `form lint: OK`, or each `REMINDER` line with its answer by field name: built, or entered by
   hand and why. A check
   you did not run is named as not run, never folded into «проверка архива».
+- **The last check of 0.10 — does it do the user's job**: what you checked, how, and what you could not check
+  and why.
 - **For a system build: the coverage table of 0.2b** — every spec item, its route, built / not built + the
   reason from the closed list / to do after the import — printed as a table at the end of the reply; an item
   not built is a row of its own, never inside a row marked built, never only in a list of limitations.
@@ -5395,6 +5404,13 @@ Run all of it — the IDE will not tell you about any of these:
    and has no other branch, no `ЭТА ИНСТАНЦИЯ` inside a module, every copy of a module is byte-identical.
 9. **Pure ASCII** (0S.3): not one character outside ASCII is left in the file — Cyrillic, `«»`, `—`, `№` are all
    `\uXXXX` escapes.
+10. **Does it do the user's job? — the last check.** Items 1–9 prove the file is well-formed; they do not prove
+   the script does what the user asked. Before delivering it, check that it does: it works as asked in every
+   case the task holds (no lines, zero, several lines, a field left empty), and it is convenient for the person
+   who triggers it — what they see and read is what they expect. Choose how to check yourself, with whatever you have — e.g. tracing the blocks by hand
+   on sample values, running it on a stand on a test record and reading the record back; none of these is
+   required and none is the whole check. Fix what you find. Tell the user what you checked, how, and what you
+   could not check and why.
 
 ### 0S.12 Delivering the file
 
@@ -7288,6 +7304,13 @@ every column you keep or drop the column entirely.
 - [ ] Row count equals what you promised, and the file order is written down for the operator.
 - [ ] On an update file: no empty cell in a kept column unless erasing it is the intent; cell addresses
       contiguous (no skipped column letters) in every row.
+- [ ] **Does it do the user's job? — the last check.** The checks above prove the file loads; they do not
+      prove it carries what the user wanted. Before handing it over, check that it does: the right records,
+      the right values in the right fields, nothing lost or doubled, an update that changes only what was
+      meant. Choose how to check yourself, with whatever you have — e.g. comparing the rows with the source
+      data by count and by sampled values, importing it on a stand and opening the records in the registry
+      and on the card; none of these is required and none is the whole check. Fix what you find. Tell the
+      user what you checked, how, and what you could not check and why.
 
 ### 0X.6 Handing the file over
 

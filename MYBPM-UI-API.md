@@ -1103,6 +1103,13 @@ and dropping the rest «for scope» is a fraction reported as done.
       `P {notificationId}` deletes ONE (answers empty, `count` drops by one) — delete exactly the ids your run
       raised. The client also has `delete-all-notifications` (no args) — it wipes the user's others too.
       Clear only what your own run raised.
+- [ ] **Does it do the user's job? — the last check.** The read-backs above prove the stand holds what you
+      sent; they do not prove it solves the user's task. Before saying it worked, check that it does: it works
+      as asked, it is convenient for the people who will use it, it looks right to them. Choose how to check
+      yourself, with whatever you have — e.g. opening a record as each role and doing the user's job in it,
+      looking at every tab of the card on a screenshot, letting the process run and reading its outcome;
+      none of these is required and none is the whole check. Fix what you find. The report says what you
+      checked, how, and what you could not check and why.
 
 ### 0U.7 Where the rest is
 
