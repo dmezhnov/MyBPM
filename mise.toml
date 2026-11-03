@@ -247,6 +247,35 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
     const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /takes|alone at full width/.test(l));
     if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: rows / alone lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
   }
+// a widget on a tab (tabCode) is a cell of that tab like a field (0.8a steps 3 and 5): a CURRENT_USER under the fields makes
+// the tab 10 rows, so the group is 13 in a dialog and 16 on a page tab; a button counts as the lowest cell and as one of
+// the 2 cells a tab holds — in both lints (issue #11)
+await $`rm -rf dist/lint-tabw && bun tools/make-probe-archive.bun.ts --group-code Tabw_group --group-name Tabw --group-order 1 --code Lint_tabw --name Tabw --salt tabw --bo-order 1 --out dist/lint-tabw ${["Название:INPUT_TEXT", "Вкладки:TAB_GROUP#Первая|Вторая", "Альфа:INPUT_TEXT!tab=Vkladki/Pervaya", "Бета:INPUT_TEXT!tab=Vkladki/Pervaya", "Гамма:INPUT_TEXT!tab=Vkladki/Vtoraya"].flatMap((f) => ["--field", f])} ${["CURRENT_USER:Текущий пользователь:cur_user", "BUTTON:Кнопка:btn"].flatMap((w) => ["--widget", w])}`.quiet();
+const tabwLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-tabw/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+const tabw = async (name: string, change: (bo: any) => void) => Bun.write(`dist/lint-tabw/${name}.jsonl`, tabwLines.map((l) => {
+  const o = JSON.parse(l);
+  if (o.dynamicFields) {
+    const cu = o.currentUser.cur_user, btn = o.buttons.btn;
+    if (cu.gridPosition.rows !== 4 || btn.gridPosition.rows !== 3) { console.error(`make-probe-archive: CURRENT_USER rows ${cu.gridPosition.rows}, BUTTON rows ${btn.gridPosition.rows}, not 4 and 3 (0.8)`); process.exit(1); }
+    Object.assign(cu, { gridPosition: { x: 0, y: 6, cols: 15, rows: 4 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Pervaya" } });
+    Object.assign(btn, { gridPosition: { x: 0, y: 3, cols: 15, rows: 3 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Vtoraya" } });
+    o.dynamicFields.Vkladki.gridPosition.rows = 13;
+    change(o);
+  }
+  return JSON.stringify(o);
+}).join("\n") + "\n");
+await tabw("ok", () => {});
+await tabw("low", (o) => { o.dynamicFields.Vkladki.gridPosition.rows = 9; });
+await tabw("page", (o) => { o.instanceViewType = "TAB"; o.dynamicFields.Vkladki.gridPosition.rows = 16; });
+await tabw("pagelow", (o) => { o.instanceViewType = "TAB"; o.dynamicFields.Vkladki.gridPosition.rows = 12; });
+await tabw("button", (o) => { Object.assign(o.buttons.btn, { gridPosition: { x: 0, y: 10, cols: 15, rows: 3 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Pervaya" } }); });
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [name, want] of [["ok", []], ["low", ["Lint_tabw.Vkladki: rows 9, tallest tab 10 + 3 = 13 (0.8a step 5)"]], ["page", []],
+    ["pagelow", ["Lint_tabw.Vkladki: rows 12, tallest tab 10 + 6 = 16 (0.8a step 5)"]],
+    ["button", ["Lint_tabw.Vkladki: rows 13, tallest tab 13 + 3 = 16 (0.8a step 5)", "Lint_tabw.Vkladki.Vtoraya: a tab with 1 cell(s) — at least 2 fields or widgets, else a heading (0.8a step 3)"]]] as const) {
+    const r = await $`${cmd} dist/lint-tabw/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /tallest tab|a tab with/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on dist/lint-tabw/${name}.jsonl: tab height / tab cell lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
