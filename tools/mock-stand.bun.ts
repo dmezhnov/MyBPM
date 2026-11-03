@@ -107,6 +107,7 @@ const unb64 = (s: unknown) => Buffer.from(String(s ?? ""), "base64").toString("u
 // ── records: stored values per BO, record drafts of the §6a and §6b cycles ──────────────────────────────
 type Rec = { id: string; boId: string; state: string; at: number; values: Record<string, string> };
 const recs = new Map<string, Rec>(); // boiId → record
+const analyses = new Map<string, string>(); // analyzeId → the BO analyze-bo was asked about
 const recDrafts = new Map<string, { boId?: string; boiId?: string; isNew?: boolean; dev?: boolean; values: Record<string, string> }>();
 const fieldsOf = (boId: string) => (bos.get(boId)?.fields ?? []).filter((x) => x.type && !x.widgetType && !x.nativeFieldType && x.type !== "TAB_GROUP");
 const shown = (f: any, v: string) => f.type === "DROPDOWN_SINGLE" ? f.options?.find((o: any) => o.id === v)?.label ?? v
@@ -319,8 +320,10 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     }
     case "v2/business-objects/save-business-object-code": bos.get(params.businessObjectId)!.code = params.businessObjectCode; return "";
     case "v2/business-objects/save-business-object-grid-layout-position": bos.get(body.boId)!.window = body.gridLayoutPosition; return "";
-    case "v2/delete-script-usage/analyze-bo": return { analyzeId: nextId("ANL") };
-    case "v2/delete-script-usage/is-analyze-done": return { done: true, errorMessage: null, hits: [] };
+    case "v2/delete-script-usage/analyze-bo": { const id = nextId("ANL"); analyses.set(id, params.boId); return { analyzeId: id }; }
+    // a process figure script uses the BO when its def holds the BO id (the stand reads the expressions)
+    case "v2/delete-script-usage/is-analyze-done": return { done: true, errorMessage: null, hits: [...defs].filter(([k, d]) => pVerById(k.split("/")[0]) && JSON.stringify(d).includes(analyses.get(params.analyzeId) ?? "-"))
+      .map(([k]) => ({ scriptModuleId: k.split("/")[0], scriptId: k.split("/")[1], scriptType: "EntryPointClass", baseType: "BO_PROCESS", pathLabels: ["process"] })) };
     case "v2/business-objects/load-bo-usage": return { menuItemNames: [], refBoNames: [] };
     case "v2/business-objects/delete-business-object": bos.get(params.businessObjectId)!.deleted = true; return "";
     case "v2/co/generate-draft": { const id = nextId("DRAFT"); drafts.set(id, { coId: params.coId, ...copyCo(bos.get(params.coId)!.co!) }); return id; }
@@ -585,6 +588,7 @@ const sVers = new Map<string, SVer[]>(), pVers = new Map<string, PVer[]>(), defs
 const localMethods = new Map<string, { scriptId: string; methodName: string }[]>(); // per BO: every version lists them (trap 68a)
 let globals: { scriptId: string; methodName: string }[] = [];
 const rwDrafts = new Map<string, { boProcessId: string; runWayMap: Record<string, any> }>(), forced = new Map<string, Set<string>>(), stopped = new Map<string, Set<string>>();
+const terminated = new Map<string, string>(); // boiId → the arrow terminate-all went on from
 const HOOK_KEYS = ["onOpenFormScriptId", "afterSaveScriptId", "onCloseScriptId", "onInstanceCreationId"];
 const dk = (m: string, s: string) => `${m}/${s}`;
 const setPath = (o: any, path: string, v: unknown) => {
@@ -641,6 +645,9 @@ function steps(boProcessId: string, boiId: string) {
     const fig = def.figures[at], outs = Object.entries<any>(def.arrows).filter(([, a]) => a.startFigureId === at);
     const push = outs.find(([id]) => forced.get(boiId)?.has(id));
     const stop = stopped.get(boiId)?.has(at); // a stopped step stays STOPPED; terminate-all goes on past it
+    const jump = terminated.get(boiId), via = jump ? def.arrows[jump] : undefined;
+    // terminate-all from a standing step: it goes on from the arrow's target, whichever figure the arrow leaves
+    if ((fig.type === "Form" || fig.type === "Timer") && !push && via && !seen.has(via.finishFigureId)) { out.push({ figureId: at, state: stop ? "STOPPED" : "PASSED" }); at = via.finishFigureId; continue; }
     if ((fig.type === "Form" || fig.type === "Timer") && !push) { out.push({ figureId: at, state: stop ? "STOPPED" : "STAND" }); break; }
     out.push({ figureId: at, state: stop ? "STOPPED" : "PASSED" });
     if (fig.type === "Exit") break;
@@ -720,7 +727,7 @@ function scriptsAndProcesses(route: string, params: any, body: any): any {
     case "v2/boi-process2/load-boi-process-id": return pVersOf(params.boId).find((v) => v.isTest)!.boProcessId;
     case "v2/boi-process/load-process-steps": return steps(params.boProcessId, params.boiId);
     case "v2/boi-process/push-step-forcibly": forced.set(params.boiId, new Set([...(forced.get(params.boiId) ?? []), params.arrowId])); return null;
-    case "v2/boi-process/push-step-terminate-all": forced.set(params.boiId, new Set([...(forced.get(params.boiId) ?? []), params.arrowId])); return null;
+    case "v2/boi-process/push-step-terminate-all": terminated.set(params.boiId, params.arrowId); return null;
     // the server stops only a STAND step and retries only a FAILED one
     case "v2/boi-process/stop-step":
       if (!steps(params.boProcessId, params.boiId).some((x) => x.figureId === params.figureId && x.state === "STAND")) return fail("nAvyFrTP75 :: Нет активных шагов для остановки");
