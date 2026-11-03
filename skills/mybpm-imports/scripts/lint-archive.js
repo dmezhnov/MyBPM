@@ -160,16 +160,16 @@ for (const bo of bos) {
     if (ty === "DROPDOWN_SINGLE" && f.fieldOptionsStruct?.optionSource === "FROM_FIELD" && !all(op).length) err(`${t}: a local list with no options (0.5)`);
     if (ty === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) err(`${t}: no kanbanCardTemplates.${k}.kanbanFields (0.9 rule 16)`);
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
-    if (ty === "TAB_GROUP" && f.gridPosition) {
+    if (ty === "TAB_GROUP" && f.gridPosition && !f.trackedFieldCode) { // a tracked-status wrapper draws no tab bar: rows 4 (§3)
       const tall = Math.max(0, ...cellsOf(bo).filter((x) => x.tab?.tabGroupCode === k && x.c.gridPosition).map(({ c }) => c.gridPosition.y + c.gridPosition.rows));
       const need = tall + (f.tabCodePath?.tabCode ? 2 : bo.instanceViewType === "TAB" ? 6 : 3);
       if (tall && f.gridPosition.rows !== need) err(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
     }
     for (const c of Object.keys(f.fieldTabs ?? {}).filter((c) => c !== "tab_system")) {
-      const n = cellsOf(bo).filter((x) => x.tab?.tabCode === c && x.c.type !== "STATIC_TEXT").length;
+      const n = cellsOf(bo).filter((x) => x.tab?.tabGroupCode === k && x.tab?.tabCode === c && x.c.type !== "STATIC_TEXT").length;
       if (n < 2) err(`${t}.${c}: a tab with ${n} cell(s) — at least 2 fields or widgets, else a heading (0.8a step 3)`);
     }
-    if (ty === "DROPDOWN_SINGLE" && f.tabCodePath?.tabCode && (k === "status" || low(f.label?.rus) === "статус")) err(`${t}: the status inside tab ${f.tabCodePath.tabCode} — the header row beside the title field, seen on every tab (0.8a step 3)`);
+    if (ty === "DROPDOWN_SINGLE" && f.tabCodePath?.tabCode && !f.trackedFieldCode && (k === "status" || low(f.label?.rus) === "статус")) err(`${t}: the status inside tab ${f.tabCodePath.tabCode} — the header row beside the title field, seen on every tab (0.8a step 3)`);
     if (ty === "FILE_UPLOAD" && /фото|снимк|снимок|photo/i.test(`${k} ${f.label?.rus}`) && f.params?.viewType !== "TILE") err(`${t}: a photo field without params.viewType TILE shows no pictures (0.19)`);
     if (cat === "BO_DICTIONARY" && (k === "code" || k === "label") && f.gridPosition && (f.gridPosition.x !== 0 || f.gridPosition.cols !== 15)) err(`${t}: a dictionary's Код / Значение — x 0, cols 15 each, one width (0.5b, 0.8)`);
     for (const [p, v] of all(f.params)) if (typeof v !== "string") err(`${t}: params.${p} = ${JSON.stringify(v)} — every params value is a string (§3)`);
@@ -312,7 +312,8 @@ const depth = (bo, tab) => { // how many TAB_GROUPs a cell sits inside: its tab,
 };
 const count = (v) => { try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; } return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0; };
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
-  const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
+  const fs = vals(bo.dynamicFields), forms = new Map(), at = (tab) => tab?.tabCode ? `${tab.tabGroupCode}/${tab.tabCode}` : "", put = (tab, c) => forms.set(at(tab), [...(forms.get(at(tab)) ?? []), c]);
+  const tracked = (tab) => fs.some((w) => w.trackedFieldCode && w.type === "TAB_GROUP" && w.code === tab?.tabGroupCode); // the wrapper's own tab: date 9 + «Статус» 6 (§3)
   for (const { c: f, tab } of cellsOf(bo).filter((x) => !x.box)) {
     const t = `${bo.code}.${f.code}`, g = f.gridPosition, text = /^TEXTAREA/.test(f.type);
     const k = cellOf(f), short = k?.place === "pairs", table = isRef(f) && f.viewType === "TABLE";
@@ -320,8 +321,11 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (text && f.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
     if (g && f.type === "TAB_GROUP" && f.trackedFieldCode && g.rows !== 4) err(`${t}: rows ${g.rows}, a tracked-status wrapper takes 4 (§3)`);
-    if (!g || f.trackedFieldCode) continue;
-    if (f.code === "PROCESS_STATUS") { put(tab?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
+    if (g && f.type === "TAB_GROUP" && f.trackedFieldCode) { put(tab, { t, g, full: true }); continue; } // a cell of its stack, full width
+    if (g && tracked(tab) && (g.y !== 0 || g.rows !== 3 || g.x !== (f.trackedFieldCode ? 9 : 0) || g.cols !== (f.trackedFieldCode ? 6 : 9)))
+      err(`${t}: x ${g.x} y ${g.y} cols ${g.cols} rows ${g.rows} — in a tracked-status wrapper the date is x 0 y 0 cols 9 rows 3, «Статус» x 9 y 0 cols 6 rows 3 (§3)`);
+    if (!g || f.trackedFieldCode || tracked(tab)) continue;
+    if (f.code === "PROCESS_STATUS") { put(tab, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
     const n = k?.items ? count(k.items.key.split(".").reduce((o, p) => o?.[p], f)) : 0; // items: ⌈(painted + 15) / 30⌉ (0.8)
     const need = !k ? 0 : k.items ? Math.ceil((k.items.base + k.items.per * n + 15) / 30) : k.rows;
     if (need && (k.least ? g.rows < need : g.rows !== need))
@@ -330,11 +334,11 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     const win = bo.gridLayoutPosition?.w, lvl = depth(bo, tab), cp = (72 * win - 69 - 39 * lvl) / 15; // one column on a 1280 px screen (0.8)
     if (k?.minPx && bo.instanceViewType !== "TAB" && typeof win === "number" && typeof g.cols === "number" && cp > 0 && g.cols * cp - 1 < k.minPx)
       err(`${t}: cols ${g.cols} is ${Math.floor(g.cols * cp - 1)} px in a window w ${win}${lvl ? " on a tab" : ""} — a ${k.kind} box needs ${k.minPx} px, cols ≥ ${Math.ceil((k.minPx + 1) / cp)} (0.8)`);
-    put(tab?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
+    put(tab, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
       fixed: k?.width === "own", stretch: k?.width === "stretches", narrow: k?.width === "narrow", ty: k?.kind ?? f.type });
   }
   for (const { c: w, tab } of cellsOf(bo).filter((x) => x.box))
-    if (w.gridPosition) put(tab?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
+    if (w.gridPosition) put(tab, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
   for (const [tab, cells] of forms) {
     let next = 0, edge = 15, lone = 0, above;
     for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => (+a || 0) - (+b || 0))) { // a y that is no number sorts as 0: one order under every engine
@@ -375,7 +379,7 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (heads.length === 1 && cells.length > 1 && heads[0].g.y === Math.min(...cells.map((c) => c.g.y)))
       err(`${heads[0].t}: the only heading, on top of the whole ${tab ? "tab" : "form"} — groups nothing; ≥ 2 headings or none (0.8a step 2)`);
     if (lone >= 3 && bo.category !== "BO_DICTIONARY")
-      err(`${bo.code}${tab ? " tab " + tab : ""}: ${lone} rows hold one short field each — 2–3 per row, a lone field at most 2 per form (0.8)`);
+      err(`${bo.code}${tab ? " tab " + tab.split("/")[1] : ""}: ${lone} rows hold one short field each — 2–3 per row, a lone field at most 2 per form (0.8)`);
   }
   if (bo.category === "BO_DICTIONARY" || bo.category === "BO_PROCESS") continue;
   const seen = fs.filter((f) => !f.trackedFieldCode && f.type !== "STATIC_TEXT" && f.type !== "TAB_GROUP" && f.tabCodePath?.tabCode !== "tab_system").length;
@@ -391,7 +395,7 @@ for (const [k, s] of Object.entries(tl)) if (k && new Set(s.map((x) => x.bo)).si
 for (const bo of bos.filter((b) => b.instanceViewType !== "TAB" && /^BO(_PROCESS|_DICTIONARY)?$/.test(b.category))) {
   const g = bo.gridLayoutPosition, fs = vals(bo.dynamicFields);
   if (!g) { err(`${bo.code}: no gridLayoutPosition — the record opens at 90 % × 90 % of the screen (0.8a step 7)`); continue; }
-  const rows = Math.max(0, ...fs.filter((f) => f.gridPosition && !f.tabCodePath?.tabCode && !f.trackedFieldCode).map((f) => f.gridPosition.y + f.gridPosition.rows));
+  const rows = Math.max(0, ...fs.filter((f) => f.gridPosition && !f.tabCodePath?.tabCode).map((f) => f.gridPosition.y + f.gridPosition.rows));
   if (g.h > 28) err(`${bo.code}: FORM window h ${g.h} > 28 — tabs or instanceViewType TAB (0.8a steps 3, 8)`);
   else if (g.h < rows + 5) err(`${bo.code}: FORM window h ${g.h} scrolls ${rows} form rows — h ${rows + 5} (0.8a step 7)`);
   for (const f of fs.filter((f) => f.type === "BO" && f.viewType === "TABLE")) {

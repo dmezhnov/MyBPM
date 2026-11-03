@@ -271,6 +271,32 @@ await $`rm -rf dist/gen-narrow && bun tools/make-probe-archive.bun.ts --group-co
   const under = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_under --name GenUnder --salt genunder --bo-order 1 --out dist/gen-narrow/under --field Kol:INPUT_NUMBER --field Opis:INPUT_TEXT --field Mail:INPUT_EMAIL!row`.nothrow().quiet();
   if (!under.exitCode || !/no grid of 15 columns suits the form rows \[\["Kol"\],\["Opis","Mail"\]\]/.test(under.stderr.toString())) { console.error(`make-probe-archive built a pair under a lone number (exit ${under.exitCode}):\n${under.stderr}`); process.exit(1); }
 }
+// «Отслеживать статус» (§3): the wrapper draws no tab bar, so it is 15 × 4 and takes the date's place in its stack (the form or
+// a tab), the date + «Статус» sit 9 + 6 inside it, a second status is «Статус2»; both lints find no layout line in what the
+// generator builds, and on hand-broken copies they report exactly the wrapper's rows, the field under it and the date's place
+await $`rm -rf dist/gen-track && bun tools/make-probe-archive.bun.ts --group-code Track_group --group-name Track --group-order 1 --code Gen_track --name GenTrack --salt gentrack --bo-order 1 --window 10,24 --out dist/gen-track ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER!row", "Srok:DATE!track", "Srok2:DATE!track", "Prim:INPUT_TEXT", "Kol2:INPUT_NUMBER!row", "T:TAB_GROUP#Shag|Vtoroy", "Srok3:DATE!track,tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag", "Kol3:INPUT_NUMBER!tab=T/Shag,row", "Opis3:INPUT_TEXT!tab=T/Vtoroy", "Kol4:INPUT_NUMBER!tab=T/Vtoroy,row"].flatMap((f) => ["--field", f])}`.quiet();
+{
+  const zipFile = [...new Bun.Glob("dist/gen-track/*.zip").scanSync()][0];
+  const lines = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const bo = lines.map((l) => JSON.parse(l)).find((o) => o.dynamicFields), df = bo.dynamicFields;
+  const got = Object.values<any>(df).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}/${f.gridPosition.rows}`).join(", ");
+  const want = "Opis 0/0/10/3, Kol 10/0/5/3, Srok 0/0/9/3, Srok_status 0/3/15/4, Status_Srok 9/0/6/3, Srok2 0/0/9/3, Srok2_status 0/7/15/4, Status_Srok2 9/0/6/3, Prim 0/11/10/3, Kol2 10/11/5/3, T 0/14/15/10, Srok3 0/0/9/3, Srok3_status 0/0/15/4, Status_Srok3 9/0/6/3, Opis2 0/4/10/3, Kol3 10/4/5/3, Opis3 0/0/10/3, Kol4 10/0/5/3";
+  if (got !== want || df.Status_Srok2.label.rus !== "Статус2" || df.Srok3_status.tabCodePath?.tabCode !== "Shag") { console.error(`make-probe-archive with !track: ${got}, «${df.Status_Srok2.label.rus}», wrapper on tab ${df.Srok3_status.tabCodePath?.tabCode}\nwant: ${want}, «Статус2», Shag`); process.exit(1); }
+  const broken = lines.map((l) => {
+    const o = JSON.parse(l), f = o.dynamicFields;
+    if (f) { f.Srok_status.gridPosition.rows = 6; f.Srok2_status.gridPosition.y = 9; f.Prim.gridPosition.y = 13; f.Kol2.gridPosition.y = 13; f.T.gridPosition.y = 16; Object.assign(f.Srok2.gridPosition, { cols: 15 }); }
+    return JSON.stringify(o);
+  });
+  await Bun.write("dist/gen-track/bad.jsonl", broken.join("\n") + "\n");
+  const layout = /takes 4|tallest tab|expected|spans \d+ of 15|floats up|overlaps|status inside tab|tracked-status wrapper|repeats|tableColOrderIndex/;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+    for (const [file, want] of [[zipFile, []], ["dist/gen-track/bad.jsonl", ["Gen_track.Srok_status: rows 6, a tracked-status wrapper takes 4 (§3)", "Gen_track.Srok2: x 0 y 0 cols 15 rows 3 — in a tracked-status wrapper the date is x 0 y 0 cols 9 rows 3, «Статус» x 9 y 0 cols 6 rows 3 (§3)"]]] as const) {
+      const r = await $`${cmd} ${file}`.nothrow().quiet(), bad = r.stdout.toString().split("\n").filter((l) => layout.test(l));
+      if (bad.join("\n") !== want.join("\n") || !/Gen_track/.test(r.stdout.toString())) { console.error(`${cmd[1]} on ${file}: tracked-status lines\n${bad.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+    }
+  const joined = await $`bun tools/make-probe-archive.bun.ts --group-code Track_group --group-name Track --group-order 1 --code Gen_trackrow --name GenTrackRow --salt gentrackrow --bo-order 1 --out dist/gen-track/row --field Opis:INPUT_TEXT --field Srok:DATE!track,row`.nothrow().quiet();
+  if (!joined.exitCode || !/!track and !row/.test(joined.stderr.toString())) { console.error(`make-probe-archive put a tracked date into a row (exit ${joined.exitCode}):\n${joined.stderr}`); process.exit(1); }
+}
 // the table «Cell of each type» (IMPORTS 0.8) is the one source of rows, place and width: UI-API carries its byte copy, the
 // generator builds by it and both lints check by it — a lone LINK x 0 cols 8 rows 3 is clean, rows 6 or full width is not,
 // a CHECKLIST / RADIO takes its rows by its item count (issue #10)

@@ -405,6 +405,8 @@ not counting headings, the `TAB_GROUP` and the system fields.
   AND ≥ 3 groups. Group `rows` `[C]`: top-level = tallest tab + **3** (+ **6** on a page tab `instanceViewType: "TAB"`: there the group's box is `(rows − 1)·30 − 111` px, + 5 scrolls), nested =
   tallest tab + **2** («rows of a
   tab» = `max(y + rows)` of its fields and of the widgets that name it in `tabCode` `[C]`); one row less scrolls inside the group.
+  The «Отслеживать статус» wrapper (`trackedFieldCode`) draws NO tab bar: a bordered box round the date and «Статус»
+  (9 + 6, rows 3), `rows` **4**, `cols` 15, a cell of its stack like a field `[C]`.
 - **System fields → the hidden tab «Системные»**: every field only a script, process or integration reads or
   writes goes on a tab with code `tab_system`, label «Системные», the LAST tab of the top-level `TAB_GROUP`
   (`isDefault: false`); a form with no other tabs gets a `TAB_GROUP` holding only that tab, placed UNDER the
