@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 3cc6c848cf80
+# lintArchive sha256: c8ef28317e8d
 import json
 import math
 import os
@@ -1226,6 +1226,25 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                 e = g(X, g(e, "leftExprId"))
             if tr(fld(e)):
                 written.add(f"{s(nn(boOf(g(X, g(e, 'leftExprId'))), '*'))}.{s(fld(e))}")
+    BY_NAME = [  # 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token]; the first row whose label or code matches
+        ("a quantity", "INPUT_NUMBER", R(r"^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|\((?:дней|дн|ч|час|часов|мин|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])"),
+         R(r"_(?:count|qty|quantity|amount|sum|total|pct|percent|hours|minutes|days|months|years|price|cost|spent|duration)_")),
+        ("a moment, day and time", "FULL_DATE", R(r"^(?:дата и время|дата-время|момент)(?![а-яё])"), R(r"_datetime_|_date_(?:.*_)?time_|_at_$")),
+        ("a month", "YEAR_AND_MONTH", R(r"^(?:за )?месяц(?![а-яё])"), R(r"_month_")),
+        ("a year", "YEAR", R(r"^(?:за )?год(?![а-яё])"), R(r"_year_")),
+        ("a day", "DATE", None, R(r"_(?:period|range)_(?:.*_)?(?:start|end|begin|from|to)_|_(?:start|end|begin|from|to)_(?:.*_)?(?:period|range)_")),  # the start or end of a range
+        ("a range", "PERIOD", R(r"^(?:период|диапазон)(?![а-яё])"), R(r"_(?:period|range)_")),
+        ("a day", "DATE", R(r"^(?:дата|срок|крайний срок|дедлайн|день рождения)(?![а-яё])"), R(r"_(?:date|day|deadline|due|dob|birthday)_")),
+        ("a time of day", "TIME", R(r"^время(?![а-яё])"), R(r"_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_"))]
+
+    def byName(f):  # the BY_NAME row of a text field, None for a comment or a note
+        l = low(nn(g(f, "label", "rus"), ""))
+        tok = "_" + re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s(nn(g(f, "code"), ""))).lower() + "_"
+        if (not T(R("^(INPUT_TEXT|TEXTAREA)$"), g(f, "type")) or T(R("коммент|примеч|описан|пояснен|причин|прописью|формул"), l)
+                or T(R("_(?:comment|comments|note|notes|description|desc|reason|text|words|formula)_"), tok)):
+            return None
+        return next((r for r in BY_NAME if (r[2] is not None and r[2].search(l)) or r[3].search(tok)), None)
+
     noProcess = not any(any(any(T(R("BlockAssign"), jj(g(find(of("ScriptDefStructDto"), lambda x: seq(g(x, "compositeId"), c)), "blocks"))) for c in it(nn(g(v, "scriptsDefIds"), [])))
                             for v in [g(pv, "workProcess"), *vals(g(pv, "processVersions"))]) for pv in of("BoProcessVersionsStructDto"))
     for bo in [x for x in bos if g(x, "category") != "BO_DICTIONARY"]:
@@ -1243,6 +1262,11 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                     err(f"{s(g(bo, 'code'))}.{s(g(f, 'code'))} «{s(l)}»: an approval field AND an approval stage in the status list, and no process links them — the BO_PROCESS that moves the status when it is approved (0.18 «A writing Script, literally»); «отмечается вручную» does not answer a stage path")
                 else:
                     err(f"{t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»")
+            by = byName(f)
+            if by:
+                err(f"{t}: {s(g(f, 'type'))} — by its name {by[0]}, so {by[1]}, or report «текстом, потому что …» (0.5 «Field type by meaning»)")
+            if T(R(r"\((?:гггг|гг|yyyy|yy|дд|dd|чч|hh)|\((?:мм|mm)[.\-\/]"), low(l)):
+                err(f"{t}: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)")
     for bo in [x for x in bos if g(x, "category") == "BO" and not tr(g(x, "isCalendarEnabled")) and T(R("запис|визит|встреч|при[её]м|брон", True), nn(g(x, "name", "rus"), ""))]:
         if any(g(f, "type") == "FULL_DATE" for f in vals(g(bo, "dynamicFields"))):
             err(f"REMINDER {s(g(bo, 'code'))} «{s(g(bo, 'name', 'rus'))}»: visits with a date and time but no calendar — isCalendarEnabled + a calendar menu item (§2 «BO views»), or report why not")
@@ -1391,11 +1415,14 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             sb = S.get(jk(m.group(1)), U) if m else None
             segs = R(" «[^»]*»$").sub("", m.group(2), count=1).split(", ") if m and m.group(2) is not None else []
             y = g(get(b, segs[0]), "gridPosition", "y") if segs else 0
+            ty = R(r"^REMINDER ([A-Za-z0-9_]+)\.([A-Za-z0-9_]+) .*\(0\.5 «Field type by meaning»\)$").search(l)  # a field type line: that field carried
 
             def form(keep):
                 return all(same(b, sb, k) for k, f in [*ents(g(b, "dynamicFields")), *[(f"{w}.{c}", x) for w in W for c, x in ents(g(b, w))]] if keep(f))
 
-            if sc:
+            if ty:
+                as_ = jk(ty.group(1)) in S and same(find(bos, lambda x: seq(g(x, "code"), ty.group(1))), S[jk(ty.group(1))], ty.group(2))
+            elif sc:
                 as_ = idem(find(defs, lambda d: seq(g(d, "compositeId"), sc.group(2))) if sc.group(1) == "script" else find(acc, lambda a: seq(g(a, "boCode"), sc.group(2))))
             elif R(r"^\d+ BOs in one group").search(l):  # the grouping of a file that only carries BOs
                 as_ = whole
@@ -1416,7 +1443,7 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             if as_ and R(r": y \d+, expected").search(l):  # a stack line: every field above
                 as_ = form(lambda f: le(g(f, "gridPosition", "y"), y))
             if as_:
-                carried.append((sc.group(0) if sc else m.group(0) if m else l.split(": ")[0] + ": ")[:-2])
+                carried.append(f"{ty.group(1)}.{ty.group(2)}" if ty else (sc.group(0) if sc else m.group(0) if m else l.split(": ")[0] + ": ")[:-2])
             else:
                 kept.append(l)
         out[:] = kept

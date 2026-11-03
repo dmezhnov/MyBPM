@@ -301,6 +301,31 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    and, for every field, `label` / `code` / `type`. The BO is now at
    `<stand>/business-objects/editing/<boId>/object-editing`.
 
+**Field type by meaning — unasked.** A value that is a date, a time, a month, a year, a range or a quantity
+goes into a field of that type, never into `INPUT_TEXT` / `TEXTAREA` — also when a script searches,
+compares or groups by it: the typed field does all of that (below).
+
+| the value | `fieldType` |
+|---|---|
+| a day — «Дата», «Срок», «День» | `DATE` |
+| a moment, day and time — «Создано в», «Напомнить в» | `FULL_DATE` |
+| a time of day | `TIME` |
+| a month — «Месяц», «За месяц» | `YEAR_AND_MONTH` |
+| a year | `YEAR` |
+| a range a user sees | `PERIOD` / `PERIOD_TIME` |
+| a range a script searches by | two `DATE` / `FULL_DATE` fields, start and end — a `PERIOD*` has no filter |
+| a count, an amount, hours, a percent | `INPUT_NUMBER`, one field per unit — no «4 ч = 0.5 дн» text |
+
+- **A month or a year field holds an instant inside its month or year, not the 1st** `[C]`: a pick on the
+  card keeps today's day and the current time (§6b, the table of `value` per type), a script stores the
+  instant it writes, an xlsx the 1st at 00:00. So it is compared by its unit, never as an instant or a text:
+  a script filter on a `DATE` / `YEAR_AND_MONTH` / `YEAR` field compares by day / month / year in the stand's
+  time zone — `ExactEquality` with any day of October finds every October record `[C]`; in a loop
+  `F-extractYear-K-FIX-T-Date` / `F-extractMonth-K-FIX-T-Date` or `F-equals-K-FIX-T-Date` with unit `MONTHS` `[C]`.
+- No format hint in a label («Месяц (ГГГГ-ММ)»): the picker shows the format.
+- A text key built from typed values (a sort key «группа · дата») only where a limit of the typed field
+  leaves no other way; it is a system field on the hidden «Системные» tab.
+
 **Field settings** («Обязательное», «Уникальное», «Выпадающий список») are set on the SAME field DTO in
 step 6 — there is no separate endpoint (§5h):
 
@@ -762,7 +787,8 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    - **Map columns by LABEL, never by position**: a column is the (row-1 block, row-2 field) pair; split a row-1
      label on the FIRST dot — the prefix is the tab («Системные.Код»), the rest is the field label after strip.
    - **Values**: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently, §6);
-     date-time `25.10.2025 10:33`; period `dd.mm.yyyy - dd.mm.yyyy`; numbers and codes as text; a dropdown by its
+     date-time `25.10.2025 10:33`; month `MM.YYYY` and year `YYYY`, nothing else (`2026-10` fails the row; stored
+     as the 1st / 1 January at 00:00 in the stand's zone); period `dd.mm.yyyy - dd.mm.yyyy`; numbers and codes as text; a dropdown by its
      LABEL (`NotFoundDictByLabel` when the value is not on the stand); dictionary codes are case-sensitive
      (`MRP` ≠ `mrp`).
    - **A TABLE nested object = the parent row REPEATED**, one row per child (the parent's scalars on every row is
@@ -3745,6 +3771,8 @@ by `translate-script`, not stored as poison. The 16 enums and their values: `loa
   An open card does not show them until reopened — the client never refreshes a record by itself `[C]`; a
   process can push a refresh of one record to one user with a dedicated method `[C]` (its name `[U]`).
 - **A DEV record's script sees only DEV records in its `BO`/`CO` fields** (collections read empty otherwise).
+- **A date filter compares by the field's unit in the stand's time zone** `[C]`: `DATE` by day, `YEAR_AND_MONTH` by month,
+  `YEAR` by year — `ExactEquality (20.10.2026)` on a month field finds every October record; `PERIOD*` has no filter.
 - A dictionary at run time: `F-findByFilter-K-FIX-T-BoRefCode` on a `BoRefCode` constant → rows (no drafts;
   it searches the stand's search index `[C]`, whose lag behind a save a person in the UI never notices `[C]`);
   `code` matching is case-sensitive.
@@ -5969,7 +5997,7 @@ discarded) is `MYBPM-IMPORTS.md` §15 «When each hook runs»; the facts that bi
 | `INPUT_TEXT` `INPUT_PHONE` `INPUT_EMAIL` `TEXTAREA` `LINK` | the plain string (`TEXTAREA` = its HTML — any HTML fragment may be sent instead of plain text, §8) | `[C]` |
 | `INPUT_NUMBER` | `"42"` | `[C]` |
 | `CHECKBOX` | `"true"` / `"false"` | `[C]` |
-| `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""` | `[C]` |
+| `DATE` `FULL_DATE` `TIME` `YEAR` `YEAR_AND_MONTH` | `JSON.stringify(<Date>)` = an ISO instant INSIDE quotes: `"\"2026-09-24T10:30:00.000Z\""`, stored as sent. A pick on the card sends the picked unit with the rest taken from now: a `DATE` the day at the current time, a `YEAR_AND_MONTH` the month at today's day (cut to the month's last day) and time, a `YEAR` the year at today's month, day and time; a new pick in a filled field changes only that unit of the old value | `[C]` |
 | `PERIOD` `PERIOD_TIME` | `{"startDate":"<ISO>","endDate":"<ISO>"}`; `PERIOD_TIME` reads back with both ends as epoch milliseconds; `"{}"` clears it | `[C]` |
 | `DROPDOWN_SINGLE` `RADIO_BUTTON_GROUP` | the option id, bare. A dictionary dropdown (`optionSource:"FROM_BO"`): send the dictionary record's CODE — it is stored as that record's id and the card shows it; the bare record id is stored too, but the card shows the field empty | `[C]` |
 | `BO` | a JSON array of record ids `["<boiId>"]` | `[C]` |

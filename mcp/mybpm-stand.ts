@@ -478,8 +478,9 @@ function lint(file: string, source?: string): { ok: boolean; out: string } {
   }
 }
 
-/** The form lint's layout lines (MYBPM-IMPORTS.md 0.8, 0.8a) of one BO, run on the BO's own export: the check of
- *  archive_lint itself, not a copy of it, so a rule added to the lint reaches bo_create / bo_fields_save at once. */
+/** The form lint's layout lines (MYBPM-IMPORTS.md 0.8, 0.8a) and field type lines (0.5 «Field type by meaning») of one BO,
+ *  run on the BO's own export: the check of archive_lint itself, not a copy of it, so a rule added to the lint reaches
+ *  bo_create / bo_fields_save at once. */
 async function layoutLint(s: Stand, boId: string, code: string): Promise<string[]> {
   let file = "";
   try {
@@ -488,8 +489,9 @@ async function layoutLint(s: Stand, boId: string, code: string): Promise<string[
     const { out } = lint(file);
     if (/NOT RUN/.test(out)) return [`layout lint: ${out}`];
     const mine = (l: string) => [".", ":", " "].some((c) => l.startsWith(code + c));
-    return out.split("\n").filter((l) => mine(l) && (/\(0\.8a?( step \d+)?\)$/.test(l) || /overlaps the cell before it/.test(l)))
-      .map((l) => `layout lint: ${l}`);
+    const type = (l: string) => l.startsWith(`REMINDER ${code}.`) && /\(0\.5 «Field type by meaning»\)$/.test(l);
+    return out.split("\n").filter((l) => (mine(l) && (/\(0\.8a?( step \d+)?\)$/.test(l) || /overlaps the cell before it/.test(l))) || type(l))
+      .map((l) => (type(l) ? `field type: ${l}` : `layout lint: ${l}`));
   } catch (e: any) {
     return [`layout lint NOT RUN (${e.message}) — structure_export the BO and archive_lint it`];
   } finally {
@@ -2261,7 +2263,7 @@ const tools: Tool[] = [
     } },
 
   // 5. the constructor — a BO without an archive (R1, R2, R2a, §5i, §5j)
-  { name: "bo_create", write: true, description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
+  { name: "bo_create", write: true, description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols; a «field type: REMINDER …» note is a text field whose name holds a date, a month, a year, a range or a quantity — the typed field, or say in the reply why text, IMPORTS 0.5 «Field type by meaning»). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
     props: { group: { type: "string", description: "The BO group, by id or exact name (bo_groups); it must exist." },
       kind: { type: "string", enum: ["BO", "BO_DICTIONARY", "BO_PANEL", "BO_PROCESS"], description: "Default BO." },
       name: { type: "string" }, description: { type: "string" },
@@ -2298,7 +2300,7 @@ const tools: Tool[] = [
         throw new Error(`${e.message} — the BO ${id} («${created.name}») EXISTS on the stand: finish it with bo_fields_save, or bo_delete it`);
       }
     } },
-  { name: "bo_fields_save", write: true, description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» in notes). Ask the user first.",
+  { name: "bo_fields_save", write: true, description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» and «field type: …» in notes). Ask the user first.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       add: { type: "array", items: FIELD_SPEC },
       edit: { type: "array", items: { type: "object", required: ["fieldId"], properties: {

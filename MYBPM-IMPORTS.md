@@ -758,6 +758,31 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Вложенный объект / Пользователь | `BO` | `oldRefBoId` + `boRefStruct.boInfo` |
 | Составной объект | `CO` | `oldRefBoId` + `boRefStruct.boInfo` with `boCategory: "BO_COMPOSITE"` |
 
+**Field type by meaning — unasked.** A value that is a date, a time, a month, a year, a range or a quantity
+goes into a field of that type, never into `INPUT_TEXT` / `TEXTAREA` — also when a script searches,
+compares or groups by it: the typed field does all of that (below).
+
+| the value | `type` |
+|---|---|
+| a day — «Дата», «Срок», «День» | `DATE` |
+| a moment, day and time — «Создано в», «Напомнить в» | `FULL_DATE` |
+| a time of day | `TIME` |
+| a month — «Месяц», «За месяц» | `YEAR_AND_MONTH` |
+| a year | `YEAR` |
+| a range a user sees | `PERIOD` / `PERIOD_TIME` |
+| a range a script searches by | two `DATE` / `FULL_DATE` fields, start and end — a `PERIOD*` has no filter (§12a «Searching records — filters») |
+| a count, an amount, hours, a percent | `INPUT_NUMBER`, one field per unit — no «4 ч = 0.5 дн» text |
+
+- **A month or a year field holds an instant inside its month or year, not the 1st** `[C]`: a pick on the
+  card keeps today's day and the current time, a script stores the instant it writes, an xlsx the 1st at
+  00:00. So it is compared by its unit, never as an instant or a text: a filter on a `DATE` /
+  `YEAR_AND_MONTH` / `YEAR` field compares by day / month / year — `ExactEquality` with any day of
+  October finds every October record `[C]`; in a loop `F-extractYear-K-FIX-T-Date` /
+  `F-extractMonth-K-FIX-T-Date` or `F-equals-K-FIX-T-Date` with unit `MONTHS` `[C]`.
+- No format hint in a label («Месяц (ГГГГ-ММ)»): the picker shows the format.
+- A text key built from typed values (a sort key «группа · дата») only where a limit of the typed field
+  leaves no other way; it is a system field on the hidden «Системные» tab (0.8a step 1).
+
 The types that need extra keys — every shape `[C]`:
 
 - `STATIC_TEXT` — the HTML of the heading goes into `"staticValue": {"rus": "<div style=\"font-size:18px;font-weight:700;color:#1f2d3d;border-bottom:1px solid #d9dee5;padding-bottom:6px\">…</div>"}` (a bare `<h3><b>` renders as a small bold label `[C]`; no `transform` / `text-transform` and no DOM event name in it — §4 «Sections»), with
@@ -1512,7 +1537,9 @@ the BO's category. Count it in `objectCount`.
       change: a code off 0.6a («the code is already on the stand» — a stand code is never renamed), each rights
       line and each BO without one (name the case of 0.9 rule 10), the generic default menu icon (only when the
       user asked for no icons), a list `defaultValue` that is no option's `newOptionId` (right only on the
-      SAME BO it was exported from, §3), and the lines on what the given export carries unchanged (below). A
+      SAME BO it was exported from, §3), a text field whose name holds a date, a month, a year, a range or a
+      quantity, and a label with a format hint (0.5 «Field type by meaning»: the typed field, or «текстом,
+      потому что …»), and the lines on what the given export carries unchanged (below). A
       line that starts with `FATAL` is a defect the import itself fails on; every other line builds something
       other than asked — both are fixed before the file goes out. The prose
       checks below stay mandatory — the lint does not replace them.
@@ -2020,6 +2047,20 @@ for (const s of of("ScriptDefStructDto")) {
     if (fld(e)) written.add(`${boOf(X[e.leftExprId]) ?? "*"}.${fld(e)}`);
   }
 }
+const BY_NAME = [ // 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token]; the first row whose label or code matches
+  ["a quantity", "INPUT_NUMBER", /^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|\((?:дней|дн|ч|час|часов|мин|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])/, /_(?:count|qty|quantity|amount|sum|total|pct|percent|hours|minutes|days|months|years|price|cost|spent|duration)_/],
+  ["a moment, day and time", "FULL_DATE", /^(?:дата и время|дата-время|момент)(?![а-яё])/, /_datetime_|_date_(?:.*_)?time_|_at_$/],
+  ["a month", "YEAR_AND_MONTH", /^(?:за )?месяц(?![а-яё])/, /_month_/],
+  ["a year", "YEAR", /^(?:за )?год(?![а-яё])/, /_year_/],
+  ["a day", "DATE", null, /_(?:period|range)_(?:.*_)?(?:start|end|begin|from|to)_|_(?:start|end|begin|from|to)_(?:.*_)?(?:period|range)_/], // the start or end of a range
+  ["a range", "PERIOD", /^(?:период|диапазон)(?![а-яё])/, /_(?:period|range)_/],
+  ["a day", "DATE", /^(?:дата|срок|крайний срок|дедлайн|день рождения)(?![а-яё])/, /_(?:date|day|deadline|due|dob|birthday)_/],
+  ["a time of day", "TIME", /^время(?![а-яё])/, /_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_/]];
+const byName = (f) => { // the BY_NAME row of a text field, undefined for a comment or a note
+  const l = low(f.label?.rus ?? ""), tok = "_" + String(f.code ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase() + "_";
+  if (!/^(INPUT_TEXT|TEXTAREA)$/.test(f.type) || /коммент|примеч|описан|пояснен|причин|прописью|формул/.test(l) || /_(?:comment|comments|note|notes|description|desc|reason|text|words|formula)_/.test(tok)) return;
+  return BY_NAME.find(([, , lr, cr]) => (lr && lr.test(l)) || cr.test(tok));
+};
 const noProcess = !of("BoProcessVersionsStructDto").some((pv) => [pv.workProcess, ...vals(pv.processVersions)].some((v) => (v?.scriptsDefIds ?? []).some((c) => /BlockAssign/.test(JSON.stringify(of("ScriptDefStructDto").find((s) => s.compositeId === c)?.blocks)))));
 for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f of vals(bo.dynamicFields)) {
   const l = f.label?.rus ?? "", t = `REMINDER ${bo.code}.${f.code} «${l}»`, nums = vals(bo.dynamicFields).filter((x) => x.type === "INPUT_NUMBER").map((x) => low(x.label?.rus));
@@ -2031,6 +2072,9 @@ for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f
     if (stage) err(`${bo.code}.${f.code} «${l}»: an approval field AND an approval stage in the status list, and no process links them — the BO_PROCESS that moves the status when it is approved (0.18 «A writing Script, literally»); «отмечается вручную» does not answer a stage path`);
     else err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
   }
+  const by = byName(f);
+  if (by) err(`${t}: ${f.type} — by its name ${by[0]}, so ${by[1]}, or report «текстом, потому что …» (0.5 «Field type by meaning»)`);
+  if (/\((?:гггг|гг|yyyy|yy|дд|dd|чч|hh)|\((?:мм|mm)[.\-\/]/.test(low(l))) err(`${t}: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`);
 }
 for (const bo of bos.filter((b) => b.category === "BO" && !b.isCalendarEnabled && /запис|визит|встреч|при[её]м|брон/i.test(b.name?.rus ?? "")))
   if (vals(bo.dynamicFields).some((f) => f.type === "FULL_DATE")) err(`REMINDER ${bo.code} «${bo.name.rus}»: visits with a date and time but no calendar — isCalendarEnabled + a calendar menu item (§2 «BO views»), or report why not`);
@@ -2092,13 +2136,14 @@ if (source) { // the export this file amends (0.7 case 1): a line on a BO header
   for (const l of out) {
     const m = /^([A-Za-z0-9_]+)(?:\.([^:]+)| (arrow|tab) [^:]*)?: /.exec(l), sc = /^(script|rights of) (\S+): /.exec(l), b = m && bos.find((x) => x.code === m[1]), s = m && S.get(m[1]);
     const segs = m?.[2]?.replace(/ «[^»]*»$/, "").split(", ") ?? [], y = segs.length && get(b, segs[0])?.gridPosition?.y;
+    const ty = /^REMINDER ([A-Za-z0-9_]+)\.([A-Za-z0-9_]+) .*\(0\.5 «Field type by meaning»\)$/.exec(l); // a field type line: that field carried
     const form = (keep) => [...all(b?.dynamicFields), ...W.flatMap((w) => all(b?.[w]).map(([c, x]) => [`${w}.${c}`, x]))].filter(([, f]) => keep(f)).every(([g]) => same(b, s, g));
-    let as = sc ? idem(sc[1] === "script" ? defs.find((d) => d.compositeId === sc[2]) : acc.find((a) => a.boCode === sc[2])) : /^\d+ BOs in one group/.test(l) ? whole // the grouping of a file that only carries BOs
+    let as = ty ? S.has(ty[1]) && same(bos.find((x) => x.code === ty[1]), S.get(ty[1]), ty[2]) : sc ? idem(sc[1] === "script" ? defs.find((d) => d.compositeId === sc[2]) : acc.find((a) => a.boCode === sc[2])) : /^\d+ BOs in one group/.test(l) ? whole // the grouping of a file that only carries BOs
       : /^\d+ fields look computed/.test(l) ? asked.every((r) => r && S.has(r[1]) && same(bos.find((x) => x.code === r[1]), S.get(r[1]), r[2])) : !!(b && s) && (/\(0\.18\)/.test(l) ? idem(PV.find((p) => p.oldId === b.oldId)) // a process line: the whole process carried
       : m[3] === "tab" ? form(() => true) : segs.length ? segs.every((g) => same(b, s, g)) : head(b) === head(s) && (!/\(0\.8\)/.test(l) || form(() => true))); // a form-wide line needs the whole form carried
     if (as && /: (row y|x \d+ leaves|shares row y)/.test(l)) as = form((f) => f.gridPosition?.y === y); // a row line: its neighbours too
     if (as && /: y \d+, expected/.test(l)) as = form((f) => f.gridPosition?.y <= y); // a stack line: every field above
-    (as ? carried : kept).push(as ? (sc?.[0] ?? m?.[0] ?? l.split(": ")[0] + ": ").slice(0, -2) : l);
+    (as ? carried : kept).push(as ? ty ? `${ty[1]}.${ty[2]}` : (sc?.[0] ?? m?.[0] ?? l.split(": ")[0] + ": ").slice(0, -2) : l);
   }
   out.splice(0, out.length, ...kept);
   if (carried.length) err(`REMINDER ${carried.length} line(s) on what the source export carries unchanged — ${[...new Set(carried)].slice(0, 8).join(", ")}${carried.length > 8 ? ", …" : ""}: left as exported; fix one only when the user asked to change it (0.10)`);
@@ -2129,6 +2174,8 @@ return out.length ? out.join("\n") : "form lint: OK";
       a build from scratch used a NEW salt, and the report names it.
 - [ ] 0.8a by meaning: tabs split by theme and balanced; system fields on `tab_system` «Системные»; a big
       document is `instanceViewType: "TAB"` (step 8).
+- [ ] 0.5 «Field type by meaning»: no date, time, month, year, range or quantity in an `INPUT_TEXT` / `TEXTAREA`,
+      no format hint in a label.
 - [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
       table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
       15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).
@@ -6019,6 +6066,14 @@ Which filter constructors a field offers depends on its type:
 | CO | `ContainsAny`, `ExactEmpty` |
 | TextLang kinds, PERIOD*, GEO_POINT, FILE_UPLOAD, CHECKLIST, QUESTIONNAIRE, PROGRESS_BAR | none — only `find*` |
 
+**A date filter compares by the field's unit, in the stand's time zone** `[C]`: `DATE` by day, `YEAR_AND_MONTH`
+by month, `YEAR` by year — the time of day, and a month's day, are ignored. On a month field
+`ExactEquality (20.10.2026)` finds every October record, `GreaterThan (01.10.2026)` November on,
+`GreaterThanOrEqualButLessThan (01.10.2026, 01.11.2026)` on a `DATE` the whole of October. A `FULL_DATE`
+matches an equal instant `[C]`. `F-convertToDate-K-FIX-T-String` of «01.10.2026» is 00:00 of that day in the
+stand's zone, a date written into a field is stored as that instant, and `F-extractMonth` / `F-extractYear`
+read it in the stand's zone `[C]`.
+
 **`findByFilter` never returns draft records** `[C]` — only saved ones, whatever the filter (an unsaved
 new record, a child made by `F-CI` before the save, are not found). A save hook of a NEW record runs while
 the record is still a draft, so that hook never finds the record itself `[C]`.
@@ -7162,8 +7217,8 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
 2. **Build the column map by LABELS, never by position**: the (row-1 block, row-2 field) pair identifies a
    column. Split a row-1 label on the FIRST dot — the prefix is the tab («Системные.Код»).
 3. **Fill the rows.** Values: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently —
-   `31.02.2026` silently becomes 03.03.2026, 19.6 `[C]`); date-time `25.10.2025 10:33`; period
-   `dd.mm.yyyy - dd.mm.yyyy`; a dropdown is matched by its LABEL; a reference by the target's unique field
+   `31.02.2026` silently becomes 03.03.2026, 19.6 `[C]`); date-time `25.10.2025 10:33`; month `MM.YYYY`; year
+   `YYYY`; period `dd.mm.yyyy - dd.mm.yyyy`; a dropdown is matched by its LABEL; a reference by the target's unique field
    or by an `ID` sub-column. A TABLE nested object = the parent row REPEATED per child. A nested block
    only LINKS: its other sub-columns are never written into the child (19.6) — to change a child, import
    the child's own file.
@@ -7268,7 +7323,12 @@ needs.
   every row, no merges in the data rows; tell its records apart by «Внутренний айди» or the unique field.
 - Values: checkboxes `Да`/`Нет`; date-time `25.10.2025 10:33`; dates `dd.mm.yyyy`; periods
   `dd.mm.yyyy - dd.mm.yyyy`; dictionary registry columns «Значение», «Код».
-- Not known yet `[U]` — §20: the cell format of `TIME`, `YEAR`, `YEAR_AND_MONTH`, `PERIOD_TIME`, `CO`, `CHECKLIST`,
+- **Month and year** `[C]`: `YEAR_AND_MONTH` is the text `MM.YYYY` (`10.2026`), `YEAR` is `YYYY` — the export writes
+  them so and the import takes nothing else: `2026-10`, `7.2026`, `15.10.2026`, `октябрь 2026` fail the row with
+  «Неверный формат года и месяца - используйте формат MM.YYYY», a year other than four digits with «Неверный формат
+  года - … год должен содержать четыре цифры». The import stores the 1st of the month / 1 January at 00:00 in the
+  stand's time zone.
+- Not known yet `[U]` — §20: the cell format of `TIME`, `PERIOD_TIME`, `CO`, `CHECKLIST`,
   `FILE_UPLOAD`, a `*_LANG` text, an HTML `TEXTAREA`, `QUESTIONNAIRE`, `GEO_POINT`, `PROGRESS_BAR`; whether a file
   can delete or archive records, create DEV (test) records or set a record's participants. Do not ship such
   columns until §20 answers them; set those values on the stand instead (the card, or the record API).
@@ -7462,7 +7522,7 @@ BO-ref cell neither creates the referenced record (`NoUniqueFieldValue`, 19.3) n
 
 Every record-import behaviour this part relies on is `[C]`; these are open and NOT relied on:
 
-- `[U]` Cell formats of `TIME`, `YEAR`, `YEAR_AND_MONTH`, `PERIOD_TIME`, `CO`, `CHECKLIST`, `FILE_UPLOAD`, a
+- `[U]` Cell formats of `TIME`, `PERIOD_TIME`, `CO`, `CHECKLIST`, `FILE_UPLOAD`, a
   `*_LANG` text, an HTML `TEXTAREA`, `QUESTIONNAIRE`, `GEO_POINT`, `PROGRESS_BAR` (19.1) — check: set each on one
   record on the stand, export with listed `boFieldIds`, re-import the edited export, read back.
 - `[U]` Whether a file can delete or archive records — check: look for a state column in the template and in

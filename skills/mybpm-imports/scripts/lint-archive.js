@@ -492,6 +492,20 @@ for (const s of of("ScriptDefStructDto")) {
     if (fld(e)) written.add(`${boOf(X[e.leftExprId]) ?? "*"}.${fld(e)}`);
   }
 }
+const BY_NAME = [ // 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token]; the first row whose label or code matches
+  ["a quantity", "INPUT_NUMBER", /^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|\((?:дней|дн|ч|час|часов|мин|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])/, /_(?:count|qty|quantity|amount|sum|total|pct|percent|hours|minutes|days|months|years|price|cost|spent|duration)_/],
+  ["a moment, day and time", "FULL_DATE", /^(?:дата и время|дата-время|момент)(?![а-яё])/, /_datetime_|_date_(?:.*_)?time_|_at_$/],
+  ["a month", "YEAR_AND_MONTH", /^(?:за )?месяц(?![а-яё])/, /_month_/],
+  ["a year", "YEAR", /^(?:за )?год(?![а-яё])/, /_year_/],
+  ["a day", "DATE", null, /_(?:period|range)_(?:.*_)?(?:start|end|begin|from|to)_|_(?:start|end|begin|from|to)_(?:.*_)?(?:period|range)_/], // the start or end of a range
+  ["a range", "PERIOD", /^(?:период|диапазон)(?![а-яё])/, /_(?:period|range)_/],
+  ["a day", "DATE", /^(?:дата|срок|крайний срок|дедлайн|день рождения)(?![а-яё])/, /_(?:date|day|deadline|due|dob|birthday)_/],
+  ["a time of day", "TIME", /^время(?![а-яё])/, /_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_/]];
+const byName = (f) => { // the BY_NAME row of a text field, undefined for a comment or a note
+  const l = low(f.label?.rus ?? ""), tok = "_" + String(f.code ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase() + "_";
+  if (!/^(INPUT_TEXT|TEXTAREA)$/.test(f.type) || /коммент|примеч|описан|пояснен|причин|прописью|формул/.test(l) || /_(?:comment|comments|note|notes|description|desc|reason|text|words|formula)_/.test(tok)) return;
+  return BY_NAME.find(([, , lr, cr]) => (lr && lr.test(l)) || cr.test(tok));
+};
 const noProcess = !of("BoProcessVersionsStructDto").some((pv) => [pv.workProcess, ...vals(pv.processVersions)].some((v) => (v?.scriptsDefIds ?? []).some((c) => /BlockAssign/.test(JSON.stringify(of("ScriptDefStructDto").find((s) => s.compositeId === c)?.blocks)))));
 for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f of vals(bo.dynamicFields)) {
   const l = f.label?.rus ?? "", t = `REMINDER ${bo.code}.${f.code} «${l}»`, nums = vals(bo.dynamicFields).filter((x) => x.type === "INPUT_NUMBER").map((x) => low(x.label?.rus));
@@ -503,6 +517,9 @@ for (const bo of bos.filter((b) => b.category !== "BO_DICTIONARY")) for (const f
     if (stage) err(`${bo.code}.${f.code} «${l}»: an approval field AND an approval stage in the status list, and no process links them — the BO_PROCESS that moves the status when it is approved (0.18 «A writing Script, literally»); «отмечается вручную» does not answer a stage path`);
     else err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
   }
+  const by = byName(f);
+  if (by) err(`${t}: ${f.type} — by its name ${by[0]}, so ${by[1]}, or report «текстом, потому что …» (0.5 «Field type by meaning»)`);
+  if (/\((?:гггг|гг|yyyy|yy|дд|dd|чч|hh)|\((?:мм|mm)[.\-\/]/.test(low(l))) err(`${t}: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`);
 }
 for (const bo of bos.filter((b) => b.category === "BO" && !b.isCalendarEnabled && /запис|визит|встреч|при[её]м|брон/i.test(b.name?.rus ?? "")))
   if (vals(bo.dynamicFields).some((f) => f.type === "FULL_DATE")) err(`REMINDER ${bo.code} «${bo.name.rus}»: visits with a date and time but no calendar — isCalendarEnabled + a calendar menu item (§2 «BO views»), or report why not`);
@@ -564,13 +581,14 @@ if (source) { // the export this file amends (0.7 case 1): a line on a BO header
   for (const l of out) {
     const m = /^([A-Za-z0-9_]+)(?:\.([^:]+)| (arrow|tab) [^:]*)?: /.exec(l), sc = /^(script|rights of) (\S+): /.exec(l), b = m && bos.find((x) => x.code === m[1]), s = m && S.get(m[1]);
     const segs = m?.[2]?.replace(/ «[^»]*»$/, "").split(", ") ?? [], y = segs.length && get(b, segs[0])?.gridPosition?.y;
+    const ty = /^REMINDER ([A-Za-z0-9_]+)\.([A-Za-z0-9_]+) .*\(0\.5 «Field type by meaning»\)$/.exec(l); // a field type line: that field carried
     const form = (keep) => [...all(b?.dynamicFields), ...W.flatMap((w) => all(b?.[w]).map(([c, x]) => [`${w}.${c}`, x]))].filter(([, f]) => keep(f)).every(([g]) => same(b, s, g));
-    let as = sc ? idem(sc[1] === "script" ? defs.find((d) => d.compositeId === sc[2]) : acc.find((a) => a.boCode === sc[2])) : /^\d+ BOs in one group/.test(l) ? whole // the grouping of a file that only carries BOs
+    let as = ty ? S.has(ty[1]) && same(bos.find((x) => x.code === ty[1]), S.get(ty[1]), ty[2]) : sc ? idem(sc[1] === "script" ? defs.find((d) => d.compositeId === sc[2]) : acc.find((a) => a.boCode === sc[2])) : /^\d+ BOs in one group/.test(l) ? whole // the grouping of a file that only carries BOs
       : /^\d+ fields look computed/.test(l) ? asked.every((r) => r && S.has(r[1]) && same(bos.find((x) => x.code === r[1]), S.get(r[1]), r[2])) : !!(b && s) && (/\(0\.18\)/.test(l) ? idem(PV.find((p) => p.oldId === b.oldId)) // a process line: the whole process carried
       : m[3] === "tab" ? form(() => true) : segs.length ? segs.every((g) => same(b, s, g)) : head(b) === head(s) && (!/\(0\.8\)/.test(l) || form(() => true))); // a form-wide line needs the whole form carried
     if (as && /: (row y|x \d+ leaves|shares row y)/.test(l)) as = form((f) => f.gridPosition?.y === y); // a row line: its neighbours too
     if (as && /: y \d+, expected/.test(l)) as = form((f) => f.gridPosition?.y <= y); // a stack line: every field above
-    (as ? carried : kept).push(as ? (sc?.[0] ?? m?.[0] ?? l.split(": ")[0] + ": ").slice(0, -2) : l);
+    (as ? carried : kept).push(as ? ty ? `${ty[1]}.${ty[2]}` : (sc?.[0] ?? m?.[0] ?? l.split(": ")[0] + ": ").slice(0, -2) : l);
   }
   out.splice(0, out.length, ...kept);
   if (carried.length) err(`REMINDER ${carried.length} line(s) on what the source export carries unchanged — ${[...new Set(carried)].slice(0, 8).join(", ")}${carried.length > 8 ? ", …" : ""}: left as exported; fix one only when the user asked to change it (0.10)`);
