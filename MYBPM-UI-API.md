@@ -1281,7 +1281,7 @@ do is plain HTTP by §0U.4.
 | `bo_create` ✎ | a BO / dictionary / panel / process BO with its fields laid out, coded, window set, read back | R1 steps 1–8 + «Layout», rule 4 + 12 |
 | `bo_fields_save` ✎ | add, edit, delete fields of an existing BO in one save; a key the tool does not name goes inside `set`, an unknown one is refused | R1 step 7, §5h |
 | `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
-| `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs); with `confirm` the delete | «Delete a BO» in §5b |
+| `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs, alive runs: the process's own `runs.own`, of processes whose scripts read it `runs.readers`); with `confirm` the delete, refused while runs are alive unless `endRuns` (ends own runs) / `readersOk` | «Delete a BO» in §5b, trap 107 |
 | `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
 | `rights_read` | who may do what on a BO, a field, a tab or a menu item; `subjects` = groups, users, Person fields | R5; `load-access-group`, `load-field-access-group`, `load-field-tab-access-group`, `v2/menu-item/load-access-group` |
 | `rights_save` ✎ | the actions passed → exactly these subjects (or all / nobody), «выборочно» follows, read back | R5 steps 1–6, R6 rights |
@@ -1295,7 +1295,7 @@ do is plain HTTP by §0U.4.
 | `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
 | `record_read` | one record, every field (tabs, `BO` / `CO` ids), `{value, display}` where they differ | §6b «read the record», §6a |
 | `record_save` ✎ | create or change a record from plain values; `scripts` = form cycle or draft cycle | §6b, §6a; R9 step 4 |
-| `record_delete` ✎ | the preview (each record's values); with `confirm` the soft delete | `delete-bo-instance` (trap 46) |
+| `record_delete` ✎ | the preview (each record's values); with `confirm` the soft delete; a process record's run then goes no further | `delete-bo-instance` (trap 46), trap 107 |
 | `record_participants` ✎ | a record's participants: read, add, remove, read back | §3 «Participants» |
 | `person_invite` ✎ | the invitation e-mailed again to a user (a real letter) | §3 «Выслать приглашение» |
 | `xlsx_template` | the BO's xlsx template on the user's disk; what each column is; the key field | R7 step 1 |
@@ -1309,8 +1309,8 @@ do is plain HTTP by §0U.4.
 | `process_edit` ✎ | add / change / remove figures and arrows in one command, minimal bodies, validate | §5f diagram |
 | `process_version` ✎ | a process's versions: list, work, test, copy, remove, comment | §5f «Versions» |
 | `process_run_ways` ✎ | WHEN the process starts: set / remove run ways in one draft | §5f «Run ways» |
-| `process_steps` | where a process record is: each step's figure and state | §5f run-time controller |
-| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step, stop a standing one, terminate all and go on from an arrow | §5f run-time controller, trap 97 |
+| `process_steps` | where a process record is: each step's figure and state; `over` counts a `STOPPED` Timer as alive; `removed` = the record is `REMOVED` | §5f run-time controller, trap 107 |
+| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step, stop a standing one (a stopped Timer still fires), terminate all and go on from an arrow (into an Exit = the run ends) | §5f run-time controller, traps 97, 107 |
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
@@ -2438,7 +2438,7 @@ write. Open questions: §12.
 | Messenger link field | gear on the TELEGRAM / WHATSAPP rail tab → link field + search type | §5k `[C]` |
 | BO kind (`boCategory`) and `kind` | none — fixed at creation | none; to change a kind, create a new BO |
 | Field type | none — no control of the constructor sends `type` | portion save `editedFields [{fieldId, type:"<new type>"}]` changes it at once; the server checks no old → new pair `[C]`. **Stored values are not converted** — each record keeps what it held, and the card renders it by the new type: a text value in a field turned `INPUT_NUMBER` shows an empty input but is still stored (a read gives it back; a card save writes only the fields the user touched, so it survives), `INPUT_TEXT` → `TEXTAREA` shows the text, `INPUT_NUMBER` → `INPUT_TEXT` shows the number `[C]`. The registry column of such a record stays blank — even after the type is reverted — until the record is saved again `[C]`. A type whose stored shape differs (`BO`, `CO`, dropdowns, dates, `*_LANG`) is not converted either `[I]`: for those add a new field and move the data (records xlsx, `MYBPM-IMPORTS.md` Part III) |
-| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); its records stay readable by the BO id through `load-boi-values` (`load-business-object-by-id` and a draft answer «бизнес-объект не существует») and it leaves the export basket (§5m) `[C]`. **The delete cascades to what the dialog lists** `[C]`: the menu items that open the BO are deleted; every `BO` field of another BO that points at it is removed from that BO (the records keep the stored ids, but no read or form shows them); every composite drops it as a source (`refBoNames` names composites too) — an attribute loses its link to the BO, a two-link attribute becomes a simple one. Reviving the BO by an archive (§5 «A deleted BO comes back») brings back none of these `[C]` |
+| Delete a BO | sidebar row ⋮ → «Удалить» → a dialog listing the BO's script usages, menu items and referencing BOs | `v2/delete-script-usage/analyze-bo` P `{boId}` → `{analyzeId}`, polled with `is-analyze-done` P `{analyzeId}` → `{done, errorMessage, hits}` (the client waits 0.5 s more each time, up to 5 s; `cancel` P `{analyzeId}` drops it), and `v2/business-objects/load-bo-usage` P `{boId}` → `{menuItemNames, refBoNames}` `[C]` for the dialog (it still names a menu item already deleted by `delete-menu-item` `[C]` — check `load-nav-items`), then `delete-business-object` PARAMS `{businessObjectId}` → `""`, the BO is gone and its script module survives `[C]` (trap 25); its records stay readable by the BO id through `load-boi-values` (`load-business-object-by-id` and a draft answer «бизнес-объект не существует») and it leaves the export basket (§5m) `[C]`. **The delete cascades to what the dialog lists** `[C]`: the menu items that open the BO are deleted; every `BO` field of another BO that points at it is removed from that BO (the records keep the stored ids, but no read or form shows them); every composite drops it as a source (`refBoNames` names composites too) — an attribute loses its link to the BO, a two-link attribute becomes a simple one. Reviving the BO by an archive (§5 «A deleted BO comes back») brings back none of these `[C]`. **Alive process runs do not cascade** `[C]`: a deleted process BO's runs keep their timers and fail for good, a run whose script reads the BO fails at its next step — end them first (trap 107) |
 | BO groups | caption ⊕ → «Группа»; group row ⋮: «Изменить код» (groups of kind `MANUAL` / `PROCESS` only), «Переименовать», «Удалить» (deletes the group's BOs too); «Общее» has no ⋮ | the group lifecycle calls of §5 «Verifying an import»; the UI side: §5m «The groups» `[C]` |
 | Composite attributes | «Связи» view of the composite — every control in §5e «The composite editor in the UI» | the draft cycle of §5e: `change-co-field-label` / `change-co-field-code` `{coId, draftId, coFieldId, label\|code}`, `remove-bo-field-link`, `remove-co-field`, `remove-bo-from-co` `{coId, draftId, boId}`, then `apply-and-remove-draft` |
 
@@ -2906,7 +2906,7 @@ A configured process (Enter → Form «Заявка» → Script → Switch on �
   `processVersions.<id>` to `workProcess` if ordinary records must run it) → import.** The BO the Form
   points at, shipped in the same export, merged into the existing one by CODE (its export `oldId` differs
   from its stand id).
-- **A run is over only when no step is `STAND` or `GO`** `[C]`: right after the Form is released the
+- **A run is over only when no step is `STAND`, `GO` or `WAITING` and no Timer is `STOPPED`** `[C]` (a stopped Timer still fires, trap 107): right after the Form is released the
   Switch reads `GO` for a moment; a poll that stops at «no `STAND`» reports an unfinished run.
   `runOnTestRecord` waits for both.
 
@@ -3135,12 +3135,12 @@ The run-time controller, all `P`: `v2/boi-process/…`
 
 | call | params | what it does |
 |---|---|---|
-| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|GO\|WAITING\|FAILED\|STOPPED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` — `GO` = a figure running, `WAITING` = a Timer past due but not yet fired, `STOPPED` = stopped by `stop-step`; a run is over when none is `STAND`/`GO`/`WAITING`. A diagnostic is `{type, place, messageCode, message, figureId, arrowId, exceptionStackTrace}` — the trace is the whole Java stack, kilobytes long |
+| `load-process-steps` | `{boProcessId, boiId}` | `[{id, figureId, state PASSED\|STAND\|GO\|WAITING\|FAILED\|STOPPED, prevProcessSteps, nextProcessSteps, diagnosticMessages, scriptModuleSuccess, scriptRunSuccess, execDelayMs, flushDelayMs}]` `[C]` — `GO` = a figure running, `WAITING` = a Timer past due but not yet fired, `STOPPED` = stopped by `stop-step`; a run is over when none is `STAND`/`GO`/`WAITING` and no Timer is `STOPPED` (it still fires, trap 107); on a `REMOVED` record `WAITING` is final. A diagnostic is `{type, place, messageCode, message, figureId, arrowId, exceptionStackTrace}` — the trace is the whole Java stack, kilobytes long |
 | `load-test-run-poi-id` | `{boProcessId}` | the editor's current test record `[C]` |
 | `push-step-forcibly` | `{boProcessId, boiId, arrowId}` | «Продолжить принудительно»: on from a STAND step along its outgoing arrow `[C]` (500 when the target Script fails, the step moved anyway — point 4) |
 | `push-step-retry` | `{boProcessId, boiId, figureId}` | runs a `FAILED` Script / Switch / Form again (state `GO`, diagnostics cleared); any other state → «Нет активных шагов для повторного запуска» `[C]`. The UI item «Попробовать еще раз» is offered only on a STAND step, so it never succeeds (trap 97) |
-| `stop-step` | `{boProcessId, boiId, figureId}` | stops a `STAND` step → `STOPPED` `[C]`; any other state → 500 «Нет активных шагов для остановки». The UI item «Остановить текущий» is offered only on a FAILED step, so it never succeeds (trap 97) — API only |
-| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь»: ends what runs and goes on from that arrow's target, from any state of its source (a FAILED or STOPPED one stays so) `[C]`; the arrow INTO a failed figure = the UI's retry. 500 when the target Script fails, the step moved anyway |
+| `stop-step` | `{boProcessId, boiId, figureId}` | stops a `STAND` step → `STOPPED` `[C]`; any other state → 500 «Нет активных шагов для остановки». The UI item «Остановить текущий» is offered only on a FAILED step, so it never succeeds (trap 97) — API only. **A stopped Timer is not ended**: it stays due, and at the due time it goes `STOPPED` → `PASSED` and the run on (trap 107) |
+| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь»: ends what runs and goes on from that arrow's target, from any state of its source (a FAILED or STOPPED one stays so) `[C]`; the arrow INTO a failed figure = the UI's retry. 500 when the target Script fails, the step moved anyway. Along an arrow into an Exit it is the only call that ends a run for good: a due Timer is dropped at once (trap 107) |
 | `start-dev-process` / `stop-dev-process` | `{boProcessId}` | the editor's test run: start = a new DEV record running the version, stop = the run and its colours gone `[C]` |
 | `go` | `{boProcessId, boiId}` | no UI calls it `[C]`; what it does `[U]` |
 
@@ -5977,7 +5977,8 @@ boiPageType:"LIST"}` first.
   points at the SAME files), then its card opens in EDIT — closing it with × keeps the copy. No confirm.
 - **Archive** → «Архивирование экземпляра … Продолжить?» ДА / НЕТ → `archive-bo-instance` P `{businessObjectId,
   boInstanceIds:[…]}`. From «Удаленные» it moves a deleted record to ARCHIVED.
-- **Delete** → «Удаление экземпляра …» ДА / НЕТ → `delete-bo-instance` (same params, trap 46).
+- **Delete** → «Удаление экземпляра …» ДА / НЕТ → `delete-bo-instance` (same params, trap 46). A process record's
+  run goes no further: a standing Timer fires and its step stays `WAITING` for good (trap 107).
 - **Restore** → `load-restore-conflict-fields` → «Восстановление экземпляра … Продолжить?» → `restore-bo-instance` P
   `{businessObjectId, boInstanceId:[id]}` (§6a).
 - **A deleted TEST record is listed nowhere** — its state is REMOVED, yet neither «Удаленные» nor «Тестовые» shows
@@ -6908,6 +6909,26 @@ The stand's own behaviour under automation `[C]`:
     stored; after that every `save-business-object-portion` of that BO — СОХРАНИТЬ in the constructor, a field
     rename or delete — answers HTTP 500 «Обнаружено недопустимое значение: …» and saves nothing. Re-import the
     line with the strings cleaned (§8 «Check 1»; the form lint flags them, `MYBPM-IMPORTS.md` 0.10).
+107. **A deleted process BO, or a BO a process reads, leaves alive runs whose timers fire forever**
+    `[C]` — a Timer step's due time is kept by the stand apart from the record, one per Timer step, and the
+    delete does not cancel it. `delete-business-object` of a process BO leaves a `STAND` Timer `STAND` and
+    still due; once the BO is gone the run fails every ~20 s for good («No BO with code=…» in the API log) and
+    `load-process-steps` / `push-step-*` answer NoBoWithId, so no call reaches it.
+    A run whose script reads a deleted BO fails at its next step. A deleted RECORD (`delete-bo-instance` →
+    `REMOVED`) of a living process BO is harmless: at the due time the Timer is spent, the step stays
+    `WAITING` for good, nothing runs on and nothing is logged; a Timer of it not yet fired fails like the rest
+    if the process BO is deleted first. A removed DEV (test) record is in no list of
+    `load-bo-instance-bracket-table` (`DEV` = live test records, `REMOVED` = removed ordinary ones), so only
+    its id reaches it — end a test run before deleting its record. `stop-step` is no end either: a stopped
+    Timer shows `STOPPED`, stays due, and at the due time the step goes `STOPPED` → `PASSED` and the run
+    on to its Exit. Only `push-step-terminate-all` along an arrow into an Exit ends a run: the due Timer is
+    dropped at once and nothing fires. So before deleting a process BO, end every alive run (`STAND` / `GO` /
+    `WAITING` or a `STOPPED` Timer; on a `REMOVED` record `GO` or a Timer not yet fired) that way; before
+    deleting a BO, read `analyze-bo` — a hit with `baseType BO_PROCESS` names the reading version in
+    `scriptModuleId` — and change or end its runs. The MCP `bo_delete` lists the runs in the preview and ends
+    its own with `endRuns: true` (a removed test record's run it cannot see); `stand_call` refuses
+    `delete-business-object`. A run already stuck is reached by no UI or API call — only the stand's
+    administrator can clear it (§5f, §5b «Delete a BO»).
 
 ## 12. Open questions
 

@@ -1499,16 +1499,93 @@ function diagnostic(d: any) {
   return clean({ type: d.type, code: d.messageCode, message: d.message, trace: first && first !== d.message ? `${first} …` : undefined });
 }
 
-async function processSteps(s: Stand, boProcessId: string, boiId: string, def: any, fields: Map<string, any>) {
+/** A step that keeps its run alive: STAND / GO / WAITING, and a STOPPED Timer — stop-step leaves its timer due,
+ *  it fires at its time and the run goes on (§5f, trap 107). A REMOVED record's run goes no further: its Timer fires
+ *  and stays WAITING for good, its Form is never saved again — only a GO step or a Timer not yet fired counts. */
+const liveStep = (x: any, def: any, removed = false) => {
+  const timer = def.figures?.[x.figureId]?.type === "Timer";
+  if (removed) return x.state === "GO" || (timer && ["STAND", "STOPPED"].includes(x.state));
+  return ["STAND", "GO", "WAITING"].includes(x.state) || (x.state === "STOPPED" && timer);
+};
+
+async function processSteps(s: Stand, boProcessId: string, boiId: string, def: any, fields: Map<string, any>, removed = false) {
   const steps: any[] = (await s.call(BP_ + "load-process-steps", { boProcessId, boiId })) ?? [];
   const arrows = Object.entries<any>(def.arrows ?? {});
-  return { over: steps.length > 0 && !steps.some((x) => ["STAND", "GO", "WAITING"].includes(x.state)),
+  return { over: steps.length > 0 && !steps.some((x) => liveStep(x, def, removed)),
     steps: steps.map((x) => {
       const f = def.figures?.[x.figureId];
       return clean({ figure: x.figureId, what: f ? figureLabel(f, fields) : undefined, state: x.state,
         scriptRunSuccess: x.scriptRunSuccess === false ? false : undefined, diagnostics: (x.diagnosticMessages ?? []).map(diagnostic),
         out: arrows.filter(([, a]) => a.startFigureId === x.figureId).map(([id, a]) => `${id}${a.name ? ` «${a.name}»` : ""} → ${a.finishFigureId}`) });
     }) };
+}
+
+// ── live runs: what a delete must end first (trap 107) ──
+
+/** Every record of a BO by id → whether it is REMOVED, in every state — DEV too, and REMOVED unless `removed` is false:
+ *  a deleted record's Timer not yet fired is still due (trap 107). */
+async function allRecordIds(s: Stand, boId: string, removed = true, cap = 2000): Promise<Map<string, boolean>> {
+  const ids = new Map<string, boolean>();
+  for (const state of ["ALL", "DEV", "ARCHIVED", ...(removed ? ["REMOVED"] : [])])
+    for (let offset = 0; ; offset += 200) {
+      const r = await s.call(BOI_ + "load-bo-instance-bracket-table", {}, { boId, dynamicFilters: [], nativeFilters: [], search: "",
+        paging: { offset, limit: 200 }, ordering: { archetype: "NATIVE", fieldId: "CREATED_AT", state: "DESC" }, state, brackets: [] });
+      for (const x of r?.records ?? []) ids.set(x.instanceId, state === "REMOVED");
+      if (ids.size > cap) throw new Error(`process ${boId} has over ${cap} records: its runs were not all checked — end them by hand (process_push terminate)`);
+      if (!r?.hasNext) break;
+    }
+  return ids;
+}
+
+type Run = { boiId: string; boProcessId: string; def: any; live: string[]; removed: boolean };
+
+/** The alive runs of process `boId` among all its records (REMOVED ones too unless `removed` is false);
+ *  `versions` keeps only runs of those versions. */
+async function liveRuns(s: Stand, boId: string, versions?: Set<string>, removed = true): Promise<Run[]> {
+  const defs = new Map<string, any>(), runs: Run[] = [];
+  for (const [boiId, isRemoved] of await allRecordIds(s, boId, removed)) {
+    const r = await s.call("v2/boi-process2/load-boi-process-id", { boId, boiId, draftId: null });
+    const boProcessId: string | undefined = typeof r === "string" ? r : r?.boProcessId ?? r?.id;
+    if (!boProcessId || (versions && !versions.has(boProcessId))) continue;
+    if (!defs.has(boProcessId)) defs.set(boProcessId, (await s.call(PE_ + "load-bo-process-def", { boProcessId })) ?? {});
+    const def = defs.get(boProcessId), steps: any[] = (await s.call(BP_ + "load-process-steps", { boProcessId, boiId })) ?? [];
+    const live = steps.filter((x) => liveStep(x, def, isRemoved)).map((x) => `${x.figureId} ${def.figures?.[x.figureId]?.type ?? "?"} ${x.state}`);
+    if (live.length) runs.push({ boiId, boProcessId, def, live, removed: isRemoved });
+  }
+  return runs;
+}
+
+const runBrief = (r: Run) => ({ boiId: r.boiId, boProcessId: r.boProcessId, live: r.live, ...(r.removed ? { removed: true } : {}) });
+
+/** Ends a run for good: terminate along an arrow into an Exit drops its timer; stop-step leaves a Timer due (trap 107). */
+async function endRun(s: Stand, r: Run) {
+  const exit = Object.entries<any>(r.def.arrows ?? {}).find(([, x]) => r.def.figures?.[x.finishFigureId]?.type === "Exit")?.[0];
+  if (!exit) throw new Error(`run ${r.boiId}: its version ${r.boProcessId} has no arrow into an Exit to end it on — end it with process_push`);
+  let standError: string | undefined; // a terminate may answer an error yet move (§5f): the re-read decides
+  try { await s.call(BP_ + "push-step-terminate-all", { boProcessId: r.boProcessId, boiId: r.boiId, arrowId: exit }); } catch (e) { standError = (e as Error).message; }
+  for (let i = 0; i < 20; i++) {
+    const steps: any[] = (await s.call(BP_ + "load-process-steps", { boProcessId: r.boProcessId, boiId: r.boiId })) ?? [];
+    if (!steps.some((x) => liveStep(x, r.def, r.removed))) return;
+    await sleep(500);
+  }
+  throw new Error(`run ${r.boiId} is still alive after terminate along ${exit}${standError ? ` (the stand answered: ${standError})` : ""} — nothing was deleted`);
+}
+
+/** Alive runs of OTHER processes whose scripts use the BO: a usage hit of baseType BO_PROCESS names the version (scriptModuleId).
+ *  REMOVED records are left out: their runs reach no further script (trap 107). */
+async function readerRuns(s: Stand, boId: string, hits: any[]) {
+  const versions = new Set(hits.filter((h) => h.baseType === "BO_PROCESS").map((h) => h.scriptModuleId as string));
+  const out: { process: string; boId: string; runs: ReturnType<typeof runBrief>[] }[] = [];
+  if (!versions.size) return out;
+  for (const g of await boGroups(s))
+    for (const b of g.records ?? []) {
+      if (b.boCategory !== "BO_PROCESS" || b.id === boId) continue;
+      const mine = ((await s.call(PE2_ + "load-bo-process-versions", { boId: b.id })) ?? []).map((v: any) => v.boProcessId).filter((id: string) => versions.has(id));
+      if (!mine.length) continue;
+      const runs = await liveRuns(s, b.id, new Set(mine), false);
+      if (runs.length) out.push({ process: b.name, boId: b.id, runs: runs.map(runBrief) });
+    }
+  return out;
 }
 
 /** The company-global methods module (one per company) and its methods. */
@@ -1569,6 +1646,10 @@ const STAND_ARGS = {
 };
 const AUTH_PATHS = /auth\/(v3\/login|load-token|fast-login|otp-login)|person\/(load|generate)-api-token/;
 const READ_METHOD = /^(load|count|verify|get|find|search)-/;
+/** Methods stand_call refuses: a task tool does them with the checks the raw call skips. */
+const GUARDED_PATHS: Record<string, string> = {
+  "v2/business-objects/delete-business-object": "bo_delete",
+};
 
 /** What the delete dialog lists: scripts that use the BO (an analysis polled until done), menu items, referencing BOs. */
 async function boUsage(s: Stand, boId: string) {
@@ -2273,16 +2354,28 @@ const tools: Tool[] = [
       const back = ((await loadBo(s, boId)).formFields ?? []).find((x: any) => x.fieldId === a.fieldId);
       return { boId, fieldId: a.fieldId, was: f.code, code: back?.code };
     } },
-  { name: "bo_delete", write: true, description: "Delete a BO (constructor ⋮ → «Удалить»). Without `confirm` only the preview: the BO and what uses it (v2/delete-script-usage/analyze-bo). With `confirm: true` — after the user agreed — delete-business-object, then the code check. The delete is SOFT: the id keeps the BO with all its fields, and an archive with the same oldId revives it with the old fields — a new attempt needs new ids (§5 «A deleted BO comes back», MYBPM-IMPORTS.md 0.7). What the preview lists goes for good, a revive does not bring it back: the menu items that open the BO, the BO fields of other BOs that point at it, its links in composites (§5b «Delete a BO»). Its script module survives (trap 25).",
-    props: { boId: { type: "string" }, code: { type: "string" }, confirm: { type: "boolean" } },
+  { name: "bo_delete", write: true, description: "Delete a BO (constructor ⋮ → «Удалить»). Without `confirm` only the preview: the BO and what uses it (v2/delete-script-usage/analyze-bo). With `confirm: true` — after the user agreed — delete-business-object, then the code check. The delete is SOFT: the id keeps the BO with all its fields, and an archive with the same oldId revives it with the old fields — a new attempt needs new ids (§5 «A deleted BO comes back», MYBPM-IMPORTS.md 0.7). What the preview lists goes for good, a revive does not bring it back: the menu items that open the BO, the BO fields of other BOs that point at it, its links in composites (§5b «Delete a BO»). Its script module survives (trap 25). Alive process runs block the delete (trap 107): `runs.own` = this process's own runs, ended first with `endRuns: true` (terminate into an Exit); `runs.readers` = runs of other processes whose scripts use the BO — change or end those first, or pass `readersOk: true` when the user accepts that they fail.",
+    props: { boId: { type: "string" }, code: { type: "string" }, confirm: { type: "boolean" },
+      endRuns: { type: "boolean", description: "A process BO: end its alive runs (terminate into an Exit) before the delete — after the user agreed" },
+      readersOk: { type: "boolean", description: "Delete although alive runs of other processes use the BO (they fail at their next step)" } },
     run: async (a) => {
       const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId);
       const head = { boId, code: bo.code, name: bo.name, boCategory: bo.boCategory, fields: (bo.formFields ?? []).length };
-      if (!a.confirm) return { ...head, usage: await boUsage(s, boId), next: "show the user what goes; bo_delete confirm:true deletes" };
+      const usage = await boUsage(s, boId);
+      const own = bo.boCategory === "BO_PROCESS" ? await liveRuns(s, boId) : [];
+      const readers = Array.isArray(usage.scripts) ? await readerRuns(s, boId, usage.scripts) : undefined;
+      const runs = clean({ own: own.map(runBrief), readers, readersNotChecked: readers ? undefined : "the script usage was not read" });
+      if (!a.confirm) return { ...head, usage, ...(Object.keys(runs).length ? { runs } : {}),
+        next: `show the user what goes${own.length ? "; bo_delete confirm:true endRuns:true ends the runs first" : ""}; bo_delete confirm:true deletes` };
+      if (own.length && !a.endRuns)
+        throw new Error(`${own.length} run(s) of this process are alive (${own.map((r) => r.boiId).join(", ")}): deleted, their timers keep firing against a missing BO and no tool reaches them (trap 107) — nothing was deleted; with the user's OK, bo_delete confirm:true endRuns:true ends them first`);
+      if ((readers === undefined || readers.length) && !a.readersOk)
+        throw new Error(`${readers ? `alive runs of processes whose scripts use this BO: ${readers.map((p) => `«${p.process}» ${p.runs.length}`).join(", ")}` : "the script usage was not read, so alive runs of processes that use this BO are not known"} — they fail at their next step once it is gone (trap 107); nothing was deleted: change or end them, or pass readersOk:true after the user agreed`);
+      for (const r of own) await endRun(s, r);
       await s.call(BO_ + "delete-business-object", { businessObjectId: boId });
       let gone = false;
       try { await s.call(BO_ + "load-bo-id-by-code", { boCode: bo.code }); } catch (e: any) { gone = /No bo with code/.test(e.message); }
-      return { ...head, deleted: gone, ...(gone ? {} : { warning: "the code still resolves — read bo_find before going on" }) };
+      return clean({ ...head, deleted: gone, ended: own.map((r) => r.boiId), ...(gone ? {} : { warning: "the code still resolves — read bo_find before going on" }) });
     } },
   { name: "co_build", write: true, description: "Build a composite object (BO_COMPOSITE) in the constructor — its draft cycle of R2a / §5e: create-bo → rename → code → ONE draft: sources added, each attribute created with its first link and extended with the rest (2+ links = «составной атрибут»), renamed / recoded → apply-and-remove-draft; on any failure the draft is removed. Read back through a draft of its own, removed too. `coId` extends an existing composite instead of creating one. Ask the user first.",
     props: { group: { type: "string", description: "The BO group by id or name (new composite)" }, name: { type: "string" }, description: { type: "string" },
@@ -2461,14 +2554,14 @@ const tools: Tool[] = [
       }
       return clean({ boId, id: boiId, created: !a.id, saved: true, cycle: "form (scripts ran)", notifications: out.notifications, record: (await recordValues(s, bo, boiId)).values });
     } },
-  { name: "record_delete", write: true, description: "Delete records of a BO (delete-bo-instance, ids in the PARAMS — trap 46). Without `confirm` only the preview: each record's values. With `confirm: true` — after the user agreed — deletes, then re-reads. The delete is SOFT: the record goes to state REMOVED, references to it stay stored and show it struck through or hidden (§5h «Reference fields»).",
+  { name: "record_delete", write: true, description: "Delete records of a BO (delete-bo-instance, ids in the PARAMS — trap 46). Without `confirm` only the preview: each record's values. With `confirm: true` — after the user agreed — deletes, then re-reads. The delete is SOFT: the record goes to state REMOVED, references to it stay stored and show it struck through or hidden (§5h «Reference fields»). A process record's run goes no further once it is REMOVED — its Timer fires and stays WAITING, nothing runs on (trap 107); a Timer not yet fired still counts as alive for a later bo_delete of the process BO.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, ids: { type: "array", items: { type: "string" } }, confirm: { type: "boolean" } },
     required: ["ids"],
     run: async (a) => {
       const s = esRetry(stand(a)), boId = await boById(s, a), bo = await loadBo(s, boId), ids: string[] = a.ids ?? [];
       if (!ids.length) throw new Error("pass `ids`");
       const before = await Promise.all(ids.map(async (id) => ({ id, ...(await recordValues(s, bo, id)) })));
-      if (!a.confirm) return { boId, bo: bo.name, records: before, next: "show the user what goes; record_delete confirm:true deletes" };
+      if (!a.confirm) return clean({ boId, bo: bo.name, records: before, next: "show the user what goes; record_delete confirm:true deletes" });
       const answer = await s.call(BOI_ + "delete-bo-instance", { businessObjectId: boId, boInstanceIds: ids }, {});
       const after = await Promise.all(ids.map(async (id) => ({ id, state: (await recordValues(s, bo, id).catch(() => ({ state: "gone" }))).state })));
       const left = after.filter((r) => r.state !== "REMOVED" && r.state !== "gone");
@@ -2871,14 +2964,16 @@ const tools: Tool[] = [
       } catch (e) { await s.call(PE2_ + "remove-draft", { draftId }).catch(() => {}); throw e; }
       return { boId, boProcessId: id, version: v.v.version, runWays: await runWays(s, bo, id) };
     } },
-  { name: "process_steps", description: "Where a process record is (§5f run-time controller): the version it runs and every step — figure, what it is, state PASSED | STAND (waiting: a Form, a Timer) | GO (running) | WAITING (a Timer past due) | FAILED | STOPPED (stopped by process_push stop), a script failure, diagnostics (message + the first line of the stack trace), its outgoing arrows; over = none is STAND / GO / WAITING. A Form waits for a CHANGED save of its record; a field filled after the Form was entered leaves it stuck (§5f).",
+  { name: "process_steps", description: "Where a process record is (§5f run-time controller): the version it runs and every step — figure, what it is, state PASSED | STAND (waiting: a Form, a Timer) | GO (running) | WAITING (a Timer past due) | FAILED | STOPPED (stopped by process_push stop), a script failure, diagnostics (message + the first line of the stack trace), its outgoing arrows; over = none is STAND / GO / WAITING and no Timer is STOPPED (a stopped Timer still fires, trap 107); a REMOVED record (removed: true) is over unless a step is GO or its Timer has not fired yet. A Form waits for a CHANGED save of its record; a field filled after the Form was entered leaves it stuck (§5f).",
     props: { boId: { type: "string" }, code: { type: "string", description: "The process BO code instead of boId" }, boiId: { type: "string", description: "The process record" } },
     required: ["boiId"],
     run: async (a) => {
       const s = stand(a), boId = await boById(s, a), bo = await loadBo(s, boId), p = await boiProcess(s, boId, a.boiId);
-      return { boId, boiId: a.boiId, boProcessId: p.boProcessId, ...(await processSteps(s, p.boProcessId, a.boiId, p.def, new Map((bo.formFields ?? []).map((f: any) => [f.fieldId, f])))) };
+      const removed = (await recordValues(s, bo, a.boiId)).state === "REMOVED";
+      return clean({ boId, boiId: a.boiId, boProcessId: p.boProcessId, removed: removed || undefined,
+        ...(await processSteps(s, p.boProcessId, a.boiId, p.def, new Map((bo.formFields ?? []).map((f: any) => [f.fieldId, f])), removed)) });
     } },
-  { name: "process_push", write: true, description: "Move a stuck process record on (§5f): action forward = «Продолжить принудительно» along an OUTGOING arrow of the standing step (arrowId; the arrow into it does nothing); retry = run a FAILED Script / Switch / Form step again (figureId; the UI's «Попробовать еще раз» never reaches one); stop = stop a STAND step, it becomes STOPPED (figureId; the UI's «Остановить текущий» never reaches one); terminate = «Терминировать все и продолжить здесь»: end the run and go on from that arrow's target (arrowId, any arrow — the one INTO a failed step retries it). A target Script that fails answers an error, yet the step has moved. Then the steps, re-read until they change (≤10 s). Ask the user first.",
+  { name: "process_push", write: true, description: "Move a stuck process record on (§5f): action forward = «Продолжить принудительно» along an OUTGOING arrow of the standing step (arrowId; the arrow into it does nothing); retry = run a FAILED Script / Switch / Form step again (figureId; the UI's «Попробовать еще раз» never reaches one); stop = stop a STAND step, it becomes STOPPED (figureId; the UI's «Остановить текущий» never reaches one) — a stopped TIMER still fires at its due time and the run goes on (trap 107); terminate = «Терминировать все и продолжить здесь»: end the run and go on from that arrow's target (arrowId, any arrow — the one INTO a failed step retries it); along an arrow into an Exit it ends a run for good, its timer included (trap 107). A target Script that fails answers an error, yet the step has moved. Then the steps, re-read until they change (≤10 s). Ask the user first.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The process BO code instead of boId" }, boiId: { type: "string" },
       action: { type: "string", enum: ["forward", "retry", "stop", "terminate"] }, arrowId: { type: "string" }, figureId: { type: "string" } },
     required: ["boiId", "action"],
@@ -3268,6 +3363,8 @@ const tools: Tool[] = [
     props: { path: { type: "string" }, params: { type: "object" }, body: {}, get: { type: "boolean" }, maxChars: { type: "number" } }, required: ["path"],
     run: async (a) => {
       if (AUTH_PATHS.test(a.path)) throw new Error("this method returns a session or API token — refused");
+      const tool = GUARDED_PATHS[a.path.replace(/^\/?(web\/)?/, "")];
+      if (tool) throw new Error(`refused: ${a.path} skips the checks of ${tool} (alive process runs, trap 107) — use ${tool}`);
       const s = stand(a);
       return trim(a.get ? await s.get(a.path) : await s.call(a.path, a.params, a.body), a.maxChars);
     } },

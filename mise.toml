@@ -397,6 +397,25 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "terminate" }, (r) => /terminate needs arrowId/.test(r)],
   ["process_push", { code: "mcp_probe_process", boiId: "@record_save.id", action: "terminate", arrowId: "@process_edit.ids.fw" },
     (r) => r.changed && r.over && r.steps.length === 5 && r.steps[2].state === "STOPPED" && r.steps.at(-1).state === "PASSED"],
+  // trap 107: alive runs block a delete — a process record standing at its Form; a process script that uses a BO
+  ["script_write", { code: "mcp_probe_process", figure: "@process_edit.ids.s", def: { blocks: {
+    AAAAAAAAAAAAAAB1: { x: 40, y: 40, downBlockId: "AAAAAAAAAAAAAAB2", type: "BlockFixEntryPoint" }, AAAAAAAAAAAAAAB2: { exitType: "FROM_METHOD", type: "BlockExit", note: "@record_save.boId" } }, expressions: {} } },
+    (r) => r.written === true],
+  ["record_save", { code: "mcp_probe_process", values: { zayavka: "@record_save.id" }, scripts: false }, (r) => r.saved === true],
+  ["process_steps", { code: "mcp_probe_process", boiId: "@record_save.id" }, (r) => !r.over && r.steps.at(-1).state === "STAND"],
+  ["bo_delete", { code: "mcp_probe_process" }, (r) => r.runs.own.length === 1 && r.deleted === undefined && /endRuns:true/.test(r.next)],
+  ["bo_delete", { code: "mcp_probe_process", confirm: true }, (r) => /are alive.*nothing was deleted/.test(r)],
+  ["bo_delete", { code: "mcp_probe_scripts" }, (r) => r.runs.readers.length === 1 && r.runs.readers[0].runs.length === 1 && !r.runs.own],
+  ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => /processes whose scripts use this BO.*nothing was deleted/.test(r)],
+  ["stand_call", { path: "v2/business-objects/delete-business-object", params: { businessObjectId: "@record_save.boId" } }, (r) => /refused: .*use bo_delete/.test(r)],
+  ["bo_find", { code: "mcp_probe_process" }, (r) => JSON.stringify(r).includes("mcp_probe_process")],
+  // a REMOVED record's run goes no further: its Form standing is over, it is nobody's alive run (no endRuns)
+  ["record_delete", { code: "mcp_probe_process", ids: ["@record_save.id"] }, (r) => r.runs === undefined && r.records.length === 1],
+  ["record_delete", { code: "mcp_probe_process", ids: ["@record_save.id"], confirm: true }, (r) => r.deleted[0].state === "REMOVED"],
+  ["process_steps", { code: "mcp_probe_process", boiId: "@record_save.id" }, (r) => r.removed === true && r.over && r.steps.at(-1).state === "STAND"],
+  ["bo_delete", { code: "mcp_probe_process" }, (r) => !r.runs?.own?.length],
+  ["bo_delete", { code: "mcp_probe_scripts" }, (r) => !r.runs?.readers?.length && !r.runs?.readersNotChecked && r.usage.scripts.length > 0],
+  ["record_save", { code: "mcp_probe_process", values: { zayavka: "@record_save.id" }, scripts: false }, (r) => r.saved === true],
   // rights (R5): BO, tab, field, menu item; exact subjects, «выборочно» follows, a «Системные» tab closed by bo_create
   ["rights_read", { code: "mcp_probe_records", subjects: true }, (r) => r.rights.view === "all" && r.rights.add === "all" && r.groups.some((g: any) => g.name === "Менеджеры") && r.persons.length === 1],
   ["rights_save", { code: "mcp_probe_records", set: { view: { groups: ["Менеджеры"], persons: ["admin@mock"], author: true }, edit: "nobody" } },
@@ -501,7 +520,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Лишнее", type: "INPUT_TEXT", requried: true }] }, (r) => /unknown key «requried»/.test(r)],
   ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Не бар", type: "INPUT_TEXT", steps: ["a"] }] }, (r) => /steps belong to a PROGRESS_BAR/.test(r)],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
-  ["bo_delete", { code: "mcp_probe_process", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xlsx", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_records", confirm: true }, (r) => r.deleted === true],
@@ -545,7 +564,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType|nothing was deleted/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
@@ -850,6 +869,9 @@ run = '''
 const host = Bun.env.usage_host!.replace(/^https?:\/\//, "").replace(/\/+$/, ""), login = Bun.env.usage_login!;
 const path = Bun.env.usage_path!.replace(/^\/?(web\/)?/, "");
 if (/auth\/(v3\/login|load-token|fast-login|otp-login)|person\/(load|generate)-api-token/.test(path)) { console.error("этот вызов возвращает токен — не через stand-call"); process.exit(1); }
+// the same list as GUARDED_PATHS in mcp/mybpm-stand.ts: deletes that must first end alive process runs (UI-API trap 107)
+const guarded: Record<string, string> = { "v2/business-objects/delete-business-object": "bo_delete" };
+if (guarded[path]) { console.error(`${path} пропускает проверку живых запусков процессов — только mise run stand ${guarded[path]}`); process.exit(1); }
 const file = Bun.file(`${Bun.env.HOME}/.config/mybpm/tokens/${host}/${login}.token`);
 if (!(await file.exists())) { console.error(`нет токена — сначала: mise run stand-login ${host} ${login}`); process.exit(1); }
 const token = (await file.text()).trim();
