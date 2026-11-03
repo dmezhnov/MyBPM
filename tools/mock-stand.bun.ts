@@ -755,7 +755,8 @@ function exportZip(): Uint8Array {
     groupKey: "GENERAL", name: "Общая группа", isGeneral: true })) : [];
   const lines = [...settings, ...reports, ...picked.map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
     code: b.code, category: b.boCategory, name: { rus: b.name }, nativeFields: {}, kanbanCardTemplates: b.kanban ?? {},
-    dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [x.code, { type: x.type }])) }))];
+    dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [x.code, { code: x.code, type: x.type,
+      ...(x.viewType && { viewType: x.viewType }), ...(x.gridPosition && { gridPosition: x.gridPosition }), ...(x.tabId && { tabCodePath: { tabCode: x.tabId } }) }])) }))];
   return zip([{ name: "data-mock/0000001.mybpm", data: enc.encode(lines.join("\n") + "\n") },
     { name: "data-mock/metadata.mybpm", data: enc.encode(`objectCount-${lines.length}`) }]);
 }

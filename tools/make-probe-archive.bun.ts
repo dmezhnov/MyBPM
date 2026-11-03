@@ -68,9 +68,11 @@
  *     needChangeParentBoByLinkedBo=false is lost when the import CREATES the field — import the archive twice
  *     (dotted = nested, e.g. `!params.url=https://…`; value parsed as JSON, else a string; no «,» in it)
  *   --field "Источник:INPUT_TEXT!half"                       — a short field alone in its row: x 0, cols 8, the
- *     right half free; a pair right below it splits 7 + 8 so its right cell cannot float up into the hole (0.8)
+ *     right half free; a pair right below it splits 5 + 10 (4 + 11) so its right cell cannot float up into the hole (0.8)
  *   --field "Телефон:INPUT_PHONE!row"                         — the field shares the row of the field before it (same
- *     y, the 15 columns split 8 + 7 / 5 + 5 + 5); give row-mates the same height (MYBPM-IMPORTS.md 0.8)
+ *     y, the 15 columns split by one grid for the form: pairs only 8 + 7, with a row of three 5 + 10 / 10 + 5 and 5 + 5 + 5,
+ *     the wider cell of a pair to an INPUT_* beside a DATE / TIME / CHECKBOX / DROPDOWN_SINGLE / SINGLE reference, see gridLayout);
+ *     give row-mates the same height (MYBPM-IMPORTS.md 0.8)
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
  *   --field "Табельный номер:INPUT_TEXT!uniq"                 — «Уникальное поле» (isUnique)
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
@@ -160,6 +162,62 @@ type FieldSpec = {
   /** `!key=value` — any key of the archive field, dotted for a nested one (`params.url`). */
   sets: { path: string[]; value: unknown }[];
 };
+/**
+ * A row of the form stack: its field codes, how each one's box takes its cell (`stretch` = an `INPUT_*` over the whole
+ * cell, `fixed` = a box of its own width: DATE, TIME, CHECKBOX, DROPDOWN_SINGLE, a BO SINGLE reference), `!half` (one
+ * cell of 8), and whether the row above it is a `!half` one.
+ */
+type FormRow = { codes: string[]; widths: ("stretch" | "fixed" | "other")[]; half: boolean; underHalf: boolean };
+
+/** Every split of the 15 columns into n cells whose starts lie on the grid, the most even first (5 + 10 before 10 + 5). */
+function gridSplits(n: number, starts: number[]): number[][] {
+  const out: number[][] = [], min = n === 4 ? 3 : 4;
+  const walk = (x: number, cells: number[]) => {
+    if (cells.length === n - 1) { if (15 - x >= min) out.push([...cells, 15 - x]); return; }
+    for (const s of starts) if (s - x >= min) walk(s, [...cells, s - x]);
+  };
+  for (const s of starts) if (s >= min) walk(s, [s]);
+  const spread = (c: number[]) => Math.max(...c) - Math.min(...c);
+  return out.sort((a, b) => spread(a) - spread(b));
+}
+
+/** Whether a split suits the row: the wider cell to an input, never to a box of its own width; nothing floats up into a `!half`'s free columns. */
+function splitFits(r: FormRow, cells: number[]): boolean {
+  const input = Math.min(...cells.filter((_, j) => r.widths[j] === "stretch"));
+  if (cells.some((c, j) => r.widths[j] === "fixed" && c > input)) return false;
+  let x = 0;
+  return !r.underHalf || cells.every((c) => { const ok = x < 8; x += c; return ok; });
+}
+
+/**
+ * The cols of every cell of every row, by one grid for the whole form (MYBPM-IMPORTS.md 0.8): a 4-cell row anywhere →
+ * starts 0, 4, 8, 12 (4 + 4 + 4 + 3, 4 + 4 + 7, 8 + 7, 4 + 11); a 3-cell row → 0, 5, 10 (5 + 5 + 5, 5 + 10, 10 + 5);
+ * pairs only → 8 + 7, or 0, 5, 10 when 8 + 7 does not suit some pair. Of two rows of ≥ 2 cells one right under the
+ * other, one row's starts are a part of the other's — else a staircase. Throws when no split of the grid suits the rows.
+ */
+function gridLayout(rows: FormRow[]): number[][] {
+  const widest = Math.max(0, ...rows.filter((r) => !r.half).map((r) => r.codes.length));
+  const grids = widest >= 4 ? [[0, 4, 8, 12]] : widest === 3 ? [[0, 5, 10]] : [[0, 8], [0, 5, 10]];
+  const startsOf = (cells: number[]) => cells.map((_, j) => cells.slice(0, j).reduce((a, b) => a + b, 0));
+  const nested = (a: number[], b: number[]) => a.every((v) => b.includes(v)) || b.every((v) => a.includes(v));
+  for (const grid of grids) {
+    const options = rows.map((r) => r.half ? [[8]] : r.codes.length === 1 ? [[15]] : gridSplits(r.codes.length, grid).filter((c) => splitFits(r, c)));
+    const pick = (i: number, above: number[]): number[][] | undefined => {
+      if (i === rows.length) return [];
+      for (const cells of options[i]) {
+        const st = startsOf(cells);
+        if (st.length > 1 && above.length > 1 && !nested(st, above)) continue;
+        const rest = pick(i + 1, st);
+        if (rest) return [cells, ...rest];
+      }
+      return undefined;
+    };
+    const found = pick(0, []);
+    if (found) return found;
+  }
+  throw new Error(`no grid of 15 columns suits the form rows ${JSON.stringify(rows.map((r) => r.codes))}: a box of its own width (DATE, TIME, CHECKBOX, DROPDOWN_SINGLE, a SINGLE reference) needs the narrower cell beside an input — reorder the fields of a row (MYBPM-IMPORTS.md 0.8)`);
+}
+
 /** Split `a=1,b=["x","y"]` on the commas that are NOT inside [], {} or "" — a JSON value may carry its own. */
 function splitTop(s: string): string[] {
   const out: string[] = []; let depth = 0, quote = false, cur = "";
@@ -747,6 +805,7 @@ if (isComposite) {
   let col = Object.keys(dynamicFields).length;
   // `!row` puts a field into the row of the field before it (MYBPM-IMPORTS.md 0.8): same y, the 15 columns split
   let curRow: string[] = [], curRowY = 0, prevHalf = false, curHalf = false;
+  const formRows: FormRow[] = [];
   custom.forEach((f, i) => {
     const code = codeOf(f.label);
     // The heights that fit the content (MYBPM-IMPORTS.md 0.8): a table, a file or a text block 6 rows, a
@@ -847,21 +906,20 @@ if (isComposite) {
     }
     // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
     if (!inTab) {
-      if (joins) curRow.push(code); else { prevHalf = curHalf; curRow = [code]; curRowY = y; }
+      const width = /^INPUT_/.test(f.type) ? "stretch" : /^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) || (f.type === "BO" && single) ? "fixed" : "other";
+      if (joins) { curRow.push(code); formRows.at(-1)!.widths.push(width); }
+      else { prevHalf = curHalf; curRow = [code]; curRowY = y; formRows.push({ codes: curRow, widths: [width], half: false, underHalf: prevHalf }); }
       curHalf = curRow.length === 1 && f.flags.includes("half");
+      formRows.at(-1)!.half = curHalf;
       y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++;
-      // the row's 15 columns split evenly: 8 + 7, 5 + 5 + 5, 4 + 4 + 4 + 3; `!half` = one cell of 8; under a `!half`
-      // row a pair splits 7 + 8 (an 8 + 7 pair's right cell would float up into the free half, 0.8)
-      let x = 0;
-      curRow.forEach((c, j) => {
-        const cols = curHalf ? 8
-          : prevHalf && curRow.length === 2 ? (j === 0 ? 7 : 8)
-          : Math.floor(15 / curRow.length) + (j < 15 % curRow.length ? 1 : 0);
-        Object.assign((dynamicFields[c] as any).gridPosition, { x, cols });
-        x += cols;
-      });
     }
   });
+  // x and cols once every row is known: one grid per form (0.8), so the rows' column starts never stand as a staircase
+  const layout = gridLayout(formRows);
+  for (const [i, r] of formRows.entries()) {
+    let x = 0;
+    layout[i].forEach((cols, j) => { Object.assign((dynamicFields[r.codes[j]] as any).gridPosition, { x, cols }); x += cols; });
+  }
   // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 6 on an instanceViewType TAB page, + 2 when it sits on
   // a tab of another group) — less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it
   // on its own tab and makes that tab taller. Then every cell below the group in its stack shifts by the change.

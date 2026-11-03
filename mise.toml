@@ -192,6 +192,37 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
   if (keyErr.length) { console.error(`${cmd[1]}: field codes in calendarCardTemplates taken for invented keys:\n${keyErr.join("\n")}`); process.exit(1); }
   if (got.length !== xssWant.length || miss.length) { console.error(`${cmd[1]}: reject-check ERRORs ${got.length}, want ${xssWant.length}, wrong for ${JSON.stringify(miss)}:\n${got.join("\n")}${r.stderr}`); process.exit(1); }
 }
+// one grid per form (0.8): the generator never builds a staircase (5 + 10 under 5 + 5 + 5 and under a lone field, 4 + 4 + 7
+// and 8 + 7 under 4 + 4 + 4 + 3), and 8 + 7 over 5 + 5 + 5 is exactly one staircase ERROR — in both lints. A DATE keeps
+// its own width: the generator gives the wider cell of a pair to the input, DATE 10 + input 5 is exactly one ERROR, and a
+// form where no split of one grid gives every input the wider cell is refused, not built
+const gridGen = (name: string, fields: string[]) => $`rm -rf dist/lint-${name} && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_grid --name Grid --salt grid --bo-order 1 --out dist/lint-${name} ${fields.flatMap((f) => ["--field", f])}`.quiet();
+await gridGen("grid5", ["Исполнитель:INPUT_TEXT", "Подразделение:INPUT_TEXT!row", "Постановщик:INPUT_TEXT", "Срок:DATE!row", "Приоритет:INPUT_TEXT!row", "Источник:INPUT_TEXT!half", "Канал:INPUT_TEXT", "Кампания:INPUT_TEXT!row"]);
+await gridGen("grid4", ["A1:INPUT_TEXT", "A2:INPUT_TEXT!row", "A3:INPUT_TEXT!row", "A4:INPUT_TEXT!row", "B1:INPUT_TEXT", "B2:INPUT_TEXT!row", "B3:INPUT_TEXT!row", "C1:INPUT_TEXT", "C2:INPUT_TEXT!row"]);
+await gridGen("gridw", ["Срок:DATE", "Описание:INPUT_TEXT!row"]);
+const gridNo = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_grid --name Grid --salt grid --bo-order 1 --out dist/lint-gridno --field Срок:DATE --field Описание:INPUT_TEXT!row --field Канал:INPUT_TEXT --field Дата:DATE!row`.nothrow().quiet();
+if (!gridNo.exitCode || !/no grid of 15 columns suits/.test(gridNo.stderr.toString())) { console.error(`make-probe-archive built DATE + input over input + DATE (exit ${gridNo.exitCode}):\n${gridNo.stderr}`); process.exit(1); }
+const grid5 = [...new Bun.Glob("dist/lint-grid5/*.zip").scanSync()][0], grid4 = [...new Bun.Glob("dist/lint-grid4/*.zip").scanSync()][0], gridw = [...new Bun.Glob("dist/lint-gridw/*.zip").scanSync()][0];
+const wide = new TextDecoder().decode(unzip(await Bun.file(gridw).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Srok) { if (f.Srok.gridPosition.cols !== 5 || f.Opisanie.gridPosition.cols !== 10) { console.error(`make-probe-archive: DATE + input split ${f.Srok.gridPosition.cols} + ${f.Opisanie.gridPosition.cols}, not 5 + 10`); process.exit(1); }
+    f.Srok.gridPosition.cols = 10; Object.assign(f.Opisanie.gridPosition, { x: 10, cols: 5 }); }
+  return JSON.stringify(o);
+});
+await Bun.write("dist/lint-gridw/wide.jsonl", wide.join("\n") + "\n");
+const stair = new TextDecoder().decode(unzip(await Bun.file(grid5).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Ispolnitel) { if (f.Ispolnitel.gridPosition.cols !== 5) { console.error(`make-probe-archive: the pair over a row of three is ${JSON.stringify(f.Ispolnitel.gridPosition)}, not 5 + 10`); process.exit(1); }
+    f.Ispolnitel.gridPosition.cols = 8; Object.assign(f.Podrazdelenie.gridPosition, { x: 8, cols: 7 }); }
+  return JSON.stringify(o);
+});
+await Bun.write("dist/lint-grid5/stair.jsonl", stair.join("\n") + "\n");
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [file, want] of [[grid5, []], [grid4, []], [gridw, []], ["dist/lint-grid5/stair.jsonl", ["Lint_grid.Postanovschik: row y 3 columns start at 0,5,10 — the row above starts at 0,8: staircase, one grid per form (0.8)"]],
+    ["dist/lint-gridw/wide.jsonl", ["Lint_grid.Srok: a DATE box keeps its own width — the wider cell of row y 0 goes to Lint_grid.Opisanie (0.8)"]]] as const) {
+    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /staircase|keeps its own width/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: staircase / own-width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
@@ -519,6 +550,13 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     return s.map((x: any) => x.label).join() === "Середина,Финиш" && s[1].id === barIds[1] && !!s[0].id && !barIds.includes(s[0].id); }],
   ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Лишнее", type: "INPUT_TEXT", requried: true }] }, (r) => /unknown key «requried»/.test(r)],
   ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "Не бар", type: "INPUT_TEXT", steps: ["a"] }] }, (r) => /steps belong to a PROGRESS_BAR/.test(r)],
+  // the saved layout goes through the form lint itself (IMPORTS 0.8): 8 + 7 over 5 + 5 + 5 is a staircase, 5 + 10 is not
+  ["bo_fields_save", { code: "mcp_probe_rights", window: false, add: [{ label: "Исполнитель", type: "INPUT_TEXT", code: "executor", cols: 8 },
+    { label: "Подразделение", type: "INPUT_TEXT", code: "department", cols: 7 }, { label: "Постановщик", type: "INPUT_TEXT", code: "author", cols: 5 },
+    { label: "Срок", type: "DATE", code: "due", cols: 5 }, { label: "Приоритет", type: "INPUT_TEXT", code: "priority", cols: 5 }] },
+    (r) => r.notes.some((n: string) => /^layout lint: mcp_probe_rights\.author: row y \d+ columns start at 0,5,10 — the row above starts at 0,8: staircase/.test(n))],
+  ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", cols: 5 }, { fieldId: "@bo_fields_save.added.1.fieldId", x: 5, cols: 10 }] },
+    (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_rights: no gridLayoutPosition/.test(n)) && !r.notes.some((n: string) => /staircase|NOT RUN/.test(n))],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
@@ -565,7 +603,7 @@ try {
       const got = report[i];
       let pass = false;
       try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType|nothing was deleted/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
-      if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}`); }
+      if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}${got?.result?.notes ? `\n  notes: ${JSON.stringify(got.result.notes)}` : ""}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
     const noted = report.map((x: any, i: number) => !!x.notes?.some((n: string) => /^> ⚠️ \*\*A new version of the MyBPM plugin is out: 99\.0\.0\*\*/m.test(n)) === (i === 0 || steps[i][0] === "stand_list"));

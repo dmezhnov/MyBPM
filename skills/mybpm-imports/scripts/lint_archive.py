@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 30a5e20f93ab
+# lintArchive sha256: 33e0e9d04c21
 import json
 import math
 import os
@@ -899,6 +899,7 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             if len(ms) >= 3:
                 err(f"menu {join([g(m, 'menuItemCode') for m in ms], ', ')}: {len(ms)} siblings with icon {ic} — each by what it lists (0.5d)")
     R3 = R("^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$")
+    FIXED = R("^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$")
     R6, R8 = R("^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$"), R("^(QUESTIONNAIRE|GEO_POINT)$")
     FULL = R("^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$")
     for bo in [x for x in bos if g(x, "category") != "BO_COMPOSITE"]:
@@ -929,12 +930,13 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             mn = 6 if text or (isRef(f) and not short) else 3 if ty == "STATIC_TEXT" else 0
             if (not seq(g(gp, "rows"), want)) if want else lt(g(gp, "rows"), mn):
                 err(f"{t}: rows {s(g(gp, 'rows'))}, a {s(ty)} takes {want or 'at least ' + str(mn)} (0.8)")
-            put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": T(FULL, ty) or table})
+            put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": T(FULL, ty) or table,
+                                                 "fixed": short if ty == "BO" else T(FIXED, ty), "stretch": T(R("^INPUT_"), ty), "ty": "BO SINGLE" if ty == "BO" else ty})
         for w in [*[w for m in W for w in vals(g(bo, m))], *vals(g(bo, "nativeFields"))]:
             if tr(g(w, "gridPosition")):
                 put(g(nn(g(w, "tabCode"), g(w, "tabCodePath")), "tabCode"), {"t": f"{bc}.{s(nn(g(w, 'code'), g(w, 'nativeFieldId')))}", "g": g(w, "gridPosition"), "box": True})
         for tab, cells in forms.values():
-            nxt, edge, lone = 0, 15, 0
+            nxt, edge, lone, above = 0, 15, 0, None
             for y in jsort(uniq([g(c["g"], "y") for c in cells])):  # a y that is no number sorts as 0
                 row = sorted([c for c in cells if seq(g(c["g"], "y"), y)], key=lambda c: num0(g(c["g"], "x")))
                 r = row[0]["t"]
@@ -958,10 +960,18 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                         err(f"{c['t']}: shares row y {s(y)} — it stands alone, full width (0.8)")
                 if len(uniq([g(c["g"], "rows") for c in row])) > 1:
                     err(f"{r}: row y {s(y)} mixes heights (0.8)")
+                for c in [c for c in row if c.get("fixed")]:  # a box of its own width beside one that stretches: the wider cell to the stretching one
+                    w = next((d for d in row if d.get("stretch") and lt(g(d["g"], "cols"), g(c["g"], "cols"))), None)
+                    if w is not None:
+                        err(f"{c['t']}: a {s(c['ty'])} box keeps its own width — the wider cell of row y {s(y)} goes to {w['t']} (0.8)")
                 if len(row) == 1 and row[0].get("short"):
                     lone += 1
                     if seq(g(row[0]["g"], "cols"), 15) and g(bo, "category") != "BO_DICTIONARY":
                         err(f"{r}: a short field alone at full width — pair it or x 0, cols 8 (0.8)")
+                st = [g(c["g"], "x") for c in row]  # two rows of ≥ 2 cells one under the other: one row's column starts are a part of the other's
+                if len(st) > 1 and above is not None and len(above) > 1 and not all(includes(above, v) for v in st) and not all(includes(st, v) for v in above):
+                    err(f"{r}: row y {s(y)} columns start at {join(st)} — the row above starts at {join(above)}: staircase, one grid per form (0.8)")
+                above = st
                 nxt = jadd(y, jmax(*[g(c["g"], "rows") for c in row]))
                 edge = 15 if any(c.get("box") for c in row) else x
             heads = [c for c in cells if c.get("head")]

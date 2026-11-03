@@ -280,7 +280,7 @@ No archive is involved. This is the cheapest way to put a BO on a stand.
    enum with the palette labels is §5i «Field types — label → `fieldType`», which also covers widgets
    and system fields). `cols: 15` is
    the full form width, `rows: 3` one line (what the constructor itself assigns `[C]`; 4 leaves an empty band);
-   short fields share a row (same `y`, `cols` 8 + 7 or 5 + 5 + 5), other types take other heights — see
+   short fields share a row (same `y`, `cols` 5 + 5 + 5 or 5 + 10, one grid per form), other types take other heights — see
    «Layout» below.
    **Get the label right the first time**: a FIELD's code is generated from its label at the first save
    and never regenerated (trap 22).
@@ -335,13 +335,17 @@ not counting headings, the `TAB_GROUP` and the system fields.
   `QUESTIONNAIRE` / `GEO_POINT`.
 - **Rows** `[C]`: a row is one or more cells with the SAME `y` and the SAME `rows`; `x` runs 0, 0 + cols …, and
   the `cols` of a row sum to 15; the next row's `y` = this `y` + this `rows` (a field on a tab counts `y` from 0
-  on its tab). Short one-line fields that belong together stand 2 per row (8 + 7) or 3 (5 + 5 + 5) — телефон +
-  email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but full-width fields is a defect.
+  on its tab). Short one-line fields that belong together stand 3 per row (5 + 5 + 5) or 2 (5 + 10 / 10 + 5, the wide cell to
+  the longer value) — телефон + email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but
+  full-width fields is a defect. Inputs (`INPUT_*`) stretch over their cell; a date, time, checkbox, dropdown or `SINGLE`
+  reference keeps its own width `[C]` — in a row with an input the wider cell goes to the input. **One grid per form (per tab)**: of two rows of ≥ 2 cells one right under the
+  other, the column starts of one are a part of the other's — never 8 + 7 under 5 + 5 + 5 (labels at 0, 8 against
+  0, 5, 10: a staircase); 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too (`MYBPM-IMPORTS.md` 0.8).
   Alone at full width: `TEXTAREA`, a `TABLE`, a heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
   `GEO_POINT`, `PROGRESS_BAR`. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched — an exception, at most 2 per
   form (per tab): every field alone at `cols 8` is still the «one per row» defect;
   no cell of the row below may fit wholly into its free columns 8–14 — it would float up beside it — so under
-  it goes a full-width row, a pair split 7 + 8, or nothing. Never mix heights in one row — the next row floats into the hole (§4 of
+  it goes a full-width row, a pair split 5 + 10, or nothing. Never mix heights in one row — the next row floats into the hole (§4 of
   `MYBPM-IMPORTS.md`). A `CHECKBOX` toggle sits a little higher than its row-mates' boxes — acceptable.
 - **Registry columns**: `tableColToShow: true` on the name + at most 5 key values (status, date, amount, the main
   reference) — **6 columns at most**; every field as a column cuts each header to «Мар…». Turning `isRequired` /
