@@ -35,7 +35,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { inflateRawSync } from "node:zlib";
 import { zip } from "../tools/zip.ts";
-import { cellOf as cellRuleOf, cellTable, rowsOf, type CellRule } from "../tools/cell-table.ts";
+import { cellOf as cellRuleOf, cellTable, maxColsOf, minColsOf, rowsOf, type CellRule } from "../tools/cell-table.ts";
 import ICONS from "../tools/menu-icons.json";
 import { PAGE_HTML } from "./accounts-page.ts";
 
@@ -710,7 +710,7 @@ const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   options: { type: "array", items: {}, description: "DROPDOWN_SINGLE / RADIO_BUTTON_GROUP: the local list (FROM_FIELD); CHECKLIST: its items. A string or {label, code, color}." },
   required: { type: "boolean" }, unique: { type: "boolean" }, readonly: { type: "boolean", description: "Never together with required." },
   column: { type: "boolean", description: "A registry column. Default: the first field, plus required / unique ones; 6 at most (R1 «Layout»)." },
-  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15." },
+  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15. Held to the table of IMPORTS 0.8: a narrow INPUT_NUMBER gets at most 5, a kind with a min px (INPUT_PHONE, DATE, PERIOD …) at least the cols its box needs in the record window (W 10 unless `window.w` says otherwise; a tab is narrower) — a change shows in notes." },
   rows: { type: "number", description: "Height; default by type (R1 «Layout»: 3 one-line, 6 text/table/file, 8 questionnaire/map)." },
   x: { type: "number" }, y: { type: "number", description: "x / y on every field = you own the layout; otherwise it is packed for you." },
   tab: { type: "string", description: "The tab label this field goes on: every field with a `tab` lands in one TAB_GROUP (code `tabs`) placed where the first of them stands; tabs in order of appearance, the first is the default." },
@@ -778,8 +778,20 @@ const aloneOf = (f: FieldSpec) => cellSpec(f)?.place === "alone";
 const visible = (f: FieldSpec) => !["STATIC_TEXT", "TAB_GROUP"].includes(f.type) && !NATIVES.includes(f.type);
 
 type Cell = { x: number; y: number; cols: number; rows: number };
-/** Pack the fields of one container (the form or a tab) into rows of 15 columns, from `y0` down (R1 «Layout»). */
-function pack(specs: FieldSpec[], y0: number, notes: string[], where: string): { cells: Cell[]; bottom: number } {
+/** The cols a field takes: its `cols` (15 for an `alone` kind), kept within the table's width (IMPORTS 0.8): a `narrow` kind
+ *  at most 5, a kind with a min px at least ⌈(min px + 1) / colPx⌉ in a window of width `win` (0 = no window), `lvl` tabs deep.
+ *  A `cols` the caller gave and this changes goes into the notes. */
+function colsOf(f: FieldSpec, win: number, lvl: number, notes: string[], where: string): number {
+  const k = cellSpec(f), cols = aloneOf(f) ? 15 : Math.min(15, Math.max(1, f.cols ?? 15));
+  const fit = Math.min(maxColsOf(k), Math.max(cols, win ? minColsOf(k, win, lvl) : 0));
+  if (fit !== cols && f.cols !== undefined)
+    notes.push(`${where}: «${f.label ?? f.type}» cols ${cols} → ${fit} — ${fit < cols ? `a ${k!.kind} is narrow, at most 5 columns`
+      : `a ${k!.kind} box needs ${k!.minPx} px in a window w ${win}${lvl ? " on a tab" : ""}`} (IMPORTS 0.8)`);
+  return fit;
+}
+
+/** Pack the fields of one container (the form or a tab, `lvl` 0 / 1) into rows of 15 columns, from `y0` down (R1 «Layout»). */
+function pack(specs: FieldSpec[], y0: number, notes: string[], where: string, win: number, lvl: number): { cells: Cell[]; bottom: number } {
   const cells: Cell[] = [];
   let y = y0, row: Cell[] = [];
   const close = () => {
@@ -787,7 +799,7 @@ function pack(specs: FieldSpec[], y0: number, notes: string[], where: string): {
     y += row[0].rows; row = [];
   };
   for (const f of specs) {
-    const cols = aloneOf(f) ? 15 : Math.min(15, Math.max(1, f.cols ?? 15)), rows = heightOf(f);
+    const cols = colsOf(f, win, lvl, notes, where), rows = heightOf(f);
     const used = row.reduce((n, c) => n + c.cols, 0);
     if (row.length && (aloneOf(f) || used + cols > 15 || row[0].rows !== rows)) close();
     const c = { x: row.reduce((n, c) => n + c.cols, 0), y, cols, rows };
@@ -819,10 +831,14 @@ async function addFields(s: Stand, boId: string, specs: FieldSpec[], window?: bo
   const top: FieldSpec[] = plain.slice();
   const groupSpec: FieldSpec = { type: "TAB_GROUP", label: undefined, code: "tabs" };
   if (groupAt >= 0) top.splice(specs.slice(0, groupAt).filter((f) => !f.tab).length, 0, groupSpec);
-  const tabPacks = tabLabels.map((t) => pack(tabbed.filter((f) => f.tab === t), 0, notes, `tab «${t}»`));
+  // the window the cells are sized for (IMPORTS 0.8 «Cell width in px»): the one asked for, the BO's own when it is left as it is,
+  // else 10 — the narrower of the two the layout below may choose (10 / 12), so a min px holds in either; none for a panel or a page tab
+  const cellWin = bo.boCategory === "BO_PANEL" || bo.instanceViewType === "TAB" ? 0
+    : (typeof window === "object" && window.w) || (window === false ? bo.gridLayoutPosition?.w ?? 10 : 10);
+  const tabPacks = tabLabels.map((t) => pack(tabbed.filter((f) => f.tab === t), 0, notes, `tab «${t}»`, cellWin, 1));
   if (groupAt >= 0) groupSpec.rows = Math.max(...tabPacks.map((p) => p.bottom)) + 3;
   const y0 = bottomOf(bo.formFields ?? []);
-  const topPack = own ? { cells: [], bottom: 0 } : pack(top, y0, notes, "form");
+  const topPack = own ? { cells: [], bottom: 0 } : pack(top, y0, notes, "form", cellWin, 0);
   const tabIds = tabLabels.length ? await freshIds(s, tabLabels.length) : [];
 
   const grid = (f: FieldSpec) => ({ rows: f.questionnaire?.rows?.length ? f.questionnaire.rows : ["Вопрос 1"], columns: f.questionnaire?.columns?.length ? f.questionnaire.columns : ["Да", "Нет"] });

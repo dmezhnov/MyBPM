@@ -72,7 +72,10 @@
  *   --field "Телефон:INPUT_PHONE!row"                         — the field shares the row of the field before it (same
  *     y, the 15 columns split by one grid for the form: pairs only 8 + 7, with a row of three 5 + 10 / 10 + 5 and 5 + 5 + 5,
  *     the wider cell of a pair to an INPUT_* beside a DATE / TIME / CHECKBOX / DROPDOWN_SINGLE / SINGLE reference, see gridLayout);
- *     give row-mates the same height (MYBPM-IMPORTS.md 0.8)
+ *     give row-mates the same height (MYBPM-IMPORTS.md 0.8); on a tab it joins the row before it on the same tab, one grid per tab.
+ *     Widths follow the table «Cell of each type»: a `narrow` INPUT_NUMBER takes ≤ 5 columns (alone x 0, cols 5; last in a
+ *     row without an input cut short to 5, e.g. 5 + 5), a kind with a min px (INPUT_PHONE, PERIOD, DATE …) at least
+ *     ⌈(min px + 1) / colPx⌉ columns for the --window and the tab depth; nothing starts in the columns a short row left empty
  *   --field "Наименование:INPUT_TEXT!req"                     — «Необходимо заполнять» (isRequired)
  *   --field "Табельный номер:INPUT_TEXT!uniq"                 — «Уникальное поле» (isUnique)
  *   --field "Должность:DROPDOWN_SINGLE@Dolzhnost@Должность"   — «Справочник» BY CODE (FROM_BO)
@@ -84,7 +87,7 @@
  *     (`+` = ticked), isAppendable defaults to true as in the constructor
  *   --field "Вкладки:TAB_GROUP#Шаг 1|>Справа!params.needDisableTabs=true" — `>` = a tab at the right end
  *   --field "Поле:INPUT_TEXT!tab=Vkladki/Shag_1"              — the field sits ON that tab (tabCodePath,
- *     its y counted from the top of the tab)
+ *     its y counted from the top of the tab; `!row` / `!half` work there as on the form)
  *   --field 'Текст:TEXTAREA!params.buttonTypes=["bold","table"]' — a JSON value may hold commas inside []/{}/""
  *   (MYBPM-IMPORTS.md §3 «Per-type settings» for what each key does)
  *
@@ -110,7 +113,7 @@
 import { createHash } from "node:crypto"; // Bun.hash is not a cryptographic digest; sha256 keeps ids reproducible
 import { scriptBody, toArchiveScript, type ProcessSpec } from "./process-builder.ts";
 import { zip } from "./zip.ts";
-import { cellOf, cellTable, itemsOf, rowsOf } from "./cell-table.ts";
+import { cellOf, cellTable, itemsOf, minColsOf, rowsOf, type CellRule } from "./cell-table.ts";
 
 const PKG = "kz.greetgo.mybpm.reg.structure.model.dto";
 /** Rows, place and width of each field kind: the table «Cell of each type» of MYBPM-IMPORTS.md 0.8, the one the lint checks against. */
@@ -156,6 +159,11 @@ const BO_NAME = flag("name", PROCESS_SPEC?.name ?? "Проба импорта 20
 /** BoStructDto.category — the same five kinds the group's kebab offers (MYBPM-UI-API.md §5b). */
 const CATEGORY = flag("category", PROCESS_SPEC ? "BO_PROCESS" : "BO");
 
+/** `--window W[,H]` — the record window; without the flag a BO or process dialog gets W 10, a dictionary W 8, a composite or
+ *  a page-tab record none (MYBPM-IMPORTS.md 0.8a step 7). Its W sets the px of a form column (0.8 «Cell width in px»). */
+const WINDOW = flag("window", "") || (["BO", "BO_PROCESS", "BO_DICTIONARY"].includes(CATEGORY) && !args.has("--tab-view")
+  ? (CATEGORY === "BO_DICTIONARY" ? "8" : "10") : "");
+
 /**
  * `--field "Метка:TYPE"`, repeatable; the code is transliterated from the label the way the stand does
  * it. Without any `--field` the default pair (Наименование / Число) is kept, so old calls are unchanged.
@@ -167,11 +175,12 @@ type FieldSpec = {
   sets: { path: string[]; value: unknown }[];
 };
 /**
- * A row of the form stack: its field codes, how each one's box takes its cell (`stretch` = over the whole cell, `fixed` =
- * a box of its own width — the column «width» of the table «Cell of each type», 0.8), `!half` (one
- * cell of 8), and whether the row above it is a `!half` one.
+ * A row of one stack (the form, or one tab): its field codes, how each one's box takes its cell (`stretch` = over the whole
+ * cell, `narrow` = the same but at most 5 columns, `fixed` = a box of its own width — the column «width» of the table «Cell
+ * of each type», 0.8), the fewest cols each cell needs to show its whole box (`min px` through the window, 0.8 «Cell width
+ * in px»), and `!half` (one cell of 8).
  */
-type FormRow = { codes: string[]; widths: ("stretch" | "fixed" | "other")[]; half: boolean; underHalf: boolean };
+type FormRow = { codes: string[]; widths: ("stretch" | "narrow" | "fixed" | "other")[]; kinds: (CellRule | undefined)[]; min: number[]; half: boolean };
 
 /** Every split of the 15 columns into n cells whose starts lie on the grid, the most even first (5 + 10 before 10 + 5). */
 function gridSplits(n: number, starts: number[]): number[][] {
@@ -185,41 +194,50 @@ function gridSplits(n: number, starts: number[]): number[][] {
   return out.sort((a, b) => spread(a) - spread(b));
 }
 
-/** Whether a split suits the row: the wider cell to an input, never to a box of its own width; nothing floats up into a `!half`'s free columns. */
+/** Whether a split suits the row: the wider cell to an input, never to a box of its own width; a narrow cell ≤ 5; every cell ≥ its min. */
 function splitFits(r: FormRow, cells: number[]): boolean {
   const input = Math.min(...cells.filter((_, j) => r.widths[j] === "stretch"));
-  if (cells.some((c, j) => r.widths[j] === "fixed" && c > input)) return false;
-  let x = 0;
-  return !r.underHalf || cells.every((c) => { const ok = x < 8; x += c; return ok; });
+  return cells.every((c, j) => c >= r.min[j] && !(r.widths[j] === "fixed" && c > input) && !(r.widths[j] === "narrow" && c > 5));
+}
+
+/** The splits a row may take: one cell → 15, `!half` 8, narrow 5; more → the grid's splits, and a row with no stretching
+ *  cell whose last cell is narrow also cut short to 5 there (5 + 5 for two numbers), the full splits first (0.8). */
+function rowOptions(r: FormRow, grid: number[]): number[][] {
+  if (r.codes.length === 1) return [[r.widths[0] === "narrow" ? 5 : r.half ? 8 : 15]].filter((c) => splitFits(r, c));
+  const full = gridSplits(r.codes.length, grid);
+  const cut = r.widths.at(-1) === "narrow" && !r.widths.includes("stretch")
+    ? full.filter((c) => c.at(-1)! > 5).map((c) => [...c.slice(0, -1), 5]) : [];
+  return [...full, ...cut].filter((c) => splitFits(r, c));
 }
 
 /**
- * The cols of every cell of every row, by one grid for the whole form (MYBPM-IMPORTS.md 0.8): a 4-cell row anywhere →
+ * The cols of every cell of every row, by one grid for the whole stack (MYBPM-IMPORTS.md 0.8): a 4-cell row anywhere →
  * starts 0, 4, 8, 12 (4 + 4 + 4 + 3, 4 + 4 + 7, 8 + 7, 4 + 11); a 3-cell row → 0, 5, 10 (5 + 5 + 5, 5 + 10, 10 + 5);
  * pairs only → 8 + 7, or 0, 5, 10 when 8 + 7 does not suit some pair. Of two rows of ≥ 2 cells one right under the
- * other, one row's starts are a part of the other's — else a staircase. Throws when no split of the grid suits the rows.
+ * other, one row's starts are a part of the other's — else a staircase; no cell starts in the columns the row above left
+ * empty — else it floats up. Throws when no split of the grid suits the rows.
  */
-function gridLayout(rows: FormRow[]): number[][] {
+function gridLayout(rows: FormRow[], where: string): number[][] {
   const widest = Math.max(0, ...rows.filter((r) => !r.half).map((r) => r.codes.length));
   const grids = widest >= 4 ? [[0, 4, 8, 12]] : widest === 3 ? [[0, 5, 10]] : [[0, 8], [0, 5, 10]];
   const startsOf = (cells: number[]) => cells.map((_, j) => cells.slice(0, j).reduce((a, b) => a + b, 0));
   const nested = (a: number[], b: number[]) => a.every((v) => b.includes(v)) || b.every((v) => a.includes(v));
   for (const grid of grids) {
-    const options = rows.map((r) => r.half ? [[8]] : r.codes.length === 1 ? [[15]] : gridSplits(r.codes.length, grid).filter((c) => splitFits(r, c)));
-    const pick = (i: number, above: number[]): number[][] | undefined => {
+    const options = rows.map((r) => rowOptions(r, grid));
+    const pick = (i: number, above: number[], end: number): number[][] | undefined => {
       if (i === rows.length) return [];
       for (const cells of options[i]) {
         const st = startsOf(cells);
-        if (st.length > 1 && above.length > 1 && !nested(st, above)) continue;
-        const rest = pick(i + 1, st);
+        if (st.some((x) => x >= end) || (st.length > 1 && above.length > 1 && !nested(st, above))) continue;
+        const rest = pick(i + 1, st, cells.reduce((a, b) => a + b, 0));
         if (rest) return [cells, ...rest];
       }
       return undefined;
     };
-    const found = pick(0, []);
+    const found = pick(0, [], 15);
     if (found) return found;
   }
-  throw new Error(`no grid of 15 columns suits the form rows ${JSON.stringify(rows.map((r) => r.codes))}: a box of its own width (DATE, TIME, CHECKBOX, DROPDOWN_SINGLE, a SINGLE reference) needs the narrower cell beside an input — reorder the fields of a row (MYBPM-IMPORTS.md 0.8)`);
+  throw new Error(`no grid of 15 columns suits the ${where} rows ${JSON.stringify(rows.map((r) => r.codes))} (min cols ${JSON.stringify(rows.map((r) => r.min))}): a box of its own width (DATE, TIME, CHECKBOX, DROPDOWN_SINGLE, a SINGLE reference) needs the narrower cell beside an input, a narrow INPUT_NUMBER at most 5 columns, a kind with a min px (INPUT_PHONE, PERIOD, DATE …) at least its min cols in this window, and under a row cut short (a lone !half or narrow field, 5 + 5) only a row that starts inside its cells — reorder the fields of a row, or widen the window (MYBPM-IMPORTS.md 0.8)`);
 }
 
 /** Split `a=1,b=["x","y"]` on the commas that are NOT inside [], {} or "" — a JSON value may carry its own. */
@@ -804,13 +822,16 @@ if (isComposite) {
 } else if (custom.length === 0 && !isDictionary) {
   Object.assign(dynamicFields, DEFAULT_FIELDS);
 } else {
-  let y = Object.keys(dynamicFields).length * 4;
-  const tabY = new Map<string, number>();
   let col = Object.keys(dynamicFields).length;
-  // `!row` puts a field into the row of the field before it (MYBPM-IMPORTS.md 0.8): same y, the 15 columns split
-  let curRow: string[] = [], curRowY = 0, prevHalf = false, curHalf = false;
-  const formRows: FormRow[] = [];
+  // one stack per form ("") and per tab ("<код вкладок>/<код вкладки>"): its rows, the next y, the row `!row` joins
+  // (MYBPM-IMPORTS.md 0.8: same y, the 15 columns split by one grid per stack)
+  type Stack = { rows: FormRow[]; y: number; rowY: number };
+  const stacks = new Map<string, Stack>([["", { rows: [], y: Object.keys(dynamicFields).length * 4, rowY: 0 }]]);
   custom.forEach((f, i) => {
+    const tabSet = f.sets.find(s => s.path[0] === "tab");
+    const stackKey = tabSet ? String(tabSet.value) : "";
+    if (!stacks.has(stackKey)) stacks.set(stackKey, { rows: [], y: 0, rowY: 0 });
+    const stack = stacks.get(stackKey)!;
     const code = codeOf(f.label);
     // The heights that fit the content: the table «Cell of each type» (MYBPM-IMPORTS.md 0.8), a CHECKLIST / RADIO by its
     // items; a TAB_GROUP is resized to its tallest tab + 3 after all fields are placed (below). `!rows=N` overrides any of them.
@@ -824,8 +845,8 @@ if (isComposite) {
     // `#…` means a different thing per type: options for a list, steps for a bar, tabs for a tab group,
     // «колонки^строки» for a questionnaire, and the HTML itself for «Текст».
     const hash = f.options;
-    const joins = f.flags.includes("row") && curRow.length > 0 && !f.sets.some(s => s.path[0] === "tab");
-    if (joins) y = curRowY;
+    const joins = f.flags.includes("row") && stack.rows.length > 0;
+    const y = joins ? stack.rowY : stack.y;
     dynamicFields[code] = field({
       code,
       label: f.label,
@@ -887,10 +908,7 @@ if (isComposite) {
       // top of the tab (MYBPM-IMPORTS.md «tabCodePath»), so the form below does not move down.
       if (path[0] === "tab") {
         const [tabGroupCode, tabCode] = String(value).split("/");
-        const key = `${tabGroupCode}/${tabCode}`;
-        const ty = tabY.get(key) ?? 0;
-        Object.assign(dynamicFields[code] as any, { tabCodePath: { tabGroupCode, tabCode }, gridPosition: { x: 0, y: ty, cols: 15, rows } });
-        tabY.set(key, ty + rows);
+        Object.assign(dynamicFields[code] as any, { tabCodePath: { tabGroupCode, tabCode }, gridPosition: { x: 0, y, cols: 15, rows } });
         inTab = true;
         continue;
       }
@@ -908,21 +926,27 @@ if (isComposite) {
       o[path.at(-1)!] = path[0] === "params" && typeof value !== "string"
         ? (typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)) : value;
     }
-    // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
-    if (!inTab) {
-      const width = cell?.width === "stretches" ? "stretch" : cell?.width === "own" ? "fixed" : "other";
-      if (joins) { curRow.push(code); formRows.at(-1)!.widths.push(width); }
-      else { prevHalf = curHalf; curRow = [code]; curRowY = y; formRows.push({ codes: curRow, widths: [width], half: false, underHalf: prevHalf }); }
-      curHalf = curRow.length === 1 && f.flags.includes("half");
-      formRows.at(-1)!.half = curHalf;
-      y += rows; (dynamicFields[code] as any).tableColOrderIndex = col++;
-    }
+    const width = cell?.width === "stretches" ? "stretch" : cell?.width === "narrow" ? "narrow" : cell?.width === "own" ? "fixed" : "other";
+    if (joins) { const r = stack.rows.at(-1)!; r.codes.push(code); r.widths.push(width); r.kinds.push(cell); r.half = false; }
+    else { stack.rows.push({ codes: [code], widths: [width], kinds: [cell], min: [], half: f.flags.includes("half") }); stack.rowY = y; }
+    stack.y = y + rows;
+    // a field on a tab takes no slot in the form-order column index
+    if (!inTab) (dynamicFields[code] as any).tableColOrderIndex = col++;
   });
-  // x and cols once every row is known: one grid per form (0.8), so the rows' column starts never stand as a staircase
-  const layout = gridLayout(formRows);
-  for (const [i, r] of formRows.entries()) {
-    let x = 0;
-    layout[i].forEach((cols, j) => { Object.assign((dynamicFields[r.codes[j]] as any).gridPosition, { x, cols }); x += cols; });
+  // x and cols once every row is known: one grid per stack (0.8), so the rows' column starts never stand as a staircase,
+  // and each cell at least the cols its kind's min px needs in this window, as many TAB_GROUPs deep as its tab
+  const depthOf = (key: string, n = 0): number => {
+    const p = key && n < 9 ? (dynamicFields[key.split("/")[0]] as any)?.tabCodePath : undefined;
+    return !key ? 0 : 1 + (p ? depthOf(`${p.tabGroupCode}/${p.tabCode}`, n + 1) : 0);
+  };
+  const win = Number(WINDOW.split(",")[0]) || 0;
+  for (const [key, stack] of stacks) {
+    for (const r of stack.rows) r.min = r.kinds.map((k) => win ? minColsOf(k, win, depthOf(key)) : 0);
+    const layout = gridLayout(stack.rows, key ? `tab ${key}` : "form");
+    for (const [i, r] of stack.rows.entries()) {
+      let x = 0;
+      layout[i].forEach((cols, j) => { Object.assign((dynamicFields[r.codes[j]] as any).gridPosition, { x, cols }); x += cols; });
+    }
   }
   // 0.8a: a TAB_GROUP is as tall as its tallest tab + 3 (+ 6 on an instanceViewType TAB page, + 2 when it sits on
   // a tab of another group) — less scrolls inside the group, more leaves a band. Nested groups first: resizing one moves what is below it
@@ -1254,9 +1278,8 @@ lines.push({
   // `--window W[,H]` = the record WINDOW (W of 16 screen columns, H rows of 30 px — MYBPM-IMPORTS.md 0.8a step 7);
   // H defaults to form rows + 5, the height at which the dialog does not scroll. Without the flag a BO or a
   // process opening as a dialog gets W 10, a dictionary W 8 (0.5b); a composite or a page-tab record gets none.
-  ...(flag("window", "") || (["BO", "BO_PROCESS", "BO_DICTIONARY"].includes(CATEGORY) && !args.has("--tab-view"))
-    ? (([w, h]) => ({ gridLayoutPosition: { x: Math.ceil((16 - w) / 2), y: 0, w, h: h || formRows() + 5, id: "0" } }))(
-      (flag("window", "") || (CATEGORY === "BO_DICTIONARY" ? "8" : "10")).split(",").map(Number))
+  ...(WINDOW
+    ? (([w, h]) => ({ gridLayoutPosition: { x: Math.ceil((16 - w) / 2), y: 0, w, h: h || formRows() + 5, id: "0" } }))(WINDOW.split(",").map(Number))
     : {}),
   bos: sources,
   // `--tabs` = the card's rail tabs; `--history` adds «История» — without it no isHistoryTracking field is ever logged

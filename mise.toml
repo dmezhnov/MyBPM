@@ -223,6 +223,54 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
     const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /staircase|keeps its own width/.test(l));
     if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: staircase / own-width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
   }
+// width by the table (IMPORTS 0.8, issue #14): a narrow INPUT_NUMBER takes ≤ 5 columns and may leave its row short (5 + 5
+// beside a DATE, alone at cols 5), but not beside a stretching field; a kind with a min px gets cols ≥ ⌈(min px + 1) / colPx⌉
+// for its window — on a tab the column is narrower. Positions are set by hand: the good form gives no line, the bad one
+// exactly six (a cell in the columns a short row left empty floats up), in both lints
+await $`rm -rf dist/lint-narrow && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_narrow --name Narrow --salt narrow --bo-order 1 --out dist/lint-narrow ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER", "Per:PERIOD", "Data:DATE", "Kol2:INPUT_NUMBER", "Data2:DATE", "Tel:INPUT_PHONE", "T:TAB_GROUP#Shag|Vtoroy", "Tel2:INPUT_PHONE!tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag"].flatMap((f) => ["--field", f])}`.quiet();
+const narrowLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-narrow/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+const narrowAt = async (name: string, at: Record<string, [number, number, number]>) => { // code → [x, y, cols]
+  const lines = narrowLines.map((l) => {
+    const o = JSON.parse(l);
+    for (const f of Object.values<any>(o.dynamicFields ?? {})) {
+      if (!at[f.code]) { console.error(`lint-narrow ${name}: no position for ${f.code}`); process.exit(1); }
+      const [x, y, cols] = at[f.code]; Object.assign(f.gridPosition, { x, y, cols });
+    }
+    return JSON.stringify(o);
+  });
+  await Bun.write(`dist/lint-narrow/${name}.jsonl`, lines.join("\n") + "\n");
+  return `dist/lint-narrow/${name}.jsonl`;
+};
+const narrowGood = await narrowAt("good", { Opis: [0, 0, 10], Kol: [10, 0, 5], Per: [0, 3, 10], Data: [10, 3, 5], Kol2: [0, 6, 5], Data2: [5, 6, 5], Tel: [0, 9, 8], T: [0, 12, 15], Tel2: [0, 0, 7], Opis2: [7, 0, 8] });
+const narrowBad = await narrowAt("bad", { Kol: [0, 0, 10], Opis: [10, 0, 5], Per: [0, 3, 7], Data: [7, 3, 8], Kol2: [0, 6, 5], Tel: [5, 6, 5], Data2: [10, 9, 5], T: [0, 12, 15], Tel2: [0, 0, 6], Opis2: [6, 0, 9] });
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [file, want] of [[narrowGood, []], [narrowBad, [
+    "Lint_narrow.Kol: cols 10 — a INPUT_NUMBER is narrow, at most 5 columns; the wider cell goes to its neighbour (0.8)",
+    "Lint_narrow.Per: cols 7 is 302 px in a window w 10 — a PERIOD box needs 325 px, cols ≥ 8 (0.8)",
+    "Lint_narrow.Tel: cols 5 is 216 px in a window w 10 — a INPUT_PHONE box needs 245 px, cols ≥ 6 (0.8)",
+    "Lint_narrow.Tel2: cols 6 is 243 px in a window w 10 on a tab — a INPUT_PHONE box needs 245 px, cols ≥ 7 (0.8)",
+    "Lint_narrow.Kol2: row y 6 spans 10 of 15 columns (0.8)",
+    "Lint_narrow.Data2: x 10 in the free columns 10–14 above — floats up (0.8)"]]] as const) {
+    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /is narrow|box needs|spans \d+ of 15|floats up/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: narrow / min-px lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
+// the generator lays out by the same rules in a w 10 window: the number gets 5 beside text, PERIOD 10 beside a number, a phone
+// 10 beside an e-mail (6 is off the grid), two numbers on a tab 5 + 5 cut short, a phone + text on a tab 8 + 7 (7 = its min
+// there) — and both lints find no width line in it; a pair under a lone number would float up, so the generator refuses it
+await $`rm -rf dist/gen-narrow && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_narrow --name GenNarrow --salt gennarrow --bo-order 1 --out dist/gen-narrow ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER!row", "Per:PERIOD", "Kol2:INPUT_NUMBER!row", "Tel:INPUT_PHONE", "Mail:INPUT_EMAIL!row", "T:TAB_GROUP#Shag|Vtoroy", "Tel2:INPUT_PHONE!tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag,row", "Kol3:INPUT_NUMBER!tab=T/Vtoroy", "Kol4:INPUT_NUMBER!tab=T/Vtoroy,row"].flatMap((f) => ["--field", f])}`.quiet();
+{
+  const zipFile = [...new Bun.Glob("dist/gen-narrow/*.zip").scanSync()][0];
+  const bo = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((o) => o.dynamicFields);
+  const got = Object.values<any>(bo.dynamicFields).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}`).join(", ");
+  const want = "Opis 0/0/10, Kol 10/0/5, Per 0/3/10, Kol2 10/3/5, Tel 0/6/10, Mail 10/6/5, T 0/9/15, Tel2 0/0/8, Opis2 8/0/7, Kol3 0/0/5, Kol4 5/0/5";
+  if (got !== want || bo.gridLayoutPosition?.w !== 10) { console.error(`make-probe-archive in w ${bo.gridLayoutPosition?.w}: ${got}\nwant w 10: ${want}`); process.exit(1); }
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
+    const r = await $`${cmd} ${zipFile}`.nothrow().quiet(), bad = r.stdout.toString().split("\n").filter((l) => /is narrow|box needs|spans \d+ of 15|floats up|staircase|keeps its own width|alone at full width/.test(l));
+    if (bad.length || !/Gen_narrow/.test(r.stdout.toString())) { console.error(`${cmd[1]} on the generated ${zipFile}: ${bad.join("\n") || r.stdout.toString() + r.stderr}`); process.exit(1); }
+  }
+  const under = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_under --name GenUnder --salt genunder --bo-order 1 --out dist/gen-narrow/under --field Kol:INPUT_NUMBER --field Opis:INPUT_TEXT --field Mail:INPUT_EMAIL!row`.nothrow().quiet();
+  if (!under.exitCode || !/no grid of 15 columns suits the form rows \[\["Kol"\],\["Opis","Mail"\]\]/.test(under.stderr.toString())) { console.error(`make-probe-archive built a pair under a lone number (exit ${under.exitCode}):\n${under.stderr}`); process.exit(1); }
+}
 // the table «Cell of each type» (IMPORTS 0.8) is the one source of rows, place and width: UI-API carries its byte copy, the
 // generator builds by it and both lints check by it — a lone LINK x 0 cols 8 rows 3 is clean, rows 6 or full width is not,
 // a CHECKLIST / RADIO takes its rows by its item count (issue #10)
@@ -655,6 +703,21 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", rows: 5 }, { fieldId: "@bo_fields_save.added.2.fieldId", rows: 3 }] },
     (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_rights\.check3: rows 5, a CHECKLIST takes 6 for 3 in defaultValue \(0\.8\)/.test(n))
       && r.notes.some((n: string) => /^layout lint: mcp_probe_rights\.radio3: rows 3, a RADIO_BUTTON_GROUP takes 4 for 3 in fieldOptionsStruct\.options \(0\.8\)/.test(n))],
+  // widths by the 0.8 table in a w 10 window: a number asked at cols 10 gets 5, a lone PERIOD at 7 gets 8, a phone on a tab at 6 gets 7
+  // (a tab is narrower) — each change in the notes, and the export's layout lint has no width line about them
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe widths", code: "mcp_probe_widths", window: { w: 10 }, fields: [
+    { label: "Кол", type: "INPUT_NUMBER", code: "qty", cols: 10 }, { label: "Опис", type: "INPUT_TEXT", code: "descr", cols: 10 },
+    { label: "Пер", type: "PERIOD", code: "period", cols: 7 },
+    { label: "Тел", type: "INPUT_PHONE", code: "phone", cols: 6, tab: "Детали" }, { label: "Опис2", type: "INPUT_TEXT", code: "descr2", cols: 8, tab: "Детали" }] },
+    (r) => { const g = Object.fromEntries(r.fields.map((f: any) => [f.code, f.grid])), n = r.notes.join("\n");
+      return g.qty === "0/0/5/3" && g.descr === "5/0/10/3" && g.period === "0/3/8/3" && g.phone === "0/0/7/3" && g.descr2 === "7/0/8/3"
+        && /form: «Кол» cols 10 → 5 — a INPUT_NUMBER is narrow/.test(n) && /form: «Пер» cols 7 → 8 — a PERIOD box needs 325 px in a window w 10 \(/.test(n)
+        && /tab «Детали»: «Тел» cols 6 → 7 — a INPUT_PHONE box needs 245 px in a window w 10 on a tab/.test(n)
+        && !/NOT RUN|no gridLayoutPosition|is narrow, at most|box needs \d+ px, cols|spans \d+ of 15|floats up/.test(n.split("\n").filter((l) => l.startsWith("layout lint")).join("\n")); }],
+  // an edit is taken as given, and the export's lint sees the window and the tab: the phone back at cols 6 is a width line
+  ["bo_fields_save", { code: "mcp_probe_widths", edit: [{ fieldId: "@bo_create.fields.4.fieldId", cols: 6 }] },
+    (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_widths\.phone: cols 6 is 243 px in a window w 10 on a tab — a INPUT_PHONE box needs 245 px, cols ≥ 7 \(0\.8\)/.test(n))],
+  ["bo_delete", { code: "mcp_probe_widths", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],

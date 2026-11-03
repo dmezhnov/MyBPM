@@ -296,14 +296,20 @@ else for (const m of menu) {
 }
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
-const CELL = {}; // the table «Cell of each type» of 0.8: kind → rows, place in a row, width
+const CELL = {}; // the table «Cell of each type» of 0.8: kind → rows, place in a row, width, min px
 for (const l of (String(doc ?? "").split("\n### 0.8 ")[1]?.split("\n### ")[0] ?? "").split("\n")) {
   const c = l.split("|").map((s) => s.trim()), r = /^(≥ )?(\d+)$/.exec(c[3] ?? ""), m = /^(\d+) \+ (\d+)·n, n = `([^`]+)`/.exec(c[2] ?? "");
-  if (c.length === 7 && c[1].startsWith("`")) for (const k of c[1].match(/`[^`]+`/g)) CELL[k.slice(1, -1)] = { kind: k.slice(1, -1),
-    rows: r ? +r[2] : 0, least: !!r?.[1], items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null, place: c[4], width: c[5] };
+  if (c.length === 8 && c[1].startsWith("`")) for (const k of c[1].match(/`[^`]+`/g)) CELL[k.slice(1, -1)] = { kind: k.slice(1, -1),
+    rows: r ? +r[2] : 0, least: !!r?.[1], items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null, place: c[4], width: c[5],
+    minPx: /^\d+$/.test(c[6]) ? +c[6] : 0 };
 }
 if (!Object.keys(CELL).length) err(`rows and widths not checked — call lintArchive(<the archive text>, <the text of this document>) (0.8)`);
 const cellOf = (f) => CELL[`${f.type} ${f.viewType ?? f.params?.viewType ?? ""}`.trim()] ?? CELL[f.type];
+const depth = (bo, tab) => { // how many TAB_GROUPs a cell sits inside: its tab, that group's tab … (0.8 «Cell width in px»)
+  let d = 0;
+  for (let p = tab; p && d < 9; d++) p = vals(bo.dynamicFields).find((x) => x.code === p.tabGroupCode && x.type === "TAB_GROUP")?.tabCodePath;
+  return d;
+};
 const count = (v) => { try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; } return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0; };
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
@@ -320,8 +326,12 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     const need = !k ? 0 : k.items ? Math.ceil((k.items.base + k.items.per * n + 15) / 30) : k.rows;
     if (need && (k.least ? g.rows < need : g.rows !== need))
       err(`${t}: rows ${g.rows}, a ${k.kind} takes ${k.least ? "at least " : ""}${need}${k.items ? ` for ${n} in ${k.items.key}` : ""} (0.8)`);
+    if (k?.width === "narrow" && g.cols > 5) err(`${t}: cols ${g.cols} — a ${k.kind} is narrow, at most 5 columns; the wider cell goes to its neighbour (0.8)`);
+    const win = bo.gridLayoutPosition?.w, lvl = depth(bo, tab), cp = (72 * win - 69 - 39 * lvl) / 15; // one column on a 1280 px screen (0.8)
+    if (k?.minPx && bo.instanceViewType !== "TAB" && typeof win === "number" && typeof g.cols === "number" && cp > 0 && g.cols * cp - 1 < k.minPx)
+      err(`${t}: cols ${g.cols} is ${Math.floor(g.cols * cp - 1)} px in a window w ${win}${lvl ? " on a tab" : ""} — a ${k.kind} box needs ${k.minPx} px, cols ≥ ${Math.ceil((k.minPx + 1) / cp)} (0.8)`);
     put(tab?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
-      fixed: k?.width === "own", stretch: k?.width === "stretches", ty: k?.kind ?? f.type });
+      fixed: k?.width === "own", stretch: k?.width === "stretches", narrow: k?.width === "narrow", ty: k?.kind ?? f.type });
   }
   for (const { c: w, tab } of cellsOf(bo).filter((x) => x.box))
     if (w.gridPosition) put(tab?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
@@ -338,7 +348,8 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
         x = Math.max(x, c.g.x + c.g.cols);
       }
       const lone8 = row.length === 1 && row[0].short && row[0].g.x === 0 && row[0].g.cols === 8;
-      if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
+      const cut = row.some((c) => c.narrow) && !row.some((c) => c.stretch); // a row cut short by a narrow field (0.8)
+      if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8 && !cut) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
       if (row.filter((c) => !c.box).length > 1) for (const c of row.filter((c) => c.full)) err(`${c.t}: shares row y ${y} — it stands alone, full width (0.8)`);
       if (new Set(row.map((c) => c.g.rows)).size > 1) err(`${r}: row y ${y} mixes heights (0.8)`);
       for (const c of row.filter((c) => c.fixed)) { // a box of its own width beside one that stretches: the wider cell to the stretching one
