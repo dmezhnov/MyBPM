@@ -1203,8 +1203,15 @@ A dictionary's two system fields «Код» and «Значение» are the exc
 in its row at `x 0, cols 15` (0.5b), so the two boxes have one width — never «Код» at cols 8 under a cols-15 «Значение».
 
 **Which fields share a row — decide it by meaning, unasked.** Short one-line fields that belong together
-stand 2 per row (`cols` 8 + 7) or 3 per row (5 + 5 + 5): телефон + email, марка + модель + год, дата +
-сумма + оплачено, a `SINGLE` reference + a dropdown. A form whose every field is full width is a defect —
+stand 3 per row (`cols` 5 + 5 + 5) or 2 per row (5 + 10 / 10 + 5, the wide cell to the field with the longer
+value): марка + модель + год, дата + сумма + оплачено, телефон + email, a `SINGLE` reference + a dropdown.
+`INPUT_TEXT` / `_TEXT_LANG` / `_NUMBER` / `_PHONE` / `_EMAIL` stretch over their cell; `DATE` / `FULL_DATE` (≈ 165 px),
+`TIME` (≈ 125 px), `CHECKBOX`, `DROPDOWN_SINGLE` and a `BO` `SINGLE` reference (a «Выберите» link) keep their own
+width whatever `cols` says `[C]` — in a row with an input the wider cell goes to the input.
+**One grid per form (per tab):** of two rows of ≥ 2 cells one right under the other, the column starts of
+one are a part of the other's — 5 + 10 under 5 + 5 + 5, 4 + 4 + 7 under 4 + 4 + 4 + 3, never 8 + 7 under
+5 + 5 + 5: its labels start at 0, 8 against 0, 5, 10 and the boxes stand as a staircase with holes. 8 + 7 only
+when every row of ≥ 2 cells next to it is 8 + 7 too. A form whose every field is full width is a defect —
 each box stretches over 1000+ px for a 20-character value. **Full width, alone in the row:** `TEXTAREA` /
 `TEXTAREA_LANG`, a `BO` `TABLE`, a `STATIC_TEXT` heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
 `GEO_POINT`, `PROGRESS_BAR`.
@@ -1212,7 +1219,8 @@ each box stretches over 1000+ px for a 20-character value. **Full width, alone i
 **Building the file with a script? Give it the layout as a list of ROWS, never as a list of fields.** Per
 form (and per tab) write the rows you decided by meaning — e.g. `[["phone", "email"], ["make", "model",
 "year"], ["notes"]]` — and let the script derive `x`, `cols` and `y` from them: one code → `cols 15` (a short
-field alone → `x 0, cols 8`), two → 8 + 7, three → 5 + 5 + 5, the next row's `y` = this `y` + its `rows`. A
+field alone → `x 0, cols 8`), three → 5 + 5 + 5, two → 5 + 10 (8 + 7 only in a form or tab whose every row of
+≥ 2 cells is a pair and no pair stands right under a lone field), the next row's `y` = this `y` + its `rows`. A
 loop over the fields that gives each one `x 0, cols 15` and `y += rows` builds exactly the «every field full
 width» defect, however the rows were planned.
 
@@ -1222,9 +1230,9 @@ width» defect, however the rows were planned.
   find their partners by meaning (контакты, суммы, даты, техданные). The hole is safe only while no
   cell of the NEXT row fits wholly into columns 8–14: such a cell floats up beside the lone field, and the rest
   of the form follows it `[C]` (§4 «The grid compacts VERTICALLY» — a cell stops at the first cell above in its
-  own columns). So right below a lone field put a full-width row, or a pair split **7 + 8** (its right cell
-  starts at `x: 7` and touches the lone field's columns), or nothing (the last row of the form or the tab);
-  never an 8 + 7 pair or a 5 + 5 + 5 row there.
+  own columns). So right below a lone field put a full-width row, or a pair split **5 + 10** (its right cell
+  starts at `x: 5` and touches the lone field's columns `[C]`; 7 + 8 holds too `[C]`, but its starts 0, 7 match no
+  other row), or nothing (the last row of the form or the tab); never an 8 + 7 pair or a 5 + 5 + 5 row there.
 - **Never mix heights inside a row**: a 3-row cell beside a 6-row one leaves a hole under the short cell,
   and the next row floats up into it (§4 «The grid compacts VERTICALLY»). Pair only cells of equal `rows`.
 - A `CHECKBOX` in a row draws its toggle at the TOP of its cell, a little higher than the neighbouring
@@ -1736,7 +1744,7 @@ else for (const m of menu) {
 }
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
-const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
+const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/, FIXED = /^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
 const R6 = /^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$/, R8 = /^(QUESTIONNAIRE|GEO_POINT)$/, FULL = /^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$/;
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
@@ -1751,12 +1759,13 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
     const want = short ? 3 : R8.test(f.type) ? 8 : R6.test(f.type) ? 6 : 0, min = text || (isRef(f) && !short) ? 6 : f.type === "STATIC_TEXT" ? 3 : 0;
     if (want ? g.rows !== want : g.rows < min) err(`${t}: rows ${g.rows}, a ${f.type} takes ${want || "at least " + min} (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table });
+    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table,
+      fixed: f.type === "BO" ? short : FIXED.test(f.type), stretch: /^INPUT_/.test(f.type), ty: f.type === "BO" ? "BO SINGLE" : f.type });
   }
   for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
   for (const [tab, cells] of forms) {
-    let next = 0, edge = 15, lone = 0;
+    let next = 0, edge = 15, lone = 0, above;
     for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => (+a || 0) - (+b || 0))) { // a y that is no number sorts as 0: one order under every engine
       const row = cells.filter((c) => c.g.y === y).sort((a, b) => (+a.g.x || 0) - (+b.g.x || 0)), r = row[0].t;
       if (y !== next) err(`${r}: y ${y}, expected ${next} (0.8)`);
@@ -1771,10 +1780,18 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
       if (row.filter((c) => !c.box).length > 1) for (const c of row.filter((c) => c.full)) err(`${c.t}: shares row y ${y} — it stands alone, full width (0.8)`);
       if (new Set(row.map((c) => c.g.rows)).size > 1) err(`${r}: row y ${y} mixes heights (0.8)`);
+      for (const c of row.filter((c) => c.fixed)) { // a box of its own width beside one that stretches: the wider cell to the stretching one
+        const w = row.find((d) => d.stretch && d.g.cols < c.g.cols);
+        if (w) err(`${c.t}: a ${c.ty} box keeps its own width — the wider cell of row y ${y} goes to ${w.t} (0.8)`);
+      }
       if (row.length === 1 && row[0].short) {
         lone++;
         if (row[0].g.cols === 15 && bo.category !== "BO_DICTIONARY") err(`${r}: a short field alone at full width — pair it or x 0, cols 8 (0.8)`);
       }
+      const st = row.map((c) => c.g.x); // two rows of ≥ 2 cells one under the other: one row's column starts are a part of the other's
+      if (st.length > 1 && above?.length > 1 && !st.every((v) => above.includes(v)) && !above.every((v) => st.includes(v)))
+        err(`${r}: row y ${y} columns start at ${st.join(",")} — the row above starts at ${above.join(",")}: staircase, one grid per form (0.8)`);
+      above = st;
       next = y + Math.max(...row.map((c) => c.g.rows));
       edge = row.some((c) => c.box) ? 15 : x;
     }

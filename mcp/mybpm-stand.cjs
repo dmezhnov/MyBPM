@@ -665,6 +665,24 @@ function lint(file, source) {
     throw new Error(`lint-archive.js failed: ${String(e.stderr || e.message).slice(0, 500)}`);
   }
 }
+async function layoutLint(s, boId, code) {
+  let file = "";
+  try {
+    const { data, name } = await exportBos(s, [boId]);
+    file = saveFile(import_node_path.join(CACHE, "layout-lint"), "exports", name, data);
+    const { out } = lint(file);
+    if (/NOT RUN/.test(out))
+      return [`layout lint: ${out}`];
+    const mine = (l) => [".", ":", " "].some((c) => l.startsWith(code + c));
+    return out.split(`
+`).filter((l) => mine(l) && (/\(0\.8a?( step \d+)?\)$/.test(l) || /overlaps the cell before it/.test(l))).map((l) => `layout lint: ${l}`);
+  } catch (e) {
+    return [`layout lint NOT RUN (${e.message}) — structure_export the BO and archive_lint it`];
+  } finally {
+    if (file)
+      import_node_fs.rmSync(file, { force: true });
+  }
+}
 function writeArchive(file, objects) {
   const d = "data-" + new Date().toISOString().replace(/[:.]/g, "-").replace("Z", "");
   const enc = new TextEncoder;
@@ -865,7 +883,7 @@ var FIELD_SPEC = { type: "object", required: ["type"], properties: {
   unique: { type: "boolean" },
   readonly: { type: "boolean", description: "Never together with required." },
   column: { type: "boolean", description: "A registry column. Default: the first field, plus required / unique ones; 6 at most (R1 «Layout»)." },
-  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row: 8 + 7 or 5 + 5 + 5 — consecutive fields that fit are packed into one row. Default 15." },
+  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15." },
   rows: { type: "number", description: "Height; default by type (R1 «Layout»: 3 one-line, 6 text/table/file, 8 questionnaire/map)." },
   x: { type: "number" },
   y: { type: "number", description: "x / y on every field = you own the layout; otherwise it is packed for you." },
@@ -924,9 +942,6 @@ function pack(specs, y0, notes, where) {
   const close = () => {
     if (!row.length)
       return;
-    const used = row.reduce((n, c) => n + c.cols, 0);
-    if (used < 15 && !(row.length === 1 && row[0].cols === 8))
-      notes.push(`${where}: the row at y ${row[0].y} fills ${used} of 15 columns`);
     y += row[0].rows;
     row = [];
   };
@@ -940,12 +955,6 @@ function pack(specs, y0, notes, where) {
     cells.push(c);
   }
   close();
-  const short = specs.filter((f, i) => visible(f) && !aloneOf(f) && cells[i].cols === 15 && heightOf(f) === 3).length;
-  if (short >= 4)
-    notes.push(`${where}: ${short} short one-line fields stand alone at full width — pair them (cols 8 + 7, 5 + 5 + 5)`);
-  const lone = specs.filter((_, i) => cells[i].cols === 8 && !cells.some((c, j) => j !== i && c.y === cells[i].y)).length;
-  if (lone > 2)
-    notes.push(`${where}: ${lone} fields alone at cols 8 — at most 2 per form / tab`);
   if (specs.filter(visible).length > 12)
     notes.push(`${where}: ${specs.filter(visible).length} visible fields — over 12 asks for tabs (pass \`tab\`)`);
   return { cells, bottom: y };
@@ -2881,7 +2890,7 @@ var tools = [
   {
     name: "bo_create",
     write: true,
-    description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back. Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
+    description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
     props: {
       group: { type: "string", description: "The BO group, by id or exact name (bo_groups); it must exist." },
       kind: { type: "string", enum: ["BO", "BO_DICTIONARY", "BO_PANEL", "BO_PROCESS"], description: "Default BO." },
@@ -2915,6 +2924,8 @@ var tools = [
           done.notes.push(bo.code === a.code ? `the code was overwritten after the first set (trap 24) — set again: ${a.code}` : `the code is «${bo.code}», not «${a.code}» even after a second set — bo_code_set it`);
         }
         done.notes.push(...await closeSystemTabs(s, id));
+        if (a.fields?.length)
+          done.notes.push(...await layoutLint(s, id, bo.code));
         if (!a.code && /_[A-Za-z0-9]{16}$/.test(bo.code ?? ""))
           done.notes.push(`the code «${bo.code}» carries the rename-race uniquifier (trap 24) — bo_code_set it`);
         return clean({
@@ -2937,7 +2948,7 @@ var tools = [
   {
     name: "bo_fields_save",
     write: true,
-    description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second. Ask the user first.",
+    description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» in notes). Ask the user first.",
     props: {
       boId: { type: "string" },
       code: { type: "string", description: "The BO code instead of boId" },
@@ -3052,6 +3063,8 @@ var tools = [
         if (got.join("\x01") !== want.join("\x01"))
           notes.push(`steps of ${e.fieldId} read back as ${got.join(", ") || "none"}, not ${want.join(", ")}`);
       }
+      if (a.add?.length || a.edit?.some((e) => ["x", "y", "cols", "rows"].some((k) => e[k] !== undefined) || e.set?.gridPosition || e.set?.tabId) || a.delete?.length)
+        notes.push(...await layoutLint(s, boId, bo.code));
       return clean({ boId, code: bo.code, added: added?.added, window: added?.window, notes: [...notes, ...added?.notes ?? []], fields: fieldRows(bo) });
     }
   },

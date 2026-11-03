@@ -59,6 +59,9 @@ const variants: [string, string[]][] = [
   ["composite", ["--code", "parity_co", "--name", "Состав", "--category", "BO_COMPOSITE", "--source", "parity_bo:Заявки",
     "--source", "Parity_dict:Справочник", "--co-field", "Наименование:INPUT_TEXT=parity_bo.Naimenovanie+Parity_dict.Naimenovanie"]],
   ["process", ["--code", "parity_bp", "--name", "Процесс", "--category", "BO_PROCESS", "--process-spec", `${ROOT}/tools/process-probe.spec.json`]],
+  ["grid", ["--code", "parity_grid", "--name", "Сетка", "--field", "Исполнитель:INPUT_TEXT", "--field", "Подразделение:INPUT_TEXT!row",
+    "--field", "Постановщик:INPUT_TEXT", "--field", "Срок:DATE!row", "--field", "Приоритет:INPUT_TEXT!row"]],
+  ["gridw", ["--code", "parity_gridw", "--name", "Ширина", "--field", "Срок:DATE", "--field", "Описание:INPUT_TEXT!row"]],
 ];
 await $`rm -rf ${OUT} && mkdir -p ${OUT}`.quiet();
 for (const [name, a] of variants) {
@@ -66,6 +69,20 @@ for (const [name, a] of variants) {
   if (r.exitCode) { console.error(`make-probe-archive (${name}) failed:\n${r.stderr}`); process.exit(2); }
   for (const f of new Bun.Glob("*.zip").scanSync(`${OUT}/base-${name}`)) fromZip(name, await Bun.file(`${OUT}/base-${name}/${f}`).bytes());
 }
+// the grid base with its pair turned 8 + 7 over the row of three: the staircase line runs in both lints (0.8)
+const grid = bases.find((b) => b.name === "grid")!;
+bases.push({ name: "staircase", meta: grid.meta, jsonl: grid.jsonl.trimEnd().split("\n").map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Ispolnitel) { f.Ispolnitel.gridPosition.cols = 8; Object.assign(f.Podrazdelenie.gridPosition, { x: 8, cols: 7 }); }
+  return JSON.stringify(o);
+}).join("\n") + "\n" });
+// the DATE + input base with the wider cell turned to the DATE: the own-width line runs in both lints (0.8)
+const gridw = bases.find((b) => b.name === "gridw")!;
+bases.push({ name: "ownwidth", meta: gridw.meta, jsonl: gridw.jsonl.trimEnd().split("\n").map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Srok) { f.Srok.gridPosition.cols = 10; Object.assign(f.Opisanie.gridPosition, { x: 10, cols: 5 }); }
+  return JSON.stringify(o);
+}).join("\n") + "\n" });
 // all generated lines in one archive: several BOs, groups and menu items side by side
 bases.push({ name: "merged", jsonl: [...new Set(bases.flatMap((b) => b.jsonl.trimEnd().split("\n")))].join("\n") + "\n" });
 if (corpus) for (const f of [...new Bun.Glob("**/*.mybpm.zip").scanSync(corpus)].sort()) {

@@ -293,7 +293,7 @@ else for (const m of menu) {
 }
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
-const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
+const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/, FIXED = /^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
 const R6 = /^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$/, R8 = /^(QUESTIONNAIRE|GEO_POINT)$/, FULL = /^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$/;
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
@@ -308,12 +308,13 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
     const want = short ? 3 : R8.test(f.type) ? 8 : R6.test(f.type) ? 6 : 0, min = text || (isRef(f) && !short) ? 6 : f.type === "STATIC_TEXT" ? 3 : 0;
     if (want ? g.rows !== want : g.rows < min) err(`${t}: rows ${g.rows}, a ${f.type} takes ${want || "at least " + min} (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table });
+    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table,
+      fixed: f.type === "BO" ? short : FIXED.test(f.type), stretch: /^INPUT_/.test(f.type), ty: f.type === "BO" ? "BO SINGLE" : f.type });
   }
   for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
   for (const [tab, cells] of forms) {
-    let next = 0, edge = 15, lone = 0;
+    let next = 0, edge = 15, lone = 0, above;
     for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => (+a || 0) - (+b || 0))) { // a y that is no number sorts as 0: one order under every engine
       const row = cells.filter((c) => c.g.y === y).sort((a, b) => (+a.g.x || 0) - (+b.g.x || 0)), r = row[0].t;
       if (y !== next) err(`${r}: y ${y}, expected ${next} (0.8)`);
@@ -328,10 +329,18 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
       if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
       if (row.filter((c) => !c.box).length > 1) for (const c of row.filter((c) => c.full)) err(`${c.t}: shares row y ${y} — it stands alone, full width (0.8)`);
       if (new Set(row.map((c) => c.g.rows)).size > 1) err(`${r}: row y ${y} mixes heights (0.8)`);
+      for (const c of row.filter((c) => c.fixed)) { // a box of its own width beside one that stretches: the wider cell to the stretching one
+        const w = row.find((d) => d.stretch && d.g.cols < c.g.cols);
+        if (w) err(`${c.t}: a ${c.ty} box keeps its own width — the wider cell of row y ${y} goes to ${w.t} (0.8)`);
+      }
       if (row.length === 1 && row[0].short) {
         lone++;
         if (row[0].g.cols === 15 && bo.category !== "BO_DICTIONARY") err(`${r}: a short field alone at full width — pair it or x 0, cols 8 (0.8)`);
       }
+      const st = row.map((c) => c.g.x); // two rows of ≥ 2 cells one under the other: one row's column starts are a part of the other's
+      if (st.length > 1 && above?.length > 1 && !st.every((v) => above.includes(v)) && !above.every((v) => st.includes(v)))
+        err(`${r}: row y ${y} columns start at ${st.join(",")} — the row above starts at ${above.join(",")}: staircase, one grid per form (0.8)`);
+      above = st;
       next = y + Math.max(...row.map((c) => c.g.rows));
       edge = row.some((c) => c.box) ? 15 : x;
     }
