@@ -1185,7 +1185,7 @@ let widgetY = nativeY;
 for (const w of widgets) {
   const map = WIDGET_MAP[w.type];
   if (!map) throw new Error(`unknown --widget type ${w.type} (known: ${Object.keys(WIDGET_MAP).join(", ")})`);
-  const rows = w.type === "SIGNATURE" || w.type === "CAPTCHA" || w.type === "CURRENT_USER" ? 6 : w.type === "IFRAME" ? 8 : 4;
+  const rows = rowsOf(cellOf(CELLS, w.type)) || 3; // the table «Cell of each type» of 0.8, like a field
   widgetMaps[map][w.code] = {
     label: { rus: w.label },
     gridPosition: { x: 0, y: (widgetY += rows) - rows, cols: 15, rows },

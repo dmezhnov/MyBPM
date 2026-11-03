@@ -21,6 +21,9 @@ const ID = /^[A-Za-z0-9@~]{16}$/, CODE = /^[A-Za-z0-9_]{1,30}$/, ids = new Map()
 const id = (t, v) => !ID.test(String(v)) ? err(`${t}: id "${v}" is not 16 of A-Za-z0-9@~ (0.7)`)
   : ids.has(v) ? err(`${t}: id ${v} repeats ${ids.get(v)} (0.7)`) : ids.set(v, t);
 const W = ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"];
+// every cell of a form with the tab it sits on: a field names it in tabCodePath, a widget or system field in tabCode (0.13)
+const cellsOf = (bo) => [...vals(bo.dynamicFields).map((c) => ({ c, tab: c.tabCodePath })),
+  ...[...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)].map((c) => ({ c, tab: c.tabCode ?? c.tabCodePath, box: true }))];
 const defs = of("ScriptDefStructDto"), menu = of("MenuItemStructDto"), gm = of("CompanyGlobalMethodsStructDto"), PV = of("BoProcessVersionsStructDto");
 const NAME = [], name = (t, c, re, want) => re.test(String(c)) || NAME.push(`${t} "${c}" (${want})`); // 0.6a, one REMINDER at the end
 const OBJ = [/^[A-Z][a-z0-9]*(_[a-z0-9]+)*$/, "Capitalised snake_case"], LOW = [/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, "lower snake_case"];
@@ -158,13 +161,13 @@ for (const bo of bos) {
     if (ty === "DROPDOWN_SINGLE" && !bo.kanbanCardTemplates?.[k]?.kanbanFields) err(`${t}: no kanbanCardTemplates.${k}.kanbanFields (0.9 rule 16)`);
     for (const [c, tb] of all(f.fieldTabs)) id(`${t}.${c}`, tb.newId);
     if (ty === "TAB_GROUP" && f.gridPosition) {
-      const tall = Math.max(0, ...fs.filter(([, x]) => x.tabCodePath?.tabGroupCode === k && x.gridPosition).map(([, x]) => x.gridPosition.y + x.gridPosition.rows));
+      const tall = Math.max(0, ...cellsOf(bo).filter((x) => x.tab?.tabGroupCode === k && x.c.gridPosition).map(({ c }) => c.gridPosition.y + c.gridPosition.rows));
       const need = tall + (f.tabCodePath?.tabCode ? 2 : bo.instanceViewType === "TAB" ? 6 : 3);
       if (tall && f.gridPosition.rows !== need) err(`${t}: rows ${f.gridPosition.rows}, tallest tab ${tall} + ${need - tall} = ${need} (0.8a step 5)`);
     }
     for (const c of Object.keys(f.fieldTabs ?? {}).filter((c) => c !== "tab_system")) {
-      const n = fs.filter(([, x]) => x.tabCodePath?.tabCode === c && x.type !== "STATIC_TEXT").length;
-      if (n < 2) err(`${t}.${c}: a tab with ${n} field(s) — at least 2, else a heading (0.8a step 3)`);
+      const n = cellsOf(bo).filter((x) => x.tab?.tabCode === c && x.c.type !== "STATIC_TEXT").length;
+      if (n < 2) err(`${t}.${c}: a tab with ${n} cell(s) — at least 2 fields or widgets, else a heading (0.8a step 3)`);
     }
     if (ty === "DROPDOWN_SINGLE" && f.tabCodePath?.tabCode && (k === "status" || low(f.label?.rus) === "статус")) err(`${t}: the status inside tab ${f.tabCodePath.tabCode} — the header row beside the title field, seen on every tab (0.8a step 3)`);
     if (ty === "FILE_UPLOAD" && /фото|снимк|снимок|photo/i.test(`${k} ${f.label?.rus}`) && f.params?.viewType !== "TILE") err(`${t}: a photo field without params.viewType TILE shows no pictures (0.19)`);
@@ -304,7 +307,7 @@ const cellOf = (f) => CELL[`${f.type} ${f.viewType ?? f.params?.viewType ?? ""}`
 const count = (v) => { try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; } return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0; };
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
-  for (const f of fs) {
+  for (const { c: f, tab } of cellsOf(bo).filter((x) => !x.box)) {
     const t = `${bo.code}.${f.code}`, g = f.gridPosition, text = /^TEXTAREA/.test(f.type);
     const k = cellOf(f), short = k?.place === "pairs", table = isRef(f) && f.viewType === "TABLE";
     if (f.archetype !== "DYNAMIC" || !f.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
@@ -312,16 +315,16 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
     if (g && f.type === "TAB_GROUP" && f.trackedFieldCode && g.rows !== 4) err(`${t}: rows ${g.rows}, a tracked-status wrapper takes 4 (§3)`);
     if (!g || f.trackedFieldCode) continue;
-    if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
+    if (f.code === "PROCESS_STATUS") { put(tab?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
     const n = k?.items ? count(k.items.key.split(".").reduce((o, p) => o?.[p], f)) : 0; // items: ⌈(painted + 15) / 30⌉ (0.8)
     const need = !k ? 0 : k.items ? Math.ceil((k.items.base + k.items.per * n + 15) / 30) : k.rows;
     if (need && (k.least ? g.rows < need : g.rows !== need))
       err(`${t}: rows ${g.rows}, a ${k.kind} takes ${k.least ? "at least " : ""}${need}${k.items ? ` for ${n} in ${k.items.key}` : ""} (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
+    put(tab?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
       fixed: k?.width === "own", stretch: k?.width === "stretches", ty: k?.kind ?? f.type });
   }
-  for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
-    if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
+  for (const { c: w, tab } of cellsOf(bo).filter((x) => x.box))
+    if (w.gridPosition) put(tab?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
   for (const [tab, cells] of forms) {
     let next = 0, edge = 15, lone = 0, above;
     for (const y of [...new Set(cells.map((c) => c.g.y))].sort((a, b) => (+a || 0) - (+b || 0))) { // a y that is no number sorts as 0: one order under every engine

@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: c3253e2e05d6
+# lintArchive sha256: 45b222849278
 import json
 import math
 import os
@@ -418,6 +418,11 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             ids[jk(v)] = t
 
     W = ["signatures", "buttons", "iframes", "captcha", "currentDates", "currentUser"]
+
+    def cellsOf(bo):  # every cell of a form with the tab it sits on: a field names it in tabCodePath, a widget or system field in tabCode (0.13)
+        return [*[{"c": c, "tab": g(c, "tabCodePath")} for c in vals(g(bo, "dynamicFields"))],
+                *[{"c": c, "tab": nn(g(c, "tabCode"), g(c, "tabCodePath")), "box": True} for c in [*[w for m in W for w in vals(g(bo, m))], *vals(g(bo, "nativeFields"))]]]
+
     defs, menu, gm, PV = of("ScriptDefStructDto"), of("MenuItemStructDto"), of("CompanyGlobalMethodsStructDto"), of("BoProcessVersionsStructDto")
     NAME = []
 
@@ -665,14 +670,14 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             for c, tb in ents(g(f, "fieldTabs")):
                 idf(f"{t}.{c}", g(tb, "newId"))
             if ty == "TAB_GROUP" and tr(g(f, "gridPosition")):
-                tall = jmax(0, *[jadd(g(x, "gridPosition", "y"), g(x, "gridPosition", "rows")) for _, x in fs if seq(g(x, "tabCodePath", "tabGroupCode"), k) and tr(g(x, "gridPosition"))])
+                tall = jmax(0, *[jadd(g(x["c"], "gridPosition", "y"), g(x["c"], "gridPosition", "rows")) for x in cellsOf(bo) if seq(g(x["tab"], "tabGroupCode"), k) and tr(g(x["c"], "gridPosition"))])
                 need = jadd(tall, 2 if tr(g(f, "tabCodePath", "tabCode")) else 6 if g(bo, "instanceViewType") == "TAB" else 3)
                 if tr(tall) and not seq(g(f, "gridPosition", "rows"), need):
                     err(f"{t}: rows {s(g(f, 'gridPosition', 'rows'))}, tallest tab {s(tall)} + {s(num(need) - num(tall))} = {s(need)} (0.8a step 5)")
             for c in [c for c in keys(nn(g(f, "fieldTabs"), {})) if c != "tab_system"]:
-                n = len([1 for _, x in fs if seq(g(x, "tabCodePath", "tabCode"), c) and g(x, "type") != "STATIC_TEXT"])
+                n = len([1 for x in cellsOf(bo) if seq(g(x["tab"], "tabCode"), c) and g(x["c"], "type") != "STATIC_TEXT"])
                 if n < 2:
-                    err(f"{t}.{c}: a tab with {n} field(s) — at least 2, else a heading (0.8a step 3)")
+                    err(f"{t}.{c}: a tab with {n} cell(s) — at least 2 fields or widgets, else a heading (0.8a step 3)")
             if ty == "DROPDOWN_SINGLE" and tr(g(f, "tabCodePath", "tabCode")) and (k == "status" or low(g(f, "label", "rus")) == "статус"):
                 err(f"{t}: the status inside tab {s(g(f, 'tabCodePath', 'tabCode'))} — the header row beside the title field, seen on every tab (0.8a step 3)")
             if ty == "FILE_UPLOAD" and T(R("фото|снимк|снимок|photo", True), f"{k} {s(g(f, 'label', 'rus'))}") and g(f, "params", "viewType") != "TILE":
@@ -928,7 +933,8 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         def put(tab, c):
             forms.setdefault(jk(nn(tab, "")), [nn(tab, ""), []])[1].append(c)
 
-        for f in fs:
+        for x in [x for x in cellsOf(bo) if "box" not in x]:
+            f, tab = x["c"], x["tab"]
             t, gp, ty = f"{bc}.{s(g(f, 'code'))}", g(f, "gridPosition"), g(f, "type")
             text = T(R("^TEXTAREA"), ty)
             k = cellOf(f)
@@ -945,17 +951,18 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             if not tr(gp) or tr(g(f, "trackedFieldCode")):
                 continue
             if g(f, "code") == "PROCESS_STATUS":  # its own box, but its rows stack (0.8)
-                put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "box": True})
+                put(g(tab, "tabCode"), {"t": t, "g": gp, "box": True})
                 continue
             n = count(g(f, *k["items"]["key"].split("."))) if k and k["items"] else 0  # items: ⌈(painted + 15) / 30⌉ (0.8)
             need = 0 if not k else -(-(k["items"]["base"] + k["items"]["per"] * n + 15) // 30) if k["items"] else k["rows"]
             if need and (lt(g(gp, "rows"), need) if k["least"] else not seq(g(gp, "rows"), need)):
                 err(f"{t}: rows {s(g(gp, 'rows'))}, a {k['kind']} takes {'at least ' if k['least'] else ''}{need}{' for ' + str(n) + ' in ' + k['items']['key'] if k['items'] else ''} (0.8)")
-            put(g(f, "tabCodePath", "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": bool(k) and k["place"] == "alone",
+            put(g(tab, "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": bool(k) and k["place"] == "alone",
                                                  "fixed": bool(k) and k["width"] == "own", "stretch": bool(k) and k["width"] == "stretches", "ty": k["kind"] if k else ty})
-        for w in [*[w for m in W for w in vals(g(bo, m))], *vals(g(bo, "nativeFields"))]:
+        for x in [x for x in cellsOf(bo) if "box" in x]:
+            w = x["c"]
             if tr(g(w, "gridPosition")):
-                put(g(nn(g(w, "tabCode"), g(w, "tabCodePath")), "tabCode"), {"t": f"{bc}.{s(nn(g(w, 'code'), g(w, 'nativeFieldId')))}", "g": g(w, "gridPosition"), "box": True})
+                put(g(x["tab"], "tabCode"), {"t": f"{bc}.{s(nn(g(w, 'code'), g(w, 'nativeFieldId')))}", "g": g(w, "gridPosition"), "box": True})
         for tab, cells in forms.values():
             nxt, edge, lone, above = 0, 15, 0, None
             for y in jsort(uniq([g(c["g"], "y") for c in cells])):  # a y that is no number sorts as 0
