@@ -1206,33 +1206,59 @@ string), then an array counts its elements, an object its keys, anything else �
 0; `tabs` = the tallest tab + 3, + 6 on `instanceViewType: "TAB"` (0.8a step 5). *in a row*:
 `pairs` = a short one-line field — shares a row with other `pairs` fields, alone only at `x 0, cols 8`
 (below); `alone` = alone in its row at full width; `free` = alone at any width or beside cells of the same
-`rows`. *width*: `stretches` = the box fills its cell; `own` = the box keeps its own width whatever `cols`
-says; `fills` = a frame that fills the cell both ways; `—` = not measured.
+`rows`. *width*: `stretches` = the box fills its cell; `narrow` = the box fills its cell, but a short value
+needs little room, so the cell is **at most 5 columns** (18 digits fit in 3); `own` = the box keeps its own
+width whatever `cols` says; `fills` = a frame that fills the cell both ways; `—` = not measured. *min px* = the
+narrowest cell that shows the whole box; a narrower cell cuts it off — a `PERIOD` loses its second date and its
+icon, an `INPUT_PHONE` at 3 columns shows only the flag and the country, no number.
 
-| kind | painted, px | rows | in a row | width |
-|---|---|---|---|---|
-| `INPUT_TEXT` / `INPUT_TEXT_LANG` / `INPUT_NUMBER` / `INPUT_PHONE` / `INPUT_EMAIL` / `LINK` | 58 | 3 | pairs | stretches |
-| `DATE` / `FULL_DATE` / `TIME` / `CHECKBOX` / `DROPDOWN_SINGLE` / `BO SINGLE` | 58 | 3 | pairs | own |
-| `YEAR` / `YEAR_AND_MONTH` / `PERIOD` / `PERIOD_TIME` / `CO SINGLE` | 58 `[I]` | 3 | pairs | — |
-| `TEXTAREA` / `TEXTAREA_LANG` | — | ≥ 6 | alone | stretches |
-| `BO TABLE` / `CO TABLE` / `BO` / `CO` | — | ≥ 6 | alone | stretches |
-| `STATIC_TEXT` | 46 a heading | ≥ 3 | alone | stretches |
-| `TAB_GROUP` | — | tabs | alone | stretches |
-| `FILE_UPLOAD SINGLE` | 77 with its file, 49 empty | 4 | free | own |
-| `FILE_UPLOAD MULTIPLE` / `FILE_UPLOAD` | 49 + 20 per file | ≥ 4 | free | own |
-| `FILE_UPLOAD TILE` | 120 | 5 | free | own |
-| `CHECKLIST` | 53 + 34·n, n = `defaultValue` | items | alone | own |
-| `RADIO_BUTTON_GROUP` | 22 + 24·n, n = `fieldOptionsStruct.options` | items | free | own |
-| `PROGRESS_BAR` | 115 | 5 | alone | stretches |
-| `QUESTIONNAIRE` / `GEO_POINT` | — `[I]` | 8 | alone | stretches |
-| `SIGNATURE` | 91 | ≥ 4 | free | fills |
-| `CAPTCHA` | 164 | 6 | free | own |
-| `CURRENT_USER` | 90 | 4 | free | stretches |
-| `IFRAME` | — `[I]` | 8 | alone | stretches |
-| `BUTTON` / `CURRENT_DATE` / `CURRENT_DAY` / `CURRENT_MONTH` / `CURRENT_DAY_AND_MONTH` / `CURRENT_YEAR` | — `[I]` | 3 | free | — |
-| `CREATED_BY SINGLE` / `LAST_MODIFIED_BY SINGLE` | 58 `[I]` | 3 | pairs | own |
-| `CREATED_BY` / `LAST_MODIFIED_BY` | — | ≥ 6 | alone | stretches |
-| `CREATED_AT` / `LAST_MODIFIED_AT` / `OPEN_COUNT` / `IN_MIGRATION_UPDATED_AT` | 58 `[I]` | 3 | free | — |
+**Cell width in px** `[C]`: the form is drawn for a **1280 px screen**, the narrowest common one. A record window
+of width `W` (0.8a step 7) gives each form column **`colPx = (72·W − 69 − 39·d) / 15`** px, `d` = how many
+`TAB_GROUP`s the cell sits inside (0 on the form itself, 1 on a tab; deeper levels `[I]`), and a cell of `cols`
+columns is `cols·colPx − 1` px wide. So a kind with a *min px* needs **`cols ≥ ⌈(min px + 1) / colPx⌉`**:
+
+| W | d | colPx | `INPUT_PHONE` 245 | `PERIOD` 325 | `DATE` 165 |
+|---|---|---|---|---|---|
+| 8 (a dictionary) | 0 | 33.8 | 8 | 10 | 5 |
+| 10 | 0 | 43.4 | 6 | 8 | 4 |
+| 10 | 1 | 40.8 | 7 | 8 | 5 |
+| 12 | 0 | 53.0 | 5 | 7 | 4 |
+| 12 | 1 | 50.4 | 5 | 7 | 4 |
+| 15 | 0 | 67.4 | 4 | 5 | 3 |
+
+A record that opens as a page tab (`instanceViewType: "TAB"`, 0.8a step 8) has no window; its column width is
+not measured `[U]`.
+
+| kind | painted, px | rows | in a row | width | min px |
+|---|---|---|---|---|---|
+| `INPUT_TEXT` / `INPUT_TEXT_LANG` / `INPUT_EMAIL` / `LINK` | 58 | 3 | pairs | stretches | — |
+| `INPUT_NUMBER` | 58 | 3 | pairs | narrow | — |
+| `INPUT_PHONE` | 58 | 3 | pairs | stretches | 245 |
+| `DATE` / `FULL_DATE` | 58 | 3 | pairs | own | 165 |
+| `TIME` | 58 | 3 | pairs | own | 125 |
+| `CHECKBOX` / `DROPDOWN_SINGLE` / `BO SINGLE` | 58 | 3 | pairs | own | — |
+| `YEAR` / `YEAR_AND_MONTH` | 58 `[I]` | 3 | pairs | own | 124 |
+| `PERIOD` / `PERIOD_TIME` | 58 `[I]` | 3 | pairs | own | 325 |
+| `CO SINGLE` | 58 `[I]` | 3 | pairs | — | — |
+| `TEXTAREA` / `TEXTAREA_LANG` | — | ≥ 6 | alone | stretches | — |
+| `BO TABLE` / `CO TABLE` / `BO` / `CO` | — | ≥ 6 | alone | stretches | — |
+| `STATIC_TEXT` | 46 a heading | ≥ 3 | alone | stretches | — |
+| `TAB_GROUP` | — | tabs | alone | stretches | — |
+| `FILE_UPLOAD SINGLE` | 77 with its file, 49 empty | 4 | free | own | — |
+| `FILE_UPLOAD MULTIPLE` / `FILE_UPLOAD` | 49 + 20 per file | ≥ 4 | free | own | — |
+| `FILE_UPLOAD TILE` | 120 | 5 | free | own | — |
+| `CHECKLIST` | 53 + 34·n, n = `defaultValue` | items | alone | own | — |
+| `RADIO_BUTTON_GROUP` | 22 + 24·n, n = `fieldOptionsStruct.options` | items | free | own | — |
+| `PROGRESS_BAR` | 115 | 5 | alone | stretches | — |
+| `QUESTIONNAIRE` / `GEO_POINT` | — `[I]` | 8 | alone | stretches | — |
+| `SIGNATURE` | 91 | ≥ 4 | free | fills | — |
+| `CAPTCHA` | 164 | 6 | free | own | — |
+| `CURRENT_USER` | 90 | 4 | free | stretches | — |
+| `IFRAME` | — `[I]` | 8 | alone | stretches | — |
+| `BUTTON` / `CURRENT_DATE` / `CURRENT_DAY` / `CURRENT_MONTH` / `CURRENT_DAY_AND_MONTH` / `CURRENT_YEAR` | — `[I]` | 3 | free | — | — |
+| `CREATED_BY SINGLE` / `LAST_MODIFIED_BY SINGLE` | 58 `[I]` | 3 | pairs | own | — |
+| `CREATED_BY` / `LAST_MODIFIED_BY` | — | ≥ 6 | alone | stretches | — |
+| `CREATED_AT` / `LAST_MODIFIED_AT` / `OPEN_COUNT` / `IN_MIGRATION_UPDATED_AT` | 58 `[I]` | 3 | free | — | — |
 
 A `LINK` draws exactly like an `INPUT_TEXT`: one line, the value as a link inside the box, a long URL cut with
 «…» `[C]`. A `TEXTAREA` at 4 rows shows only about two lines of text. A `CHECKLIST` of 3 items takes 6
@@ -1246,6 +1272,12 @@ stand 3 per row (`cols` 5 + 5 + 5) or 2 per row (5 + 10 / 10 + 5, the wide cell 
 value): марка + модель + год, дата + сумма + оплачено, телефон + email, a `SINGLE` reference + a dropdown.
 A `stretches` box fills its cell; an `own` one (`DATE` / `FULL_DATE` ≈ 165 px, `TIME` ≈ 125 px, a `BO` `SINGLE`
 reference = a «Выберите» link) keeps its own width `[C]` — in a row with a `stretches` field the wider cell goes to it.
+A `narrow` field never takes the wider cell: beside a text field 5 + 10 (the 10 to the text), beside an `own`
+box 5 + 10 (the box keeps its width, so the row looks like 5 + 5 but leaves no hole), two `narrow` fields 5 + 5
+with columns 10–14 left empty, alone `x 0, cols 5` — a row cut short by a `narrow` field is the second
+exception to «cols sum to 15», and its empty columns follow the float-up rule of the lone field below. A kind
+with a *min px* gets at least the `cols` the formula above gives for its window — a `PERIOD` in a 5 + 5 + 5 row
+of a `w: 10` window is cut off; give it 10 + 5 beside a number or a date there, or a wider window.
 **One grid per form (per tab):** of two rows of ≥ 2 cells one right under the other, the column starts of
 one are a part of the other's — 5 + 10 under 5 + 5 + 5, 4 + 4 + 7 under 4 + 4 + 4 + 3, never 8 + 7 under
 5 + 5 + 5: its labels start at 0, 8 against 0, 5, 10 and the boxes stand as a staircase with holes. 8 + 7 only
@@ -1256,13 +1288,15 @@ marked `alone` in the table.
 **Building the file with a script? Give it the layout as a list of ROWS, never as a list of fields.** Per
 form (and per tab) write the rows you decided by meaning — e.g. `[["phone", "email"], ["make", "model",
 "year"], ["notes"]]` — and let the script derive `x`, `cols` and `y` from them: one code → `cols 15` (a short
-field alone → `x 0, cols 8`), three → 5 + 5 + 5, two → 5 + 10 (8 + 7 only in a form or tab whose every row of
+field alone → `x 0, cols 8`, a `narrow` one → `x 0, cols 5`), three → 5 + 5 + 5, two → 5 + 10 (a `narrow` field
+always gets the 5; two of them 5 + 5) (8 + 7 only in a form or tab whose every row of
 ≥ 2 cells is a pair and no pair stands right under a lone field), the next row's `y` = this `y` + its `rows`. A
 loop over the fields that gives each one `x 0, cols 15` and `y += rows` builds exactly the «every field full
 width» defect, however the rows were planned.
 
 - **A short field (`pairs`) with no partner by meaning stands alone at `x: 0`, `cols: 8`** — never stretched to 15; the
-  right half stays empty and the row is the one exception to «cols sum to 15». It is an EXCEPTION: **at most 2
+  right half stays empty and the row is an exception to «cols sum to 15» (the other one: a row cut short by a
+  `narrow` field, above). It is an EXCEPTION: **at most 2
   lone short fields per form (per tab)**. Three or more is the «one field per row» defect, cols 8 or not —
   find their partners by meaning (контакты, суммы, даты, техданные). The hole is safe only while no
   cell of the NEXT row fits wholly into columns 8–14: such a cell floats up beside the lone field, and the rest
@@ -1270,6 +1304,9 @@ width» defect, however the rows were planned.
   own columns). So right below a lone field put a full-width row, or a pair split **5 + 10** (its right cell
   starts at `x: 5` and touches the lone field's columns `[C]`; 7 + 8 holds too `[C]`, but its starts 0, 7 match no
   other row), or nothing (the last row of the form or the tab); never an 8 + 7 pair or a 5 + 5 + 5 row there.
+  The same holds for every row cut short: no cell of the next row may lie wholly in its empty columns. Under a
+  lone `narrow` field (`x 0, cols 5`, columns 5–14 empty) that leaves only a full-width row or nothing; under
+  5 + 5 (two numbers) a full-width row, a 5 + 10 pair or nothing.
 - **Never mix heights inside a row**: a 3-row cell beside a 6-row one leaves a hole under the short cell,
   and the next row floats up into it (§4 «The grid compacts VERTICALLY»). Pair only cells of equal `rows`.
 - A `CHECKBOX` in a row draws its toggle at the TOP of its cell, a little higher than the neighbouring
@@ -1785,14 +1822,20 @@ else for (const m of menu) {
 }
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
-const CELL = {}; // the table «Cell of each type» of 0.8: kind → rows, place in a row, width
+const CELL = {}; // the table «Cell of each type» of 0.8: kind → rows, place in a row, width, min px
 for (const l of (String(doc ?? "").split("\n### 0.8 ")[1]?.split("\n### ")[0] ?? "").split("\n")) {
   const c = l.split("|").map((s) => s.trim()), r = /^(≥ )?(\d+)$/.exec(c[3] ?? ""), m = /^(\d+) \+ (\d+)·n, n = `([^`]+)`/.exec(c[2] ?? "");
-  if (c.length === 7 && c[1].startsWith("`")) for (const k of c[1].match(/`[^`]+`/g)) CELL[k.slice(1, -1)] = { kind: k.slice(1, -1),
-    rows: r ? +r[2] : 0, least: !!r?.[1], items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null, place: c[4], width: c[5] };
+  if (c.length === 8 && c[1].startsWith("`")) for (const k of c[1].match(/`[^`]+`/g)) CELL[k.slice(1, -1)] = { kind: k.slice(1, -1),
+    rows: r ? +r[2] : 0, least: !!r?.[1], items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null, place: c[4], width: c[5],
+    minPx: /^\d+$/.test(c[6]) ? +c[6] : 0 };
 }
 if (!Object.keys(CELL).length) err(`rows and widths not checked — call lintArchive(<the archive text>, <the text of this document>) (0.8)`);
 const cellOf = (f) => CELL[`${f.type} ${f.viewType ?? f.params?.viewType ?? ""}`.trim()] ?? CELL[f.type];
+const depth = (bo, tab) => { // how many TAB_GROUPs a cell sits inside: its tab, that group's tab … (0.8 «Cell width in px»)
+  let d = 0;
+  for (let p = tab; p && d < 9; d++) p = vals(bo.dynamicFields).find((x) => x.code === p.tabGroupCode && x.type === "TAB_GROUP")?.tabCodePath;
+  return d;
+};
 const count = (v) => { try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; } return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0; };
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
@@ -1809,8 +1852,12 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
     const need = !k ? 0 : k.items ? Math.ceil((k.items.base + k.items.per * n + 15) / 30) : k.rows;
     if (need && (k.least ? g.rows < need : g.rows !== need))
       err(`${t}: rows ${g.rows}, a ${k.kind} takes ${k.least ? "at least " : ""}${need}${k.items ? ` for ${n} in ${k.items.key}` : ""} (0.8)`);
+    if (k?.width === "narrow" && g.cols > 5) err(`${t}: cols ${g.cols} — a ${k.kind} is narrow, at most 5 columns; the wider cell goes to its neighbour (0.8)`);
+    const win = bo.gridLayoutPosition?.w, lvl = depth(bo, tab), cp = (72 * win - 69 - 39 * lvl) / 15; // one column on a 1280 px screen (0.8)
+    if (k?.minPx && bo.instanceViewType !== "TAB" && typeof win === "number" && typeof g.cols === "number" && cp > 0 && g.cols * cp - 1 < k.minPx)
+      err(`${t}: cols ${g.cols} is ${Math.floor(g.cols * cp - 1)} px in a window w ${win}${lvl ? " on a tab" : ""} — a ${k.kind} box needs ${k.minPx} px, cols ≥ ${Math.ceil((k.minPx + 1) / cp)} (0.8)`);
     put(tab?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
-      fixed: k?.width === "own", stretch: k?.width === "stretches", ty: k?.kind ?? f.type });
+      fixed: k?.width === "own", stretch: k?.width === "stretches", narrow: k?.width === "narrow", ty: k?.kind ?? f.type });
   }
   for (const { c: w, tab } of cellsOf(bo).filter((x) => x.box))
     if (w.gridPosition) put(tab?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });
@@ -1827,7 +1874,8 @@ for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
         x = Math.max(x, c.g.x + c.g.cols);
       }
       const lone8 = row.length === 1 && row[0].short && row[0].g.x === 0 && row[0].g.cols === 8;
-      if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
+      const cut = row.some((c) => c.narrow) && !row.some((c) => c.stretch); // a row cut short by a narrow field (0.8)
+      if ((row.length > 1 || !row[0].box) && x !== 15 && !lone8 && !cut) err(`${r}: row y ${y} spans ${x} of 15 columns (0.8)`);
       if (row.filter((c) => !c.box).length > 1) for (const c of row.filter((c) => c.full)) err(`${c.t}: shares row y ${y} — it stands alone, full width (0.8)`);
       if (new Set(row.map((c) => c.g.rows)).size > 1) err(`${r}: row y ${y} mixes heights (0.8)`);
       for (const c of row.filter((c) => c.fixed)) { // a box of its own width beside one that stretches: the wider cell to the stretching one

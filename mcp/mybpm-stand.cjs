@@ -95,7 +95,7 @@ function cellTable(doc) {
 ### `)[0] ?? "").split(`
 `)) {
     const c = l.split("|").map((s) => s.trim()), r = /^(≥ )?(\d+)$/.exec(c[3] ?? ""), m = /^(\d+) \+ (\d+)·n, n = `([^`]+)`/.exec(c[2] ?? "");
-    if (c.length !== 7 || !c[1].startsWith("`"))
+    if (c.length !== 8 || !c[1].startsWith("`"))
       continue;
     for (const k of c[1].match(/`[^`]+`/g) ?? [])
       out[k.slice(1, -1)] = {
@@ -104,13 +104,17 @@ function cellTable(doc) {
         least: !!r?.[1],
         items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null,
         place: c[4],
-        width: c[5]
+        width: c[5],
+        minPx: /^\d+$/.test(c[6]) ? +c[6] : 0
       };
   }
   return out;
 }
 var cellOf = (table, type, viewType) => (viewType ? table[`${type} ${viewType}`] : undefined) ?? table[type];
 var rowsOf = (cell, n = 0) => !cell ? 0 : cell.items ? Math.ceil((cell.items.base + cell.items.per * n + 15) / 30) : cell.rows;
+var colPx = (win, lvl = 0) => (72 * win - 69 - 39 * lvl) / 15;
+var minColsOf = (cell, win, lvl = 0) => cell?.minPx ? Math.ceil((cell.minPx + 1) / colPx(win, lvl)) : 0;
+var maxColsOf = (cell) => cell?.width === "narrow" ? 5 : 15;
 // tools/menu-icons.json
 var menu_icons_default = {
   chunk: "956.1e3677ced41740f7.js",
@@ -918,7 +922,7 @@ var FIELD_SPEC = { type: "object", required: ["type"], properties: {
   unique: { type: "boolean" },
   readonly: { type: "boolean", description: "Never together with required." },
   column: { type: "boolean", description: "A registry column. Default: the first field, plus required / unique ones; 6 at most (R1 «Layout»)." },
-  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15." },
+  cols: { type: "number", description: "Width of 15. Short fields that belong together share a row — consecutive fields that fit are packed into one row: 5 + 5 + 5, a pair 5 + 10 / 10 + 5; one grid per form (IMPORTS 0.8: 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too). Default 15. Held to the table of IMPORTS 0.8: a narrow INPUT_NUMBER gets at most 5, a kind with a min px (INPUT_PHONE, DATE, PERIOD …) at least the cols its box needs in the record window (W 10 unless `window.w` says otherwise; a tab is narrower) — a change shows in notes." },
   rows: { type: "number", description: "Height; default by type (R1 «Layout»: 3 one-line, 6 text/table/file, 8 questionnaire/map)." },
   x: { type: "number" },
   y: { type: "number", description: "x / y on every field = you own the layout; otherwise it is packed for you." },
@@ -972,7 +976,14 @@ var cellSpec = (f) => cellOf(cells(), f.type, f.viewType ?? f.set?.params?.viewT
 var heightOf = (f) => f.rows ?? (rowsOf(cellSpec(f), f.options?.length ?? 0) || 3);
 var aloneOf = (f) => cellSpec(f)?.place === "alone";
 var visible = (f) => !["STATIC_TEXT", "TAB_GROUP"].includes(f.type) && !NATIVES.includes(f.type);
-function pack(specs, y0, notes, where) {
+function colsOf(f, win, lvl, notes, where) {
+  const k = cellSpec(f), cols = aloneOf(f) ? 15 : Math.min(15, Math.max(1, f.cols ?? 15));
+  const fit = Math.min(maxColsOf(k), Math.max(cols, win ? minColsOf(k, win, lvl) : 0));
+  if (fit !== cols && f.cols !== undefined)
+    notes.push(`${where}: «${f.label ?? f.type}» cols ${cols} → ${fit} — ${fit < cols ? `a ${k.kind} is narrow, at most 5 columns` : `a ${k.kind} box needs ${k.minPx} px in a window w ${win}${lvl ? " on a tab" : ""}`} (IMPORTS 0.8)`);
+  return fit;
+}
+function pack(specs, y0, notes, where, win, lvl) {
   const cells = [];
   let y = y0, row = [];
   const close = () => {
@@ -982,7 +993,7 @@ function pack(specs, y0, notes, where) {
     row = [];
   };
   for (const f of specs) {
-    const cols = aloneOf(f) ? 15 : Math.min(15, Math.max(1, f.cols ?? 15)), rows = heightOf(f);
+    const cols = colsOf(f, win, lvl, notes, where), rows = heightOf(f);
     const used = row.reduce((n, c) => n + c.cols, 0);
     if (row.length && (aloneOf(f) || used + cols > 15 || row[0].rows !== rows))
       close();
@@ -1010,11 +1021,12 @@ async function addFields(s, boId, specs, window) {
   const groupSpec = { type: "TAB_GROUP", label: undefined, code: "tabs" };
   if (groupAt >= 0)
     top.splice(specs.slice(0, groupAt).filter((f) => !f.tab).length, 0, groupSpec);
-  const tabPacks = tabLabels.map((t) => pack(tabbed.filter((f) => f.tab === t), 0, notes, `tab «${t}»`));
+  const cellWin = bo.boCategory === "BO_PANEL" || bo.instanceViewType === "TAB" ? 0 : typeof window === "object" && window.w || (window === false ? bo.gridLayoutPosition?.w ?? 10 : 10);
+  const tabPacks = tabLabels.map((t) => pack(tabbed.filter((f) => f.tab === t), 0, notes, `tab «${t}»`, cellWin, 1));
   if (groupAt >= 0)
     groupSpec.rows = Math.max(...tabPacks.map((p) => p.bottom)) + 3;
   const y0 = bottomOf(bo.formFields ?? []);
-  const topPack = own ? { cells: [], bottom: 0 } : pack(top, y0, notes, "form");
+  const topPack = own ? { cells: [], bottom: 0 } : pack(top, y0, notes, "form", cellWin, 0);
   const tabIds = tabLabels.length ? await freshIds(s, tabLabels.length) : [];
   const grid = (f) => ({ rows: f.questionnaire?.rows?.length ? f.questionnaire.rows : ["Вопрос 1"], columns: f.questionnaire?.columns?.length ? f.questionnaire.columns : ["Да", "Нет"] });
   const optIds = await freshIds(s, specs.reduce((n, f) => n + (["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(f.type) ? f.options?.length ?? 0 : f.type === "QUESTIONNAIRE" ? grid(f).rows.length + grid(f).columns.length : 0), 0));

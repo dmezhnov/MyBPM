@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 45b222849278
+# lintArchive sha256: 11664e83ee2f
 import json
 import math
 import os
@@ -903,22 +903,29 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         for ic, ms in icon(sib):
             if len(ms) >= 3:
                 err(f"menu {join([g(m, 'menuItemCode') for m in ms], ', ')}: {len(ms)} siblings with icon {ic} — each by what it lists (0.5d)")
-    CELL = {}  # the table «Cell of each type» of 0.8: kind → rows, place in a row, width
+    CELL = {}  # the table «Cell of each type» of 0.8: kind → rows, place in a row, width, min px
     p8 = s(nn(doc, "")).split("\n### 0.8 ")
     for ln in (p8[1].split("\n### ")[0] if len(p8) > 1 else "").split("\n"):
         c = [js_trim(x) for x in ln.split("|")]
         r = R("^(≥ )?(\\d+)$").search(c[3] if len(c) > 3 else "")
         m = R("^(\\d+) \\+ (\\d+)·n, n = `([^`]+)`").search(c[2] if len(c) > 2 else "")
-        if len(c) == 7 and c[1].startswith("`"):
+        if len(c) == 8 and c[1].startswith("`"):
             for k in re.findall("`[^`]+`", c[1]):
                 CELL[k[1:-1]] = {"kind": k[1:-1], "rows": int(r.group(2)) if r else 0, "least": bool(r and r.group(1)),
                                  "items": {"base": int(m.group(1)), "per": int(m.group(2)), "key": m.group(3)} if c[3] == "items" and m else None,
-                                 "place": c[4], "width": c[5]}
+                                 "place": c[4], "width": c[5], "minPx": int(c[6]) if R("^\\d+$").search(c[6]) else 0}
     if not CELL:
         err("rows and widths not checked — call lintArchive(<the archive text>, <the text of this document>) (0.8)")
 
     def cellOf(f):
         return CELL.get(js_trim(f"{s(g(f, 'type'))} {s(nn(g(f, 'viewType'), nn(g(f, 'params', 'viewType'), '')))}")) or CELL.get(s(g(f, "type")))
+
+    def depth(bo, tab):  # how many TAB_GROUPs a cell sits inside: its tab, that group's tab … (0.8 «Cell width in px»)
+        d, p = 0, tab
+        while tr(p) and d < 9:
+            p = g(find(vals(g(bo, "dynamicFields")), lambda x: seq(g(x, "code"), g(p, "tabGroupCode")) and g(x, "type") == "TAB_GROUP"), "tabCodePath")
+            d += 1
+        return d
 
     def count(v):
         try:
@@ -957,8 +964,15 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
             need = 0 if not k else -(-(k["items"]["base"] + k["items"]["per"] * n + 15) // 30) if k["items"] else k["rows"]
             if need and (lt(g(gp, "rows"), need) if k["least"] else not seq(g(gp, "rows"), need)):
                 err(f"{t}: rows {s(g(gp, 'rows'))}, a {k['kind']} takes {'at least ' if k['least'] else ''}{need}{' for ' + str(n) + ' in ' + k['items']['key'] if k['items'] else ''} (0.8)")
+            if k and k["width"] == "narrow" and gt(g(gp, "cols"), 5):
+                err(f"{t}: cols {s(g(gp, 'cols'))} — a {k['kind']} is narrow, at most 5 columns; the wider cell goes to its neighbour (0.8)")
+            win, lvl, gc = g(bo, "gridLayoutPosition", "w"), depth(bo, tab), g(gp, "cols")
+            cp = (72 * win - 69 - 39 * lvl) / 15 if isnum(win) else math.nan  # one column on a 1280 px screen (0.8)
+            if k and k["minPx"] and g(bo, "instanceViewType") != "TAB" and isnum(win) and isnum(gc) and cp > 0 and gc * cp - 1 < k["minPx"]:
+                err(f"{t}: cols {s(gc)} is {s(float(math.floor(gc * cp - 1)))} px in a window w {s(win)}{' on a tab' if lvl else ''} — a {k['kind']} box needs {k['minPx']} px, cols ≥ {s(float(math.ceil((k['minPx'] + 1) / cp)))} (0.8)")
             put(g(tab, "tabCode"), {"t": t, "g": gp, "short": short, "head": ty == "STATIC_TEXT", "full": bool(k) and k["place"] == "alone",
-                                                 "fixed": bool(k) and k["width"] == "own", "stretch": bool(k) and k["width"] == "stretches", "ty": k["kind"] if k else ty})
+                                                 "fixed": bool(k) and k["width"] == "own", "stretch": bool(k) and k["width"] == "stretches",
+                                                 "narrow": bool(k) and k["width"] == "narrow", "ty": k["kind"] if k else ty})
         for x in [x for x in cellsOf(bo) if "box" in x]:
             w = x["c"]
             if tr(g(w, "gridPosition")):
@@ -981,7 +995,8 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                         err(f"{c['t']}: x {s(cx)} in the free columns {s(edge)}–14 above — floats up (0.8)")
                     x = jmax(x, jadd(cx, g(c["g"], "cols")))
                 lone8 = len(row) == 1 and row[0].get("short") and seq(g(row[0]["g"], "x"), 0) and seq(g(row[0]["g"], "cols"), 8)
-                if (len(row) > 1 or not row[0].get("box")) and not seq(x, 15) and not lone8:
+                cut = any(c.get("narrow") for c in row) and not any(c.get("stretch") for c in row)  # a row cut short by a narrow field (0.8)
+                if (len(row) > 1 or not row[0].get("box")) and not seq(x, 15) and not lone8 and not cut:
                     err(f"{r}: row y {s(y)} spans {s(x)} of 15 columns (0.8)")
                 if len([c for c in row if not c.get("box")]) > 1:
                     for c in [c for c in row if c.get("full")]:

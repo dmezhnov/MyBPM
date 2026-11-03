@@ -332,38 +332,50 @@ not counting headings, the `TAB_GROUP` and the system fields.
   lint reads it from there. `rows` = ⌈(painted + 15) / 30⌉ (one grid row = 30 px); `items` = by that formula with
   `n` = the count at the named key (a string parsed as JSON first; an array → its elements, an object → its keys,
   anything else, a broken string too → 0); `tabs` = the tallest tab + 3 (+ 6 on a `TAB` page). *in a row*: `pairs` = a short one-line
-  field, `alone` = alone at full width, `free` = either. *width*: `stretches` fills the cell, `own` keeps its own width.
+  field, `alone` = alone at full width, `free` = either. *width*: `stretches` fills the cell, `narrow` fills it but the
+  cell is at most 5 columns, `own` keeps its own width. *min px* = the narrowest cell that shows the whole box.
+  On a 1280 px screen a record window of width `W` gives each column `colPx = (72·W − 69 − 39·d) / 15` px (`d` = 0 on
+  the form, 1 on a tab), a cell is `cols·colPx − 1` px, so a kind with a *min px* needs `cols ≥ ⌈(min px + 1) / colPx⌉`:
+  at `w: 10` a `PERIOD` 8, an `INPUT_PHONE` 6 (7 on a tab), a `DATE` 4; at `w: 12` 7, 5 and 4.
 
-| kind | painted, px | rows | in a row | width |
-|---|---|---|---|---|
-| `INPUT_TEXT` / `INPUT_TEXT_LANG` / `INPUT_NUMBER` / `INPUT_PHONE` / `INPUT_EMAIL` / `LINK` | 58 | 3 | pairs | stretches |
-| `DATE` / `FULL_DATE` / `TIME` / `CHECKBOX` / `DROPDOWN_SINGLE` / `BO SINGLE` | 58 | 3 | pairs | own |
-| `YEAR` / `YEAR_AND_MONTH` / `PERIOD` / `PERIOD_TIME` / `CO SINGLE` | 58 `[I]` | 3 | pairs | — |
-| `TEXTAREA` / `TEXTAREA_LANG` | — | ≥ 6 | alone | stretches |
-| `BO TABLE` / `CO TABLE` / `BO` / `CO` | — | ≥ 6 | alone | stretches |
-| `STATIC_TEXT` | 46 a heading | ≥ 3 | alone | stretches |
-| `TAB_GROUP` | — | tabs | alone | stretches |
-| `FILE_UPLOAD SINGLE` | 77 with its file, 49 empty | 4 | free | own |
-| `FILE_UPLOAD MULTIPLE` / `FILE_UPLOAD` | 49 + 20 per file | ≥ 4 | free | own |
-| `FILE_UPLOAD TILE` | 120 | 5 | free | own |
-| `CHECKLIST` | 53 + 34·n, n = `defaultValue` | items | alone | own |
-| `RADIO_BUTTON_GROUP` | 22 + 24·n, n = `fieldOptionsStruct.options` | items | free | own |
-| `PROGRESS_BAR` | 115 | 5 | alone | stretches |
-| `QUESTIONNAIRE` / `GEO_POINT` | — `[I]` | 8 | alone | stretches |
-| `SIGNATURE` | 91 | ≥ 4 | free | fills |
-| `CAPTCHA` | 164 | 6 | free | own |
-| `CURRENT_USER` | 90 | 4 | free | stretches |
-| `IFRAME` | — `[I]` | 8 | alone | stretches |
-| `BUTTON` / `CURRENT_DATE` / `CURRENT_DAY` / `CURRENT_MONTH` / `CURRENT_DAY_AND_MONTH` / `CURRENT_YEAR` | — `[I]` | 3 | free | — |
-| `CREATED_BY SINGLE` / `LAST_MODIFIED_BY SINGLE` | 58 `[I]` | 3 | pairs | own |
-| `CREATED_BY` / `LAST_MODIFIED_BY` | — | ≥ 6 | alone | stretches |
-| `CREATED_AT` / `LAST_MODIFIED_AT` / `OPEN_COUNT` / `IN_MIGRATION_UPDATED_AT` | 58 `[I]` | 3 | free | — |
+| kind | painted, px | rows | in a row | width | min px |
+|---|---|---|---|---|---|
+| `INPUT_TEXT` / `INPUT_TEXT_LANG` / `INPUT_EMAIL` / `LINK` | 58 | 3 | pairs | stretches | — |
+| `INPUT_NUMBER` | 58 | 3 | pairs | narrow | — |
+| `INPUT_PHONE` | 58 | 3 | pairs | stretches | 245 |
+| `DATE` / `FULL_DATE` | 58 | 3 | pairs | own | 165 |
+| `TIME` | 58 | 3 | pairs | own | 125 |
+| `CHECKBOX` / `DROPDOWN_SINGLE` / `BO SINGLE` | 58 | 3 | pairs | own | — |
+| `YEAR` / `YEAR_AND_MONTH` | 58 `[I]` | 3 | pairs | own | 124 |
+| `PERIOD` / `PERIOD_TIME` | 58 `[I]` | 3 | pairs | own | 325 |
+| `CO SINGLE` | 58 `[I]` | 3 | pairs | — | — |
+| `TEXTAREA` / `TEXTAREA_LANG` | — | ≥ 6 | alone | stretches | — |
+| `BO TABLE` / `CO TABLE` / `BO` / `CO` | — | ≥ 6 | alone | stretches | — |
+| `STATIC_TEXT` | 46 a heading | ≥ 3 | alone | stretches | — |
+| `TAB_GROUP` | — | tabs | alone | stretches | — |
+| `FILE_UPLOAD SINGLE` | 77 with its file, 49 empty | 4 | free | own | — |
+| `FILE_UPLOAD MULTIPLE` / `FILE_UPLOAD` | 49 + 20 per file | ≥ 4 | free | own | — |
+| `FILE_UPLOAD TILE` | 120 | 5 | free | own | — |
+| `CHECKLIST` | 53 + 34·n, n = `defaultValue` | items | alone | own | — |
+| `RADIO_BUTTON_GROUP` | 22 + 24·n, n = `fieldOptionsStruct.options` | items | free | own | — |
+| `PROGRESS_BAR` | 115 | 5 | alone | stretches | — |
+| `QUESTIONNAIRE` / `GEO_POINT` | — `[I]` | 8 | alone | stretches | — |
+| `SIGNATURE` | 91 | ≥ 4 | free | fills | — |
+| `CAPTCHA` | 164 | 6 | free | own | — |
+| `CURRENT_USER` | 90 | 4 | free | stretches | — |
+| `IFRAME` | — `[I]` | 8 | alone | stretches | — |
+| `BUTTON` / `CURRENT_DATE` / `CURRENT_DAY` / `CURRENT_MONTH` / `CURRENT_DAY_AND_MONTH` / `CURRENT_YEAR` | — `[I]` | 3 | free | — | — |
+| `CREATED_BY SINGLE` / `LAST_MODIFIED_BY SINGLE` | 58 `[I]` | 3 | pairs | own | — |
+| `CREATED_BY` / `LAST_MODIFIED_BY` | — | ≥ 6 | alone | stretches | — |
+| `CREATED_AT` / `LAST_MODIFIED_AT` / `OPEN_COUNT` / `IN_MIGRATION_UPDATED_AT` | 58 `[I]` | 3 | free | — | — |
 
 - **Rows** `[C]`: a row is one or more cells with the SAME `y` and the SAME `rows`; `x` runs 0, 0 + cols …, and
   the `cols` of a row sum to 15; the next row's `y` = this `y` + this `rows` (a field on a tab counts `y` from 0
   on its tab). Short one-line fields that belong together stand 3 per row (5 + 5 + 5) or 2 (5 + 10 / 10 + 5, the wide cell to
   the longer value) — телефон + email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but
-  full-width fields is a defect. In a row with a `stretches` field the wider cell goes to it, never to an `own` box. **One grid per form (per tab)**: of two rows of ≥ 2 cells one right under the
+  full-width fields is a defect. In a row with a `stretches` field the wider cell goes to it, never to an `own` box; a `narrow` field
+  takes 5 columns at most — 5 + 10 beside text or an `own` box, 5 + 5 for two of them, `x 0, cols 5` alone, and no cell of the next
+  row may lie wholly in the empty columns it leaves (it floats up). **One grid per form (per tab)**: of two rows of ≥ 2 cells one right under the
   other, the column starts of one are a part of the other's — never 8 + 7 under 5 + 5 + 5 (labels at 0, 8 against
   0, 5, 10: a staircase); 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too (`MYBPM-IMPORTS.md` 0.8).
   Alone at full width: the `alone` kinds of the table. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched — an exception, at most 2 per
