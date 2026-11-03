@@ -113,7 +113,7 @@
 import { createHash } from "node:crypto"; // Bun.hash is not a cryptographic digest; sha256 keeps ids reproducible
 import { scriptBody, toArchiveScript, type ProcessSpec } from "./process-builder.ts";
 import { zip } from "./zip.ts";
-import { cellOf, cellTable, itemsOf, minColsOf, rowsOf, type CellRule } from "./cell-table.ts";
+import { cellOf, cellTable, itemsOf, loneColsOf, minColsOf, rowsOf, type CellRule } from "./cell-table.ts";
 
 const PKG = "kz.greetgo.mybpm.reg.structure.model.dto";
 /** Rows, place and width of each field kind: the table «Cell of each type» of MYBPM-IMPORTS.md 0.8, the one the lint checks against. */
@@ -200,10 +200,11 @@ function splitFits(r: FormRow, cells: number[]): boolean {
   return cells.every((c, j) => c >= r.min[j] && !(r.widths[j] === "fixed" && c > input) && !(r.widths[j] === "narrow" && c > 5));
 }
 
-/** The splits a row may take: one cell → 15, `!half` 8, narrow 5; more → the grid's splits, and a row with no stretching
- *  cell whose last cell is narrow also cut short to 5 there (5 + 5 for two numbers), the full splits first (0.8). */
+/** The splits a row may take: one cell → `!half` 8, else loneColsOf (narrow 5, a short field 8 before 15, any other 15);
+ *  more → the grid's splits, and a row with no stretching cell whose last cell is narrow also cut short to 5 there (5 + 5 for
+ *  two numbers), the full splits first (0.8). */
 function rowOptions(r: FormRow, grid: number[]): number[][] {
-  if (r.codes.length === 1) return [[r.widths[0] === "narrow" ? 5 : r.half ? 8 : 15]].filter((c) => splitFits(r, c));
+  if (r.codes.length === 1) return (r.half && r.widths[0] !== "narrow" ? [8] : loneColsOf(r.kinds[0])).map((c) => [c]).filter((c) => splitFits(r, c));
   const full = gridSplits(r.codes.length, grid);
   const cut = r.widths.at(-1) === "narrow" && !r.widths.includes("stretch")
     ? full.filter((c) => c.at(-1)! > 5).map((c) => [...c.slice(0, -1), 5]) : [];
@@ -222,6 +223,10 @@ function gridLayout(rows: FormRow[], where: string): number[][] {
   const grids = widest >= 4 ? [[0, 4, 8, 12]] : widest === 3 ? [[0, 5, 10]] : [[0, 8], [0, 5, 10]];
   const startsOf = (cells: number[]) => cells.map((_, j) => cells.slice(0, j).reduce((a, b) => a + b, 0));
   const nested = (a: number[], b: number[]) => a.every((v) => b.includes(v)) || b.every((v) => a.includes(v));
+  // of the grids that suit, the one leaving the fewest short fields alone at full width (a lone one at 8 + a 5 + 10 pair under
+  // it beats 15 + 8 + 7), the first in grid order on a tie
+  const wide = (found: number[][]) => found.filter((c, i) => c.length === 1 && c[0] === 15 && rows[i].kinds[0]?.place === "pairs").length;
+  let best: number[][] | undefined;
   for (const grid of grids) {
     const options = rows.map((r) => rowOptions(r, grid));
     const pick = (i: number, above: number[], end: number): number[][] | undefined => {
@@ -235,8 +240,9 @@ function gridLayout(rows: FormRow[], where: string): number[][] {
       return undefined;
     };
     const found = pick(0, [], 15);
-    if (found) return found;
+    if (found && (!best || wide(found) < wide(best))) best = found;
   }
+  if (best) return best;
   throw new Error(`no grid of 15 columns suits the ${where} rows ${JSON.stringify(rows.map((r) => r.codes))} (min cols ${JSON.stringify(rows.map((r) => r.min))}): a box of its own width (DATE, TIME, CHECKBOX, DROPDOWN_SINGLE, a SINGLE reference) needs the narrower cell beside an input, a narrow INPUT_NUMBER at most 5 columns, a kind with a min px (INPUT_PHONE, PERIOD, DATE …) at least its min cols in this window, and under a row cut short (a lone !half or narrow field, 5 + 5) only a row that starts inside its cells — reorder the fields of a row, or widen the window (MYBPM-IMPORTS.md 0.8)`);
 }
 

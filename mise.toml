@@ -271,6 +271,16 @@ await $`rm -rf dist/gen-narrow && bun tools/make-probe-archive.bun.ts --group-co
   const under = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_under --name GenUnder --salt genunder --bo-order 1 --out dist/gen-narrow/under --field Kol:INPUT_NUMBER --field Opis:INPUT_TEXT --field Mail:INPUT_EMAIL!row`.nothrow().quiet();
   if (!under.exitCode || !/no grid of 15 columns suits the form rows \[\["Kol"\],\["Opis","Mail"\]\]/.test(under.stderr.toString())) { console.error(`make-probe-archive built a pair under a lone number (exit ${under.exitCode}):\n${under.stderr}`); process.exit(1); }
 }
+// a short field alone in its row: x 0, cols 8 with a 5 + 10 pair under it (not 15 over 8 + 7), and 15 only when the row below
+// would float up into columns 8–14 (5 + 5 + 5) — then the lint reports the lone row, as it should (0.8)
+for (const [name, fields, want] of [["lone8", ["Opis:INPUT_TEXT", "Prim:INPUT_TEXT", "Mail:INPUT_EMAIL!row"], "Opis 0/0/8, Prim 0/3/5, Mail 5/3/10"],
+  ["lone15", ["Opis:INPUT_TEXT", "A:INPUT_TEXT", "B:INPUT_TEXT!row", "C:INPUT_TEXT!row"], "Opis 0/0/15, A 0/3/5, B 5/3/5, C 10/3/5"]] as const) {
+  await $`rm -rf dist/gen-lone/${name} && bun tools/make-probe-archive.bun.ts --group-code Lone_group --group-name Lone --group-order 1 --code Gen_lone --name GenLone --salt genlone --bo-order 1 --out dist/gen-lone/${name} ${fields.flatMap((f) => ["--field", f])}`.quiet();
+  const zipFile = [...new Bun.Glob(`dist/gen-lone/${name}/*.zip`).scanSync()][0];
+  const bo = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((o) => o.dynamicFields);
+  const got = Object.values<any>(bo.dynamicFields).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}`).join(", ");
+  if (got !== want) { console.error(`make-probe-archive, ${name}: ${got}\nwant: ${want}`); process.exit(1); }
+}
 // «Отслеживать статус» (§3): the wrapper draws no tab bar, so it is 15 × 4 and takes the date's place in its stack (the form or
 // a tab), the date + «Статус» sit 9 + 6 inside it, a second status is «Статус2»; both lints find no layout line in what the
 // generator builds, and on hand-broken copies they report exactly the wrapper's rows, the field under it and the date's place
@@ -493,7 +503,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["bo_fields_save", { code: "mcp_probe_client", edit: [{ fieldId: "@bo_create.fields.1.fieldId", label: "Мобильный" }], delete: ["@bo_create.fields.3.fieldId"],
     add: [{ label: "Комментарий", type: "INPUT_TEXT", code: "comment" }], window: false },
     (r) => r.fields.length === 7 && r.fields[1].label === "Мобильный" && !r.fields.some((f: any) => f.code === "status")
-      && r.fields[6].code === "comment" && r.fields[6].grid === "0/21/15/3"],
+      && r.fields[6].code === "comment" && r.fields[6].grid === "0/21/8/3"],
   ["bo_code_set", { code: "mcp_probe_client", newCode: "mcp_probe_customer" }, (r) => r.was === "mcp_probe_client" && r.code === "mcp_probe_customer"],
   ["bo_code_set", { code: "mcp_probe_customer", fieldId: "@bo_create.fields.0.fieldId", newCode: "title" }, (r) => r.was === "name" && r.code === "title"],
   ["bo_create", { group: "Пустая группа", name: "MCP probe dup", code: "mcp_probe_customer" }, (r) => /taken/.test(r)],
@@ -780,9 +790,16 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   // an edit is taken as given, and the export's lint sees the window and the tab: the phone back at cols 6 is a width line
   ["bo_fields_save", { code: "mcp_probe_widths", edit: [{ fieldId: "@bo_create.fields.4.fieldId", cols: 6 }] },
     (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_widths\.phone: cols 6 is 243 px in a window w 10 on a tab — a INPUT_PHONE box needs 245 px, cols ≥ 7 \(0\.8\)/.test(n))],
-  // a text field named as a month: the lint's field type REMINDER comes back as a note (IMPORTS 0.5 «Field type by meaning»)
+  // a text field named as a month: the lint's field type REMINDER comes back as a note (IMPORTS 0.5 «Field type by meaning»);
+  // added without cols and alone in its row it stands at x 0, cols 8 — not full width (0.8)
   ["bo_fields_save", { code: "mcp_probe_widths", add: [{ label: "Месяц", type: "INPUT_TEXT", code: "month_key" }] },
-    (r) => r.notes?.some((n: string) => n === "field type: REMINDER mcp_probe_widths.month_key «Месяц»: INPUT_TEXT — by its name a month, so YEAR_AND_MONTH, or report «текстом, потому что …» (0.5 «Field type by meaning»)")],
+    (r) => r.notes?.some((n: string) => n === "field type: REMINDER mcp_probe_widths.month_key «Месяц»: INPUT_TEXT — by its name a month, so YEAR_AND_MONTH, or report «текстом, потому что …» (0.5 «Field type by meaning»)")
+      && /^0\/\d+\/8\/3$/.test(r.fields.find((f: any) => f.code === "month_key")?.grid) && !r.notes.some((n: string) => /alone at full width/.test(n))],
+  // a lone field without cols keeps 15 when the row below starts a cell in columns 8–14: at 8 that cell would float up beside it
+  ["bo_fields_save", { code: "mcp_probe_widths", add: [{ label: "Опис3", type: "INPUT_TEXT", code: "descr3" },
+    { label: "Опис4", type: "INPUT_TEXT", code: "descr4", cols: 8 }, { label: "Опис5", type: "INPUT_TEXT", code: "descr5", cols: 7 }] },
+    (r) => { const g = Object.fromEntries(r.fields.map((f: any) => [f.code, f.grid]));
+      return /^0\/\d+\/15\/3$/.test(g.descr3) && /^0\/\d+\/8\/3$/.test(g.descr4) && /^8\/\d+\/7\/3$/.test(g.descr5); }],
   ["bo_delete", { code: "mcp_probe_widths", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
