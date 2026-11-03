@@ -900,7 +900,10 @@ if (isComposite) {
     // an `items` cell counts what the built field holds at the table's key, as the form lint does — not the spec's list
     rows = rowsSet ? Number(rowsSet.value) : rowsOf(cell, itemsOf(cell, dynamicFields[code])) || (f.type === "TAB_GROUP" ? 8 : 3);
     (dynamicFields[code] as any).gridPosition.rows = rows;
-    if (f.flags.includes("track")) addTrackStatus(code, y);
+    // a tracked date sits inside its wrapper (§3): the wrapper, 15 × 4, takes the date's place in the stack
+    if (f.flags.includes("track") && joins) throw new Error(`--field «${f.label}»: !track and !row — a tracked-status wrapper stands alone, full width (MYBPM-IMPORTS.md §3)`);
+    const track = f.flags.includes("track") ? addTrackStatus(code, y) : undefined;
+    const cellCode = track ?? code, cellRows = track ? 4 : rows;
     let inTab = false;
     for (const { path, value } of f.sets) {
       if (path[0] === "rows") continue;
@@ -908,7 +911,7 @@ if (isComposite) {
       // top of the tab (MYBPM-IMPORTS.md «tabCodePath»), so the form below does not move down.
       if (path[0] === "tab") {
         const [tabGroupCode, tabCode] = String(value).split("/");
-        Object.assign(dynamicFields[code] as any, { tabCodePath: { tabGroupCode, tabCode }, gridPosition: { x: 0, y, cols: 15, rows } });
+        Object.assign(dynamicFields[cellCode] as any, { tabCodePath: { tabGroupCode, tabCode }, gridPosition: { x: 0, y, cols: 15, rows: cellRows } });
         inTab = true;
         continue;
       }
@@ -926,10 +929,11 @@ if (isComposite) {
       o[path.at(-1)!] = path[0] === "params" && typeof value !== "string"
         ? (typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)) : value;
     }
-    const width = cell?.width === "stretches" ? "stretch" : cell?.width === "narrow" ? "narrow" : cell?.width === "own" ? "fixed" : "other";
-    if (joins) { const r = stack.rows.at(-1)!; r.codes.push(code); r.widths.push(width); r.kinds.push(cell); r.half = false; }
-    else { stack.rows.push({ codes: [code], widths: [width], kinds: [cell], min: [], half: f.flags.includes("half") }); stack.rowY = y; }
-    stack.y = y + rows;
+    const width = track ? "other" : cell?.width === "stretches" ? "stretch" : cell?.width === "narrow" ? "narrow" : cell?.width === "own" ? "fixed" : "other";
+    const kind = track ? undefined : cell;
+    if (joins) { const r = stack.rows.at(-1)!; r.codes.push(cellCode); r.widths.push(width); r.kinds.push(kind); r.half = false; }
+    else { stack.rows.push({ codes: [cellCode], widths: [width], kinds: [kind], min: [], half: f.flags.includes("half") }); stack.rowY = y; }
+    stack.y = y + cellRows;
     // a field on a tab takes no slot in the form-order column index
     if (!inTab) (dynamicFields[code] as any).tableColOrderIndex = col++;
   });
@@ -972,11 +976,13 @@ if (isComposite) {
  * «Отслеживать статус» on a date field (DATE, FULL_DATE, PERIOD, PERIOD_TIME) — the three fields the
  * constructor's `saveNeedTrackStatus` builds, shaped as a stand export writes them (2026-09-30): a
  * TAB_GROUP wrapper with one tab «Статус объекта» and a «Статус» DROPDOWN_SINGLE, both carrying
- * `trackedFieldCode`, and the date itself moved into that tab (`tabCodePath`, 9×3 at the left).
+ * `trackedFieldCode`, and the date itself moved into that tab (`tabCodePath`, 9×3 at the left). The wrapper draws no
+ * tab bar, so it is 15×4 (its tab 3 + 1). A second tracked date's dropdown is «Статус2», as the constructor names it.
+ * Returns the wrapper's code: the cell that takes the date's place in its stack.
  * The dropdown's option IDS must be exactly PLANNED / OVERDUE / DONE / CANCELED: the record card sets the
  * status by those ids when the date is entered, and the calendar colours an event by them.
  */
-function addTrackStatus(dateCode: string, y: number) {
+function addTrackStatus(dateCode: string, y: number): string {
   const wrapCode = `${dateCode}_status`.slice(0, 30);
   const tabCode = "Status_obekta";
   const statusCode = `Status_${dateCode}`.slice(0, 30);
@@ -993,7 +999,8 @@ function addTrackStatus(dateCode: string, y: number) {
       },
     },
   });
-  const status: any = field({ code: statusCode, label: "Статус", type: "DROPDOWN_SINGLE", x: 9, y: 0, cols: 6, rows: 3 });
+  const nth = Object.values<any>(dynamicFields).filter((x) => x.type === "DROPDOWN_SINGLE" && x.trackedFieldCode).length;
+  const status: any = field({ code: statusCode, label: nth ? `Статус${nth + 1}` : "Статус", type: "DROPDOWN_SINGLE", x: 9, y: 0, cols: 6, rows: 3 });
   const opts: [string, string, string][] = [
     ["PLANNED", "Запланировано", "#0048ff"], ["OVERDUE", "Просрочено", "#d3a52f"],
     ["DONE", "Выполнено", "#6797fa"], ["CANCELED", "Отменено", "#6797fa"],
@@ -1011,6 +1018,7 @@ function addTrackStatus(dateCode: string, y: number) {
   });
   dynamicFields[wrapCode] = wrap;
   dynamicFields[statusCode] = status;
+  return wrapCode;
 }
 
 /**
@@ -1028,9 +1036,11 @@ for (const f of PROCESS_SPEC?.fields ?? []) {
   df.boRefStruct.fieldRefs = Object.fromEntries(f.show.map((c, i) => [c, { toShow: true, orderIndex: i }]));
   delete df.isHeightDynamic;
 }
-// the reference fields above restarted the counter at 0 — renumber so no two fields share a registry place (0.5)
+// the reference fields above restarted the counter at 0 — renumber so no two fields share a registry place (0.5); a
+// tracked-status wrapper and dropdown count after the rest, as the counter of 0.5 leaves them out
 let tableCol = 0;
-for (const f of Object.values<any>(dynamicFields)) if (typeof f.tableColOrderIndex === "number") f.tableColOrderIndex = tableCol++;
+const byTrack = Object.values<any>(dynamicFields).sort((a, b) => Number(!!a.trackedFieldCode) - Number(!!b.trackedFieldCode));
+for (const f of byTrack) if (typeof f.tableColOrderIndex === "number") f.tableColOrderIndex = tableCol++;
 
 /**
  * Every process gets the system field `PROCESS_STATUS` (MYBPM-IMPORTS.md 0.9 rule 18) — the BO-reference
