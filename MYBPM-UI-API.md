@@ -330,7 +330,8 @@ not counting headings, the `TAB_GROUP` and the system fields.
 
 - **Cell of each type** `[C]` — the same table as `MYBPM-IMPORTS.md` 0.8, where the legend is; the form
   lint reads it from there. `rows` = ⌈(painted + 15) / 30⌉ (one grid row = 30 px); `items` = by that formula with
-  `n` from the named key; `tabs` = the tallest tab + 3 (+ 6 on a `TAB` page). *in a row*: `pairs` = a short one-line
+  `n` = the count at the named key (a string parsed as JSON first; an array → its elements, an object → its keys,
+  anything else, a broken string too → 0); `tabs` = the tallest tab + 3 (+ 6 on a `TAB` page). *in a row*: `pairs` = a short one-line
   field, `alone` = alone at full width, `free` = either. *width*: `stretches` fills the cell, `own` keeps its own width.
 
 | kind | painted, px | rows | in a row | width |

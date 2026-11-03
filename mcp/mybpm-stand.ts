@@ -770,6 +770,9 @@ async function boFieldRefs(s: Stand, refBoId: string) {
 
 const isRef = (f: FieldSpec) => f.type === "BO" || f.type === "CO";
 const cellSpec = (f: FieldSpec) => cellRuleOf(cells(), f.type, f.viewType ?? (f.set?.params as any)?.viewType);
+// n of an `items` cell (CHECKLIST, RADIO_BUTTON_GROUP) = the spec's `options`, not itemsOf(): the table names the archive key
+// (defaultValue, fieldOptionsStruct.options), and the field saved here is the API DTO, where the same items sit elsewhere
+// (`options`). layoutLint() then counts them on the export by the table's key, so a gap between the two is a «layout lint» note.
 const heightOf = (f: FieldSpec) => f.rows ?? (rowsOf(cellSpec(f), f.options?.length ?? 0) || 3);
 const aloneOf = (f: FieldSpec) => cellSpec(f)?.place === "alone";
 const visible = (f: FieldSpec) => !["STATIC_TEXT", "TAB_GROUP"].includes(f.type) && !NATIVES.includes(f.type);

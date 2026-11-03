@@ -110,7 +110,7 @@
 import { createHash } from "node:crypto"; // Bun.hash is not a cryptographic digest; sha256 keeps ids reproducible
 import { scriptBody, toArchiveScript, type ProcessSpec } from "./process-builder.ts";
 import { zip } from "./zip.ts";
-import { cellOf, cellTable, rowsOf } from "./cell-table.ts";
+import { cellOf, cellTable, itemsOf, rowsOf } from "./cell-table.ts";
 
 const PKG = "kz.greetgo.mybpm.reg.structure.model.dto";
 /** Rows, place and width of each field kind: the table «Cell of each type» of MYBPM-IMPORTS.md 0.8, the one the lint checks against. */
@@ -818,8 +818,7 @@ if (isComposite) {
     const single = (f.type === "BO" || f.type === "CO") && f.sets.some(s => s.path[0] === "viewType" && s.value === "SINGLE");
     const cell = cellOf(CELLS, f.type, single ? "SINGLE"
       : f.type === "FILE_UPLOAD" ? (f.flags.includes("tile") ? "TILE" : f.flags.includes("multiple") ? "MULTIPLE" : "SINGLE") : undefined);
-    const rows = rowsSet ? Number(rowsSet.value)
-      : rowsOf(cell, ["CHECKLIST", "RADIO_BUTTON_GROUP"].includes(f.type) ? f.options.length : 0) || (f.type === "TAB_GROUP" ? 8 : 3);
+    let rows = 0; // from the field as built, once its items are in (below)
     if (f.type === "TAB_GROUP" && !rowsSet) autoTabGroups.add(code);
     const isRef = f.type === "BO" || f.type === "CO";
     // `#…` means a different thing per type: options for a list, steps for a bar, tabs for a tab group,
@@ -877,6 +876,9 @@ if (isComposite) {
       const raw = def.slice(1), eq = raw.lastIndexOf("=");
       (dynamicFields[code] as any).defaultValue = id(`${BO_CODE}.${code}.${codeOf(eq > 0 ? raw.slice(0, eq) : raw)}`);
     }
+    // an `items` cell counts what the built field holds at the table's key, as the form lint does — not the spec's list
+    rows = rowsSet ? Number(rowsSet.value) : rowsOf(cell, itemsOf(cell, dynamicFields[code])) || (f.type === "TAB_GROUP" ? 8 : 3);
+    (dynamicFields[code] as any).gridPosition.rows = rows;
     if (f.flags.includes("track")) addTrackStatus(code, y);
     let inTab = false;
     for (const { path, value } of f.sets) {
