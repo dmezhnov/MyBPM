@@ -223,6 +223,30 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
     const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /staircase|keeps its own width/.test(l));
     if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: staircase / own-width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
   }
+// the table «Cell of each type» (IMPORTS 0.8) is the one source of rows, place and width: UI-API carries its byte copy, the
+// generator builds by it and both lints check by it — a lone LINK x 0 cols 8 rows 3 is clean, rows 6 or full width is not,
+// a CHECKLIST / RADIO takes its rows by its item count (issue #10)
+const cellRows = (doc: string) => doc.split("\n").filter((l) => /^\| `/.test(l) && /\| (pairs|alone|free) \|/.test(l)).join("\n");
+const cellsImports = cellRows((await Bun.file("MYBPM-IMPORTS.md").text()).split("\n### 0.8 ")[1].split("\n### ")[0]);
+if (!cellsImports || cellRows(await Bun.file("MYBPM-UI-API.md").text()) !== cellsImports) { console.error("MYBPM-UI-API.md: the table «Cell of each type» differs from MYBPM-IMPORTS.md 0.8 — copy it over byte for byte"); process.exit(1); }
+await $`rm -rf dist/lint-cell && bun tools/make-probe-archive.bun.ts --group-code Cell_group --group-name Cell --group-order 1 --code Lint_cell --name Cell --salt cell --bo-order 1 --out dist/lint-cell ${["Сайт:LINK!half", "Канал:INPUT_TEXT", "Кампания:INPUT_TEXT!row", "Чек:CHECKLIST#Пункт 1|+Пункт 2|Пункт 3", "Ответ:RADIO_BUTTON_GROUP#Да|*Нет|Может быть"].flatMap((f) => ["--field", f])}`.quiet();
+const cellZip = [...new Bun.Glob("dist/lint-cell/*.zip").scanSync()][0];
+const cellBad = new TextDecoder().decode(unzip(await Bun.file(cellZip).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Sayit) {
+    const got = ["Sayit", "Chek", "Otvet"].map((c) => `${c} ${f[c].gridPosition.cols}x${f[c].gridPosition.rows}`).join(", ");
+    if (got !== "Sayit 8x3, Chek 15x6, Otvet 15x4") { console.error(`make-probe-archive: LINK / CHECKLIST of 3 / RADIO of 3 built ${got}, not Sayit 8x3, Chek 15x6, Otvet 15x4 (0.8)`); process.exit(1); }
+    Object.assign(f.Sayit.gridPosition, { cols: 15, rows: 6 }); f.Chek.gridPosition.rows = 3; f.Otvet.gridPosition.rows = 6;
+  }
+  return JSON.stringify(o);
+});
+await Bun.write("dist/lint-cell/bad.jsonl", cellBad.join("\n") + "\n");
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [file, want] of [[cellZip, []], ["dist/lint-cell/bad.jsonl", ["Lint_cell.Sayit: rows 6, a LINK takes 3 (0.8)", "Lint_cell.Chek: rows 3, a CHECKLIST takes 6 for 3 in defaultValue (0.8)",
+    "Lint_cell.Otvet: rows 6, a RADIO_BUTTON_GROUP takes 4 for 3 in fieldOptionsStruct.options (0.8)", "Lint_cell.Sayit: a short field alone at full width — pair it or x 0, cols 8 (0.8)"]]] as const) {
+    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /takes|alone at full width/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: rows / alone lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {

@@ -293,23 +293,32 @@ else for (const m of menu) {
 }
 for (const sib of Object.values(by(menu.filter((m) => m.menuItemType !== "GROUP"), (m) => m.parentMenuItemCode ?? "")))
   for (const [ic, ms] of icon(sib)) if (ms.length >= 3) err(`menu ${ms.map((m) => m.menuItemCode).join(", ")}: ${ms.length} siblings with icon ${ic} — each by what it lists (0.5d)`);
-const R3 = /^(INPUT_(TEXT|TEXT_LANG|PHONE|EMAIL|NUMBER)|TIME|FULL_DATE|YEAR_AND_MONTH|YEAR|DATE|PERIOD|PERIOD_TIME|CHECKBOX|DROPDOWN_SINGLE)$/, FIXED = /^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$/;
-const R6 = /^(LINK|FILE_UPLOAD|CHECKLIST|RADIO_BUTTON_GROUP|PROGRESS_BAR)$/, R8 = /^(QUESTIONNAIRE|GEO_POINT)$/, FULL = /^(TEXTAREA(_LANG)?|STATIC_TEXT|TAB_GROUP|CHECKLIST|QUESTIONNAIRE|GEO_POINT|PROGRESS_BAR)$/;
+const CELL = {}; // the table «Cell of each type» of 0.8: kind → rows, place in a row, width
+for (const l of (String(doc ?? "").split("\n### 0.8 ")[1]?.split("\n### ")[0] ?? "").split("\n")) {
+  const c = l.split("|").map((s) => s.trim()), r = /^(≥ )?(\d+)$/.exec(c[3] ?? ""), m = /^(\d+) \+ (\d+)·n, n = `([^`]+)`/.exec(c[2] ?? "");
+  if (c.length === 7 && c[1].startsWith("`")) for (const k of c[1].match(/`[^`]+`/g)) CELL[k.slice(1, -1)] = { kind: k.slice(1, -1),
+    rows: r ? +r[2] : 0, least: !!r?.[1], items: c[3] === "items" && m ? { base: +m[1], per: +m[2], key: m[3] } : null, place: c[4], width: c[5] };
+}
+if (!Object.keys(CELL).length) err(`rows and widths not checked — call lintArchive(<the archive text>, <the text of this document>) (0.8)`);
+const cellOf = (f) => CELL[`${f.type} ${f.viewType ?? f.params?.viewType ?? ""}`.trim()] ?? CELL[f.type];
+const count = (v) => { try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; } return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0; };
 for (const bo of bos.filter((b) => b.category !== "BO_COMPOSITE")) {
   const fs = vals(bo.dynamicFields), forms = new Map(), put = (tab, c) => forms.set(tab ?? "", [...(forms.get(tab ?? "") ?? []), c]);
   for (const f of fs) {
     const t = `${bo.code}.${f.code}`, g = f.gridPosition, text = /^TEXTAREA/.test(f.type);
-    const short = isRef(f) ? f.viewType === "SINGLE" : R3.test(f.type), table = isRef(f) && f.viewType === "TABLE";
+    const k = cellOf(f), short = k?.place === "pairs", table = isRef(f) && f.viewType === "TABLE";
     if (f.archetype !== "DYNAMIC" || !f.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
     if (text && f.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f.boRefStruct?.fieldRefs).filter((r) => r.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
     if (g && f.type === "TAB_GROUP" && f.trackedFieldCode && g.rows !== 4) err(`${t}: rows ${g.rows}, a tracked-status wrapper takes 4 (§3)`);
     if (!g || f.trackedFieldCode) continue;
     if (f.code === "PROCESS_STATUS") { put(f.tabCodePath?.tabCode, { t, g, box: true }); continue; } // its own box, but its rows stack (0.8)
-    const want = short ? 3 : R8.test(f.type) ? 8 : R6.test(f.type) ? 6 : 0, min = text || (isRef(f) && !short) ? 6 : f.type === "STATIC_TEXT" ? 3 : 0;
-    if (want ? g.rows !== want : g.rows < min) err(`${t}: rows ${g.rows}, a ${f.type} takes ${want || "at least " + min} (0.8)`);
-    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: FULL.test(f.type) || table,
-      fixed: f.type === "BO" ? short : FIXED.test(f.type), stretch: /^INPUT_/.test(f.type), ty: f.type === "BO" ? "BO SINGLE" : f.type });
+    const n = k?.items ? count(k.items.key.split(".").reduce((o, p) => o?.[p], f)) : 0; // items: ⌈(painted + 15) / 30⌉ (0.8)
+    const need = !k ? 0 : k.items ? Math.ceil((k.items.base + k.items.per * n + 15) / 30) : k.rows;
+    if (need && (k.least ? g.rows < need : g.rows !== need))
+      err(`${t}: rows ${g.rows}, a ${k.kind} takes ${k.least ? "at least " : ""}${need}${k.items ? ` for ${n} in ${k.items.key}` : ""} (0.8)`);
+    put(f.tabCodePath?.tabCode, { t, g, short, head: f.type === "STATIC_TEXT", full: k?.place === "alone",
+      fixed: k?.width === "own", stretch: k?.width === "stretches", ty: k?.kind ?? f.type });
   }
   for (const w of [...W.flatMap((m) => vals(bo[m])), ...vals(bo.nativeFields)])
     if (w.gridPosition) put((w.tabCode ?? w.tabCodePath)?.tabCode, { t: `${bo.code}.${w.code ?? w.nativeFieldId}`, g: w.gridPosition, box: true });

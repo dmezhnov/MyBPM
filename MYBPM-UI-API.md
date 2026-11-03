@@ -328,21 +328,44 @@ are archive keys, here they are keys of the field DTO and the calls named). Goal
 empty space, no wasted band, **no scroll inside a scroll**. «Visible field» = one a user of the form sees,
 not counting headings, the `TAB_GROUP` and the system fields.
 
-- **Heights** `[C]` (one grid row = 30 px): `rows` = **3** for a one-line input (`INPUT_*`, the date and time
-  types, `DROPDOWN_SINGLE`, `CHECKBOX`), a one-line heading (4 rows leaves a band) and a `BO` / `CO` `SINGLE`
-  reference (one line, no band); **6** for `TEXTAREA` / `TEXTAREA_LANG` (4 shows only about two lines of text),
-  a `BO` `TABLE`, `LINK`, `FILE_UPLOAD`, `CHECKLIST`, `RADIO_BUTTON_GROUP`, `PROGRESS_BAR`; **8** for
-  `QUESTIONNAIRE` / `GEO_POINT`.
+- **Cell of each type** `[C]` — the same table as `MYBPM-IMPORTS.md` 0.8, where the legend is; the form
+  lint reads it from there. `rows` = ⌈(painted + 15) / 30⌉ (one grid row = 30 px); `items` = by that formula with
+  `n` from the named key; `tabs` = the tallest tab + 3 (+ 6 on a `TAB` page). *in a row*: `pairs` = a short one-line
+  field, `alone` = alone at full width, `free` = either. *width*: `stretches` fills the cell, `own` keeps its own width.
+
+| kind | painted, px | rows | in a row | width |
+|---|---|---|---|---|
+| `INPUT_TEXT` / `INPUT_TEXT_LANG` / `INPUT_NUMBER` / `INPUT_PHONE` / `INPUT_EMAIL` / `LINK` | 58 | 3 | pairs | stretches |
+| `DATE` / `FULL_DATE` / `TIME` / `CHECKBOX` / `DROPDOWN_SINGLE` / `BO SINGLE` | 58 | 3 | pairs | own |
+| `YEAR` / `YEAR_AND_MONTH` / `PERIOD` / `PERIOD_TIME` / `CO SINGLE` | 58 `[I]` | 3 | pairs | — |
+| `TEXTAREA` / `TEXTAREA_LANG` | — | ≥ 6 | alone | stretches |
+| `BO TABLE` / `CO TABLE` / `BO` / `CO` | — | ≥ 6 | alone | stretches |
+| `STATIC_TEXT` | 46 a heading | ≥ 3 | alone | stretches |
+| `TAB_GROUP` | — | tabs | alone | stretches |
+| `FILE_UPLOAD SINGLE` | 77 with its file, 49 empty | 4 | free | own |
+| `FILE_UPLOAD MULTIPLE` / `FILE_UPLOAD` | 49 + 20 per file | ≥ 4 | free | own |
+| `FILE_UPLOAD TILE` | 120 | 5 | free | own |
+| `CHECKLIST` | 53 + 34·n, n = `defaultValue` | items | alone | own |
+| `RADIO_BUTTON_GROUP` | 22 + 24·n, n = `fieldOptionsStruct.options` | items | free | own |
+| `PROGRESS_BAR` | 115 | 5 | alone | stretches |
+| `QUESTIONNAIRE` / `GEO_POINT` | — `[I]` | 8 | alone | stretches |
+| `SIGNATURE` | 91 | ≥ 4 | free | fills |
+| `CAPTCHA` | 164 | 6 | free | own |
+| `CURRENT_USER` | 90 | 4 | free | stretches |
+| `IFRAME` | — `[I]` | 8 | alone | stretches |
+| `BUTTON` / `CURRENT_DATE` / `CURRENT_DAY` / `CURRENT_MONTH` / `CURRENT_DAY_AND_MONTH` / `CURRENT_YEAR` | — `[I]` | 3 | free | — |
+| `CREATED_BY SINGLE` / `LAST_MODIFIED_BY SINGLE` | 58 `[I]` | 3 | pairs | own |
+| `CREATED_BY` / `LAST_MODIFIED_BY` | — | ≥ 6 | alone | stretches |
+| `CREATED_AT` / `LAST_MODIFIED_AT` / `OPEN_COUNT` / `IN_MIGRATION_UPDATED_AT` | 58 `[I]` | 3 | free | — |
+
 - **Rows** `[C]`: a row is one or more cells with the SAME `y` and the SAME `rows`; `x` runs 0, 0 + cols …, and
   the `cols` of a row sum to 15; the next row's `y` = this `y` + this `rows` (a field on a tab counts `y` from 0
   on its tab). Short one-line fields that belong together stand 3 per row (5 + 5 + 5) or 2 (5 + 10 / 10 + 5, the wide cell to
   the longer value) — телефон + email, дата + сумма, a `SINGLE` reference + a dropdown; a form of nothing but
-  full-width fields is a defect. Inputs (`INPUT_*`) stretch over their cell; a date, time, checkbox, dropdown or `SINGLE`
-  reference keeps its own width `[C]` — in a row with an input the wider cell goes to the input. **One grid per form (per tab)**: of two rows of ≥ 2 cells one right under the
+  full-width fields is a defect. In a row with a `stretches` field the wider cell goes to it, never to an `own` box. **One grid per form (per tab)**: of two rows of ≥ 2 cells one right under the
   other, the column starts of one are a part of the other's — never 8 + 7 under 5 + 5 + 5 (labels at 0, 8 against
   0, 5, 10: a staircase); 8 + 7 only when every row of ≥ 2 cells next to it is 8 + 7 too (`MYBPM-IMPORTS.md` 0.8).
-  Alone at full width: `TEXTAREA`, a `TABLE`, a heading, a `TAB_GROUP`, `CHECKLIST`, `QUESTIONNAIRE`,
-  `GEO_POINT`, `PROGRESS_BAR`. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched — an exception, at most 2 per
+  Alone at full width: the `alone` kinds of the table. A short field with no partner stands alone at `x 0`, `cols 8`, never stretched — an exception, at most 2 per
   form (per tab): every field alone at `cols 8` is still the «one per row» defect;
   no cell of the row below may fit wholly into its free columns 8–14 — it would float up beside it — so under
   it goes a full-width row, a pair split 5 + 10, or nothing. Never mix heights in one row — the next row floats into the hole (§4 of

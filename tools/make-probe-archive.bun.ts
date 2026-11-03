@@ -47,7 +47,7 @@
  *     columns, H rows of 30 px (default form rows + 5); without the flag a BO / process dialog gets W 10
  *   --hide-tab tabs/tab_system                                — the hidden system tab «Системные» (0.8a step 6): an
  *     AccessStructDto, all BO actions open + VIEW «никому» on that tab; REPLACES the BO's rights — a NEW BO only
- *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: 0.8 — one-line or SINGLE reference 3, text block / table / file 6, TAB_GROUP = tallest tab + 3, + 6 with --tab-view)
+ *   --field "Название:INPUT_TEXT!rows=3"                      — the cell height in grid rows (default: the table «Cell of each type» of 0.8, a CHECKLIST / RADIO_BUTTON_GROUP by its items; TAB_GROUP = tallest tab + 3, + 6 with --tab-view)
  *   --salt <s>                                                — the build salt (MYBPM-IMPORTS.md 0.7): every id seed
  *     starts with it, so a build from scratch does not revive a rolled-back BO of the same code; keep it for every
  *     later build of the same system. Without it the ids depend on the codes alone (the old behaviour)
@@ -110,8 +110,12 @@
 import { createHash } from "node:crypto"; // Bun.hash is not a cryptographic digest; sha256 keeps ids reproducible
 import { scriptBody, toArchiveScript, type ProcessSpec } from "./process-builder.ts";
 import { zip } from "./zip.ts";
+import { cellOf, cellTable, rowsOf } from "./cell-table.ts";
 
 const PKG = "kz.greetgo.mybpm.reg.structure.model.dto";
+/** Rows, place and width of each field kind: the table «Cell of each type» of MYBPM-IMPORTS.md 0.8, the one the lint checks against. */
+const CELLS = cellTable(await Bun.file(`${import.meta.dir}/../MYBPM-IMPORTS.md`).text());
+if (!Object.keys(CELLS).length) throw new Error("MYBPM-IMPORTS.md 0.8 holds no table «Cell of each type»");
 
 const args = new Set(Bun.argv.slice(2));
 const withMetadata = args.has("--with-metadata");
@@ -163,8 +167,8 @@ type FieldSpec = {
   sets: { path: string[]; value: unknown }[];
 };
 /**
- * A row of the form stack: its field codes, how each one's box takes its cell (`stretch` = an `INPUT_*` over the whole
- * cell, `fixed` = a box of its own width: DATE, TIME, CHECKBOX, DROPDOWN_SINGLE, a BO SINGLE reference), `!half` (one
+ * A row of the form stack: its field codes, how each one's box takes its cell (`stretch` = over the whole cell, `fixed` =
+ * a box of its own width — the column «width» of the table «Cell of each type», 0.8), `!half` (one
  * cell of 8), and whether the row above it is a `!half` one.
  */
 type FormRow = { codes: string[]; widths: ("stretch" | "fixed" | "other")[]; half: boolean; underHalf: boolean };
@@ -808,16 +812,14 @@ if (isComposite) {
   const formRows: FormRow[] = [];
   custom.forEach((f, i) => {
     const code = codeOf(f.label);
-    // The heights that fit the content (MYBPM-IMPORTS.md 0.8): a table, a file or a text block 6 rows, a
-    // questionnaire or a map 8, a one-line input, a SINGLE reference or a heading 3; a TAB_GROUP is resized to its
-    // tallest tab + 3 after all fields are placed (below). `!rows=N` overrides any of them.
+    // The heights that fit the content: the table «Cell of each type» (MYBPM-IMPORTS.md 0.8), a CHECKLIST / RADIO by its
+    // items; a TAB_GROUP is resized to its tallest tab + 3 after all fields are placed (below). `!rows=N` overrides any of them.
     const rowsSet = f.sets.find(s => s.path[0] === "rows");
     const single = (f.type === "BO" || f.type === "CO") && f.sets.some(s => s.path[0] === "viewType" && s.value === "SINGLE");
+    const cell = cellOf(CELLS, f.type, single ? "SINGLE"
+      : f.type === "FILE_UPLOAD" ? (f.flags.includes("tile") ? "TILE" : f.flags.includes("multiple") ? "MULTIPLE" : "SINGLE") : undefined);
     const rows = rowsSet ? Number(rowsSet.value)
-      : single ? 3
-      : ["BO", "CO", "LINK", "FILE_UPLOAD", "CHECKLIST", "RADIO_BUTTON_GROUP", "PROGRESS_BAR", "TEXTAREA", "TEXTAREA_LANG"].includes(f.type)
-      ? 6
-      : ["QUESTIONNAIRE", "TAB_GROUP", "GEO_POINT"].includes(f.type) ? 8 : 3;
+      : rowsOf(cell, ["CHECKLIST", "RADIO_BUTTON_GROUP"].includes(f.type) ? f.options.length : 0) || (f.type === "TAB_GROUP" ? 8 : 3);
     if (f.type === "TAB_GROUP" && !rowsSet) autoTabGroups.add(code);
     const isRef = f.type === "BO" || f.type === "CO";
     // `#…` means a different thing per type: options for a list, steps for a bar, tabs for a tab group,
@@ -906,7 +908,7 @@ if (isComposite) {
     }
     // a field on a tab stays out of the form stack: no y, and no slot in the form-order column index
     if (!inTab) {
-      const width = /^INPUT_/.test(f.type) ? "stretch" : /^(DATE|FULL_DATE|TIME|CHECKBOX|DROPDOWN_SINGLE)$/.test(f.type) || (f.type === "BO" && single) ? "fixed" : "other";
+      const width = cell?.width === "stretches" ? "stretch" : cell?.width === "own" ? "fixed" : "other";
       if (joins) { curRow.push(code); formRows.at(-1)!.widths.push(width); }
       else { prevHalf = curHalf; curRow = [code]; curRowY = y; formRows.push({ codes: curRow, widths: [width], half: false, underHalf: prevHalf }); }
       curHalf = curRow.length === 1 && f.flags.includes("half");
