@@ -6410,7 +6410,8 @@ not part of the def). Compiled for `JsonDeck.put`, `ScriptMultiLangText.addText`
 F-goForProcess-K-FIX-T-BoiRefCode      #Запустить процесс     () → —   start the business process of that record
 F-continueProcess-K-FIX-T-BoiRefCode   #Продолжить процесс    () → —   release every wait of that process: a Form
                                                                          it waits on, or a Timer, passes on at once
-F-terminateProcess-K-FIX-T-BoiRefCode  #Терминируй процесс    () → —   stop the whole process, all arrows halt
+F-terminateProcess-K-FIX-T-BoiRefCode  #Терминируй процесс    () → —   stop the whole process, all arrows halt;
+                                                                         status stays «В ожидании» (§16)
 ```
 
 A process record also has the field action `F-PROCESS_STATUS-K-DYN-S-boi_fields` (its `PROCESS_STATUS`).
@@ -6859,13 +6860,21 @@ Number/string facts below without a marker are `[I]`.
   passes a Terminator, **a step standing in another branch (e.g. a Timer) turns `PASSED` with no next
   step** — the figures after it never run, not even after the Timer's due time; a step entered right after
   the Terminator is closed at once. `load-process-steps` shows nothing
-  special: the cut Timer is just `PASSED`, `nextProcessSteps: []`, no diagnostic message. (The
-  record's `PROCESS_STATUS` after it is NOT readable this way — `load-boi-values` answers `""` for any
-  reference field of a process record, a record ended by an Exit included.) Use it for «stop everything»
-  (e.g. a cancel branch); an Exit ends only ITS branch (next point).
+  special: the cut Timer is just `PASSED`, `nextProcessSteps: []`, no diagnostic message. Use it for
+  «stop everything» (e.g. a cancel branch); an Exit ends only ITS branch (next point). **A run with no Exit
+  passed keeps «Статус процесса» «В исполнении»** («Статус процесса» point below).
 - **An Exit inside one branch ends only that branch** `[C]`. A process may have SEVERAL Exits —
   `validate-def` is clean with two, no join needed. Unlike a Terminator, an Exit closes only the branch
   that reached it, and the other branches run to their own end.
+- **«Статус процесса» of a finished run is «Завершён» (`FINISHED`) only if the run passed an Exit** `[C]`.
+  A run with nothing left to do and no Exit passed keeps «В исполнении» (`EXECUTING`) for good: a path
+  ending in a Terminator, a figure with no outgoing arrow (a dead end), a Terminator that cut another branch
+  before its Exit. A Terminator in one branch while the other branch passes its Exit in the same run reads
+  «Завершён». A failed step gives «Завершён с ошибкой», a standing Form / Timer «В ожидании». A loop with no wait in it (Script → Script → back) stops at the 1000th step of one run: that step turns `FAILED` with the diagnostic `step.limit.reached.cycle` «Достигнут максимальное кол-во пройденных шагов в процессе. Возможно в процессе присутствует цикл», so «Завершён с ошибкой» `[C]`; the count is per run, so a Timer whose date is still ahead ends the run and a loop through it is never stopped by that limit — it runs on forever «В ожидании» `[C]` (the same through a Form `[I]`), while a Timer whose date has already come passes at once in the same run and counts like a Script `[C]`. **The record
+  action «#Терминируй процесс» never gives «Завершён»** `[C]`: called in the process's own Script, that Script
+  passes, the figure after it (an Exit too) turns `STOPPED` and the status is «В ожидании» for good; called
+  from another process's Script on a record standing on a Timer, that Timer turns `PASSED` with no next
+  step, does not fire at its due time, and the record keeps «В ожидании» for good. So **every path of a process ends in an Exit**.
 - **A Point is a bend on an arrow, nothing more** `[C]` (API and archive): the
   editor makes it with «Вставить точку» in an arrow's context menu, which CUTS the arrow in two — the old
   arrow now ends at the Point, a new one leads from the Point to the old target. At run time it is a step

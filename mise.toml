@@ -757,6 +757,18 @@ if ((await $`which claude`.nothrow().quiet()).exitCode === 0) await $`claude plu
 const fromZip = await $`bun tools/mcp-client.bun.ts call archive_lint ${JSON.stringify({ path: zipFile })} --server dist/mcp-test/plugin/mybpm/mcp/mybpm-stand.cjs --json`.env(env).nothrow().quiet();
 const zipRow = JSON.parse(fromZip.stdout.toString() || "[]")[0];
 if (!zipRow?.result?.lint || !String(zipRow.result.lint).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`plugin zip server: archive_lint answered ${JSON.stringify(zipRow)}\n${fromZip.stderr}`); process.exit(1); }
+// a process-record action step of tools/process-builder.ts (processAct) is a BlockAssign with only leftExprId = the void
+// action on the record — ЭТОТ_ПРОЦЕСС itself for [], the referenced record (#Значение) for a path — followed by the exit
+const { scriptBody } = await import("./tools/process-builder.ts");
+for (const [path, onRecord] of [[[], "THIS_PROCESS"], [["Cel"], "F-VALUE-K-DYN-R-D-S-boi_fields"]] as const) {
+  let n = 0;
+  const b = scriptBody({ exit: "plain", steps: [{ processAct: [...path], act: "terminateProcess" }] }, (k) => k, (c) => c, () => `id${n++}`);
+  const assign = Object.values<any>(b.blocks).find((x) => x.type === "BlockAssign");
+  const act = assign && b.expressions[assign.leftExprId];
+  const rec = act && b.expressions[act.leftExprId];
+  if (!assign || "rightExprId" in assign || act?.actId !== "F-terminateProcess-K-FIX-T-BoiRefCode" || (rec?.exprValueType ?? rec?.actId) !== onRecord
+    || b.blocks[assign.downBlockId]?.type !== "BlockExit") { console.error(`process-builder processAct ${JSON.stringify(path)}: ${JSON.stringify(b)}`); process.exit(1); }
+}
 console.log("all tests passed");
 '''
 
