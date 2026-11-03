@@ -1200,8 +1200,10 @@ table. A kind is the `type`, followed by its `viewType` (`params.viewType` for a
 changes the cell; a kind without one is the fallback. *painted* = the height the record window draws from the
 cell's top edge, label included, at `w: 12`; a cell needs **`rows` = ⌈(painted + 15) / 30⌉** (one grid row
 = 30 px; less and the content scrolls inside the cell, more leaves an empty band). `rows`: `N` = exactly N;
-`≥ N` = at least N; `items` = by that formula with `n` taken from the named key of the field (its items
-or options); `tabs` = the tallest tab + 3, + 6 on `instanceViewType: "TAB"` (0.8a step 5). *in a row*:
+`≥ N` = at least N; `items` = by that formula with `n` = the count of the value at the named key of the
+field (its items or options): a string is parsed as JSON first (a `CHECKLIST`'s `defaultValue` is a JSON
+string), then an array counts its elements, an object its keys, anything else — a broken string included —
+0; `tabs` = the tallest tab + 3, + 6 on `instanceViewType: "TAB"` (0.8a step 5). *in a row*:
 `pairs` = a short one-line field — shares a row with other `pairs` fields, alone only at `x 0, cols 8`
 (below); `alone` = alone in its row at full width; `free` = alone at any width or beside cells of the same
 `rows`. *width*: `stretches` = the box fills its cell; `own` = the box keeps its own width whatever `cols`

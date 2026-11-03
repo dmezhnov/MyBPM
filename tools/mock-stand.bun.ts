@@ -756,7 +756,10 @@ function exportZip(): Uint8Array {
   const lines = [...settings, ...reports, ...picked.map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
     code: b.code, category: b.boCategory, name: { rus: b.name }, nativeFields: {}, kanbanCardTemplates: b.kanban ?? {},
     dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [x.code, { code: x.code, type: x.type,
-      ...(x.viewType && { viewType: x.viewType }), ...(x.gridPosition && { gridPosition: x.gridPosition }), ...(x.tabId && { tabCodePath: { tabCode: x.tabId } }) }])) }))];
+      ...(x.viewType && { viewType: x.viewType }), ...(x.gridPosition && { gridPosition: x.gridPosition }), ...(x.tabId && { tabCodePath: { tabCode: x.tabId } }),
+      // the items the 0.8 table counts: a CHECKLIST's defaultValue stays a JSON string, a list's options[] become fieldOptionsStruct.options by code
+      ...(x.defaultValue != null && { defaultValue: x.defaultValue }),
+      ...(x.options?.length && { fieldOptionsStruct: { optionSource: "FROM_FIELD", options: Object.fromEntries(x.options.map((o: any) => [o.code ?? o.id, { fieldOption: o }])) } }) }])) }))];
   return zip([{ name: "data-mock/0000001.mybpm", data: enc.encode(lines.join("\n") + "\n") },
     { name: "data-mock/metadata.mybpm", data: enc.encode(`objectCount-${lines.length}`) }]);
 }

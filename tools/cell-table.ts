@@ -32,3 +32,18 @@ export const cellOf = (table: Record<string, CellRule>, type: string, viewType?:
 /** The grid rows a cell takes: `items` → ⌈(painted + 15) / 30⌉ for n items, else N (the minimum of `≥ N`); 0 = no fixed value. */
 export const rowsOf = (cell: CellRule | undefined, n = 0) =>
   !cell ? 0 : cell.items ? Math.ceil((cell.items.base + cell.items.per * n + 15) / 30) : cell.rows;
+
+/** n of an `items` cell for a field as the archive stores it: the value at `items.key`, a string parsed as JSON
+ *  first, then an array → its elements, an object → its keys, anything else → 0 — what the form lint's `count` does (0.8). */
+export function itemsOf(cell: CellRule | undefined, field: any): number {
+  if (!cell?.items) return 0;
+  let v = cell.items.key.split(".").reduce((o, p) => o?.[p], field);
+  try { v = typeof v === "string" ? JSON.parse(v) : v; } catch { return 0; }
+  return Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0;
+}
+
+/** The grid rows a stored field takes by the table: its row (`TYPE viewType`, `params.viewType`, the bare type) and its items. */
+export function cellRowsOf(table: Record<string, CellRule>, field: any): number {
+  const cell = cellOf(table, field.type, field.viewType ?? field.params?.viewType);
+  return rowsOf(cell, itemsOf(cell, field));
+}

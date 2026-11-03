@@ -276,6 +276,44 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
     const r = await $`${cmd} dist/lint-tabw/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /tallest tab|a tab with/.test(l));
     if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on dist/lint-tabw/${name}.jsonl: tab height / tab cell lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
   }
+// the item count of an items cell (0.8) is one rule: tools/cell-table.ts cellRowsOf on the fields as the stand stores them
+// (a CHECKLIST's defaultValue a JSON string of 1 / 3, RADIO options a dictionary or an array of 3, a broken string = 0),
+// and both lints count the same — at those rows no «takes» line, one row more a line for each (issue #12)
+{
+  const { cellTable, cellRowsOf } = await import("./tools/cell-table.ts");
+  const CELLS = cellTable(await Bun.file("MYBPM-IMPORTS.md").text());
+  await $`rm -rf dist/lint-items && bun tools/make-probe-archive.bun.ts --group-code Items_group --group-name Items --group-order 1 --code Lint_items --name Items --salt items --bo-order 1 --out dist/lint-items ${["Название:INPUT_TEXT", "Один:CHECKLIST#А", "Три:CHECKLIST#А|Б|В", "Словарь:RADIO_BUTTON_GROUP#Да|Нет|Может", "Массив:RADIO_BUTTON_GROUP#Да|Нет|Может", "Битый:CHECKLIST#А"].flatMap((f) => ["--field", f])}`.quiet();
+  const itemLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-items/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const want: Record<string, [number, number, string]> = { Odin: [4, 1, "defaultValue"], Tri: [6, 3, "defaultValue"],
+    Slovar: [4, 3, "fieldOptionsStruct.options"], Massiv: [4, 3, "fieldOptionsStruct.options"], Bityyi: [3, 0, "defaultValue"] };
+  const items = async (name: string, extra: number) => Bun.write(`dist/lint-items/${name}.jsonl`, itemLines.map((l) => {
+    const o = JSON.parse(l);
+    if (o.dynamicFields) {
+      const d = o.dynamicFields, opts = d.Massiv.fieldOptionsStruct.options;
+      if (typeof d.Odin.defaultValue !== "string" || Object.keys(opts).length !== 3) { console.error("make-probe-archive: CHECKLIST defaultValue not a JSON string or RADIO not 3 options"); process.exit(1); }
+      d.Massiv.fieldOptionsStruct.options = Object.values(opts);
+      d.Bityyi.defaultValue = '[{"label":"А",';
+      let y = 0;
+      for (const f of (Object.values(d) as any[]).sort((a, b) => a.gridPosition.y - b.gridPosition.y)) {
+        const rows = cellRowsOf(CELLS, f);
+        if (want[f.code] && rows !== want[f.code][0]) { console.error(`cellRowsOf ${f.code}: ${rows}, want ${want[f.code][0]}`); process.exit(1); }
+        if (want[f.code] && f.code !== "Bityyi" && f.gridPosition.rows !== rows) { console.error(`make-probe-archive ${f.code}: rows ${f.gridPosition.rows}, the table gives ${rows} (0.8)`); process.exit(1); }
+        f.gridPosition = { x: 0, y, cols: 15, rows: rows + (want[f.code] ? extra : 0) };
+        y += f.gridPosition.rows;
+      }
+    }
+    return JSON.stringify(o);
+  }).join("\n") + "\n");
+  await items("ok", 0);
+  await items("off", 1);
+  const kind = (c: string) => (/^(Slovar|Massiv)$/.test(c) ? "RADIO_BUTTON_GROUP" : "CHECKLIST");
+  const off = Object.entries(want).map(([c, [r, n, k]]) => `Lint_items.${c}: rows ${r + 1}, a ${kind(c)} takes ${r} for ${n} in ${k} (0.8)`);
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+    for (const [name, lines] of [["ok", []], ["off", off]] as const) {
+      const r = await $`${cmd} dist/lint-items/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => / takes /.test(l));
+      if (got.join("\n") !== lines.join("\n")) { console.error(`${cmd[1]} on dist/lint-items/${name}.jsonl: item rows lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+    }
+}
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
@@ -610,6 +648,13 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     (r) => r.notes.some((n: string) => /^layout lint: mcp_probe_rights\.author: row y \d+ columns start at 0,5,10 — the row above starts at 0,8: staircase/.test(n))],
   ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", cols: 5 }, { fieldId: "@bo_fields_save.added.1.fieldId", x: 5, cols: 10 }] },
     (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_rights: no gridLayoutPosition/.test(n)) && !r.notes.some((n: string) => /staircase|NOT RUN/.test(n))],
+  // the height of an items cell: what heightOf gives a CHECKLIST / RADIO by the spec is what the lint counts on the export by the 0.8 key
+  ["bo_fields_save", { code: "mcp_probe_rights", add: [{ label: "\u0427\u0435\u043A", type: "CHECKLIST", code: "check3", options: ["\u0410", "\u0411", "\u0412"] },
+    { label: "\u0427\u0435\u043A \u043E\u0434\u0438\u043D", type: "CHECKLIST", code: "check1", options: ["\u0410"] }, { label: "\u041E\u0442\u0432\u0435\u0442", type: "RADIO_BUTTON_GROUP", code: "radio3", options: ["\u0414\u0430", "\u041D\u0435\u0442", "\u041C\u043E\u0436\u0435\u0442"] }] },
+    (r) => r.notes?.some((n: string) => /^layout lint: /.test(n)) && !r.notes.some((n: string) => /check3|check1|radio3|NOT RUN/.test(n))],
+  ["bo_fields_save", { code: "mcp_probe_rights", edit: [{ fieldId: "@bo_fields_save.added.0.fieldId", rows: 5 }, { fieldId: "@bo_fields_save.added.2.fieldId", rows: 3 }] },
+    (r) => r.notes?.some((n: string) => /^layout lint: mcp_probe_rights\.check3: rows 5, a CHECKLIST takes 6 for 3 in defaultValue \(0\.8\)/.test(n))
+      && r.notes.some((n: string) => /^layout lint: mcp_probe_rights\.radio3: rows 3, a RADIO_BUTTON_GROUP takes 4 for 3 in fieldOptionsStruct\.options \(0\.8\)/.test(n))],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
