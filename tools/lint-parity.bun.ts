@@ -8,12 +8,14 @@
  * "" / {} / [] / a number / a value of another key, a boolean flipped, a line dropped, doubled, swapped,
  * broken or taken from another base, the newline or metadata changed, the base passed as `source`, a string set
  * to a sample of the stand's reject check); every base also gets each reject-check sample in one of its BO strings.
- * A case the JS lint crashes on is skipped (the port goes on where JS dies); any other difference fails.
+ * A case the JS lint crashes on fails like a difference: the lint must answer any archive with lines, never a stack trace
+ * (a value of another shape — null, a number, true where an object or a list stands — must not throw: `?.`, has(), it(),
+ * as the port's g(), has(), it()).
  *
  *   bun tools/lint-parity.bun.ts [--cases N] [--seed S] [--corpus DIR] [--python python3]
  *
- * Exit 0 — every case equal; 1 — a mismatch (the first few are printed, each saved to
- * dist/lint-parity/fail-<n>.json with its jsonl / meta / source and both outputs); 2 — no python.
+ * Exit 0 — every case equal; 1 — a mismatch or a JS crash (each printed, the first few saved to
+ * dist/lint-parity/fail-<n>.json / crash-<n>.json with its jsonl / meta / source and both outputs); 2 — no python.
  * `mise run lint-parity` runs it; `mise test` runs it on the generated bases.
  */
 import { $ } from "bun";
@@ -190,7 +192,14 @@ if (pyOut.length !== cases.length) { console.error(`lint-parity: python answered
 let equal = 0, crashed = 0, bad = 0;
 for (const [n, c] of cases.entries()) {
   let js: string;
-  try { js = lintArchive(c.jsonl, doc, c.meta, c.source); } catch { crashed++; continue; }
+  try { js = lintArchive(c.jsonl, doc, c.meta, c.source); } catch (e) {
+    // the frame of the lint names a line of the Function source: two header lines, then the block from the line after ```js
+    const fn = Number(String((e as Error)?.stack ?? "").match(/at lintArchive \([^)]*:(\d+):\d+\)|at <anonymous> \([^)]*:(\d+):\d+\)/)?.slice(1).find(Boolean) ?? 0);
+    const at = fn ? `MYBPM-IMPORTS.md:${doc.slice(0, doc.indexOf(block)).split("\n").length + fn - 3}` : "(no lint frame)";
+    if (++crashed <= 5) await Bun.write(`${OUT}/crash-${n}.json`, JSON.stringify({ ...c, js: `CRASH ${e}`, python: pyOut[n].out ?? pyOut[n].err }, null, 1));
+    console.error(`case ${n} (${c.base}: ${c.ops.join(" ") || "as built"}): the JS lint crashed at ${at} — ${e}${crashed <= 5 ? ` → ${OUT}/crash-${n}.json` : ""}`);
+    continue;
+  }
   const p = pyOut[n];
   if (p.out === js) { equal++; continue; }
   if (++bad <= 5) {
@@ -202,5 +211,5 @@ for (const [n, c] of cases.entries()) {
   }
 }
 const xssHits = cases.filter((c, n) => pyOut[n].out?.includes("a kind of string the stand refuses")).length;
-console.log(`lint-parity: ${xssHits} cases with a reject-check line; ${bases.length} bases, ${cases.length} cases, seed ${seed} — ${equal} equal, ${crashed} skipped (JS crashed), ${bad} different`);
-process.exit(bad ? 1 : 0);
+console.log(`lint-parity: ${xssHits} cases with a reject-check line; ${bases.length} bases, ${cases.length} cases, seed ${seed} — ${equal} equal, ${crashed} JS crashed, ${bad} different`);
+process.exit(bad || crashed ? 1 : 0);
