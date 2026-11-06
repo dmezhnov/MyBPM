@@ -2283,6 +2283,30 @@ async function closeSystemTabs(s, boId) {
   }
   return notes;
 }
+async function cardNotes(s, boId, fields, kanbanFieldIds) {
+  const notes = [], views = new Map;
+  for (const kid of kanbanFieldIds) {
+    const id = kid.replace(/^[DN]-/, ""), f = fields.find((x) => kid.startsWith("N-") ? x.nativeFieldType === id : x.fieldId === id);
+    if (!f)
+      continue;
+    if (f.type === "CO")
+      notes.push(`card field «${nameOf(f)}» is a CO: the board draws another value of the chosen record (e.g. its type), not its name as the registry does — show a BO field or a text field filled by a hook instead`);
+    for (let tabId = f.tabId, n = 0;tabId && n < 9; n++) {
+      const g = fields.find((x) => x.type === "TAB_GROUP" && (x.tabs ?? []).some((t) => t.id === tabId));
+      if (!g)
+        break;
+      if (!views.has(tabId))
+        views.set(tabId, rightsOf((await s.call(BO_ + "load-field-tab-access-group", { businessObjectId: boId, fieldId: g.fieldId, tabId }))?.view, fields));
+      const v = views.get(tabId), tab = g.tabs.find((t) => t.id === tabId);
+      if (v !== undefined && v !== "all") {
+        notes.push(`card field «${nameOf(f)}» lies on tab «${tab.label}» (VIEW ${JSON.stringify(v)}): the board drops it for every non-admin who may not see that tab${v === "nobody" ? " — that is everyone but admins; show a field of an open tab" : ""}`);
+        break;
+      }
+      tabId = g.tabId;
+    }
+  }
+  return notes;
+}
 function rightsOf(x, fields) {
   if (!x)
     return;
@@ -4720,7 +4744,7 @@ var tools = [
   {
     name: "kanban_card_save",
     write: true,
-    description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. Calls the stand's own save-kanban-card-template (§7) — the call the constructor's card editor sends — with the whole card: every field given is placed, every field of the old card not given is removed; then reads load-kanban-template back. Fields: codes, labels or fieldIds of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it — the list the constructor offers (load-kanban-card-fields). The header holds ONE field, as in the constructor; the smallest card is the BO's name in the header. Without a card the BO's kanban dies with «cardTemplate is null» once a record exists (an archive BO without kanbanCardTemplates) and a dropdown saved together with the other fields (e.g. by bo_create) starts with an empty card; a menu item's kanban view needs it too (menu_save). No import log row, no bell entry, no rollback: run it again with the old card (`was`) to undo. Ask the user first; dryRun:true = the body only.",
+    description: "Set the kanban card of a BO for one DROPDOWN_SINGLE (its options are the columns): which fields the card shows in its header, content and footer. Calls the stand's own save-kanban-card-template (§7) — the call the constructor's card editor sends — with the whole card: every field given is placed, every field of the old card not given is removed; then reads load-kanban-template back. Fields: codes, labels or fieldIds of the BO's fields, or a system field by its type (CREATED_BY, CREATED_AT, …) when the BO's form carries it — the list the constructor offers (load-kanban-card-fields). The header holds ONE field, as in the constructor; the smallest card is the BO's name in the header. Notes name a card field a viewer does not see as placed: a CO (the board draws another value of the chosen record, not its name) and a field of a tab whose VIEW is not «all» (the board drops it for every non-admin who may not see the tab, through a parent tab too). Without a card the BO's kanban dies with «cardTemplate is null» once a record exists (an archive BO without kanbanCardTemplates) and a dropdown saved together with the other fields (e.g. by bo_create) starts with an empty card; a menu item's kanban view needs it too (menu_save). No import log row, no bell entry, no rollback: run it again with the old card (`was`) to undo. Ask the user first; dryRun:true = the body only.",
     props: {
       boId: { type: "string" },
       code: { type: "string", description: "The BO code instead of boId" },
@@ -4768,9 +4792,9 @@ var tools = [
         });
       for (const z of ZONES)
         body[`${z}DelFieldIds`] = (old[z] ?? []).map((x) => x.kanbanFieldId).filter((id) => !placed.has(id));
-      const was = cardOf(old);
+      const was = cardOf(old), notes = await cardNotes(s, boId, fields, [...placed]);
       if (a.dryRun)
-        return { dryRun: true, boId, dropdown: dd.code, was, body, next: "run again without dryRun after the user agreed" };
+        return { dryRun: true, boId, dropdown: dd.code, was, body, ...notes.length ? { notes } : {}, next: "run again without dryRun after the user agreed" };
       await s.call("v2/kanban/save-kanban-card-template", p, body);
       const asked = Object.fromEntries(ZONES.map((z) => [z, body[z].map(named)]));
       const differ = (c) => ZONES.filter((z) => JSON.stringify(c[z]) !== JSON.stringify(asked[z]));
@@ -4782,7 +4806,7 @@ var tools = [
         await sleep(500);
       }
       const mismatch = differ(card).map((z) => `${z}: asked ${asked[z].join(", ") || "—"}, the stand has ${card[z].join(", ") || "—"} after 10 s`);
-      return clean({ boId, dropdown: dd.code, was, card, mismatch });
+      return clean({ boId, dropdown: dd.code, was, card, mismatch, notes });
     }
   },
   {

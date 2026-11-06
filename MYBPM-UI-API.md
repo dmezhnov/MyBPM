@@ -704,7 +704,7 @@ Controller `v2/business-objects`. An archive that carries an access DTO REPLACES
    `view` and `edit` matter) — and `load-field-tab-access-group` / `save-field-tab-access-group`
    (`+ tabId`). An unknown `tabId` answers `view.accessForAll:true, authorsField:null`, so a «никто»
    answer can be real. **A tab has only the VIEW right** `[C]`: VIEW «никто» on a tab hides the tab from
-   every non-admin AND drops its fields from their registry columns; a non-admin's save keeps the hidden
+   every non-admin AND drops its fields from their registry columns and kanban cards (§7 «What the card draws»); a non-admin's save keeps the hidden
    values; **an admin still sees the tab and its columns** `[C]`. The form learns it per user: the
    `TAB_GROUP` entry of `v2/instance-field-form/load-field-data` lists in `tabs[]` only the tabs that user may see
    (`load-field-structure` still lists every id in `tabIds`), and a group with no visible tab is missing from
@@ -1274,7 +1274,7 @@ do is plain HTTP by §0U.4.
   `DROPDOWN_SINGLE` by field codes or labels (header = ONE field / content / footer; a system field by its type,
   e.g. `CREATED_BY`, when the form carries it): `save-kanban-card-template` of §7 with the whole card — fields not
   given are removed — then `load-kanban-template` read back until it shows the card; no log row, no bell entry, no
-  rollback (`was` in the answer is the old card); `dryRun` returns the body only. `record_participants` reads, adds and removes a record's participants (§3 «Participants»), users by
+  rollback (`was` in the answer is the old card); `dryRun` returns the body only; `notes` name a card field a viewer does not see as placed — a `CO`, a field of a tab whose VIEW is not «all» (§7 «What the card draws»). `record_participants` reads, adds and removes a record's participants (§3 «Participants»), users by
   e-mail, name or id. `person_invite` e-mails a user the invitation again (§3) — a REAL letter to the address
   of that «Пользователи» record: name the person and the address when asking. Conflicts (§5 «Conflicts»):
   `import_analyze` / `import_report` give one row per unknown org unit — `conflictId`, type, the archive's
@@ -6223,6 +6223,11 @@ between zones, inside one, or back onto the LEFT LIST to remove it (a drop on th
 nothing); the header holds ONE field (a second one pushes the first back). «СОХРАНИТЬ» / «ОТМЕНИТЬ» appear after the
 first change; СОХРАНИТЬ = `save-kanban-card-template` with `cardOrderIndex` re-numbered 0.. per zone. Close = the
 red ⊗.
+
+**What the card draws** `[C]`:
+- **A field of a tab the user may not see is dropped from that user's card** — a dynamic field and a system field (`CREATED_BY`) alike, through a tab group lying on such a tab too; with VIEW «никому» (the hidden «Системные» tab, R5 step 6) that is every non-admin, while an admin sees it. `load-bracket-kanban-cards` still returns the field to them: the client hides it, as the form does. Put on the card only fields of tabs open to its viewers.
+- **A `CO` field draws another value of the chosen record, not its name**: where the registry shows the record's name, the card shows a value of another attribute of that record (e.g. its type); which attribute `[U]`. The constructor offers a `CO` all the same (`load-kanban-card-fields` lists only the fields NOT on the card yet). Show a `BO` field, or a text field a hook fills from the choice, on an open tab.
+- MCP connected → `kanban_card_save` notes both.
 
 **On the board** `[C]`: dragging a card into another column = `has-rights` P `{businessObjectId, boInstanceId,
 type:"EDIT", boiPageType:"KANBAN"}`, then `v2/kanban/move-kanban-card` P `{boId, fieldId, optionId, instanceId}` B

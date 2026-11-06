@@ -466,6 +466,33 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
     if (got.join("\n") !== want) { console.error(`${cmd[1]} on dist/lint-ff/ff.jsonl: invented-key lines\n${got.join("\n") || "(none)"}\nwant\n${want}${r.stderr}`); process.exit(1); }
   }
 }
+// a kanban card field some viewer does not see as asked (0.5c, issue #17): a CO draws another value of the chosen record;
+// a field of a tab with VIEW «никому» — also through a TAB_GROUP lying on that tab — is dropped for every non-admin (a line to
+// fix); with VIEW limited to a group it is a REMINDER; a field of an open tab gets none — in both lints
+{
+  const KB = ["title:INPUT_TEXT!tableColToShow=true", "status:DROPDOWN_SINGLE#new=Новый|done=Готово", "tabs:TAB_GROUP#Основное=tab_main|Системные=tab_system",
+    "note:INPUT_TEXT!tab=tabs/tab_main", "hidden:INPUT_TEXT!tab=tabs/tab_system", "inner:TAB_GROUP#Внутри=tab_in!tab=tabs/tab_system", "deep:INPUT_TEXT!tab=inner/tab_in",
+    "pick:CO@AAAAAAAAAAAAAAAA@Lint_kanban_co!show=name"];
+  await $`rm -rf dist/lint-kanban && bun tools/make-probe-archive.bun.ts --group-code Kb_group --group-name Kb --group-order 1 --code Lint_kanban --name LintKanban --salt lintkanban --bo-order 1 --out dist/lint-kanban ${KB.flatMap((f) => ["--field", f])} --hide-tab tabs/tab_system --kanban ${"status:HEADER=title;CONTENT=note,hidden,deep,pick"}`.quiet();
+  const kbLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-kanban/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const kb = async (name: string, limit: boolean) => {
+    await Bun.write(`dist/lint-kanban/${name}.jsonl`, kbLines.map((l) => {
+      const o = JSON.parse(l), v = o.fieldAccessStructMap?.tabs?.tabAccessStructMap?.tab_system?.view;
+      if (v && limit) v.orgUnitIds = ["G-AAAAAAAAAAAAAAAA"];
+      return JSON.stringify(o);
+    }).join("\n") + "\n");
+    return `dist/lint-kanban/${name}.jsonl`;
+  };
+  const N = (k: string) => `Lint_kanban: kanbanCardTemplates.status shows ${k} of tab tabs.tab_system, VIEW «никому» — the card drops it for everyone but admins; show a field of an open tab (0.5c)`;
+  const Lim = (k: string) => `REMINDER Lint_kanban: kanbanCardTemplates.status shows ${k} of tab tabs.tab_system, VIEW limited — only who sees the tab, and admins, see it on the card; say so in the report (0.5c)`;
+  const CO = `Lint_kanban: kanbanCardTemplates.status shows pick, a CO — the card draws another value of the chosen record, not its name; show a BO field or a text field instead (0.5c)`;
+  const cases = [[await kb("nobody", false), [N("hidden"), N("deep"), CO]], [await kb("limited", true), [Lim("hidden"), Lim("deep"), CO]]] as const;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "skills/mybpm-imports/scripts/lint_archive.py"]] : [])])
+    for (const [file, want] of cases) {
+      const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /kanbanCardTemplates/.test(l));
+      if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: card lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n")}${r.stderr}`); process.exit(1); }
+    }
+}
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
@@ -745,7 +772,10 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     (r) => r.dryRun && !r.was.header.length && r.body.header[0].kanbanFieldId.startsWith("D-") && r.body.content[1].cardOrderIndex === 1
       && r.body.content[0].fieldKind === "DYNAMIC" && !r.body.content[0].label && !r.body.headerDelFieldIds.length],
   ["kanban_card_save", { code: "mcp_probe_records", dropdown: "status", header: ["title"], content: ["done", "due"] },
-    (r) => r.card.header[0] === "title" && r.card.content.join() === "done,due" && !r.mismatch],
+    (r) => r.card.header[0] === "title" && r.card.content.join() === "done,due" && !r.mismatch && !r.notes],
+  // a field of the tab «Детали» (VIEW «никому» since the rights_save above) is dropped from the board for every non-admin (UI-API §7)
+  ["kanban_card_save", { code: "mcp_probe_records", dropdown: "status", header: ["title"], content: ["descr"], dryRun: true },
+    (r) => r.dryRun && r.notes?.length === 1 && /card field «descr» lies on tab «Детали» \(VIEW "nobody"\).*everyone but admins/.test(r.notes[0])],
   // the second save replaces the card: «due» is gone, «done» moved to the footer
   ["kanban_card_save", { code: "mcp_probe_records", dropdown: "status", header: ["title"], footer: ["done"] },
     (r) => r.was.content.join() === "done,due" && r.card.footer.join() === "done" && !r.card.content && !r.mismatch],
