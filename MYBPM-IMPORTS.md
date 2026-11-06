@@ -762,8 +762,10 @@ the «Виджеты» section of the palette but are ordinary `dynamicFields` e
 | Составной объект | `CO` | `oldRefBoId` + `boRefStruct.boInfo` with `boCategory: "BO_COMPOSITE"` |
 
 **Field type by meaning — unasked.** A value that is a date, a time, a month, a year, a range or a quantity
-goes into a field of that type, never into `INPUT_TEXT` / `TEXTAREA` — also when a script searches,
-compares or groups by it: the typed field does all of that (below).
+goes into a field of that type, never into `INPUT_TEXT` / `TEXTAREA`, and a day, a moment, a month or a year
+never into `INPUT_NUMBER` («Год» 2026 as a number has no picker and is not compared by its unit) — also when
+a script searches, compares or groups by it: the typed field does all of that (below). A duration is a
+quantity: «Срок, дней», «Время в пути, ч» are `INPUT_NUMBER`.
 
 | the value | `type` |
 |---|---|
@@ -1541,8 +1543,8 @@ the BO's category. Count it in `objectCount`.
       line and each BO without one (name the case of 0.9 rule 10), the generic default menu icon (only when the
       user asked for no icons), a list `defaultValue` that is no option's `newOptionId` (right only on the
       SAME BO it was exported from, §3), a text field whose name holds a date, a month, a year, a range or a
-      quantity, and a label with a format hint (0.5 «Field type by meaning»: the typed field, or «текстом,
-      потому что …»), and the lines on what the given export carries unchanged (below). A
+      quantity, a number whose label holds a date, a month or a year, and a label with a format hint (0.5
+      «Field type by meaning»: the typed field, or «текстом / числом, потому что …»), and the lines on what the given export carries unchanged (below). A
       line that starts with `FATAL` is a defect the import itself fails on; every other line builds something
       other than asked — both are fixed before the file goes out. The prose
       checks below stay mandatory — the lint does not replace them.
@@ -2052,19 +2054,22 @@ for (const s of of("ScriptDefStructDto")) {
     if (fld(e)) written?.add(`${boOf(X[e?.leftExprId]) ?? "*"}.${fld(e)}`);
   }
 }
-const BY_NAME = [ // 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token]; the first row whose label or code matches
-  ["a quantity", "INPUT_NUMBER", /^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|\((?:дней|дн|ч|час|часов|мин|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])/, /_(?:count|qty|quantity|amount|sum|total|pct|percent|hours|minutes|days|months|years|price|cost|spent|duration)_/],
+const BY_NAME = [ // 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token, the other types that answer it]; the first row whose label or code matches
+  ["a quantity", "INPUT_NUMBER", /^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|[(,]\s*(?:дней|дн|ч|час|часов|мин|мес|лет|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])/, /_(?:count|qty|quantity|amount|sum|total|pct|percent|hours|minutes|days|months|years|price|cost|spent|duration)_/],
   ["a moment, day and time", "FULL_DATE", /^(?:дата и время|дата-время|момент)(?![а-яё])/, /_datetime_|_date_(?:.*_)?time_|_at_$/],
   ["a month", "YEAR_AND_MONTH", /^(?:за )?месяц(?![а-яё])/, /_month_/],
   ["a year", "YEAR", /^(?:за )?год(?![а-яё])/, /_year_/],
   ["a day", "DATE", null, /_(?:period|range)_(?:.*_)?(?:start|end|begin|from|to)_|_(?:start|end|begin|from|to)_(?:.*_)?(?:period|range)_/], // the start or end of a range
   ["a range", "PERIOD", /^(?:период|диапазон)(?![а-яё])/, /_(?:period|range)_/],
-  ["a day", "DATE", /^(?:дата|срок|крайний срок|дедлайн|день рождения)(?![а-яё])/, /_(?:date|day|deadline|due|dob|birthday)_/],
-  ["a time of day", "TIME", /^время(?![а-яё])/, /_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_/]];
-const byName = (f) => { // the BY_NAME row of a text field, undefined for a comment or a note
-  const l = low(f?.label?.rus ?? ""), tok = "_" + String(f?.code ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase() + "_";
-  if (!/^(INPUT_TEXT|TEXTAREA)$/.test(f?.type) || /коммент|примеч|описан|пояснен|причин|прописью|формул/.test(l) || /_(?:comment|comments|note|notes|description|desc|reason|text|words|formula)_/.test(tok)) return;
-  return BY_NAME.find(([, , lr, cr]) => (lr && lr?.test(l)) || cr?.test(tok));
+  ["a day", "DATE", /^(?:дата|крайний срок|дедлайн|день рождения)(?![а-яё])/, /_(?:date|day|deadline|due|dob|birthday)_/],
+  ["a day or a term", "DATE", /^срок(?![а-яё])/, null, ["INPUT_NUMBER"]], // «Срок» in days is a quantity
+  ["a time of day", "TIME", /^время(?![а-яё])/, /_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_/, ["INPUT_NUMBER"]]]; // «Время в пути» is a duration
+const BY_TYPE = { INPUT_TEXT: ["текстом", true], TEXTAREA: ["текстом", true], INPUT_NUMBER: ["числом", false] }; // the types a name is checked on: [the report word, whether the code token counts — a number's code names what it counts per: budget_per_year]
+const byName = (f) => { // the BY_NAME row a field's type does not answer, undefined for a comment or a note
+  const l = low(f?.label?.rus ?? ""), tok = "_" + String(f?.code ?? "").replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase() + "_", ty = typeof f?.type === "string" && Object.hasOwn(BY_TYPE, f?.type) ? BY_TYPE[f?.type] : undefined; // own keys only: a type "toString" is no row
+  if (!ty || /коммент|примеч|описан|пояснен|причин|прописью|формул/.test(l) || /_(?:comment|comments|note|notes|description|desc|reason|text|words|formula)_/.test(tok)) return;
+  const by = BY_NAME.find(([, , lr, cr]) => (lr && lr?.test(l)) || (ty?.[1] && cr?.test(tok)));
+  return by && by?.[1] !== f?.type && !it(by?.[4]).includes(f?.type) ? by : undefined;
 };
 const noProcess = !of("BoProcessVersionsStructDto").some((pv) => [pv?.workProcess, ...vals(pv?.processVersions)].some((v) => it(v?.scriptsDefIds).some((c) => /BlockAssign/.test(JSON.stringify(of("ScriptDefStructDto").find((s) => s?.compositeId === c)?.blocks)))));
 for (const bo of bos?.filter((b) => b?.category !== "BO_DICTIONARY")) for (const f of vals(bo?.dynamicFields)) {
@@ -2078,7 +2083,7 @@ for (const bo of bos?.filter((b) => b?.category !== "BO_DICTIONARY")) for (const
     else err(`${t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»`);
   }
   const by = byName(f);
-  if (by) err(`${t}: ${f?.type} — by its name ${by?.[0]}, so ${by?.[1]}, or report «текстом, потому что …» (0.5 «Field type by meaning»)`);
+  if (by) err(`${t}: ${f?.type} — by its name ${by?.[0]}, so ${by?.[1]}, or report «${BY_TYPE[f?.type][0]}, потому что …» (0.5 «Field type by meaning»)`);
   if (/\((?:гггг|гг|yyyy|yy|дд|dd|чч|hh)|\((?:мм|mm)[.\-\/]/.test(low(l))) err(`${t}: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`);
 }
 for (const bo of bos?.filter((b) => b?.category === "BO" && !b?.isCalendarEnabled && /запис|визит|встреч|при[её]м|брон/i.test(b?.name?.rus ?? "")))
@@ -2180,7 +2185,7 @@ return out?.length ? out?.join("\n") : "form lint: OK";
 - [ ] 0.8a by meaning: tabs split by theme and balanced; system fields on `tab_system` «Системные»; a big
       document is `instanceViewType: "TAB"` (step 8).
 - [ ] 0.5 «Field type by meaning»: no date, time, month, year, range or quantity in an `INPUT_TEXT` / `TEXTAREA`,
-      no format hint in a label.
+      no day, moment, month or year in an `INPUT_NUMBER`, no format hint in a label.
 - [ ] Every field's `rows` is tall enough for its content — a heading band, an HTML text, an `<iframe>`, a
       table — so nothing scrolls INSIDE a field on the card (≈29 px per row; a two-line heading needs
       15×4, see §4). After the import, open a record and check it (`MYBPM-UI-API.md` §0U.6).

@@ -54,6 +54,9 @@ let bell: { id: string; header: string; body: string; happenedAt: number }[] = [
 let seq = 0;
 const nextId = (p: string) => `${p}${String(++seq).padStart(16 - p.length, "0")}`;
 const raced = new Set<string>();
+// the stand: the first export after a code set still carries the codes before it (trap 24) — the BO or field code the export saw last
+const exported = new Map<string, string>(), lagging = new Set<string>();
+const recode = (id: string, old: string | null | undefined) => { if (old && !exported.has(id)) exported.set(id, old); }; // a code never exported yet: the one it had
 // access rights (R5): a group per target; units persist only through orgUnitToAdd / orgUnitToDelete (trap 3)
 const ORG = [{ id: "GROUP00000000001", type: "GROUP", name: "Менеджеры", avatar: null, parentGroupNames: "", email: null },
   { id: "PERSON0000000001", type: "PERSON", name: "Mock Admin", avatar: null, parentGroupNames: "Все", email: null }];
@@ -304,7 +307,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return acc;
     }
     case "v2/business-objects/generate-business-form-field":
-      return { fieldId: nextId("FLD"), label: null, labelMap: null, code: null, type: params.fieldType, gridPosition: { x: 0, y: 0, cols: 15, rows: 4 },
+      return { fieldId: nextId("FLD"), boFieldArchetype: "DYNAMIC", label: null, labelMap: null, code: null, type: params.fieldType, gridPosition: { x: 0, y: 0, cols: 15, rows: 4 },
         // the stand: a questionnaire comes with one row and one column, both unlabelled
         ...(params.fieldType === "QUESTIONNAIRE" ? { questionnaires: [false, true].map((isColumn) => ({ id: nextId("QST"), label: null, labelMap: null, orderIndex: 0, isColumn })) } : {}) };
     case "v2/business-objects/generate-business-form-widget": return { fieldId: nextId("WGT"), label: null, code: null, widgetType: params.widgetType };
@@ -315,10 +318,10 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       if (!f) return fail("no such field");
       // the stand: a setter right after the portion save that added the field does not see it yet — once per field here
       if (!raced.has(f.fieldId)) { raced.add(f.fieldId); return { errorType: "NoBoFieldWithId", message: "pYLrEBOVuV :: Данное поле не сохранено в бизнес-объекте" }; }
-      if (route.endsWith("-url")) f.url = params.url; else f.code = params.businessFieldCode ?? params.code;
+      if (route.endsWith("-url")) f.url = params.url; else { recode(f.fieldId, f.code); f.code = params.businessFieldCode ?? params.code; lagging.add(params.businessObjectId ?? params.boId); }
       return "";
     }
-    case "v2/business-objects/save-business-object-code": bos.get(params.businessObjectId)!.code = params.businessObjectCode; return "";
+    case "v2/business-objects/save-business-object-code": recode(params.businessObjectId, bos.get(params.businessObjectId)!.code); bos.get(params.businessObjectId)!.code = params.businessObjectCode; lagging.add(params.businessObjectId); return "";
     case "v2/business-objects/save-business-object-grid-layout-position": bos.get(body.boId)!.window = body.gridLayoutPosition; return "";
     case "v2/delete-script-usage/analyze-bo": { const id = nextId("ANL"); analyses.set(id, params.boId); return { analyzeId: id }; }
     // a process figure script uses the BO when its def holds the BO id (the stand reads the expressions)
@@ -753,14 +756,16 @@ function exportZip(): Uint8Array {
   const settings = Bun.env.MOCK_MCP ? [...settingsBasket].map((kind) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.CompanySettingsStructDto", kind, payloadJson: "{}" })) : [];
   const reports = Bun.env.MOCK_MCP ? Array.from({ length: reportBasket }, () => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.ReportGroupStructDto",
     groupKey: "GENERAL", name: "Общая группа", isGeneral: true })) : [];
-  const lines = [...settings, ...reports, ...picked.map((b) => JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
-    code: b.code, category: b.boCategory, name: { rus: b.name }, nativeFields: {}, kanbanCardTemplates: b.kanban ?? {}, ...(b.window && { gridLayoutPosition: b.window }),
-    dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [x.code, { code: x.code, type: x.type,
+  const was = (id: string, now: string) => { const v = lagging.has(id) ? exported.get(id) ?? now : now; exported.set(id, now); return v; }; // a lagging export: the code it saw last
+  const lines = [...settings, ...reports, ...picked.map((b) => { const lag = lagging.has(b.id); const line = JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto",
+    code: was(b.id, b.code), category: b.boCategory, name: { rus: b.name }, nativeFields: {}, kanbanCardTemplates: b.kanban ?? {}, ...(b.window && { gridLayoutPosition: b.window }),
+    dynamicFields: Object.fromEntries((b.fields ?? []).filter((x) => x.code && x.type && !x.widgetType && !x.nativeFieldType).map((x) => [lag ? was(x.fieldId, x.code) : (exported.set(x.fieldId, x.code), x.code), x]).map(([c, x]) => [c, { code: c, type: x.type,
       ...(typeof x.label === "string" && { label: { rus: x.label } }), // the field type lines of the lint read the label (IMPORTS 0.5)
       ...(x.viewType && { viewType: x.viewType }), ...(x.gridPosition && { gridPosition: x.gridPosition }), ...(x.tabId && { tabCodePath: { tabCode: x.tabId } }),
       // the items the 0.8 table counts: a CHECKLIST's defaultValue stays a JSON string, a list's options[] become fieldOptionsStruct.options by code
       ...(x.defaultValue != null && { defaultValue: x.defaultValue }),
-      ...(x.options?.length && { fieldOptionsStruct: { optionSource: "FROM_FIELD", options: Object.fromEntries(x.options.map((o: any) => [o.code ?? o.id, { fieldOption: o }])) } }) }])) }))];
+      ...(x.options?.length && { fieldOptionsStruct: { optionSource: "FROM_FIELD", options: Object.fromEntries(x.options.map((o: any) => [o.code ?? o.id, { fieldOption: o }])) } }) }])) });
+    lagging.delete(b.id); return line; })];
   return zip([{ name: "data-mock/0000001.mybpm", data: enc.encode(lines.join("\n") + "\n") },
     { name: "data-mock/metadata.mybpm", data: enc.encode(`objectCount-${lines.length}`) }]);
 }
