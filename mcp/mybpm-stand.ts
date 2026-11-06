@@ -1199,24 +1199,67 @@ function readSheet(bytes: Uint8Array) {
     grid[n - 1] = Array.from(cells, (x) => x ?? "");
   }
   const rows = Array.from(grid, (r) => r ?? []);
-  const head = Number(/<pane\b[^>]*\bySplit="([\d.]+)"/.exec(xml)?.[1] ?? 1) >= 2 ? 2 : 1;
-  const caption = [...(rows[0] ?? [])];
-  for (const m of xml.matchAll(/<mergeCell ref="([A-Z]+)1:([A-Z]+)1"\/>/g))
-    for (let i = colIndex(m[1]) + 1; i <= colIndex(m[2]); i++) caption[i] = caption[colIndex(m[1])];
-  const width = Math.max(caption.length, rows[1]?.length ?? 0);
-  const columns = Array.from({ length: width }, (_, i) => ({ column: colName(i), caption: caption[i] ?? "", sub: head === 2 ? rows[1]?.[i] ?? "" : "" }));
+  // the frozen rows: 1, 2 under a nested block, 3 when a nested block shows the child's composite (MYBPM-IMPORTS.md 19.3)
+  const head = Math.min(3, Math.max(1, Math.round(Number(/<pane\b[^>]*\bySplit="([\d.]+)"/.exec(xml)?.[1] ?? 1))));
+  const spread = (n: number) => { // a header row with its horizontal merges filled in
+    const r = [...(rows[n - 1] ?? [])];
+    for (const m of xml.matchAll(new RegExp(`<mergeCell ref="([A-Z]+)${n}:([A-Z]+)${n}"/>`, "g")))
+      for (let i = colIndex(m[1]) + 1; i <= colIndex(m[2]); i++) r[i] = r[colIndex(m[1])];
+    return r;
+  };
+  const caption = spread(1), sub = head >= 2 ? spread(2) : [], sub2 = head === 3 ? rows[2] ?? [] : [];
+  const width = Math.max(caption.length, sub.length, sub2.length);
+  const columns = Array.from({ length: width }, (_, i) => ({ column: colName(i), caption: caption[i] ?? "", sub: sub[i] ?? "", sub2: sub2[i] ?? "" }));
   return { entries, sheet, xml, head, columns, data: rows.slice(head) };
 }
 
-/** A sheet with these data rows under its header, every cell an inline string (a numeric cell breaks lookups, R7 step 2). */
-function writeSheet(x: ReturnType<typeof readSheet>, lines: string[][]): Uint8Array {
-  const rows = lines.map((r, j) => `<row r="${x.head + j + 1}">` + r.map((v, i) => (v === "" ? "" :
-    `<c r="${colName(i)}${x.head + j + 1}" t="inlineStr"><is><t xml:space="preserve">${enxml(v)}</t></is></c>`)).join("") + "</row>");
-  const last = `${colName(x.columns.length - 1)}${x.head + lines.length}`;
-  const xml = x.xml.replace(/<sheetData>[\s\S]*<\/sheetData>|<sheetData\/>/, (all) => {
-    const keep = [...all.matchAll(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g)].map((m) => m[0]).slice(0, x.head);
+type SheetColumn = { caption: string; sub: string; sub2?: string };
+
+/** Header rows as the stand writes them: a block's caption merged over its sub-columns, a sub-header over its third-row
+ *  cells, every other header cell merged down to the last header row, and a cell in EVERY column — a column whose cell is
+ *  missing from the last header row is not read at all (MYBPM-IMPORTS.md 0X.4 rule 9). */
+function headerXml(cols: SheetColumn[]) {
+  const head = cols.some((c) => c.sub2) ? 3 : cols.some((c) => c.sub) ? 2 : 1, merges: string[] = [];
+  const runs = (key: (c: SheetColumn) => string) => { // [first, last] of each run of equal keys
+    const out: [number, number][] = [];
+    for (let i = 0; i < cols.length; i++) { let j = i; while (j + 1 < cols.length && key(cols[j + 1]) === key(cols[i])) j++; out.push([i, j]); i = j; }
+    return out;
+  };
+  const text = (r: number) => cols.map(() => ""), rows = [text(1), text(2), text(3)];
+  for (const [i, j] of runs((c) => c.caption)) {
+    rows[0][i] = cols[i].caption;
+    if (j > i) merges.push(`${colName(i)}1:${colName(j)}1`);
+    else if (head > 1 && !cols[i].sub) merges.push(`${colName(i)}1:${colName(i)}${head}`);
+  }
+  if (head > 1) for (const [i, j] of runs((c) => `${c.caption}\u0000${c.sub}`)) {
+    if (!cols[i].sub) continue;
+    rows[1][i] = cols[i].sub;
+    if (j > i) merges.push(`${colName(i)}2:${colName(j)}2`);
+    else if (head === 3 && !cols[i].sub2) merges.push(`${colName(i)}2:${colName(i)}3`);
+  }
+  if (head === 3) cols.forEach((c, i) => { rows[2][i] = c.sub2 ?? ""; });
+  const xml = rows.slice(0, head).map((r, n) => `<row r="${n + 1}">` + r.map((v, i) => v === "" ? `<c r="${colName(i)}${n + 1}"/>`
+    : `<c r="${colName(i)}${n + 1}" t="inlineStr"><is><t xml:space="preserve">${enxml(v)}</t></is></c>`).join("") + "</row>");
+  return { head, rows: xml, merges };
+}
+
+/** A sheet with these data rows under its header, every cell an inline string (a numeric cell breaks lookups, R7 step 2).
+ *  With `cols` the header rows, merges and freeze are written anew for those columns (a block may gain or lose sub-columns). */
+function writeSheet(x: ReturnType<typeof readSheet>, lines: string[][], cols?: SheetColumn[]): Uint8Array {
+  const h = cols ? headerXml(cols) : undefined, head = h?.head ?? x.head, width = cols?.length ?? x.columns.length;
+  const rows = lines.map((r, j) => `<row r="${head + j + 1}">` + r.map((v, i) => (v === "" ? "" :
+    `<c r="${colName(i)}${head + j + 1}" t="inlineStr"><is><t xml:space="preserve">${enxml(v)}</t></is></c>`)).join("") + "</row>");
+  let xml = x.xml.replace(/<sheetData>[\s\S]*<\/sheetData>|<sheetData\/>/, (all) => {
+    const keep = h?.rows ?? [...all.matchAll(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g)].map((m) => m[0]).slice(0, x.head);
     return `<sheetData>${keep.join("\n")}\n${rows.join("\n")}\n</sheetData>`;
-  }).replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:${last}"/>`);
+  }).replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:${colName(width - 1)}${head + lines.length}"/>`);
+  if (h) {
+    const merges = h.merges.length ? `<mergeCells count="${h.merges.length}">${h.merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "";
+    xml = (/<mergeCells[\s\S]*?<\/mergeCells>/.test(xml) ? xml.replace(/<mergeCells[\s\S]*?<\/mergeCells>/, merges) : xml.replace("</sheetData>", `</sheetData>${merges}`))
+      .replace(/<cols>[\s\S]*?<\/cols>/, "");
+    if (/<pane\b[^>]*\/>/.test(xml)) xml = xml.replace(/<pane\b[^>]*\/>/, `<pane ySplit="${head}" topLeftCell="A${head + 1}" activePane="bottomLeft" state="frozen"/>`);
+    else throw new Error("the template has no frozen header rows — the stand would reject the file (R7 step 2)");
+  }
   return zip(x.entries.map((e) => ({ name: e.name, data: new Uint8Array(e.name === x.sheet ? Buffer.from(xml, "utf8") : e.data) })));
 }
 
@@ -1231,7 +1274,7 @@ function captionOf(bo: any, f: any): string {
 }
 
 /** Which field each column of a sheet belongs to (by caption, never by position — R7 step 2). */
-function fieldColumns(bo: any, cols: { caption: string; sub: string }[]) {
+function fieldColumns<T extends SheetColumn>(bo: any, cols: T[]): (T & { field?: any })[] {
   const fields = xlsxFields(bo);
   return cols.map((c) => ({ ...c, field: c.caption === ID_COLUMN ? undefined : fields.find((f: any) => captionOf(bo, f) === c.caption) }));
 }
@@ -1298,59 +1341,137 @@ async function actReport(s: Stand, importId: string, head: number) {
 const keysOf = (bo: any) => xlsxFields(bo).filter((f: any) => f.isUnique || f.label === "ID");
 
 /** xlsx_import `rows` → a file on a fresh template of the fields they use: one line per record, a TABLE block's
- *  children on repeated lines with the parent's cells copied (R7 step 2). Warns of what the stand does silently. */
+ *  children on repeated lines with the parent's cells copied (R7 step 2). The header is written anew: a block gains the
+ *  sub-column of the target's key when the template hides it, a composite block holds «Наименование БО» and only the
+ *  attributes the rows fill (MYBPM-IMPORTS.md 0X.4 rule 13). Warns of what the stand does silently. */
 async function buildRows(s: Stand, bo: any, rows: Record<string, any>[], warn: (w: string) => void) {
   const fields = xlsxFields(bo), used: any[] = [];
   for (const r of rows) for (const k of Object.keys(r)) { const f = fieldBy(fields, k); if (!used.includes(f)) used.push(f); }
   if (!used.length) throw new Error("`rows` carry no values");
-  const co = used.filter((f) => f.type === "CO");
-  if (co.length) throw new Error(`a CO field does not go through xlsx: ${co.map(nameOf).join(", ")} — record_save`);
-  const tpl = await template(s, bo.id, used), sheet = readSheet(tpl.data), cols = fieldColumns(bo, sheet.columns);
+  const tpl = await template(s, bo.id, used), sheet = readSheet(tpl.data);
+  const cols: (SheetColumn & { field?: any })[] = fieldColumns(bo, sheet.columns);
   for (const f of used) if (!cols.some((c) => c.field === f))
     throw new Error(`the template has no column for «${nameOf(f)}»: ${sheet.columns.map((c) => c.caption).join(", ")}`);
-  const subsOf = (f: any) => cols.flatMap((c, i) => (c.field === f ? [{ ...c, i }] : []));
-  const targets = new Map<string, any>();
-  // the sub-column a plain value of a block goes to: the target's unique field, a Person's e-mail, an «ID»
-  async function keyColumn(f: any): Promise<number> {
-    const subs = subsOf(f), bare = (sub: string) => sub.slice(sub.indexOf(".") + 1);
-    if (!targets.has(f.refBoId)) targets.set(f.refBoId, await loadBo(s, f.refBoId));
-    const t = targets.get(f.refBoId), keys = keysOf(t).map((x: any) => x.label);
-    const email = (f.boFieldRefs ?? []).filter((x: any) => x.type === "INPUT_EMAIL").map((x: any) => x.label);
-    const hit = subs.find((c) => keys.includes(bare(c.sub))) ?? subs.find((c) => email.includes(bare(c.sub))) ?? subs.find((c) => bare(c.sub) === "ID");
-    if (!hit) throw new Error(`«${nameOf(f)}»: none of its sub-columns (${subs.map((c) => c.sub).join(", ")}) is a key of «${t.name}» — ` +
-      "pass {\"<sub-header>\": value} naming the target's unique field, and show that field in the reference (bo_fields_save) if it is not there");
-    return hit.i;
-  }
-  const subColumn = (f: any, sub: string) => {
-    const c = subsOf(f).find((x) => x.sub === sub) ?? subsOf(f).find((x) => x.sub.slice(x.sub.indexOf(".") + 1) === sub);
-    if (!c) throw new Error(`«${nameOf(f)}» has no sub-column «${sub}»: ${subsOf(f).map((x) => x.sub).join(", ")}`);
-    return c.i;
+  const loaded = new Map<string, any>();
+  const boOf = async (id: string) => { if (!loaded.has(id)) loaded.set(id, await loadBo(s, id)); return loaded.get(id); };
+  const bare = (sub: string) => sub.slice(sub.indexOf(".") + 1);
+  const subsOf = (f: any) => cols.filter((c) => c.field === f && !c.sub2).map((c) => c.sub);
+  const addSub = (f: any, sub: string) => {
+    if (subsOf(f).includes(sub)) return;
+    const at = cols.map((c) => c.field).lastIndexOf(f);
+    cols.splice(at + 1, 0, { caption: cols[at].caption, sub, sub2: "", field: f });
   };
-  const lines: string[][] = [];
+  const isKey = (x: any) => x && (x.isUnique || x.label === "ID"); // a user's Email is unique
+
+  // a BO block item → {sub-header: text}; the target's field missing from the template gets its sub-column
+  async function boItem(f: any, it: any): Promise<Record<string, string>> {
+    const t = await boOf(f.refBoId), tf = xlsxFields(t);
+    if (it && typeof it === "object") return Object.fromEntries(Object.entries(it).map(([k, x]) => {
+      const sub = subsOf(f).find((c) => c === k) ?? subsOf(f).find((c) => bare(c) === k);
+      if (sub) return [sub, String(x ?? "")];
+      const target = tf.find((y: any) => y.code === k || y.label === k || captionOf(t, y) === k);
+      if (!target) throw new Error(`«${nameOf(f)}» has no sub-column «${k}» and «${t.name}» no such field: ${subsOf(f).join(", ")}`);
+      addSub(f, captionOf(t, target));
+      return [captionOf(t, target), String(x ?? "")];
+    }));
+    const keys = keysOf(t).map((x: any) => x.label);
+    const hit = subsOf(f).find((c) => keys.includes(bare(c))) ?? subsOf(f).find((c) => bare(c) === "ID");
+    if (hit) return { [hit]: String(it) };
+    const kf = keysOf(t)[0];
+    if (!kf) throw new Error(`«${nameOf(f)}»: «${t.name}» has no unique field (nor an own «ID») — a plain value cannot link it; pass {"<sub-header>": value} or add a unique field (MYBPM-IMPORTS.md 19.3)`);
+    addSub(f, captionOf(t, kf)); // the reference hides the key: a hidden sub-column is accepted and links (19.3)
+    return { [captionOf(t, kf)]: String(it) };
+  }
+
+  // a composite item → {«Наименование БО»: source name, attribute label: text}
+  const SOURCE = "Наименование БО", coUsed = new Map<any, { attrs: Set<any>; sources: Set<string> }>();
+  async function coItem(f: any, it: any): Promise<Record<string, string>> {
+    const co = await boOf(f.refBoId), attrs: any[] = valueFields(co);
+    const sources: string[] = [...new Set(attrs.flatMap((a) => (a.boFieldIds ?? []).map((b: any) => b.boId)))];
+    const bound = (a: any, src: string) => (a.boFieldIds ?? []).find((b: any) => b.boId === src);
+    const keyAttrs = async (src: string) => { const sf = (await boOf(src)).formFields ?? [];
+      return attrs.filter((a) => isKey(sf.find((x: any) => x.fieldId === bound(a, src)?.fieldId))); };
+    const names = Object.fromEntries(await Promise.all(sources.map(async (id) => [id, (await boOf(id)).name])));
+    const pick: Record<string, any> = it && typeof it === "object" ? { ...it } : {};
+    let src: string | undefined;
+    const want = pick[SOURCE] ?? pick.source;
+    delete pick[SOURCE]; delete pick.source;
+    const given = Object.keys(pick).map((k) => attrs.find((a) => a.code === k || a.label === k)
+      ?? (() => { throw new Error(`«${nameOf(f)}»: «${k}» is not an attribute of «${co.name}»: ${attrs.map((a) => a.label).join(", ")}`); })());
+    if (want !== undefined) {
+      src = sources.find((id) => id === want || String(names[id]).toLowerCase() === String(want).toLowerCase());
+      if (!src) throw new Error(`«${nameOf(f)}»: «${want}» is not a source of «${co.name}»: ${sources.map((id) => names[id]).join(", ")}`);
+    } else {
+      const fit = [];
+      for (const id of sources) if (it && typeof it === "object" ? given.every((a) => bound(a, id)) : (await keyAttrs(id)).length) fit.push(id);
+      if (fit.length !== 1) throw new Error(`«${nameOf(f)}»: pass {"${SOURCE}": ${sources.map((id) => `«${names[id]}»`).join(" / ")}, "<attribute>": value} — ` +
+        (fit.length ? "several sources fit" : "no source fits"));
+      src = fit[0];
+    }
+    const out: Record<string, string> = { [SOURCE]: names[src!] };
+    if (!(it && typeof it === "object")) {
+      const k = (await keyAttrs(src!))[0];
+      if (!k) throw new Error(`«${nameOf(f)}»: no attribute of «${co.name}» is bound to a unique field of «${names[src!]}» — a file cannot link it (MYBPM-IMPORTS.md 19.3)`);
+      given.push(k); pick[k.label] = it;
+    }
+    for (const a of given) if (!bound(a, src!))
+      throw new Error(`«${nameOf(f)}»: the attribute «${a.label}» is not bound in «${names[src!]}» — the stand rejects the WHOLE file (MYBPM-IMPORTS.md 19.3)`);
+    const keys = await keyAttrs(src!);
+    if (!given.some((a) => keys.includes(a))) warn(`«${nameOf(f)}»: no attribute bound to a unique field of «${names[src!]}» (${keys.map((a) => a.label).join(", ") || "none"}) — the row stores NO link`);
+    const u = coUsed.get(f) ?? { attrs: new Set(), sources: new Set() };
+    coUsed.set(f, u); u.sources.add(src!);
+    for (const a of given) { u.attrs.add(a); out[a.label] = String(pick[a.code] ?? pick[a.label] ?? ""); }
+    return out;
+  }
+
+  // pass 1: every value of a block as {sub-header: text} items, the block's columns settled
+  const norm: Record<string, any>[] = [];
   for (const r of rows) {
-    const base = Array<string>(cols.length).fill(""), kids: Map<number, string>[] = [];
+    const n: Record<string, any> = {};
     for (const [k, v] of Object.entries(r)) {
       const f = fieldBy(fields, k);
-      if (f.type !== "BO") { base[subsOf(f)[0].i] = cellOf(f, v, warn); continue; }
+      if (f.type !== "BO" && f.type !== "CO") { n[f.fieldId] = v; continue; }
       const items = v === null || v === undefined || v === "" ? [] : Array.isArray(v) ? v : [v];
       if (f.viewType === "SINGLE" && items.length > 1) throw new Error(`«${nameOf(f)}» holds one record, the row gives ${items.length}`);
-      for (const [j, it] of items.entries()) {
-        const cells = it && typeof it === "object" ? Object.entries(it).map(([sub, x]) => [subColumn(f, sub), String(x ?? "")] as const)
-          : [[await keyColumn(f), String(it)] as const];
-        for (const [i, x] of cells) if (j === 0 && f.viewType === "SINGLE") base[i] = x; else (kids[j] ??= new Map()).set(i, x);
-      }
+      n[f.fieldId] = [];
+      for (const it of items) n[f.fieldId].push(f.type === "CO" ? await coItem(f, it) : await boItem(f, it));
+    }
+    norm.push(n);
+  }
+  for (const f of used.filter((x) => x.type === "CO")) { // «Наименование БО» + the attributes filled, bound in every source used
+    const u = coUsed.get(f), attrs = valueFields(await boOf(f.refBoId)).filter((a: any) => u?.attrs.has(a));
+    for (const a of attrs) for (const src of u!.sources) if (!(a.boFieldIds ?? []).some((b: any) => b.boId === src))
+      throw new Error(`«${nameOf(f)}»: the rows use the attribute «${a.label}» and the source «${(await boOf(src)).name}», where it is not bound — ` +
+        "the stand rejects the WHOLE file (MYBPM-IMPORTS.md 19.3): split the rows into one file per source");
+    const at = cols.findIndex((c) => c.field === f), caption = cols[at].caption;
+    const block = [SOURCE, ...attrs.map((a: any) => a.label)].map((sub) => ({ caption, sub, sub2: "", field: f }));
+    cols.splice(at, cols.filter((c) => c.field === f).length, ...block);
+  }
+
+  // pass 2: the lines
+  const idx = (f: any, sub?: string) => cols.findIndex((c) => c.field === f && (sub === undefined || (c.sub === sub && !c.sub2)));
+  const lines: string[][] = [];
+  for (const n of norm) {
+    const base = Array<string>(cols.length).fill(""), kids: Map<number, string>[] = [];
+    for (const [id, v] of Object.entries(n)) {
+      const f = fields.find((x: any) => x.fieldId === id);
+      if (f.type !== "BO" && f.type !== "CO") { base[idx(f)] = cellOf(f, v, warn); continue; }
+      for (const [j, it] of (v as Record<string, string>[]).entries())
+        for (const [sub, x] of Object.entries(it)) if (j === 0 && f.viewType === "SINGLE") base[idx(f, sub)] = x; else (kids[j] ??= new Map()).set(idx(f, sub), x);
     }
     for (let j = 0; j < Math.max(1, kids.length); j++) { const line = [...base]; for (const [i, x] of kids[j] ?? []) line[i] = x; lines.push(line); }
   }
   const keys = keysOf(bo);
   if (!keys.length) warn("the BO has no unique field (nor an own «ID»): every row CREATES a record, a re-run duplicates them");
   else if (!keys.some((f: any) => used.includes(f))) warn(`the key field (${keys.map(nameOf).join(" / ")}) is not in the rows: every row CREATES a record`);
-  const blank = used.filter((f) => f.type !== "BO" && f.type !== "DATE" && rows.some((r) => { const k = Object.keys(r).find((x) => fieldBy(fields, x) === f); return !k || r[k] === null || r[k] === ""; }));
+  const block = (f: any) => f.type === "BO" || f.type === "CO";
+  const blank = used.filter((f) => !block(f) && f.type !== "DATE" && rows.some((r) => { const k = Object.keys(r).find((x) => fieldBy(fields, x) === f); return !k || r[k] === null || r[k] === ""; }));
   if (blank.length) warn(`blank cells CLEAR the field on an existing record: ${blank.map(nameOf).join(", ")} (a DATE keeps its value; a column left out keeps the field)`);
-  if (used.some((f) => f.type === "BO" && f.viewType !== "SINGLE")) warn("a TABLE block only ADDS links on an update, it never unlinks (MYBPM-IMPORTS.md 0X.4)");
+  if (used.some((f) => block(f) && f.viewType !== "SINGLE")) warn("a TABLE block only ADDS links on an update, it never unlinks (MYBPM-IMPORTS.md 0X.4)");
   const ro = used.filter((f) => f.isReadonly);
   if (ro.length) warn(`isReadonly fields are written by the import: ${ro.map(nameOf).join(", ")}`);
-  return { data: writeSheet(sheet, lines), name: tpl.name, head: sheet.head, lines: lines.length };
+  const header = cols.map(({ caption, sub, sub2 }) => ({ caption, sub, sub2 }));
+  return { data: writeSheet(sheet, lines, header), name: tpl.name, head: headerXml(header).head, lines: lines.length };
 }
 
 const actHead = new Map<string, number>(); // importId → header rows of its file, for line numbers in a re-read
@@ -2104,7 +2225,12 @@ async function bracketsOf(s: Stand, bo: any, spec: any) {
     if (c.empty) throw new Error("an «empty» condition is not offered: the bracket table ignores isEmptyValue (every record matches, any field type)");
     if (c.currentUser) {
       const p = await personInfo();
-      if (f.type !== "BO" || f.refBoId !== p.boId) throw new Error(`currentUser needs a user field (BO → Person), «${nameOf(f)}» is ${f.type}${f.refBoId ? ` → ${f.refBoId}` : ""}`);
+      if (f.type === "CO") {
+        // a composite matches the viewer only through its Person source; its own id as businessObjectId is ignored (all records)
+        const co = await loadBo(s, f.refBoId);
+        if (!valueFields(co).some((a: any) => (a.boFieldIds ?? []).some((b: any) => b.boId === p.boId)))
+          throw new Error(`currentUser on the composite «${nameOf(f)}» needs «Пользователи» among the sources of «${co.name}»`);
+      } else if (f.type !== "BO" || f.refBoId !== p.boId) throw new Error(`currentUser needs a user field (BO → Person, or a composite over Person), «${nameOf(f)}» is ${f.type}${f.refBoId ? ` → ${f.refBoId}` : ""}`);
       Object.assign(item, { businessObjectId: p.boId, businessFields: p.fields, isCurrentUser: true });
     } else if (c.eq === undefined) throw new Error(`condition on «${nameOf(f)}»: pass eq, currentUser or empty`);
     else if (f.type === "DROPDOWN_SINGLE" || f.type === "RADIO_BUTTON_GROUP") {
@@ -2636,13 +2762,16 @@ const tools: Tool[] = [
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, id: { type: "string", description: "The record to change; omit = a new one" },
       values: { type: "object", description: "{fieldCodeOrLabel: plain value}" },
       scripts: { type: "boolean", description: "Default true: run the BO's hooks (form cycle). false: store without hooks or rules (draft cycle)" },
-      dev: { type: "boolean", description: "A TEST record (boiState DEV, the BO's TEST script version); new records only" } },
+      dev: { type: "boolean", description: "A TEST record (boiState DEV, the BO's TEST script version); new records only. Its scripts see only TEST records in link fields (MYBPM-IMPORTS.md 0S.7) — a note says so when you set one" } },
     required: ["values"],
     run: async (a) => {
       const s = esRetry(stand(a)), boId = await boById(s, a), bo = await loadBo(s, boId), fields = valueFields(bo);
       const vals = Object.entries(a.values ?? {}).map(([k, v]) => { const f = fieldBy(fields, k); return { f, fieldId: f.fieldId, value: toStored(f, v) }; });
       if (!vals.length) throw new Error("pass `values`");
       const scripts = a.scripts !== false;
+      // a test record's scripts see only test records in their link fields: a probe on links to ordinary records reads empty
+      const links = vals.filter((v) => (v.f.type === "BO" || v.f.type === "CO") && v.value && v.value !== "[]");
+      const devNote = a.dev && scripts && links.length ? `a script on this TEST record sees only TEST records in ${links.map((v) => nameOf(v.f)).join(", ")} — links to ordinary records read empty there (MYBPM-IMPORTS.md 0S.7); probe such a script on an ordinary record with the work version` : undefined;
       if (!scripts) {
         const dd = vals.filter((v) => v.f.type === "DROPDOWN_SINGLE");
         if (dd.length) throw new Error(`the draft cycle does not store a DROPDOWN_SINGLE (§6a): ${dd.map((v) => nameOf(v.f)).join(", ")} — use scripts:true`);
@@ -2678,12 +2807,12 @@ const tools: Tool[] = [
         // nothing kept: a new record is deleted with its draft first (what the UI sends), an existing one only closed
         if (!a.id) await s.call(BOI_ + "v2/delete-boi", { draftId, boiId }, {}).catch(() => {});
         await s.call("v2/instance-form/remove-draft", { draftId }, {}).catch(() => {});
-        return clean({ boId, id: a.id, saved: false, cycle: "form (scripts ran)", errors: out.errors, notifications: out.notifications,
+        return clean({ boId, id: a.id, saved: false, cycle: "form (scripts ran)", errors: out.errors, notifications: out.notifications, note: devNote,
           why: out.errors.length ? "a field error vetoed the save (a script or a rule) — nothing was stored"
             : out.notifications.some((n: any) => /^script_/.test(n.text ?? "")) ? "a hook script failed (text = which hook) — nothing was stored; scripts_read shows whether it translates (an emptied body fails: write entry → exit)"
             : "no CLOSE_DIALOG_SAVE — e.g. an empty required field; nothing was stored" });
       }
-      return clean({ boId, id: boiId, created: !a.id, saved: true, cycle: "form (scripts ran)", notifications: out.notifications, record: (await recordValues(s, bo, boiId)).values });
+      return clean({ boId, id: boiId, created: !a.id, saved: true, cycle: "form (scripts ran)", notifications: out.notifications, note: devNote, record: (await recordValues(s, bo, boiId)).values });
     } },
   { name: "record_delete", write: true, description: "Delete records of a BO (delete-bo-instance, ids in the PARAMS — trap 46). Without `confirm` only the preview: each record's values. With `confirm: true` — after the user agreed — deletes, then re-reads. The delete is SOFT: the record goes to state REMOVED, references to it stay stored and show it struck through or hidden (§5h «Reference fields»). A process record's run goes no further once it is REMOVED — its Timer fires and stays WAITING, nothing runs on (trap 107); a Timer not yet fired still counts as alive for a later bo_delete of the process BO.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, ids: { type: "array", items: { type: "string" } }, confirm: { type: "boolean" } },
@@ -2709,10 +2838,10 @@ const tools: Tool[] = [
       const fields = a.fields?.length ? a.fields.map((k: string) => fieldBy(all, k)) : all;
       const tpl = await template(s, boId, fields), sheet = readSheet(tpl.data);
       return { file: saveFile(a.out, "xlsx", tpl.name, tpl.data), headerRows: sheet.head,
-        columns: fieldColumns(bo, sheet.columns).map((c) => clean({ column: c.column, caption: c.caption, sub: c.sub || undefined, field: c.field && nameOf(c.field), type: c.field?.type })),
+        columns: fieldColumns(bo, sheet.columns).map((c) => clean({ column: c.column, caption: c.caption, sub: c.sub || undefined, sub2: c.sub2 || undefined, field: c.field && nameOf(c.field), type: c.field?.type })),
         key: keysOf(bo).map(nameOf), ...(keysOf(bo).length ? {} : { warning: "no unique field (nor an own «ID»): every imported row CREATES a record" }) };
     } },
-  { name: "xlsx_import", write: true, description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), a dropdown's label or code, a BO field the target's key (its unique field, a Person's e-mail) or {\"<sub-header>\": value}, an array of them for a TABLE. An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
+  { name: "xlsx_import", write: true, description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), a dropdown's label or code, a BO field the target's key (its unique field, a user's Email) or {\"<sub-header or target field>\": value} (a key the template hides gets its sub-column), an array of them for a TABLE; a CO field the key of the one source whose attribute is bound to a unique field, or {\"Наименование БО\": source name, \"<attribute>\": value} — the block then holds only those attributes, every one must be bound in each source the rows use (else the stand rejects the whole file), and a row with no key attribute stores no link (MYBPM-IMPORTS.md 0X.4 rule 13). An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       path: { type: "string", description: "An xlsx on this machine (a filled template or an export)" },
       rows: { type: "array", items: { type: "object" }, description: "Records as {fieldCodeOrLabel: plain value}; the file is built for you" },
@@ -2759,14 +2888,14 @@ const tools: Tool[] = [
         if (r !== false) { // a header error comes back here instead of a boolean (R7 step 4)
           await s.call(XF_ + "cancel-imported", { importId: actId }).catch(() => {});
           return clean({ importId: actId, file, fileError: r?.message ?? JSON.stringify(r), warnings,
-            next: "the file was rejected as a whole — fix the header (captions, sub-headers, freeze) and upload again" });
+            next: "the file was rejected as a whole — fix what fileError names: the header (captions, sub-headers, freeze) or a composite sub-column not bound in a row's source (MYBPM-IMPORTS.md 19.3); upload again" });
         }
         if (Date.now() - t0 > 120000) throw new Error(`the act of ${actId} is not ready after 2 min — xlsx_import importId:${actId} re-reads it`);
       }
       return { ...(await actReport(s, actId, head)), file, warnings,
         next: "NOTHING is written yet: show the user the counts, failing rows and warnings; xlsx_import importId + confirm:true applies (failing rows are skipped), cancel:true drops it" };
     } },
-  { name: "xlsx_export", description: "Export records to an xlsx (the registry's «Экспорт в .xlsx», R7 step 6): saved on this machine and read back as records — values keyed by field code: the cell text (dropdown label, Да/Нет, dd.mm.yyyy), a block as {sub-header: text}, a TABLE block as a list of them (its repeated rows folded by the record id column). The export ignores paging: every record of the filter goes into the file, `limit` only cuts what is returned here.",
+  { name: "xlsx_export", description: "Export records to an xlsx (the registry's «Экспорт в .xlsx», R7 step 6): saved on this machine and read back as records — values keyed by field code: the cell text (dropdown label, Да/Нет, dd.mm.yyyy), a block (BO or CO) as {sub-header: text}, a TABLE block as a list of them (its repeated rows folded by the record id column). The export ignores paging: every record of the filter goes into the file, `limit` only cuts what is returned here.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       fields: { type: "array", items: { type: "string" }, description: "Field codes / labels, in column order; default every value field (an empty list on the stand would blank the blocks)" },
       ids: { type: "array", items: { type: "string" }, description: "Only these records" }, search: { type: "string", description: "The registry's full-text box" },
@@ -2788,21 +2917,25 @@ const tools: Tool[] = [
         if (Date.now() - t0 > 300000) throw new Error(`the export ${exportId} is not ready after 5 min`);
       const { data, name } = await s.bytes(XF_ + "load-bo-export-file", { exportId });
       const file = saveFile(a.out, "xlsx", name, data), sheet = readSheet(data), cols = fieldColumns(bo, sheet.columns);
+      // the stand writes no cell for a child's composite in a nested block and moves the later cells one column left
+      // (MYBPM-IMPORTS.md 19.2): put them back
+      const holes = sheet.columns.flatMap((c, i) => (c.sub2 ? [i] : []));
+      for (const row of sheet.data) for (const k of holes) if (row.length > k) row.splice(k, 0, "");
       const idCol = cols.findIndex((c) => c.caption === ID_COLUMN);
       const records: { id?: string; values: Record<string, any> }[] = [];
       let prev = "";
       for (const row of sheet.data) {
         if (!row.some((v) => v !== "")) continue;
         // a TABLE block repeats its record on several rows: one record per id, or per run of equal other cells
-        const key = idCol >= 0 ? row[idCol] : JSON.stringify(cols.map((c, i) => (c.field?.type === "BO" && c.field.viewType !== "SINGLE" ? "" : row[i] ?? "")));
+        const key = idCol >= 0 ? row[idCol] : JSON.stringify(cols.map((c, i) => ((c.field?.type === "BO" || c.field?.type === "CO") && c.field.viewType !== "SINGLE" ? "" : row[i] ?? "")));
         if (key !== prev || !records.length) records.push({ ...(idCol >= 0 ? { id: row[idCol] } : {}), values: {} });
         prev = key;
         const rec = records[records.length - 1];
         for (const f of fields) {
           const fc = cols.flatMap((c, i) => (c.field === f ? [{ ...c, i }] : []));
           if (!fc.length) continue;
-          if (f.type !== "BO") { if (!(nameOf(f) in rec.values) && (row[fc[0].i] ?? "") !== "") rec.values[nameOf(f)] = row[fc[0].i]; continue; }
-          const obj = Object.fromEntries(fc.map((c) => [c.sub || c.caption, row[c.i] ?? ""]).filter(([, v]) => v !== ""));
+          if (f.type !== "BO" && f.type !== "CO") { if (!(nameOf(f) in rec.values) && (row[fc[0].i] ?? "") !== "") rec.values[nameOf(f)] = row[fc[0].i]; continue; }
+          const obj = Object.fromEntries(fc.map((c) => [[c.sub || c.caption, c.sub2].filter(Boolean).join(" › "), row[c.i] ?? ""]).filter(([, v]) => v !== ""));
           if (!Object.keys(obj).length) continue;
           if (f.viewType === "SINGLE") { rec.values[nameOf(f)] ??= obj; continue; }
           const list: any[] = (rec.values[nameOf(f)] ??= []);
@@ -2810,9 +2943,10 @@ const tools: Tool[] = [
         }
       }
       const limit = a.limit ?? 50;
-      return clean({ file, columns: sheet.columns.map((c) => (c.sub ? `${c.caption} › ${c.sub}` : c.caption)), total: records.length,
+      return clean({ file, columns: sheet.columns.map((c) => [c.caption, c.sub, c.sub2].filter(Boolean).join(" › ")), total: records.length,
         records: records.slice(0, limit), cut: records.length > limit ? `${records.length - limit} more in the file` : undefined,
-        note: noIds ? "no «Внутренний айди» column (it is for administrators): records are told apart by their cells" : undefined });
+        note: [noIds ? "no «Внутренний айди» column (it is for administrators): records are told apart by their cells" : "",
+          holes.length ? "the stand left the nested composite column(s) empty and shifted the later cells left in the FILE — read here back in place; do not re-import that file as it is (MYBPM-IMPORTS.md 19.2)" : ""].filter(Boolean).join("; ") || undefined });
     } },
 
   // 8. scripts (§5g; the language: MYBPM-IMPORTS.md Part II)
@@ -3344,15 +3478,18 @@ const tools: Tool[] = [
       const names = [...ICON_NAMES].filter((n) => n.toLowerCase().includes(q));
       return clean({ byMeaning: meaning, names: names.slice(0, 150), more: names.length > 150 ? names.length - 150 : undefined });
     } },
-  { name: "filter_try", description: "Count a BO's records under a record filter WITHOUT saving it (load-bo-instance-bracket-table with brackets, §4 «Record filters»): the total and the first rows (registry columns). `filter` = a condition {field (code / label), eq | currentUser: true (a user field = the viewer), not?} or {native: \"CREATED_BY\", currentUser: true} (records the viewer created), or a group {all: […]} / {any: […]} with not?, nested freely. eq: a dropdown's option label or code (sent as the option id; a dictionary dropdown: the dictionary record's code), CHECKBOX true / false, a text field its exact text; other types are [U]. «Is empty» is not offered: the stand ignores it here (a note says so — check the count). `brackets` = the raw root bracket list instead. Returns the built brackets too: filter_save stores the same.",
+  { name: "filter_try", description: "Count a BO's records under a record filter WITHOUT saving it (load-bo-instance-bracket-table with brackets, §4 «Record filters»): the total and the first rows (registry columns). `filter` = a condition {field (code / label), eq | currentUser: true (a user field, or a composite over «Пользователи» = the viewer), not?} or {native: \"CREATED_BY\", currentUser: true} (records the viewer created), or a group {all: […]} / {any: […]} with not?, nested freely. eq: a dropdown's option label or code (sent as the option id; a dictionary dropdown: the dictionary record's code), CHECKBOX true / false, a text field its exact text; other types are [U]. «Is empty» is not offered: the stand ignores it here (a note says so — check the count). `brackets` = the raw root bracket list instead. Returns the built brackets too: filter_save stores the same. `as` = another login of the same stand to count AS (what that user's menu item would list): the filter is built with the caller's view of the BO, so a field on a tab the user does not see still resolves, and `currentUser` means that user.",
     props: { boId: { type: "string" }, code: { type: "string" }, filter: { type: "object" }, brackets: { type: "array", items: { type: "object" } },
-      limit: { type: "number", description: "Rows returned, default 5" } },
+      limit: { type: "number", description: "Rows returned, default 5" },
+      as: { type: "string", description: "Count as this login of the same stand (its account must be kept)" } },
     run: async (a) => {
       const s = stand(a), bo = await loadBo(s, await boById(s, a));
       const built = a.brackets ? { root: null, notes: [] as string[] } : await bracketsOf(s, bo, a.filter);
       const brackets = a.brackets ?? [built.root];
-      const all = await bracketTable(s, bo.id, [], 1);
-      return clean({ ...(await bracketTable(s, bo.id, brackets, Math.min(50, a.limit ?? 5))), of: all.total, brackets, notes: built.notes });
+      const v = a.as ? stand({ stand: new URL(s.c.origin).host, login: a.as }) : s; // the viewer: the field codes stay the caller's
+      const all = await bracketTable(v, bo.id, [], 1);
+      return clean({ ...(await bracketTable(v, bo.id, brackets, Math.min(50, a.limit ?? 5))), of: all.total, brackets, notes: built.notes,
+        as: a.as ? v.c.login : undefined });
     } },
   { name: "filter_save", write: true, description: "Store a record filter on a BO menu item (§4 «Record filters»): the item then lists only the matching records — one BO may have several items, one per user job («Мои …», «… в работе»). load-bracket-filter creates the item's filter record when it has none → bracket-filter/save {id, boId, brackets} → read back and the count. `filter` / `brackets` as in filter_try (try it first); `clear: true` removes the conditions. A filter narrows a list, it is no protection — rights are (rights_save). Ask the user first; dryRun:true = the body only.",
     props: { item: { type: "string", description: "The BO menu item: id, code or name" }, filter: { type: "object" }, brackets: { type: "array", items: { type: "object" } },
