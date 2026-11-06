@@ -5245,6 +5245,12 @@ hop 2  its value  {"leftExprId":<hop 1>,      "actId":"F-VALUE-K-DYN-R-D-S-boi_f
   element. An attribute that a row's source BO does not feed reads `''` (no error); assigning it does
   nothing for that row. `F-ADD` takes a record of any source BO (a child-BO record created by `F-CI` was
   added and stored as `<source BO id>-<boiId>`); `#Сохранить` is offered on an element.
+  **A `CO` and a `BO` reference assign both ways** `[C]` (SINGLE views): `<co>.#Значение = <bo>.#Значение` stores the
+  record as an element of its source (`<source BO id>-<boiId>`) when that BO is a source of the composite;
+  `<bo>.#Значение = <co>.#Значение` stores the element's record when the element comes from that BO, and an
+  element of ANOTHER source compiles but fails at run time («an error occurred while invoke method
+  setFieldAsBoiRefCode») — the record is not saved. A composite over «Пользователи» + «Департамент» copied into a
+  user field therefore breaks the save whenever a department is picked.
 - **Writing a child's field** (`#строка#.Имя.#Значение = …` inside a foreach, `<single>.Число.#Значение =
   …`, a CO attribute) `[C]`: the write goes into the parent's form session and **reaches the child record
   only when the parent is SAVED** — on `remove-draft` (ОТМЕНИТЬ) it is lost, with no `#Сохранить` needed for
@@ -7259,8 +7265,9 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
 
 - one sheet, `Sheet0`; **every cell `t="inlineStr"`**, `sharedStrings.xml` empty — numbers, dates and
   codes are all TEXT (a numeric `103` comes back «103.0» and breaks a unique-field lookup);
-- the header is row 1, or rows 1–2 when the BO has a nested object (block caption over sub-headers), and
-  the importer finds it **by the frozen rows** (A2 / A3) or by a double bottom border in column A —
+- the header is row 1, or rows 1–2 when the BO has a nested object (block caption over sub-headers), or rows
+  1–3 when a nested block shows a composite (`CO`) field of the child (its third row «Наименование БО», 19.3), and
+  the importer finds it **by the frozen rows** (A2 / A3 / A4) or by a double bottom border in column A —
   a sheet with neither dies with `kD4QsxZrAY` «Система не может отделить строки заголовка от строк данных»;
 - an Excel table part `xl/tables/table1.xml` rides along in stand files; keep it consistent with
   `dimension` (the xlsx-library traps are 19.9).
@@ -7278,7 +7285,8 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
 3. **Fill the rows.** Values: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently —
    `31.02.2026` silently becomes 03.03.2026, 19.6 `[C]`); date-time `25.10.2025 10:33`; month `MM.YYYY`; year
    `YYYY`; period `dd.mm.yyyy - dd.mm.yyyy`; a dropdown is matched by its LABEL; a reference by the target's unique field
-   or by an `ID` sub-column. A TABLE nested object = the parent row REPEATED per child. A nested block
+   or by an `ID` sub-column; a composite (`CO`) by the source BO's NAME in «Наименование БО» plus the sub-column of
+   the attribute bound to that source's unique field (0X.4 rule 13). A TABLE nested object = the parent row REPEATED per child. A nested block
    only LINKS: its other sub-columns are never written into the child (19.6) — to change a child, import
    the child's own file.
 4. **Order the files** when there is more than one: users → groups → dictionaries → records → link files.
@@ -7313,7 +7321,9 @@ every column you keep or drop the column entirely.
    file while reading the header, and labels are matched across ALL fields regardless of tab.
 6. A sub-column that is itself a nested reference must be omitted — the stand's own template and export
    leave it out too (19.3 `[C]`). Under the 2-row header it rejects the whole file (`BoFieldNotSpecified`); a
-   3-row header that expands it is accepted but its values are ignored, so it buys nothing.
+   3-row header that expands it is accepted but its values are ignored, so it buys nothing. A child's
+   COMPOSITE (`CO`) sub-column is the exception: the template keeps it with a third header row — keep all three
+   rows as the template has them (19.3 `[C]`).
 7. **A blank cell is an ERASE, a missing column is a KEEP** (19.6 `[C]`): on an update, every cell left empty
    clears that field (DATE excepted); a field whose column is absent from the file is left as it was. To
    update only some fields, DELETE the other columns — never blank them. **No cell value clears a `DATE`**
@@ -7321,7 +7331,9 @@ every column you keep or drop the column entirely.
 8. Dictionary codes are case-sensitive (`MRP` ≠ `mrp`).
 9. **No holes in the cell addresses**: when you remove columns, re-letter the rest contiguously (A, B, C…)
    in the header AND every data row, and fix `dimension`. A sheet whose header skipped letters misread the
-   column after the hole — a filled checkbox came out «Нет» `[C]`.
+   column after the hole — a filled checkbox came out «Нет» `[C]`. **Every header row has a cell in every
+   column**, an empty one included: a column whose cell is missing from the last header row is not read at all —
+   its values are dropped with no error, and a row filled only there is skipped `[C]`.
 10. **A nested block links, it never edits and never unlinks** (19.6 `[C]`): only the sub-column holding
     the target's unique field (or `ID`) matters — the other sub-columns are ignored, the child keeps all its
     fields. On an update a filled SINGLE block REPLACES the link, a TABLE block ADDS its children to the
@@ -7336,6 +7348,16 @@ every column you keep or drop the column entirely.
 12. **`isReadonly` does not protect a field from a file** (19.6 `[C]`): the import writes read-only fields on
     create and on update, and a blank cell clears them like any other. Leave such columns out unless you mean
     to overwrite them.
+13. **A composite (`CO`) block links through the source's unique field** (19.3 `[C]`): the sub-column
+    «Наименование БО» holds the source BO's NAME («Пользователи»), and the record is found ONLY through the
+    sub-column of a composite attribute bound to a UNIQUE field of that source (a user: the attribute bound to
+    Email) — add it by hand when the template leaves it out. Attributes bound to non-unique fields («Фамилия»,
+    «Имя» — the template's own columns) only display: such a row reports success and stores NO link. A source
+    without a unique field cannot be linked by a file. **Every attribute sub-column in the file must be bound to
+    the source of every row**: a row of a source the attribute has no binding in rejects the WHOLE file, even
+    with that cell empty. An empty block keeps the link on an update, a filled one replaces it; never add
+    «Внутренний айди» to the block. The template's sample rows under the header (one per source) are data —
+    delete them. An export of a CO field cannot be re-imported as it is: add the key sub-column.
 
 ### 0X.5 Self-check before shipping
 
@@ -7343,6 +7365,8 @@ every column you keep or drop the column entirely.
 - [ ] The header rows match the template byte-for-byte; merges and freeze survived the edit.
 - [ ] Column map rebuilt FROM THE FINISHED FILE, not from the plan, and it matches the data model.
 - [ ] No SINGLE-side link column; no `STATIC_TEXT` hint column (drop those by field TYPE, 19.2).
+- [ ] Every composite (`CO`) block carries the sub-column of the attribute bound to the source's unique field
+      (0X.4 rule 13), and no attribute sub-column unbound in a row's source.
 - [ ] Every dropdown value exists in its dictionary; every reference value exists on the stand.
 - [ ] Row count equals what you promised, and the file order is written down for the operator.
 - [ ] On an update file: no empty cell in a kept column unless erasing it is the intent; cell addresses
@@ -7380,9 +7404,14 @@ needs.
   Person: its own labels with its tab prefix, e.g. «Пользователь.Фамилия», «Пользователь.Почта» — 0X.4
   rule 11). Other columns are merged A1:A2. A dropdown is one cell. Freeze at A3.
   A sheet without nested blocks has ONE header row and data from row 2.
-- **Header detection**: by FROZEN ROWS, else by a DOUBLE bottom border in column A
-  (`ExcelSheetBridge.headerLineCount`, class
-  `kz.greetgo.mybpm.reg.boi_transfer.model.import1.excel.ExcelSheetBridge`). A plain sheet with neither
+- **A composite (`CO`) field is a block too** `[C]`: row 1 its label merged over the block, row 2 the
+  sub-headers «Наименование БО» (the source BO's NAME, e.g. «Пользователи») and then the composite's attributes
+  by their labels — those with `tableColToShow` (attributes are not tab-prefixed). The template writes one
+  sample row per source BO under the header («Пользователи», «Департамент»…) — the allowed «Наименование БО»
+  values. **They are DATA rows: delete them before filling** — uploaded as they are, a sample row of a source
+  the shown attributes are not bound in rejects the whole file (19.3). The stand stores the link as `"<source BO id>-<record id>"`. An export writes «Наименование БО» and
+  the attribute values of the chosen record. How a cell resolves: 19.3.
+- **Header detection**: by FROZEN ROWS, else by a DOUBLE bottom border in column A. A plain sheet with neither
   fails with `kD4QsxZrAY` «Система не может отделить строки заголовка от строк данных».
 - **A TABLE nested object = the parent repeated on several rows**, one row per child. Writing the
   parent's scalars on EVERY row is safe. An export writes it the same way — scalars and SINGLE blocks on
@@ -7394,7 +7423,7 @@ needs.
   «Неверный формат года и месяца - используйте формат MM.YYYY», a year other than four digits with «Неверный формат
   года - … год должен содержать четыре цифры». The import stores the 1st of the month / 1 January at 00:00 in the
   stand's time zone.
-- Not known yet `[U]` — §20: the cell format of `TIME`, `PERIOD_TIME`, `CO`, `CHECKLIST`,
+- Not known yet `[U]` — §20: the cell format of `TIME`, `PERIOD_TIME`, `CHECKLIST`,
   `FILE_UPLOAD`, a `*_LANG` text, an HTML `TEXTAREA`, `QUESTIONNAIRE`, `GEO_POINT`, `PROGRESS_BAR`; whether a file
   can delete or archive records, create DEV (test) records or set a record's participants. Do not ship such
   columns until §20 answers them; set those values on the stand instead (the card, or the record API).
@@ -7415,6 +7444,11 @@ needs.
   every sub-cell is blank and a TABLE reference is not expanded into repeated rows, although the links
   exist. A file meant to show or carry links must come from an export that LISTS the fields (the UI
   always does).
+- **A child's composite (`CO`) in a nested block breaks the export's columns** `[C]`: the export writes the
+  three-row header (19.3) but no cell for that column, and every later cell of the row moves one column LEFT —
+  the next field's value lands under «Наименование БО», the record id under the field before «Внутренний айди»,
+  which stays empty; a linked composite changes nothing. Read such a file by shifting the cells after the column
+  back, and never re-import it as it is — export without that block, or hide the composite in the nested block.
 - **So STATIC_TEXT («Текст») fields appear as columns** — their plain text repeated in every row — when an
   export sent an empty list or the user ticked them. **Drop such hint columns by field TYPE (STATIC_TEXT)
   read from the archive, never by a label pattern.** For the same reason a real field can be absent from a
@@ -7438,6 +7472,25 @@ needs.
   `ID` sub-column created the parents but the block came back EMPTY. Do not expect matching by a
   non-unique code. Likewise a block whose unique sub-column is EMPTY and only a non-unique one is filled
   («Имя» = an existing child's exact name) creates the parent with no link and reports no error `[C]`.
+- **A composite (`CO`) cell resolves through the source's unique field only** `[C]` (0X.4 rule 13).
+  «Наименование БО» picks the source BO by name; the record is looked up through the sub-column of an
+  attribute bound to a UNIQUE field of that source — any attribute of the composite may be a sub-column, also
+  one without `tableColToShow` that the template leaves out (a user: the attribute bound to Email). An unknown
+  value fails that row («Не найдено значение у бизнес-объекта `Пользователи` для уникального поля `Email` =
+  …»), the rest imports. Only non-unique attributes filled («Фамилия», «Имя») → the row reports success and the
+  field stays EMPTY; a source with no unique field (e.g. a «Департамент» without one) can never be linked from a
+  file. A row whose source has no binding for an attribute sub-column present in the sheet rejects the WHOLE
+  file, even when that cell is empty («Вы не можете совершить операцию, потому что данный бизнес-объект не
+  существует… boId = … <source BO id>») — a file that mixes sources may carry only attributes bound in every
+  one of them. A sub-column «Внутренний айди» inside the block is not a key: the link stays empty and the
+  row's later columns are misread. On an update an EMPTY block keeps the link and a filled one REPLACES it
+  (as a SINGLE nested block, 19.6). Multi-value (TABLE) composites in a file `[U]`.
+- **A child's composite (`CO`) field shown in a nested block makes the header THREE rows** `[C]`: the
+  template puts the CO under the block in row 2 and «Наименование БО» under it in row 3, every other header
+  cell merged down to row 3, frozen at A4. The stand accepts its own template back with data from row 4; a
+  file that keeps only two of those header rows is rejected as a whole (`BoFieldNotSpecified` «Не указаны
+  дочерние поля для поля `<CO>` у бизнес объекта `<child>`»). Keep all three rows. The block only links
+  (19.6): the child's CO is not written from it `[I]`.
 - **A referenced record that does not exist → `NoUniqueFieldValue`**, that row fails and the rest of the
   file imports `[C]`. **A nested block does NOT create target records** in v4.24 — import the referenced
   BO first.
@@ -7562,7 +7615,8 @@ BO-ref cell neither creates the referenced record (`NoUniqueFieldValue`, 19.3) n
   unchanged) `[C]` — a cheap way to restore records after a destructive probe.
 - **Before handing a file over, read the xlsx BACK and rebuild the data model from its cells** (labels →
   codes).
-- Hand-made files must reproduce the header format exactly (freeze A3 + merges).
+- Hand-made files must reproduce the header format exactly (the template's freeze row + merges, a cell in
+  every column of every header row — 0X.4 rule 9).
 
 ### 19.9 Editing an xlsx with a spreadsheet library — the traps `[C]` (same list: `MYBPM-UI-API.md` §9)
 
@@ -7580,6 +7634,9 @@ BO-ref cell neither creates the referenced record (`NoUniqueFieldValue`, 19.3) n
 - **A library's load-and-save DROPS Google's `xl/metadata` part** → if it must survive, patch the XML inside the
   zip instead of loading the workbook (the 19.8 technique).
 - Moving rows: move the values AND the row heights together.
+- **A header cell left out of the XML loses its column** `[C]`: a library (or a hand patch) that writes only
+  the non-empty header cells drops the last header row's empty cells, and a column whose cell is missing from
+  that row is not read — no error, its values are lost. Write a cell for every column of every header row.
 - Appended rows get no style — the importer does not need one: data rows with no `s` attribute at all
   imported fine `[C]` (header detection uses the freeze / double border of 19.1). Copy a sample row's style
   only to make the file look like a stand file.
@@ -7588,7 +7645,7 @@ BO-ref cell neither creates the referenced record (`NoUniqueFieldValue`, 19.3) n
 
 Every record-import behaviour this part relies on is `[C]`; these are open and NOT relied on:
 
-- `[U]` Cell formats of `TIME`, `PERIOD_TIME`, `CO`, `CHECKLIST`, `FILE_UPLOAD`, a
+- `[U]` Cell formats of `TIME`, `PERIOD_TIME`, `CHECKLIST`, `FILE_UPLOAD`, a
   `*_LANG` text, an HTML `TEXTAREA`, `QUESTIONNAIRE`, `GEO_POINT`, `PROGRESS_BAR` (19.1) — check: set each on one
   record on the stand, export with listed `boFieldIds`, re-import the edited export, read back.
 - `[U]` Whether a file can delete or archive records — check: look for a state column in the template and in

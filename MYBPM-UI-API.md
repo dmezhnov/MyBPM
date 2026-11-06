@@ -763,8 +763,9 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
 1. `GET /web/v2/bo-transfer/download-template?businessObjectId=<boId>&selectedFieldIds=<id>&selectedFieldIds=<id>…` — an
    ordinary GET with query parameters and the `token` header (no envelope) — **one `selectedFieldIds` per
    field**; a comma-separated list fails `NullPointerException … colHeader is null` — returning the xlsx `[C]`: the
-   header rows only (one row, or two with merged nested blocks and freeze at A3), no data rows, no table
-   part. Field ids come from `load-business-object-by-id` → `formFields[].fieldId`. The columns follow the order
+   header rows (one row; two with merged nested blocks and freeze at A3; three, frozen at A4, when a nested block
+   shows the child's composite field), no table part, and no data rows — except a `CO` field, whose template
+   carries one sample DATA row per source BO: delete those rows before filling. Field ids come from `load-business-object-by-id` → `formFields[].fieldId`. The columns follow the order
    of the `selectedFieldIds`; a selection the stand cannot parse gives every field in form order `[C]`. **Take a fresh template after
    every structure change**: the columns follow the BO, and their positions move between exports.
 2. Fill it. The three rules that break the most files: every cell must be an **inline string** (a numeric
@@ -784,7 +785,9 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
      create-only and get a yes — and the existing dictionary values of every dropdown column.
    - **Layout**: one sheet `Sheet0`, `sharedStrings.xml` empty; header row 1, or rows 1–2 when the BO has a nested
      object (row 1 a merged block caption, row 2 the target's sub-headers; other columns merged A1:A2; freeze at
-     A3); a sheet with neither freeze nor double border dies with `kD4QsxZrAY` «Система не может отделить строки
+     A3), or rows 1–3 when a nested block shows the child's `CO` field (keep all three — two of them reject the file
+     with `BoFieldNotSpecified`); a cell in every column of every header row, empty ones included — a column
+     whose cell is missing from the last header row is silently not read `[C]`; a sheet with neither freeze nor double border dies with `kD4QsxZrAY` «Система не может отделить строки
      заголовка от строк данных». Keep the table part `xl/tables/table1.xml` consistent with `dimension` (§9).
    - **Map columns by LABEL, never by position**: a column is the (row-1 block, row-2 field) pair; split a row-1
      label on the FIRST dot — the prefix is the tab («Системные.Код»), the rest is the field label after strip.
@@ -797,6 +800,14 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
      safe). A target with no unique field links only by an `ID` sub-column; a missing target fails the row with
      `NoUniqueFieldValue` (the rest imports) — **a nested block never creates targets**, and never resolves
      against rows of the same file: split self-references into a later file.
+   - **A composite (`CO`) field is a block** `[C]`: «Наименование БО» = the source BO's NAME («Пользователи»), then
+     attribute sub-columns by label. The record is found ONLY through an attribute bound to a UNIQUE field of
+     that source (a user: the one bound to Email) — add that sub-column by hand when the template lacks it; with
+     only «Фамилия» / «Имя» the row reports success and stores no link, a source without a unique field cannot be
+     linked at all, an unknown key fails the row. A sub-column of an attribute that is not bound in a row's
+     source rejects the WHOLE file, even empty. An empty block keeps the link on an update, a filled one
+     replaces it; an export's CO block has no key sub-column, so it does not re-import as it is
+     (`MYBPM-IMPORTS.md` 0X.4 rule 13).
    - **No label may repeat another field's label** — a «Текст» heading named like a field rejects the file with
      `SameBoFieldsLabel` (labels are matched across ALL fields, any tab).
    - **Read the finished file back** and rebuild the data model from its cells before uploading.
@@ -826,7 +837,9 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
    ordering:{fieldId:"",state:"UNSET",archetype:null}, state:"ALL", boInstanceIds:[…], boFieldIds:[…],
    needBoiId:true}` → a bare `"<exportId>"`; `is-bo-export-file-ready` — `P {"exportId":…}` → `true`;
    `load-bo-export-file` — `P {"exportId":…}` (envelope) → the xlsx bytes. **`paging` is ignored** — every
-   record of the filter goes into the file; `boInstanceIds` and `search` do filter `[C]`. A TABLE block in the
+   record of the filter goes into the file; `boInstanceIds` and `search` do filter `[C]`. A nested block that shows
+   the child's composite (`CO`) gets no cell for it, and the later cells of each row move one column left (the id
+   column stays empty) `[C]` — shift them back when reading, never re-import such a file (`MYBPM-IMPORTS.md` 19.2). A TABLE block in the
    file = the record REPEATED, one row per link, its scalars and SINGLE blocks on every row and no merges in the
    data rows `[C]` — rebuild the records by «Внутренний айди» (or the unique field). **`needBoiId:true` adds a last
    column «Внутренний айди»** holding each record's id — **a re-import does NOT match rows by it** `[C]`:
@@ -1266,7 +1279,7 @@ do is plain HTTP by §0U.4.
   back as a note), parent / order, the counter, the mobile flag, and ungroups a GROUP — every change read back.
   `menu_delete` deletes a BO / GROUP item you made — a GROUP together with the items inside (the preview lists
   them; ungroup first to keep them); built-in items are refused. `filter_try` counts a BO's records under a filter
-  without saving it — `{field, eq}` / `{field, currentUser: true}` / `{native: "CREATED_BY", currentUser: true}`,
+  without saving it — `{field, eq}` / `{field, currentUser: true}` (a user field or a composite over «Пользователи») / `{native: "CREATED_BY", currentUser: true}`,
   groups `{all | any: […], not?}` nested, each value sent in the shape of §4 «Record filters» (an «пусто»
   condition is refused: the stand ignores it); `filter_save` stores the same filter on a BO menu item and reads back
   the count, `clear: true` removes it. Menu rights: `rights_save {menu}`.
@@ -1293,14 +1306,17 @@ do is plain HTTP by §0U.4.
   exactly over up to 2000 records; `record_read` gives every field, tabs included, and the `BO` / `CO` values
   through a bare draft (§6a «Reading an existing record»). `record_delete` is soft: state `REMOVED`.
 - **The xlsx tools make R7 whole.** `xlsx_template` saves the stand's template on the user's disk and names each
-  column (caption, sub-header, field code, type) and the BO's key field. `xlsx_import` is two-phase like R3: `path`
+  column (caption, sub-header, the third header row under a child's composite, field code, type) and the BO's key field. `xlsx_import` is two-phase like R3: `path`
   (a filled template or an export) or `rows` (plain values by field code or label — the file is built on a fresh
-  template by the step 2 rules: TABLE children on repeated rows, a block by the target's unique field or a Person's
-  e-mail, or by `{"<sub-header>": value}`) → upload → the act: rows new / updated / failing with each reason, and
+  template by the step 2 rules, the header rows written anew: TABLE children on repeated rows, a block by the target's
+  unique field — its sub-column added when the reference hides it — or by `{"<sub-header or target field>": value}`; a
+  composite by the key of its one keyed source or by `{"Наименование БО": source, "<attribute>": value}`, the block
+  holding only those attributes, and an attribute not bound in a row's source refused before the upload) → upload → the act: rows new / updated / failing with each reason, and
   warnings for what the stand does silently (no key → every row creates, a blank cell clears, a TABLE block only
   adds, `isReadonly` written). Nothing is written until `importId` + `confirm: true`; `cancel: true` drops the act.
   An xlsx import runs none of the BO's scripts (trap 51) — `record_save` does. `xlsx_export` saves the file and
-  reads it back as records keyed by field code, a TABLE block folded into a list by the id column.
+  reads it back as records keyed by field code, a block (BO or composite) as `{sub-header: text}`, a TABLE block folded
+  into a list by the id column; the cells a nested composite column shifted are read back in place, with a note.
 - **The script tools make §5g whole.** `scripts_read` gives a BO's script versions, the wiring of one (the four
   hooks, the field scripts by field CODE, the local methods) and per script whether it translates (`defs: true` —
   the def); `global: true` — the company-global methods. `script_write` writes ONE body (a hook, a field script, a
@@ -1366,7 +1382,7 @@ do is plain HTTP by §0U.4.
 | `menu_save` ✎ | create GROUP / BO items (icon by meaning, checked), change an item's icon, views, name, code, place, counter, mobile flag; ungroup | R6 steps 1–3, §4; `create-menu-item`, `save-menu-item-icon-name`, `save-menu-item-bo-pages`, `save-menu-item-display-name`, `verify-menu-item-code` + `change-menu-item-code`, `save-menu-item-order-index` / `move-to-group-menu-item` / `take-out-of-group-menu-item`, `save-menu-item-need-count`, `save-menu-item-need-hide-in-mob-app`, `take-out-all-of-menu-item-group` |
 | `menu_delete` ✎ | the preview (a GROUP lists its items); with `confirm` the delete — a GROUP with its items | R6 step 7, trap 76 |
 | `menu_icons` | the «Icons by meaning» table, or catalogue names holding a piece | §4 «Menu icon catalogue» |
-| `filter_try` | a BO's records under a filter, not saved: the count, the first rows, the built brackets | R6 step 6, §4 «Record filters» |
+| `filter_try` | a BO's records under a filter, not saved: the count, the first rows, the built brackets; `as` = another kept login of the same stand: built with the caller's view (a field on a tab that user does not see still resolves), counted as that user | R6 step 6, §4 «Record filters» |
 | `filter_save` ✎ | a record filter on a BO menu item (or `clear`), read back with the count | R6 step 5 |
 | `kanban_card_save` ✎ | a BO's kanban card for one dropdown, by field codes, through `save-kanban-card-template`; read back | §7 «Over the API» |
 | `records_find` | records of a BO: id, state, the registry columns; `search`, `where` by code, `state` | §6a; `load-bo-instance-bracket-table` |
@@ -1930,6 +1946,9 @@ dictionary `bo-d-draggable` — no prefix). The same list serves both routes: `s
   - a user field (`BO` → Person) «текущий пользователь»: `type:"BO"`, `businessObjectId` = the company's
     `personBoId`, `isCurrentUser:true`, `businessFields` = REFS of the Person Фамилия / Имя fields
     `{fieldId, orderIndex, label, toShow:true, type}` — bare field ids answer HTTP 400 «Failed to read request»;
+  - a composite (`CO`) over «Пользователи» «текущий пользователь» `[C]`: the same item with `type:"CO"` — `businessObjectId` = the
+    `personBoId` (NOT the composite id: with it the condition is ignored and every record matches), `isCurrentUser:true`, the
+    Person `businessFields`; it matches the records whose element is the viewer;
   - a LOCAL dropdown (`DROPDOWN_SINGLE`, options on the field): `value` = the option's ID — its code matches nothing;
   - a DICTIONARY dropdown: `businessObjectId` = the dictionary BO, `value` = the option CODE (from
     `load-dictionary-bo-field-options {boId}`);
@@ -3773,7 +3792,9 @@ by `translate-script`, not stored as poison. The 16 enums and their values: `loa
   `BoRefCode` constant. A **`SINGLE`** `BO` field is ONE record, not an array: no `F-ADD`/`F-DELETE`
   (`exprAct__noDefinitionForActId`), set it by assignment `….<single>.#Значение = #запись#`.
 - **A `CO` element's fields are the composite's attributes**: `CO_CODE-<composite code>-F-<attribute
-  code>-K-DYN-S-boi_fields`, then hop 2; the plain `F-<code>-…` does not exist on a CO element.
+  code>-K-DYN-S-boi_fields`, then hop 2; the plain `F-<code>-…` does not exist on a CO element. A `BO` reference
+  and a `CO` assign both ways `[C]`; `<bo> = <co>` with an element of another source than that BO fails at run
+  time («…setFieldAsBoiRefCode») and the record is not saved (`MYBPM-IMPORTS.md` 0S.7).
 - **A child's field written by a script** reaches the child only when the PARENT form is saved (lost on
   cancel) — unless `#Сохранить` (`F-saveBoiChanges-K-FIX-T-BoiRefCode`, void, on a RECORD only) stores it at
   once. A process Script / Switch figure's writes are saved when the figure is left; no `#Сохранить` needed.
@@ -6460,6 +6481,9 @@ headings. **A group heading** `[C]`: `<div style="font-size:18px;font-weight:700
 - **A spreadsheet library does not widen an existing table**: after adding or removing rows update BOTH the sheet
   `dimension` and the table `ref` (e.g. `A1:D35`), otherwise Excel reports the table as broken. A hand-made
   sheet without a table part needs only `dimension` `[C]`.
+- **A header cell left out of the XML loses its column** `[C]`: writing only the non-empty header cells drops the
+  last header row's empty ones, and a column whose cell is missing from that row is not read — no error, its
+  values are lost. Write a cell for every column of every header row.
 - Readers of such sheets are usually positional — adding a column means updating every reader.
 
 ### Google Sheets grid cropping — UNSOLVED, postponed

@@ -40,6 +40,11 @@ type Bo = { id: string; code: string; name: string; boCategory: string; fields?:
 type CoField = { coFieldId: string; label: string; code: string; type?: string; links: { boId: string; fieldId: string }[] };
 type Co = { sources: string[]; fields: CoField[] };
 const bos = new Map<string, Bo>(); // id → BO present on the stand
+// «Пользователи» (load-bo-id-by-kind PERSON): readable by id, kept out of the group listing
+const PERSON: Bo = { id: "PERSONBO00000001", code: "person", name: "Пользователи", boCategory: "BO", fields: [
+  { fieldId: "PERSONSURNAME001", label: "Фамилия", code: "surname", type: "INPUT_TEXT" }, { fieldId: "PERSONNAME000001", label: "Имя", code: "name", type: "INPUT_TEXT" },
+  { fieldId: "PERSONEMAIL00001", label: "Email", code: "email", type: "INPUT_EMAIL", isUnique: true }] };
+const boById = (id: string) => bos.get(id) ?? (id === PERSON.id ? PERSON : undefined);
 const live = () => [...bos.values()].filter((b) => !b.deleted);
 const byCode = (code: string) => live().find((b) => b.code === code);
 const parts = new Map<string, string>(); // portion-save accumulator id → the JSON so far
@@ -71,6 +76,8 @@ const inBracket = (r: any, b: any): boolean => {
   } else ok = (b.dynamicFilters ?? []).every((f: any) => {
     const v = r.values[f.fieldId], x = fieldsOf(r.boId).find((y) => y.fieldId === f.fieldId);
     if (f.isEmptyValue) return v == null || v === "";
+    // the viewer (whoami personId) in a user field or a composite over «Пользователи»; a composite's own id matches all
+    if (f.isCurrentUser) return f.businessObjectId !== PERSON.id || JSON.stringify(v ?? "").includes("PERSON0000000001");
     const want = x?.options?.find((o: any) => o.code === f.value)?.id ?? f.value;
     return String(v ?? "") === String(want);
   });
@@ -112,7 +119,7 @@ type Rec = { id: string; boId: string; state: string; at: number; values: Record
 const recs = new Map<string, Rec>(); // boiId → record
 const analyses = new Map<string, string>(); // analyzeId → the BO analyze-bo was asked about
 const recDrafts = new Map<string, { boId?: string; boiId?: string; isNew?: boolean; dev?: boolean; values: Record<string, string> }>();
-const fieldsOf = (boId: string) => (bos.get(boId)?.fields ?? []).filter((x) => x.type && !x.widgetType && !x.nativeFieldType && x.type !== "TAB_GROUP");
+const fieldsOf = (boId: string) => (boById(boId)?.fields ?? []).filter((x) => x.type && !x.widgetType && !x.nativeFieldType && x.type !== "TAB_GROUP");
 const shown = (f: any, v: string) => f.type === "DROPDOWN_SINGLE" ? f.options?.find((o: any) => o.id === v)?.label ?? v
   : f.type === "CHECKBOX" ? (v === "true" ? "Да" : "Нет") : v;
 const cell = (f: any, v = "") => ({ fieldId: f.fieldId, fieldCode: f.code, value: f.type === "BO" ? "" : v, displayValue: f.type === "BO" ? "" : shown(f, v) });
@@ -133,20 +140,27 @@ const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const unxml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 const colName = (i: number) => { let s = ""; for (i++; i; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s; return s; };
 const colIndex = (l: string) => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
-type XCol = { caption: string; sub: string; field: any; ref?: string }; // ref = the target field of a block's sub-column
+// ref = the target field of a block's sub-column; sub2 = the third header row under a child's composite
+type XCol = { caption: string; sub: string; sub2?: string; field: any; ref?: string };
+const CO_SOURCE = "Наименование БО";
+const coOf = (f: any) => bos.get(f.refBoId)?.co ?? { sources: [], fields: [] };
 const xcols = (boId: string, ids: string[]): XCol[] => ids.flatMap((id) => {
   const f = fieldsOf(boId).find((x) => x.fieldId === id);
   if (!f) return [];
+  if (f.type === "CO") return [{ caption: f.label, sub: CO_SOURCE, field: f }, ...coOf(f).fields.map((a) => ({ caption: f.label, sub: a.label, field: f, ref: a.coFieldId }))];
   if (f.type !== "BO") return [{ caption: f.label, sub: "", field: f }];
-  return (f.boFieldRefs ?? []).filter((r: any) => r.toShow).map((r: any) => ({ caption: f.label, sub: r.label, field: f, ref: r.fieldId }));
+  return (f.boFieldRefs ?? []).filter((r: any) => r.toShow).map((r: any) => {
+    const t = fieldsOf(f.refBoId).find((x) => x.fieldId === r.fieldId);
+    return { caption: f.label, sub: r.label, field: f, ref: r.fieldId, ...(t?.type === "CO" ? { sub2: CO_SOURCE } : {}) };
+  });
 });
 function xlsxOf(cols: XCol[], lines: string[][], idColumn: boolean): Uint8Array {
-  const head = cols.some((c) => c.sub) ? 2 : 1, caps = [...cols.map((c) => c.caption), ...(idColumn ? [ID_COLUMN] : [])];
+  const head = cols.some((c) => c.sub2) ? 3 : cols.some((c) => c.sub) ? 2 : 1, caps = [...cols.map((c) => c.caption), ...(idColumn ? [ID_COLUMN] : [])];
   const row = (n: number, cells: string[]) => `<row r="${n}">${cells.map((v, i) => v === "" ? "" : `<c r="${colName(i)}${n}" t="inlineStr"><is><t>${xml(v)}</t></is></c>`).join("")}</row>`;
   const merges: string[] = [];
   caps.forEach((c, i) => { if (i && caps[i - 1] === c) return; let j = i; while (caps[j + 1] === c && cols[j + 1]?.sub) j++; if (j > i) merges.push(`${colName(i)}1:${colName(j)}1`); });
-  const rows = [row(1, caps.map((c, i) => (i && caps[i - 1] === c ? "" : c))), ...(head === 2 ? [row(2, cols.map((c) => c.sub))] : []),
-    ...lines.map((l, j) => row(head + j + 1, l))];
+  const rows = [row(1, caps.map((c, i) => (i && caps[i - 1] === c ? "" : c))), ...(head >= 2 ? [row(2, cols.map((c) => c.sub))] : []),
+    ...(head === 3 ? [row(3, cols.map((c) => c.sub2 ?? ""))] : []), ...lines.map((l, j) => row(head + j + 1, l))];
   const sheet = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${colName(caps.length - 1)}${head + lines.length}"/>` +
     `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${head}" topLeftCell="A${head + 1}" state="frozen"/></sheetView></sheetViews><sheetData>${rows.join("")}</sheetData>` +
     (merges.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "") + "</worksheet>";
@@ -158,10 +172,14 @@ function sheetOf(bytes: Uint8Array) {
   for (const m of x.matchAll(/<c r="([A-Z]+)(\d+)"[^>]*?(?:\/>|>([\s\S]*?)<\/c>)/g))
     (grid[Number(m[2]) - 1] ??= [])[colIndex(m[1])] = unxml([...(m[3] ?? "").matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join(""));
   const rows = Array.from(grid, (r) => Array.from(r ?? [], (v) => v ?? ""));
-  const head = Number(/<pane\b[^>]*ySplit="(\d+)"/.exec(x)?.[1] ?? 1) >= 2 ? 2 : 1, caps = [...(rows[0] ?? [])];
-  const width = Math.max(caps.length, head === 2 ? rows[1]?.length ?? 0 : 0);
-  for (let i = 1; i < width; i++) if (!caps[i] && head === 2 && rows[1]?.[i]) caps[i] = caps[i - 1];
-  return { head, cols: Array.from({ length: width }, (_, i) => ({ caption: caps[i] ?? "", sub: head === 2 ? rows[1]?.[i] ?? "" : "" })),
+  const head = Math.min(3, Number(/<pane\b[^>]*ySplit="(\d+)"/.exec(x)?.[1] ?? 1)), caps = [...(rows[0] ?? [])];
+  const subs = head >= 2 ? [...(rows[1] ?? [])] : [], subs2 = head === 3 ? rows[2] ?? [] : [];
+  const width = Math.max(caps.length, subs.length, subs2.length);
+  for (let i = 1; i < width; i++) {
+    if (!caps[i] && (subs[i] || subs2[i])) caps[i] = caps[i - 1];
+    if (!subs[i] && subs2[i]) subs[i] = subs[i - 1];
+  }
+  return { head, cols: Array.from({ length: width }, (_, i) => ({ caption: caps[i] ?? "", sub: subs[i] ?? "", sub2: subs2[i] ?? "" })),
     data: rows.slice(head).filter((r) => r.some((v) => v !== "")) };
 }
 const xshown = (f: any, v = "") => f.type === "DATE" && v ? JSON.parse(v).slice(0, 10).split("-").reverse().join(".") : shown(f, v);
@@ -175,14 +193,34 @@ function xact(boId: string, bytes: Uint8Array, fileName: string) {
   const cols = sh.cols.map((c) => ({ ...c, field: fields.find((f) => f.label === c.caption) }));
   const odd = cols.find((c) => c.caption && c.caption !== ID_COLUMN && !c.field);
   if (odd) { act.fileError = `kD4QsxZrAY :: Нет поля с именем \`${odd.caption}\``; return act; }
+  for (const c of cols) if (c.field?.type === "BO" && c.sub && !c.sub2) { // a child's composite needs its third header row
+    const t = fieldsOf(c.field.refBoId).find((x) => x.label === c.sub);
+    if (t?.type === "CO") { act.fileError = `BoFieldNotSpecified :: Не указаны дочерние поля для поля \`${t.label}\` у бизнес объекта \`${bos.get(c.field.refBoId)!.name}\``; return act; }
+  }
   const unique = fields.find((f) => f.isUnique);
   for (const line of sh.data) {
     const row: XRow = { key: {}, set: {}, links: {}, isNew: false, line };
     cols.forEach((c, i) => {
       const v = line[i] ?? "", f = c.field;
       if (c.caption === ID_COLUMN) { if (v) row.key.id = v; return; }
+      if (f.type === "CO") { // found only through an attribute bound to a unique field of the source; an unbound one rejects the file
+        if (c.sub !== CO_SOURCE || !v) return;
+        const co = coOf(f), src = co.sources.find((id) => boById(id)?.name === v);
+        if (!src) { row.err ??= `Не найден бизнес-объект \`${v}\``; return; }
+        cols.forEach((a, k) => {
+          if (a.field !== f || a.sub === CO_SOURCE) return;
+          const link = co.fields.find((x) => x.label === a.sub)?.links.find((l) => l.boId === src);
+          if (!link) { act.fileError ??= `NoBoWithId :: данный бизнес-объект не существует. boId = ${src}`; return; }
+          const w = line[k] ?? "", sf = fieldsOf(src).find((x) => x.fieldId === link.fieldId);
+          if (!w || !sf?.isUnique) return;
+          const hit = [...recs.values()].find((r) => r.boId === src && r.state !== "REMOVED" && r.values[sf.fieldId] === w);
+          if (!hit) row.err ??= `Не найдено значение у бизнес-объекта \`${v}\` для уникального поля \`${sf.label}\` = ${w}`;
+          else row.links[f.fieldId] = [`${src}-${hit.id}`];
+        });
+        return;
+      }
       if (f.type === "BO") {
-        if (!v) return;
+        if (!v || c.sub2) return;
         const t = fieldsOf(f.refBoId).find((x) => x.label === c.sub);
         const hit = t && [...recs.values()].find((r) => r.boId === f.refBoId && r.state !== "REMOVED" && xshown(t, r.values[t.fieldId]) === v);
         if (!hit) row.err ??= `Не найдена запись \`${v}\` в поле \`${f.label}\``;
@@ -202,6 +240,7 @@ function xact(boId: string, bytes: Uint8Array, fileName: string) {
     row.isNew = !findRec(boId, row.key);
     act.rows.push(row);
   }
+  if (act.fileError) act.rows = [];
   return act;
 }
 function xapply(importId: string) {
@@ -227,10 +266,17 @@ function xexport(e: any): Uint8Array {
       const linked = (f: any) => JSON.parse(r.values[f.fieldId] || "[]") as string[];
       const n = Math.max(1, ...cols.filter((c) => c.field.type === "BO" && c.field.viewType !== "SINGLE").map((c) => linked(c.field).length));
       return Array.from({ length: n }, (_, j) => [...cols.map((c) => {
+        if (c.field.type === "CO") {
+          const [src, id] = (linked(c.field)[0] ?? "").split("-"), t = recs.get(id ?? "");
+          if (!t) return "";
+          if (c.sub === CO_SOURCE) return boById(src)?.name ?? "";
+          const link = coOf(c.field).fields.find((x) => x.coFieldId === c.ref)?.links.find((l) => l.boId === src);
+          return link ? t.values[link.fieldId] ?? "" : "";
+        }
         if (c.field.type !== "BO") return xshown(c.field, r.values[c.field.fieldId]);
         const t = recs.get(linked(c.field)[c.field.viewType === "SINGLE" ? 0 : j]), tf = t && fieldsOf(t.boId).find((x) => x.fieldId === c.ref);
         return tf ? xshown(tf, t!.values[tf.fieldId]) : "";
-      }), ...(e.needBoiId ? [r.id] : [])]);
+      }), ...(e.needBoiId ? [r.id] : [])].filter((_, i) => !cols[i]?.sub2));
     });
   return xlsxOf(cols, lines, !!e.needBoiId);
 }
@@ -260,10 +306,11 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
         records: live().map(({ id, name, boCategory }) => ({ id, name, nameReadonly: false, viewState: null, orderIndex: 0, boCategory })) },
       { id: "EMPTYGROUP000001", name: "Пустая группа", code: "empty_group", orderIndex: 1120000, isGeneral: false, kind: "MANUAL", records: [] }];
     case "v2/business-objects/load-business-object-by-id": {
-      const bo = bos.get(params.businessObjectId);
+      const bo = boById(params.businessObjectId);
       if (!bo || bo.deleted) return fail("Cgf5V16VU4 :: данный бизнес-объект не существует");
       return { id: bo.id, code: bo.code, name: bo.name, boCategory: bo.boCategory, kind: "GENERAL", isDictionary: bo.boCategory === "BO_DICTIONARY",
-        formFields: structuredClone(bo.fields ?? []) };
+        formFields: bo.co ? bo.co.fields.map((x) => ({ fieldId: x.coFieldId, label: x.label, code: x.code, type: x.type, boFieldIds: x.links, tableColToShow: true }))
+          : structuredClone(bo.fields ?? []) };
     }
     case "v2/business-objects/verify-business-object-code": return !!params.businessObjectCode && !byCode(params.businessObjectCode);
     case "v2/business-objects/create-bo": {
@@ -334,15 +381,15 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/co/apply-and-remove-draft": { const d = drafts.get(params.draftId)!; bos.get(d.coId)!.co = copyCo(d); drafts.delete(params.draftId); return null; }
     case "v2/co/load-mock-open-drafts": return drafts.size;
     case "v2/co/add-bo-to-co": drafts.get(params.draftId)!.sources.push(params.boId); return null;
-    case "v2/co/load-bo-records-for-co": return drafts.get(params.draftId)!.sources.map((id) => ({ id, name: bos.get(id)?.name }));
-    case "v2/co/load-bo-fields-for-co": return (bos.get(params.boId)?.fields ?? []).map((x) => ({ fieldId: x.fieldId, label: x.label, code: x.code, type: x.type }));
+    case "v2/co/load-bo-records-for-co": return drafts.get(params.draftId)!.sources.map((id) => ({ id, name: boById(id)?.name }));
+    case "v2/co/load-bo-fields-for-co": return (boById(params.boId)?.fields ?? []).map((x) => ({ fieldId: x.fieldId, label: x.label, code: x.code, type: x.type }));
     case "v2/co/load-co-fields-simple": case "v2/co/load-co-fields-composite":
       return drafts.get(params.draftId)!.fields.filter((x) => (x.links.length !== 1) === route.endsWith("composite")); // no links → the composite list too
     case "v2/co/add-co-field-to-simple": {
       const d = drafts.get(params.draftId)!;
       const made: any[] = [];
       for (const l of body) {
-        const src = bos.get(l.boId)?.fields?.find((x) => x.fieldId === l.fieldId);
+        const src = boById(l.boId)?.fields?.find((x) => x.fieldId === l.fieldId);
         if (!src || d.fields.some((x) => x.links.some((y) => y.fieldId === l.fieldId))) return fail("bad link");
         // the attribute takes the source field's code and label; the reply lists the new attributes, code null
         const f = { coFieldId: nextId("COF"), label: src.label, code: src.code, type: src.type, links: [l] };
@@ -355,7 +402,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       // appends with dedup, refuses another field type, answers the updated attribute
       const x = drafts.get(params.draftId)!.fields.find((y) => y.coFieldId === params.coFieldId)!;
       for (const l of body) {
-        const src = bos.get(l.boId)?.fields?.find((y) => y.fieldId === l.fieldId);
+        const src = boById(l.boId)?.fields?.find((y) => y.fieldId === l.fieldId);
         if (src && x.type && src.type !== x.type) return fail(`IllegalFieldType: ${params.coFieldId} :: type1 = ${src.type}, type2 = ${x.type}`);
         if (!x.links.some((y) => y.fieldId === l.fieldId)) x.links.push(l);
       }
@@ -424,7 +471,9 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return null;
     case "v2/bo-transfer/download-template": {
       const bo = bos.get(params.businessObjectId)!;
-      return fileOf(xlsxOf(xcols(bo.id, [params.selectedFieldIds ?? []].flat()), [], false), `Шаблон ${bo.name}.xlsx`);
+      const tc = xcols(bo.id, [params.selectedFieldIds ?? []].flat()), at = tc.findIndex((c) => c.field.type === "CO" && c.sub === CO_SOURCE);
+      const samples = at < 0 ? [] : coOf(tc[at].field).sources.map((id) => tc.map((_, i) => (i === at ? boById(id)?.name ?? "" : "")));
+      return fileOf(xlsxOf(tc, samples, false), `Шаблон ${bo.name}.xlsx`);
     }
     case "v2/bo-transfer/import-from-file": { const id = nextId("XACT"); xacts.set(id, xact(params.businessObjectId, file!, "upload.xlsx")); return id; }
     case "v2/bo-transfer/is-import-file-finished": { const a = xacts.get(params.actId); return a?.fileError ? fail(a.fileError) : !!a; }

@@ -616,7 +616,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     { label: "Клиенты", type: "BO", code: "clients", refBoId: "@bo_find.id" }] }, (r) => r.code === "mcp_probe_xlsx"],
   ["xlsx_template", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx" },
     (r) => r.headerRows === 2 && r.columns.length === 5 && r.columns[4].field === "clients" && r.columns[4].sub === "Наименование" && r.key[0] === "code"],
-  ["xlsx_import", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx", rows: [{ code: "X-1", clients: ["ES breaker client"] }] }, (r) => /is a key of/.test(r)],
+  ["xlsx_import", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx", rows: [{ code: "X-1", clients: ["ES breaker client"] }] }, (r) => /no unique field/.test(r)],
   ["xlsx_import", { code: "mcp_probe_xlsx", out: "dist/mcp-test/xlsx", rows: [
     { code: "X-1", status: "Новый", done: true, due: "2026-10-05", clients: [{ "Наименование": "ES breaker client" }] }, { code: "X-2", status: "В работе" }, { code: "X-3", status: "Плохой" }] },
     (r) => r.rows === 3 && r.newRows === 2 && r.errorRows === 1 && r.failing[0].line === 5 && /`Плохой`/.test(r.failing[0].error)
@@ -633,6 +633,56 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["xlsx_import", { code: "mcp_probe_xlsx", path: "@xlsx_export.file" }, (r) => r.newRows === 0 && r.updatedRows === 2 && r.errorRows === 0],
   ["xlsx_import", { importId: "@xlsx_import.importId", cancel: true }, (r) => r.canceled === true],
   ["xlsx_export", { code: "mcp_probe_xlsx", search: "x-2", out: "dist/mcp-test/xlsx" }, (r) => r.total === 1 && r.records[0].values.status === "В работе"],
+  // a composite in xlsx (MYBPM-IMPORTS.md 0X.4 rule 13): a source with a unique «Почта» and a second source; the template\'s
+  // sample rows reject the file; a plain key, an object, a row with no key attribute (no link), an ambiguous source and an
+  // unbound attribute refused before upload, an unknown key fails its row; the export gives the block back
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe xlsx source", code: "mcp_probe_xsrc", window: false, fields: [
+    { label: "Почта", type: "INPUT_TEXT", code: "mail", unique: true }, { label: "Имя", type: "INPUT_TEXT", code: "name" }] }, (r) => r.code === "mcp_probe_xsrc"],
+  ["record_save", { code: "mcp_probe_xsrc", values: { mail: "a@x", name: "Анна" } }, (r) => r.saved === true],
+  ["co_build", { group: "Бизнес-объект", name: "MCP probe xlsx co", code: "mcp_probe_xco", attrs: [
+    { links: [{ bo: "@bo_create.id", field: "Почта" }] },
+    { label: "Имя", code: "name", links: [{ bo: "@bo_create.id", field: "Имя" }, { bo: "MCP probe records", field: "Название" }] }] },
+    (r) => r.code === "mcp_probe_xco" && r.sources.length === 2],
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe xlsx holder", code: "mcp_probe_xhold", window: false, fields: [
+    { label: "Номер", type: "INPUT_TEXT", code: "num", unique: true, column: true },
+    { label: "Исполнитель", type: "CO", code: "who", refBoId: "@co_build.coId", viewType: "SINGLE", column: true }] }, (r) => r.code === "mcp_probe_xhold"],
+  ["xlsx_template", { code: "mcp_probe_xhold", out: "dist/mcp-test/xlsx" },
+    (r) => r.headerRows === 2 && r.columns.filter((c: any) => c.field === "who").map((c: any) => c.sub).join("|") === "Наименование БО|Почта|Имя"],
+  ["xlsx_import", { code: "mcp_probe_xhold", path: "@xlsx_template.file" }, (r) => /NoBoWithId/.test(r.fileError) && /not bound in a row/.test(r.next)],
+  ["xlsx_import", { code: "mcp_probe_xhold", out: "dist/mcp-test/xlsx", rows: [{ num: "H-3", who: { "Имя": "Анна" } }] }, (r) => /several sources fit/.test(r)],
+  ["xlsx_import", { code: "mcp_probe_xhold", out: "dist/mcp-test/xlsx", rows: [{ num: "H-4", who: { "Наименование БО": "MCP probe records", "Почта": "a@x" } }] },
+    (r) => /«Почта» is not bound in «MCP probe records»/.test(r)],
+  ["xlsx_import", { code: "mcp_probe_xhold", out: "dist/mcp-test/xlsx", rows: [{ num: "H-1", who: "a@x" }, { num: "H-2", who: { "Наименование БО": "MCP probe xlsx source", "Имя": "Анна" } },
+    { num: "H-5", who: "nobody@x" }] },
+    (r) => r.newRows === 2 && r.errorRows === 1 && /уникального поля `Почта` = nobody@x/.test(r.failing[0].error)
+      && r.warnings.some((w: string) => /stores NO link/.test(w))],
+  ["xlsx_import", { importId: "@xlsx_import.importId", confirm: true }, (r) => r.applied === true && r.newRows === 2],
+  ["xlsx_export", { code: "mcp_probe_xhold", out: "dist/mcp-test/xlsx" }, (r) => { const v = (n: string) => r.records.find((y: any) => y.values.num === n)?.values;
+    return r.total === 2 && v("H-1")?.who?.["Наименование БО"] === "MCP probe xlsx source" && v("H-1").who["Почта"] === "a@x" && v("H-1").who["Имя"] === "Анна"
+      && v("H-2") && !v("H-2").who; }],
+  // a child\'s composite shown in a nested block: the template is three header rows, rows go through them; the export
+  // leaves that column empty and shifts the later cells — read back in place, with a note
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe xlsx parent", code: "mcp_probe_xpar", window: false, fields: [
+    { label: "Код", type: "INPUT_TEXT", code: "code", unique: true }, { label: "Держатели", type: "BO", code: "holders", refBoId: "@bo_create.id" }] },
+    (r) => r.code === "mcp_probe_xpar"],
+  ["xlsx_template", { code: "mcp_probe_xpar", out: "dist/mcp-test/xlsx" },
+    (r) => r.headerRows === 3 && r.columns.some((c: any) => c.sub === "Исполнитель" && c.sub2 === "Наименование БО")],
+  ["xlsx_import", { code: "mcp_probe_xpar", out: "dist/mcp-test/xlsx", rows: [{ code: "P-1", holders: ["H-1", "H-2"] }] }, (r) => r.newRows === 2 && !r.fileError],
+  ["xlsx_import", { importId: "@xlsx_import.importId", confirm: true }, (r) => r.applied === true],
+  ["xlsx_export", { code: "mcp_probe_xpar", fields: ["holders", "code"], out: "dist/mcp-test/xlsx" },
+    (r) => r.total === 1 && r.records[0].values.code === "P-1" && r.records[0].values.holders.map((h: any) => h["Номер"]).join() === "H-1,H-2"
+      && /^[A-Z~@0-9a-z]+$/.test(r.records[0].id ?? "") && /do not re-import/.test(r.note)],
+  // currentUser on a composite (UI-API §4): over «Пользователи» → type CO + the Person BO id; without that source → refused
+  ["filter_try", { code: "mcp_probe_xhold", filter: { field: "who", currentUser: true } }, (r) => /needs «Пользователи» among the sources/.test(r)],
+  ["co_build", { group: "Бизнес-объект", name: "MCP probe co person", code: "mcp_probe_xcop", attrs: [{ links: [{ bo: "PERSONBO00000001", field: "Фамилия" }] }] },
+    (r) => r.code === "mcp_probe_xcop"],
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe co user", code: "mcp_probe_xcu", window: false, fields: [
+    { label: "Исполнитель", type: "CO", code: "who", refBoId: "@co_build.coId", viewType: "SINGLE" }] }, (r) => r.code === "mcp_probe_xcu"],
+  ["filter_try", { code: "mcp_probe_xcu", filter: { field: "who", currentUser: true } }, (r) => { const d = r.brackets[0].dynamicFilters[0];
+    return r.total === 0 && d.type === "CO" && d.isCurrentUser === true && d.businessObjectId === "PERSONBO00000001" && d.businessFields.length === 2; }],
+  // a test record with a link value: its scripts see only test records there (IMPORTS 0S.7) — said in a note
+  ["record_save", { code: "mcp_probe_xcu", dev: true, values: { who: ["PERSONBO00000001-PERSON0000000001"] } }, (r) => r.saved === true && /sees only TEST records in who —/.test(r.note)],
+  ["record_save", { code: "mcp_probe_xcu", values: { who: ["PERSONBO00000001-PERSON0000000001"] } }, (r) => r.saved === true && r.note === undefined],
   // scripts: wire a hook, a field script and a local method on the test version; bodies written, reverted, dry-run, a method
   // without its hat refused; unwire (the hook stays, body = entry → exit); versions; a global method
   ["bo_create", { group: "Бизнес-объект", name: "MCP probe scripts", code: "mcp_probe_scripts", window: false, fields: [
@@ -746,6 +796,9 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["filter_try", { code: "mcp_probe_records", filter: { any: [{ field: "done", eq: true }, { field: "status", eq: "Закрыт" }] } },
     (r) => r.total === 0 && r.brackets[0].brackets.length === 2 && r.brackets[0].brackets[0].connectionType === "OR" && r.brackets[0].brackets[1].dynamicFilters[0].value !== "closed"],
   ["filter_try", { code: "mcp_probe_records", filter: { field: "status", eq: "working", not: true } }, (r) => r.total === 0 && r.brackets[0].notType === "NOT"],
+  // `as`: built with the caller's view, counted under another kept login of the same stand
+  ["filter_try", { code: "mcp_probe_records", filter: { field: "done", eq: false }, as: "admin@mock" }, (r) => r.total === 1 && r.as === "admin@mock"],
+  ["filter_try", { code: "mcp_probe_records", filter: { field: "done", eq: false }, as: "nobody@mock" }, (r) => /nobody@mock/.test(r)],
   ["filter_try", { code: "mcp_probe_records", filter: { field: "status", eq: "Нет такого" } }, (r) => /not an option/.test(r)],
   ["filter_save", { item: "MCP записи", filter: { all: [{ field: "done", eq: false }, { field: "status", eq: "В работе" }] } }, (r) => r.saved && r.total === 1 && r.filterId],
   ["menu_read", { under: "MCP группа" }, (r) => r.items[1].filter === true && r.items[1].selectiveRights === true],
@@ -883,6 +936,12 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xlsx", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xpar", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xhold", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xcu", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xcop", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xco", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xsrc", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_records", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_co", confirm: true }, (r) => r.boCategory === "BO_COMPOSITE" && r.deleted === true],
   ["bo_delete", { code: "mcp_probe_customer" }, (r) => r.fields === 7 && r.deleted === undefined && Array.isArray(r.usage.scripts) && Array.isArray(r.usage.refBos)],
@@ -924,7 +983,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType|nothing was deleted|is no field of this BO|columns: at least one/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|no unique field|several sources fit|is not bound in|among the sources|no account |stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType|nothing was deleted|is no field of this BO|columns: at least one/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}${got?.result?.notes ? `\n  notes: ${JSON.stringify(got.result.notes)}` : ""}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
