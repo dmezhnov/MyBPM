@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 0844244c9844
+# lintArchive sha256: 35102acb4ee2
 import json
 import math
 import os
@@ -528,14 +528,32 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                 err(f"{bs}.{k}: must be an object {{}}, not {s(jj(bo[k]))} — the stand drops the whole BO (0.9 rule 5)")
         if not isBuilt(b) and not any(seq(g(x, "oldId"), g(bo, "boGroupOldId")) for x in groups):
             fatal(f"{bs}: boGroupOldId names no group line (0.7)")
+        def tabView(p):  # §7
+            return g(find(acc, lambda a: seq(g(a, "boCode"), b)), "fieldAccessStructMap", g(p, "tabGroupCode"), "tabAccessStructMap", g(p, "tabCode"), "view")
+
         for c, t in ents(g(bo, "kanbanCardTemplates")):
             kf = g(t, "kanbanFields")
             if not isinstance(kf, dict):
                 err(f'{bs}: kanbanCardTemplates.{c} must be {{"kanbanFields": {{…}}}} — without the wrapper the import sets nothing (0.5c)')
             else:
                 for k in keys(kf):
-                    if not tr(g(df, k)) and not tr(g(bo, "nativeFields", k)):
+                    f = g(df, k) if tr(g(df, k)) else g(bo, "nativeFields", k)
+                    if not tr(f):
                         err(f"{bs}: kanbanCardTemplates.{c} shows {k}, no field of {bs} (0.5c)")
+                        continue
+                    if seq(g(f, "type"), "CO"):
+                        err(f"{bs}: kanbanCardTemplates.{c} shows {k}, a CO — the card draws another value of the chosen record, not its name; show a BO field or a text field instead (0.5c)")
+                    # the card drops a field of a tab the user may not see, the tab's parent tabs included; admins see it
+                    p, n = nn(g(f, "tabCodePath"), g(f, "tabCode")), 0
+                    while tr(p) and n < 9:
+                        v = tabView(p)
+                        if seq(g(v, "denyAll"), True):
+                            nobody = not it(g(v, "orgUnitIds")) and not any(seq(x, True) for x in vals(g(v, "authorsField"))) and not seq(g(v, "participants"), True) and not ents(g(v, "fromFields"))
+                            tg, tc = s(g(p, "tabGroupCode")), s(g(p, "tabCode"))
+                            err(f"{bs}: kanbanCardTemplates.{c} shows {k} of tab {tg}.{tc}, VIEW «никому» — the card drops it for everyone but admins; show a field of an open tab (0.5c)" if nobody
+                                else f"REMINDER {bs}: kanbanCardTemplates.{c} shows {k} of tab {tg}.{tc}, VIEW limited — only who sees the tab, and admins, see it on the card; say so in the report (0.5c)")
+                            break
+                        p, n = g(df, g(p, "tabGroupCode"), "tabCodePath"), n + 1
         bt = ents(bo["boTabs"]) if isinstance(g(bo, "boTabs"), dict) else []
         for t, n in bt:
             if not T(R("^(CHAT|PEOPLE|FILES|HISTORY|PRINT_FORM|TELEGRAM|WHATSAPP)$"), t) or not isnum(n):

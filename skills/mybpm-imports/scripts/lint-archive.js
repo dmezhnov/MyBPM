@@ -87,9 +87,23 @@ for (const bo of bos) {
   for (const k of ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W])
     if (has(bo, k) && (!bo?.[k] || typeof bo?.[k] !== "object" || Array.isArray(bo?.[k]))) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo?.[k])} — the stand drops the whole BO (0.9 rule 5)`);
   if (!BUILT.has(b) && !groups?.some((g) => g?.oldId === bo?.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
+  const tabView = (p) => acc?.find((a) => a?.boCode === b)?.fieldAccessStructMap?.[p?.tabGroupCode]?.tabAccessStructMap?.[p?.tabCode]?.view; // §7
   for (const [c, t] of all(bo?.kanbanCardTemplates)) {
     if (!t?.kanbanFields || typeof t?.kanbanFields !== "object" || Array.isArray(t?.kanbanFields)) err(`${b}: kanbanCardTemplates.${c} must be {"kanbanFields": {…}} — without the wrapper the import sets nothing (0.5c)`);
-    else for (const k of Object.keys(t?.kanbanFields)) if (!df?.[k] && !bo?.nativeFields?.[k]) err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`);
+    else for (const k of Object.keys(t?.kanbanFields)) {
+      const f = df?.[k] || bo?.nativeFields?.[k];
+      if (!f) { err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`); continue; }
+      if (f?.type === "CO") err(`${b}: kanbanCardTemplates.${c} shows ${k}, a CO — the card draws another value of the chosen record, not its name; show a BO field or a text field instead (0.5c)`);
+      // the card drops a field of a tab the user may not see, the tab's parent tabs included; admins see it
+      for (let p = f?.tabCodePath ?? f?.tabCode, n = 0; p && n < 9; p = df?.[p?.tabGroupCode]?.tabCodePath, n++) {
+        const v = tabView(p);
+        if (v?.denyAll !== true) continue;
+        const nobody = !it(v?.orgUnitIds).length && !vals(v?.authorsField).some((x) => x === true) && v?.participants !== true && !all(v?.fromFields).length;
+        err(nobody ? `${b}: kanbanCardTemplates.${c} shows ${k} of tab ${p?.tabGroupCode}.${p?.tabCode}, VIEW «никому» — the card drops it for everyone but admins; show a field of an open tab (0.5c)`
+          : `REMINDER ${b}: kanbanCardTemplates.${c} shows ${k} of tab ${p?.tabGroupCode}.${p?.tabCode}, VIEW limited — only who sees the tab, and admins, see it on the card; say so in the report (0.5c)`);
+        break;
+      }
+    }
   }
   const bt = bo?.boTabs && typeof bo?.boTabs === "object" && !Array.isArray(bo?.boTabs) ? all(bo?.boTabs) : [];
   for (const [t, n] of bt) if (!/^(CHAT|PEOPLE|FILES|HISTORY|PRINT_FORM|TELEGRAM|WHATSAPP)$/.test(t) || typeof n !== "number") err(`${b}: boTabs.${t} = ${JSON.stringify(n)} — {"CHAT"|"PEOPLE"|"FILES"|"HISTORY"|"PRINT_FORM"|"TELEGRAM"|"WHATSAPP": <orderIndex>} (§2 «BO card tabs»)`);

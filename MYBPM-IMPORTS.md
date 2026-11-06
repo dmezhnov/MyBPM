@@ -1010,6 +1010,10 @@ columns), the inner keys are the fields shown on the card:
   Ids never appear here, exactly like everywhere else in a `BoStructDto`.
 - `locationType` is `HEADER` | `CONTENT` | `FOOTER`; `cardOrderIndex` orders the fields inside one
   location and is a plain int.
+- **Card fields every viewer sees as placed** `[C]`: a field of a tab whose VIEW is «никому» (the hidden
+  «Системные» tab, 0.8a step 6) — or of a tab group lying on it — is dropped from the card for every non-admin;
+  a tab limited to some users shows it only to them. A `CO` field draws another value of the chosen record, not
+  its name. Put on the card fields of open tabs, a `BO` field instead of a `CO`; the form lint (0.10) flags both.
 - **Column colours live on the dropdown, not here**: each option's `fieldOption.color` (0.5) — a CSS colour
   name in any case (`RED`, `green`) or hex (`#0048ff`, `#0f0`) `[C]` — colours that column's title and bar;
   `null` = black title, default blue bar. Give statuses colours when the spec names them or implies them
@@ -1392,7 +1396,7 @@ sees, not counting headings, the `TAB_GROUP` itself and the system fields of ste
    - «rows of a tab» = the bottom of its lowest cell (`max(y + rows)` of every cell on it — the fields that
      name the tab in `tabCodePath` and the widgets of 0.13 that name it in `tabCode` alike `[C]`).
 6. **The system tab rule.** A tab carries ONE right only — VIEW (`[C]`; edit follows from it) — and «никому»
-   (`view.denyAll: true`, empty `orgUnitIds`) hides the tab AND its fields' registry columns from every
+   (`view.denyAll: true`, empty `orgUnitIds`) hides the tab AND its fields' registry columns and kanban-card lines (0.5c) from every
    non-admin user; a non-admin who edits and saves the record keeps the hidden values `[C]`. **Hidden is not secret** `[C]`: the rule only filters what the form and the registry draw —
    a non-admin still reads the tab's values through the API by its tab id (`v2/business-object-instance/v2/load-boi-values` with `tabId`, `v2/instance-form/load-field-structure-tab` + `v2/instance-field-form/load-field-data-tab`). Never put a password, a key or a personal secret on «Системные». **An admin
    always sees the tab** `[C]` — admins bypass rights; say so to the user, «hidden from everyone» cannot
@@ -1647,9 +1651,23 @@ for (const bo of bos) {
   for (const k of ["name", "recordName", "staticValue", "boTabs", "dynamicFields", "nativeFields", "kanbanCardTemplates", "timelineTemplates", "calendarCardTemplates", ...W])
     if (has(bo, k) && (!bo?.[k] || typeof bo?.[k] !== "object" || Array.isArray(bo?.[k]))) err(`${b}.${k}: must be an object {}, not ${JSON.stringify(bo?.[k])} — the stand drops the whole BO (0.9 rule 5)`);
   if (!BUILT.has(b) && !groups?.some((g) => g?.oldId === bo?.boGroupOldId)) fatal(`${b}: boGroupOldId names no group line (0.7)`);
+  const tabView = (p) => acc?.find((a) => a?.boCode === b)?.fieldAccessStructMap?.[p?.tabGroupCode]?.tabAccessStructMap?.[p?.tabCode]?.view; // §7
   for (const [c, t] of all(bo?.kanbanCardTemplates)) {
     if (!t?.kanbanFields || typeof t?.kanbanFields !== "object" || Array.isArray(t?.kanbanFields)) err(`${b}: kanbanCardTemplates.${c} must be {"kanbanFields": {…}} — without the wrapper the import sets nothing (0.5c)`);
-    else for (const k of Object.keys(t?.kanbanFields)) if (!df?.[k] && !bo?.nativeFields?.[k]) err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`);
+    else for (const k of Object.keys(t?.kanbanFields)) {
+      const f = df?.[k] || bo?.nativeFields?.[k];
+      if (!f) { err(`${b}: kanbanCardTemplates.${c} shows ${k}, no field of ${b} (0.5c)`); continue; }
+      if (f?.type === "CO") err(`${b}: kanbanCardTemplates.${c} shows ${k}, a CO — the card draws another value of the chosen record, not its name; show a BO field or a text field instead (0.5c)`);
+      // the card drops a field of a tab the user may not see, the tab's parent tabs included; admins see it
+      for (let p = f?.tabCodePath ?? f?.tabCode, n = 0; p && n < 9; p = df?.[p?.tabGroupCode]?.tabCodePath, n++) {
+        const v = tabView(p);
+        if (v?.denyAll !== true) continue;
+        const nobody = !it(v?.orgUnitIds).length && !vals(v?.authorsField).some((x) => x === true) && v?.participants !== true && !all(v?.fromFields).length;
+        err(nobody ? `${b}: kanbanCardTemplates.${c} shows ${k} of tab ${p?.tabGroupCode}.${p?.tabCode}, VIEW «никому» — the card drops it for everyone but admins; show a field of an open tab (0.5c)`
+          : `REMINDER ${b}: kanbanCardTemplates.${c} shows ${k} of tab ${p?.tabGroupCode}.${p?.tabCode}, VIEW limited — only who sees the tab, and admins, see it on the card; say so in the report (0.5c)`);
+        break;
+      }
+    }
   }
   const bt = bo?.boTabs && typeof bo?.boTabs === "object" && !Array.isArray(bo?.boTabs) ? all(bo?.boTabs) : [];
   for (const [t, n] of bt) if (!/^(CHAT|PEOPLE|FILES|HISTORY|PRINT_FORM|TELEGRAM|WHATSAPP)$/.test(t) || typeof n !== "number") err(`${b}: boTabs.${t} = ${JSON.stringify(n)} — {"CHAT"|"PEOPLE"|"FILES"|"HISTORY"|"PRINT_FORM"|"TELEGRAM"|"WHATSAPP": <orderIndex>} (§2 «BO card tabs»)`);
@@ -4649,7 +4667,7 @@ BO — is 0.9 rule 10.
   Both keys are CODES; the 0.10 form lint checks that they name a real `TAB_GROUP` and its tab.
   **A tab has only the VIEW right** `[C]` (the constructor offers no other; `edit` in the struct is not
   applied separately). «никому» on VIEW hides the tab from every non-admin user — the tab disappears from
-  the card AND its fields disappear from the registry columns, and a non-admin who edits and saves the
+  the card AND its fields disappear from the registry columns and the kanban cards (0.5c), and a non-admin who edits and saves the
   record keeps the hidden fields' values `[C]`. **An admin always sees the tab and its columns** `[C]`.
   A `TAB_GROUP` all of whose tabs a user may not see is dropped from that user's form `[C]`. **Hidden is not secret** `[C]`: the rule only filters what the form and the registry draw — a non-admin still reads the tab's values through the API by its tab id (`v2/business-object-instance/v2/load-boi-values` with `tabId`, `v2/instance-form/load-field-structure-tab` + `v2/instance-field-form/load-field-data-tab`). Never put a password, a key or a personal secret on «Системные».
   This is the hidden system tab of 0.8a step 6.
