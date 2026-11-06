@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 43f9baa39cae
+# lintArchive sha256: 0844244c9844
 import json
 import math
 import os
@@ -1226,24 +1226,28 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                 e = g(X, g(e, "leftExprId"))
             if tr(fld(e)):
                 written.add(f"{s(nn(boOf(g(X, g(e, 'leftExprId'))), '*'))}.{s(fld(e))}")
-    BY_NAME = [  # 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token]; the first row whose label or code matches
-        ("a quantity", "INPUT_NUMBER", R(r"^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|\((?:дней|дн|ч|час|часов|мин|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])"),
+    BY_NAME = [  # 0.5 «Field type by meaning»: [what the name holds, its type, the label start, the code token, the other types that answer it]; the first row whose label or code matches
+        ("a quantity", "INPUT_NUMBER", R(r"^(?:кол-во|количеств|сумм|итого(?![а-яё])|час(?:ы|ов)?(?![а-яё])|минут|процент|доля|цен|стоимост|длительност|трудозатрат)|%|[(,]\s*(?:дней|дн|ч|час|часов|мин|мес|лет|шт|руб|кг|г|км|м|см|мм|л)(?![а-яё])"),
          R(r"_(?:count|qty|quantity|amount|sum|total|pct|percent|hours|minutes|days|months|years|price|cost|spent|duration)_")),
         ("a moment, day and time", "FULL_DATE", R(r"^(?:дата и время|дата-время|момент)(?![а-яё])"), R(r"_datetime_|_date_(?:.*_)?time_|_at_$")),
         ("a month", "YEAR_AND_MONTH", R(r"^(?:за )?месяц(?![а-яё])"), R(r"_month_")),
         ("a year", "YEAR", R(r"^(?:за )?год(?![а-яё])"), R(r"_year_")),
         ("a day", "DATE", None, R(r"_(?:period|range)_(?:.*_)?(?:start|end|begin|from|to)_|_(?:start|end|begin|from|to)_(?:.*_)?(?:period|range)_")),  # the start or end of a range
         ("a range", "PERIOD", R(r"^(?:период|диапазон)(?![а-яё])"), R(r"_(?:period|range)_")),
-        ("a day", "DATE", R(r"^(?:дата|срок|крайний срок|дедлайн|день рождения)(?![а-яё])"), R(r"_(?:date|day|deadline|due|dob|birthday)_")),
-        ("a time of day", "TIME", R(r"^время(?![а-яё])"), R(r"_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_"))]
+        ("a day", "DATE", R(r"^(?:дата|крайний срок|дедлайн|день рождения)(?![а-яё])"), R(r"_(?:date|day|deadline|due|dob|birthday)_")),
+        ("a day or a term", "DATE", R(r"^срок(?![а-яё])"), None, ["INPUT_NUMBER"]),  # «Срок» in days is a quantity
+        ("a time of day", "TIME", R(r"^время(?![а-яё])"), R(r"_(?:start|end|begin|from|to|open|close)_(?:.*_)?time_|_time_(?:.*_)?(?:start|end|begin|from|to)_"), ["INPUT_NUMBER"])]  # «Время в пути» is a duration
+    BY_TYPE = {"INPUT_TEXT": ("текстом", True), "TEXTAREA": ("текстом", True), "INPUT_NUMBER": ("числом", False)}  # the types a name is checked on: [the report word, whether the code token counts — a number's code names what it counts per: budget_per_year]
 
-    def byName(f):  # the BY_NAME row of a text field, None for a comment or a note
+    def byName(f):  # the BY_NAME row a field's type does not answer, None for a comment or a note
         l = low(nn(g(f, "label", "rus"), ""))
         tok = "_" + re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s(nn(g(f, "code"), ""))).lower() + "_"
-        if (not T(R("^(INPUT_TEXT|TEXTAREA)$"), g(f, "type")) or T(R("коммент|примеч|описан|пояснен|причин|прописью|формул"), l)
+        ty = BY_TYPE[g(f, "type")] if isinstance(g(f, "type"), str) and g(f, "type") in BY_TYPE else None  # own keys only: a type "toString" is no row
+        if (ty is None or T(R("коммент|примеч|описан|пояснен|причин|прописью|формул"), l)
                 or T(R("_(?:comment|comments|note|notes|description|desc|reason|text|words|formula)_"), tok)):
             return None
-        return next((r for r in BY_NAME if (r[2] is not None and r[2].search(l)) or r[3].search(tok)), None)
+        by = next((r for r in BY_NAME if (r[2] is not None and r[2].search(l)) or (ty[1] and r[3] is not None and r[3].search(tok))), None)
+        return by if by is not None and by[1] != g(f, "type") and g(f, "type") not in (by[4] if len(by) > 4 else []) else None
 
     noProcess = not any(any(any(T(R("BlockAssign"), jj(g(find(of("ScriptDefStructDto"), lambda x: seq(g(x, "compositeId"), c)), "blocks"))) for c in it(nn(g(v, "scriptsDefIds"), [])))
                             for v in [g(pv, "workProcess"), *vals(g(pv, "processVersions"))]) for pv in of("BoProcessVersionsStructDto"))
@@ -1264,7 +1268,7 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                     err(f"{t} looks like an approval and no process changes anything — a BO_PROCESS that writes (0.18), or report «отмечается вручную, потому что …»")
             by = byName(f)
             if by:
-                err(f"{t}: {s(g(f, 'type'))} — by its name {by[0]}, so {by[1]}, or report «текстом, потому что …» (0.5 «Field type by meaning»)")
+                err(f"{t}: {s(g(f, 'type'))} — by its name {by[0]}, so {by[1]}, or report «{BY_TYPE[g(f, 'type')][0]}, потому что …» (0.5 «Field type by meaning»)")
             if T(R(r"\((?:гггг|гг|yyyy|yy|дд|dd|чч|hh)|\((?:мм|mm)[.\-\/]"), low(l)):
                 err(f"{t}: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)")
     for bo in [x for x in bos if g(x, "category") == "BO" and not tr(g(x, "isCalendarEnabled")) and T(R("запис|визит|встреч|при[её]м|брон", True), nn(g(x, "name", "rus"), ""))]:

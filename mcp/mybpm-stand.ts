@@ -450,13 +450,18 @@ function unzip(b: Buffer): { name: string; data: Buffer }[] {
   return out;
 }
 
-/** What an archive holds, in a few lines instead of its JSON: DTO tally and the BOs by code. */
-function summarize(file: string) {
+/** The DTO lines of an archive (.mybpm.zip or its 0000001.mybpm). */
+function archiveLines(file: string): any[] {
   const b = readFileSync(file);
   const text = b.readUInt32LE(0) === 0x04034b50
     ? unzip(b).find((e) => /(^|\/)data-[^/]*\/0000001\.mybpm$/.test(e.name))?.data.toString("utf8") ?? ""
     : b.toString("utf8");
-  const lines = text.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  return text.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+}
+
+/** What an archive holds, in a few lines instead of its JSON: DTO tally and the BOs by code. */
+function summarize(file: string) {
+  const b = readFileSync(file), lines = archiveLines(file);
   const types: Record<string, number> = {};
   const dto = (l: any) => String(l["@class"] ?? "?").split(".").pop()!;
   for (const l of lines) types[dto(l)] = (types[dto(l)] ?? 0) + 1;
@@ -484,8 +489,21 @@ function lint(file: string, source?: string): { ok: boolean; out: string } {
 async function layoutLint(s: Stand, boId: string, code: string): Promise<string[]> {
   let file = "";
   try {
-    const { data, name } = await exportBos(s, [boId]);
-    file = saveFile(join(CACHE, "layout-lint"), "exports", name, data);
+    // right after a create or a code set the export can still carry the old codes (trap 24) — its lines would then name
+    // another code and be filtered away, a silent «no lines»: wait until the export holds the BO as it reads back
+    const bo = await loadBo(s, boId), codes: string[] = (bo.formFields ?? []).filter((f: any) => f.boFieldArchetype === "DYNAMIC" && f.code).map((f: any) => f.code);
+    let lag = "";
+    for (let i = 0; i < 5; i++) {
+      if (i) await sleep(2000);
+      if (file) rmSync(file, { force: true });
+      const { data, name } = await exportBos(s, [boId]);
+      file = saveFile(join(CACHE, "layout-lint"), "exports", name, data);
+      const all = archiveLines(file).filter((l) => String(l["@class"]).endsWith(".BoStructDto")), line = all.find((l) => l.code === code) ?? (all.length === 1 ? all[0] : undefined); // its oldId is no API id
+      const got = Object.values<any>(line?.dynamicFields ?? {}).map((f) => f.code), missing = codes.filter((c) => !got.includes(c));
+      lag = !line ? "no line of the BO" : line.code !== code ? `BO code ${line.code}, not ${code}` : missing.length ? `no field ${missing.join(", ")}` : "";
+      if (!lag) break;
+    }
+    if (lag) return [`layout lint NOT RUN (the export lags behind the BO: ${lag}) — structure_export the BO later and archive_lint it`];
     const { out } = lint(file);
     if (/NOT RUN/.test(out)) return [`layout lint: ${out}`];
     const mine = (l: string) => [".", ":", " "].some((c) => l.startsWith(code + c));
@@ -994,6 +1012,36 @@ const fieldRows = (bo: any) => (bo.formFields ?? []).map((f: any) => clean({ fie
   type: f.type ?? f.widgetType ?? f.nativeFieldType, tabId: f.tabId,
   grid: f.gridPosition && [f.gridPosition.x, f.gridPosition.y, f.gridPosition.cols, f.gridPosition.rows].join("/"),
   required: f.isRequired || undefined, column: f.tableColToShow ? f.tableColOrderIndex ?? true : undefined }));
+
+/** Set the registry columns of a BO to `want` (codes, fieldIds or labels, in order; every other field leaves the registry) or,
+ *  without it, renumber the columns 0, 1, 2 … in their current order when a delete left a gap or an add a repeat — the UI's
+ *  registry editor re-indexes after every change too (§5b «save-business-form-field»). Read back; a mismatch is a note. */
+async function registryColumns(s: Stand, boId: string, want?: string[]): Promise<string[]> {
+  const bo = await loadBo(s, boId), fields: any[] = bo.formFields ?? [];
+  const pick = (k: string) => {
+    const hit = fields.filter((f) => f.fieldId === k || f.code === k);
+    const by = hit.length ? hit : fields.filter((f) => f.label === k);
+    if (by.length !== 1) throw new Error(`columns: «${k}» ${by.length ? "names several fields — pass the code or fieldId" : "is no field of this BO (bo_read lists them)"}`);
+    return by[0];
+  };
+  const now = fields.filter((f) => f.tableColToShow).sort((a, b) => (a.tableColOrderIndex ?? 0) - (b.tableColOrderIndex ?? 0));
+  const order = want ? want.map(pick) : now;
+  if (new Set(order).size !== order.length) throw new Error("columns: a field is named twice");
+  if (want && !order.length) throw new Error("columns: at least one — a registry with no columns answers AccessDenied (trap 48)");
+  const edits = fields.flatMap((f) => {
+    const i = order.indexOf(f), show = i >= 0;
+    return !!f.tableColToShow === show && (!show || f.tableColOrderIndex === i) ? []
+      : [{ fieldId: f.fieldId, tableColToShow: show, ...(show ? { tableColOrderIndex: i } : {}) }];
+  });
+  if (!edits.length) return [];
+  for (const e of edits) Object.assign(fields.find((f) => f.fieldId === e.fieldId), e);
+  await savePortion(s, { businessObject: bo, editedFields: edits, addedFieldIds: [], deletedFieldIds: [] });
+  const got = ((await loadBo(s, boId)).formFields ?? []).filter((f: any) => f.tableColToShow)
+    .sort((a: any, b: any) => (a.tableColOrderIndex ?? 0) - (b.tableColOrderIndex ?? 0)).map(nameOf);
+  const asked = order.map(nameOf);
+  return got.join("\u0001") === asked.join("\u0001") ? [`registry columns: ${asked.join(", ")}`]
+    : [`registry columns read back as ${got.join(", ") || "none"}, not ${asked.join(", ")}`];
+}
 
 // ── records (MYBPM-UI-API.md §6a, §6b, traps 46, 47) ─────────────────────────────────────────────────────
 
@@ -2275,7 +2323,7 @@ const tools: Tool[] = [
     } },
 
   // 5. the constructor — a BO without an archive (R1, R2, R2a, §5i, §5j)
-  { name: "bo_create", write: true, description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols; a «field type: REMINDER …» note is a text field whose name holds a date, a month, a year, a range or a quantity — the typed field, or say in the reply why text, IMPORTS 0.5 «Field type by meaning»). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
+  { name: "bo_create", write: true, description: "Create a BO in the constructor, with its fields, in one call (R1 steps 1–8; R2 for a dictionary / panel / process): create-bo in an EXISTING group → rename (gives the code) → 3 s against the rename race (trap 24) → the code you pass → every field generated, laid out and saved in one portion save → field codes, widget urls → the record window → read back → the BO exported and run through the form lint of archive_lint (its layout lines, «layout lint: …» in notes, are defects: fix them with bo_fields_save edit x/y/cols; a «field type: REMINDER …» note is a text field whose name holds a date, a month, a year, a range or a quantity, or a number whose label holds a date, a month or a year — the typed field, or say in the reply why not, IMPORTS 0.5 «Field type by meaning»). Writes immediately and has no undo but bo_delete: ask the user first. Get labels right the first time (a field's server code is fixed at its first save). A composite is co_build.",
     props: { group: { type: "string", description: "The BO group, by id or exact name (bo_groups); it must exist." },
       kind: { type: "string", enum: ["BO", "BO_DICTIONARY", "BO_PANEL", "BO_PROCESS"], description: "Default BO." },
       name: { type: "string" }, description: { type: "string" },
@@ -2312,7 +2360,7 @@ const tools: Tool[] = [
         throw new Error(`${e.message} — the BO ${id} («${created.name}») EXISTS on the stand: finish it with bo_fields_save, or bo_delete it`);
       }
     } },
-  { name: "bo_fields_save", write: true, description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling). Edits and deletions go in one save, additions in a second; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» and «field type: …» in notes). Ask the user first.",
+  { name: "bo_fields_save", write: true, description: "Change the fields of an existing BO: `add` new ones (laid out below the form, or on tabs — as in bo_create), `edit` existing ones (only the keys you pass are applied: editedFields, trap 53), `delete` by fieldId (an import never deletes a field — this is the way; a script that names the field stops compiling), `columns` = the registry in order. Edits and deletions go in one save, additions in a second, the registry order in a third; after a change of the layout the BO is run through the form lint as in bo_create («layout lint: …» and «field type: …» in notes). Ask the user first.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       add: { type: "array", items: FIELD_SPEC },
       edit: { type: "array", items: { type: "object", required: ["fieldId"], properties: {
@@ -2324,10 +2372,11 @@ const tools: Tool[] = [
         steps: { type: "array", items: {}, description: "PROGRESS_BAR: the whole new step list (string or {label, code}); a step with an old one's code or label keeps its id, new ones get minted ids, an old step left out is deleted (records that hold it keep its code, shown as no step)" },
         set: { type: "object", description: "Any other key of the field DTO (a move to another tab: {\"tabId\": …}; the toolbar of a TEXTAREA: {\"params\": {\"buttonTypes\": …}})" } } } },
       delete: { type: "array", items: { type: "string" }, description: "fieldIds" },
+      columns: { type: "array", items: { type: "string" }, description: "The whole registry, in order: field codes, fieldIds or labels (an added field by its label); every other field leaves the registry. Applied after add / edit / delete — the way to put a replacing field into the old one's place (an added column lands last). Without it the columns are only renumbered 0, 1, 2 … when a change left a gap or a repeat" },
       window: { description: "As in bo_create; applies with `add`." } },
     run: async (a) => {
       const s = stand(a), boId = await boById(s, a);
-      if (!a.add?.length && !a.edit?.length && !a.delete?.length) throw new Error("pass `add`, `edit` or `delete`");
+      if (!a.add?.length && !a.edit?.length && !a.delete?.length && !a.columns) throw new Error("pass `add`, `edit`, `delete` or `columns`");
       const notes: string[] = [];
       if (a.edit?.length || a.delete?.length) {
         const bo = await loadBo(s, boId), fields: any[] = bo.formFields ?? [], edits: any[] = [];
@@ -2375,6 +2424,7 @@ const tools: Tool[] = [
         if (drop.size) notes.push("deleted fields are gone from the form; a script or process that names them must be rewritten (0U.5, §5i)");
       }
       const added = a.add?.length ? await addFields(s, boId, a.add, a.window) : undefined;
+      notes.push(...await registryColumns(s, boId, a.columns));
       const bo = await loadBo(s, boId);
       const lost = (a.delete ?? []).filter((id: string) => (bo.formFields ?? []).some((f: any) => f.fieldId === id));
       if (lost.length) notes.push(`still on the BO after the delete: ${lost.join(", ")}`);

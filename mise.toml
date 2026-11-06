@@ -408,14 +408,18 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
 // field type by meaning (IMPORTS 0.5, issue #14): a text field whose label or code holds a month, a quantity, a day, a moment,
 // a range's start or a time gets one REMINDER with the type, a label with a format hint another; a comment, a typed field, a
 // weekday, «account» (no «count» token), a number code, «delivery_time» (a time code needs a start or an end beside it) and
-// «Итог проверки» (only «итого» is a sum) get none — in both lints. On an amendment a line on a field the
+// «Итог проверки» (only «итого» is a sum) get none — in both lints. A number is checked by its label (issue #15): «Год» and «Месяц»
+// get the date type, a quantity, «Срок» and «Время в пути» (durations) and a code naming the unit it counts per get none; a checkbox
+// «Срок соблюдён» is a choice and gets none; a unit after a comma («Стаж, лет») is a quantity. On an amendment a line on a field the
 // source carries unchanged folds into «left as exported»; a field changed since the source keeps its line
 {
   const TYPED: [string, string, string][] = [["month_key", "INPUT_TEXT", "Месяц"], ["hours_spent", "INPUT_TEXT", "Потрачено"], ["deadline", "INPUT_TEXT", "Срок (ДД.ММ)"],
     ["period_start", "INPUT_TEXT", "Начало"], ["created_at", "INPUT_TEXT", "Создано"], ["length_mm", "TEXTAREA", "Длина (мм)"], ["start_time", "INPUT_TEXT", "Начало приёма"],
     ["month", "YEAR_AND_MONTH", "Месяц (ММ.ГГГГ)"], ["payDay", "INPUT_TEXT", "Оплата"], ["comment", "TEXTAREA", "Комментарий"], ["due_date", "DATE", "Срок"],
     ["period_comment", "INPUT_TEXT", "Комментарий к периоду"], ["account", "INPUT_TEXT", "Счёт"], ["weekday", "INPUT_TEXT", "День недели"], ["contract_number", "INPUT_TEXT", "Номер договора"],
-    ["delivery_time", "INPUT_TEXT", "Сроки доставки"], ["result", "INPUT_TEXT", "Итог проверки"]];
+    ["delivery_time", "INPUT_TEXT", "Сроки доставки"], ["result", "INPUT_TEXT", "Итог проверки"], ["strategy_year", "INPUT_NUMBER", "Год"], ["month_no", "INPUT_NUMBER", "Месяц"],
+    ["qty", "INPUT_NUMBER", "Количество"], ["term_days", "INPUT_NUMBER", "Срок"], ["travel_time", "INPUT_NUMBER", "Время в пути"], ["fiscal_year_budget", "INPUT_NUMBER", "Бюджет"],
+    ["on_time", "CHECKBOX", "Срок соблюдён"], ["experience", "INPUT_TEXT", "Стаж, лет"]];
   await $`rm -rf dist/lint-type && bun tools/make-probe-archive.bun.ts --group-code Type_group --group-name Type --group-order 1 --code Lint_type --name LintType --salt linttype --bo-order 1 --out dist/lint-type ${TYPED.flatMap(([c, t]) => ["--field", `${c.toLowerCase()}:${t}`])}`.quiet();
   const typeLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-type/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
   const typed = async (name: string, label: (code: string, label: string) => string) => {
@@ -431,11 +435,12 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
     return `dist/lint-type/${name}.jsonl`;
   };
   const built = await typed("built", (c, l) => l), source = await typed("source", (c, l) => (c === "month_key" ? "Отчётный месяц" : l));
-  const R = (c: string, l: string, what: string, t: string) => `REMINDER Lint_type.${c} «${l}»: ${c === "length_mm" ? "TEXTAREA" : "INPUT_TEXT"} — by its name ${what}, so ${t}, or report «текстом, потому что …» (0.5 «Field type by meaning»)`;
+  const R = (c: string, l: string, what: string, t: string) => { const ty = TYPED.find(([x]) => x === c)![1]; return `REMINDER Lint_type.${c} «${l}»: ${ty} — by its name ${what}, so ${t}, or report «${ty === "INPUT_NUMBER" ? "числом" : "текстом"}, потому что …» (0.5 «Field type by meaning»)`; };
   const H = (c: string, l: string) => `REMINDER Lint_type.${c} «${l}»: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`;
   const want = [R("month_key", "Месяц", "a month", "YEAR_AND_MONTH"), R("hours_spent", "Потрачено", "a quantity", "INPUT_NUMBER"), R("deadline", "Срок (ДД.ММ)", "a day", "DATE"), H("deadline", "Срок (ДД.ММ)"),
     R("period_start", "Начало", "a day", "DATE"), R("created_at", "Создано", "a moment, day and time", "FULL_DATE"), R("length_mm", "Длина (мм)", "a quantity", "INPUT_NUMBER"),
-    R("start_time", "Начало приёма", "a time of day", "TIME"), H("month", "Месяц (ММ.ГГГГ)"), R("payDay", "Оплата", "a day", "DATE")];
+    R("start_time", "Начало приёма", "a time of day", "TIME"), H("month", "Месяц (ММ.ГГГГ)"), R("payDay", "Оплата", "a day", "DATE"),
+    R("strategy_year", "Год", "a year", "YEAR"), R("month_no", "Месяц", "a month", "YEAR_AND_MONTH"), R("experience", "Стаж, лет", "a quantity", "INPUT_NUMBER")];
   for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
     for (const [args, lines, folded] of [[[built], want, ""], [[built, "--source", built], [], "Lint_type.month_key, Lint_type.hours_spent"], [[built, "--source", source], [want[0]], "Lint_type.hours_spent"]] as const) {
       const r = await $`${cmd} ${args}`.nothrow().quiet(), out = r.stdout.toString(), got = out.split("\n").filter((l) => /\(0\.5 «Field type by meaning»\)$/.test(l));
@@ -487,6 +492,7 @@ const env = { ...Bun.env, HOME: `${process.cwd()}/dist/mcp-test/home`, MYBPM_STA
 const page = (body: unknown) => ({ url: "@stand_accounts.url", path: "api/save", body });
 const u2 = { stand: env.MYBPM_STAND, login: "u2@mock" };
 let barIds: string[] = []; // the PROGRESS_BAR step ids read back before the edit
+const colsOf = (r: any) => (r?.fields ?? []).filter((f: any) => typeof f.column === "number").sort((a: any, b: any) => a.column - b.column).map((f: any) => f.code).join(","); // the registry in order
 const steps: [string, unknown, (r: any) => boolean][] = [
   ["stand_list", {}, (r) => r.accounts.length === 1 && r.accounts[0].alive && r.accounts[0].companyCode === "MOCK" && r.accounts[0].personBoId === "PERSONBO00000001"],
   ["bo_find", { code: "Lint_dict" }, (r) => r.exists === false],
@@ -826,7 +832,23 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     { label: "Опис4", type: "INPUT_TEXT", code: "descr4", cols: 8 }, { label: "Опис5", type: "INPUT_TEXT", code: "descr5", cols: 7 }] },
     (r) => { const g = Object.fromEntries(r.fields.map((f: any) => [f.code, f.grid]));
       return /^0\/\d+\/15\/3$/.test(g.descr3) && /^0\/\d+\/8\/3$/.test(g.descr4) && /^8\/\d+\/7\/3$/.test(g.descr5); }],
+  // the registry order (issue #15): `columns` sets it; a replacing field added as a column lands last; the delete of the old one
+  // leaves a gap, renumbered in order; `columns` puts the new field into the old one's place; a name no field has is refused
+  ["bo_fields_save", { code: "mcp_probe_widths", columns: ["qty", "descr", "descr3"] },
+    (r) => colsOf(r) === "qty,descr,descr3" && r.notes?.includes("registry columns: qty, descr, descr3")],
+  ["bo_fields_save", { code: "mcp_probe_widths", add: [{ label: "Описание", type: "INPUT_TEXT", code: "descr_new", column: true }] },
+    (r) => colsOf(r) === "qty,descr,descr3,descr_new" && !r.notes?.some((n: string) => /^registry columns/.test(n))],
+  ["bo_fields_save", { code: "mcp_probe_widths", delete: ["@bo_create.fields.1.fieldId"] },
+    (r) => colsOf(r) === "qty,descr3,descr_new" && r.notes?.includes("registry columns: qty, descr3, descr_new")],
+  ["bo_fields_save", { code: "mcp_probe_widths", columns: ["qty", "Описание", "descr3"] }, (r) => colsOf(r) === "qty,descr_new,descr3"],
+  ["bo_fields_save", { code: "mcp_probe_widths", columns: ["qty", "nope"] }, (r) => /columns: «nope» is no field of this BO/.test(r)],
+  ["bo_fields_save", { code: "mcp_probe_widths", columns: [] }, (r) => /columns: at least one/.test(r)],
   ["bo_delete", { code: "mcp_probe_widths", confirm: true }, (r) => r.deleted === true],
+  // a number named «Год» (issue #15) comes back as a field type note of bo_create itself: the first export after the code set still
+  // carries the old codes (the mock lags as the stand does), so the lint waits for an export that holds the BO as it reads back
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe year", code: "mcp_probe_year", window: false, fields: [{ label: "Год", type: "INPUT_NUMBER", code: "strategy_year" }] },
+    (r) => r.notes?.includes("field type: REMINDER mcp_probe_year.strategy_year «Год»: INPUT_NUMBER — by its name a year, so YEAR, or report «числом, потому что …» (0.5 «Field type by meaning»)")],
+  ["bo_delete", { code: "mcp_probe_year", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_rights", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
@@ -872,7 +894,7 @@ try {
     steps.forEach(([t, , ok], i) => {
       const got = report[i];
       let pass = false;
-      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType|nothing was deleted/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
+      try { pass = !!got && (got.isError ? /refused|not a read method|не принял|several accounts|taken|not a field|names the user|update the plugin|DROPDOWN_SINGLE|not a registry column|is a key of|stand keeps it|not the work one|no figure|no slot|forward needs arrowId|terminate needs arrowId|Нет активных шагов|no group «|has no action|not a sidebar icon|not an option|not a participant|conflicts still open|has expired|local stands only|exactly one field|placed twice|Latin letters|never puts a group|only a BO item has|no BO named|unknown key|steps belong to|is APPLIED|description is empty|IllegalFieldType|nothing was deleted|is no field of this BO|columns: at least one/.test(JSON.stringify(got.result)) : true) && ok(got.result); } catch {}
       if (!pass) { bad++; console.error(`mcp (${rt}) step ${i + 1} ${t}: ${JSON.stringify(got?.result)?.slice(0, 300)}${got?.result?.notes ? `\n  notes: ${JSON.stringify(got.result.notes)}` : ""}`); }
     });
     // the mock says 99.0.0 is out: the first answer and every stand_list carry the note, the others do not
