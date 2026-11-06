@@ -4468,6 +4468,44 @@ records that pass the filter.
 - The server does NOT enforce the filter on save: a §6a record cycle stores a record the filter excludes `[C]`.
 - Export/import: `MYBPM-IMPORTS.md` §3 «Reference fields — «С фильтром» and «Зависимость полей» in an archive».
 
+**«Из поля "X"» — the choice narrowed by a field of the record being edited** `[C]`. A condition on a `BO`
+field of the referenced BO takes its records not from a fixed list but «Из поля» — from a field of the OWNER
+record: the picker offers only the referenced records whose condition field holds a record the owner's source
+field holds. Only a `BO` condition offers it `[I]`.
+- Condition in `v2/bracket-filter/save` (body `boId` = the REFERENCED BO — with the owner's id the conditions are
+  saved empty; root bracket `parentId:""`): `{id, fieldId:<condition field>, label, type:"BO", value:"",
+  businessObjectId:<BO of the condition field>, boiIds:[], selectedBois:[], options:[], businessFields:[],
+  isCurrentUser:false, isEmptyValue:false, numberFrom:0, numberTo:0, chipsMode:false,
+  fromFields:[{fieldId:<owner's source field>, label}]}` → answer `null`.
+- Sources `[C]`: a `BO` field of the owner, MULTIPLE / TABLE (any of its records) or SINGLE; a `Person` field of the
+  owner for a condition on a `Person` field. Two entries in `fromFields` = the union. An empty source, or no owner
+  record (neither `boiId` nor `draftId`) → the picker lists nothing. A source on a tab hidden from the user works.
+- **The source is read from the owner's DRAFT** when the request carries `draftId` — the record card sends it:
+
+  | owner record | the picker offers |
+  |---|---|
+  | saved source = A, C; no `draftId` or an untouched draft | A, C |
+  | the draft's source changed to B, not saved; with `draftId` | B |
+  | the same, without `draftId` | A, C (the saved value) |
+  | the draft's source empty | nothing |
+  | a NEW record, the draft's source = A | A |
+  | saved A, C; the «Открытие» hook writes B into the draft | B; the record keeps A, C |
+
+- **Choices allowed per role or status** — the pattern: a hidden `BO` MULTIPLE source field on the owner, filled
+  by the form hook «Открытие» by the user's role and the record's status; the reference field filters «Из поля»
+  it. The hook writes the draft only, so the choice narrows for this user without saving the record. The filter is
+  not enforced on save — a button script that acts on the choice checks role and status again.
+- «Добавить» in the picker of a user without CREATE on the referenced BO does nothing.
+- `v2/business-object-instance/v2/load-boi-values` returns a TABLE-view `BO` field as `value: ""` even while the
+  draft holds records — do not read the source field this way.
+- Read back: `load-from-field {boId: <OWNER>, fieldId}` → the condition with `fromFields:[{parentBoId:<owner BO>,
+  parentBoiId:null, parentDraftId:null, fieldId, label}]`; the root bracket's `parentId` comes back `null`.
+  **Trap**: for a few seconds after the patch `{fieldId, bracketFilterId}` `load-from-field` does not see it yet —
+  it CREATES another empty filter (a new id) and the picker lists everything; with the REFERENCED BO's id it
+  creates an empty one too. Re-read with the owner's id until it returns the id you patched in.
+- Archive form (`fromFieldCodes`): `MYBPM-IMPORTS.md` §3 «Reference fields — «С фильтром» and «Зависимость
+  полей» in an archive».
+
 **«Зависимость полей»** — gear → «Поведение» → «Поле зависимого» (`relMainInnerFieldId`, a `BO` field of the
 REFERENCED BO) / «Зависимость от» (`relFieldId`, a `BO` field of THIS BO) / «Внутреннее поле зависимости»
 (`relInnerFieldId`, a field of the `relFieldId` field's BO). Meaning: offer only the records whose main-inner field
@@ -6488,7 +6526,9 @@ What depends on the tool, not on the stand — check yours before relying on it:
   between two screenshots, so a point computed from the previous one misses. A screenshot of a hidden
   window (`document.visibilityState === "hidden"`) times out while in-page scripts keep working — switch to
   the API calls the UI would have made (§6b), or bring the window forward. A screenshot also times out
-  every few calls on this stand at random; repeating the same call works.
+  every few calls on this stand at random; repeating the same call works. A screenshot that emulates a
+  viewport (a device-metrics override) re-renders the record card and closes an open picker — take it before
+  opening the picker, or without the emulation.
 - **Coordinate frames.** Coordinate clicks are in the screenshot's frame, which need not equal CSS pixels.
   Measure the factor instead of guessing: `document.addEventListener('mousedown', e =>
   __pts.push([e.clientX,e.clientY]), true)`, click a known point, read it back, then click at CSS / factor
