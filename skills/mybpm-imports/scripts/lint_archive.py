@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: c8ef28317e8d
+# lintArchive sha256: 0de52668212d
 import json
 import math
 import os
@@ -1280,7 +1280,7 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
         err(f"REMINDER defaultValue of {', '.join(DV)} is no option's newOptionId: right only when the line goes back onto the SAME BO it was exported from; else the newOptionId of the option it meant (§3)")
     if NAME:
         err(f"REMINDER {len(NAME)} code(s) off the naming convention — {'; '.join(NAME[:8])}{'; …' if len(NAME) > 8 else ''}: rename a new code, or say in the report the code is already on the stand — a stand code is never renamed (0.6a)")
-    MAP = R("^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$")
+    MAP = R("^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fromFieldCodes|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$")
     named, invented, dtext = {}, {}, s(nn(doc, ""))  # a key this document names as "key" or `key`; the others with where they sit
 
     def keyOk(k):

@@ -356,7 +356,10 @@ Walk the spec through these nine questions, in order; each answer is a line or a
    archive: a local list's options inside the field, a dictionary's values as its row lines (0.5b). **No
    dropdown opens empty**: every value the spec names or implies (марки, категории, типы КПП, виды топлива,
    посты) is shipped — a dictionary with no row lines only when its values are truly the user's own data
-   and the spec gives none, and then the report says «заполнить после импорта».
+   and the spec gives none, and then the report says «заполнить после импорта». Values allowed only per role
+   or status (действия задачи: исполнителю «В работе» — три из одиннадцати) → one dictionary + a `BO` reference
+   with the «Из поля» filter on a hidden source field the «Открытие» hook fills (§3 «Reference fields — «С
+   фильтром»…»), not a dropdown per status.
 6. **A status path?** A record's lifecycle (Новый → В работе → Готов → Выдан) → a `DROPDOWN_SINGLE`
    `status` with a LOCAL list (`FROM_FIELD`) holding the spec's stages as options, its kanban card template
    (0.5c), and in a system build its menu item shows the kanban by it (0.2b step 4). Only this field opens
@@ -2084,7 +2087,7 @@ if (asks && !of("ScriptDefStructDto").length && !of("BoProcessVersionsStructDto"
 if (DEF_ICON.length) err(`REMINDER menu ${DEF_ICON.join(", ")}: the generic default icon — only when the user asked for no icons; else an icon by meaning (0.5d)`);
 if (DV.length) err(`REMINDER defaultValue of ${DV.join(", ")} is no option's newOptionId: right only when the line goes back onto the SAME BO it was exported from; else the newOptionId of the option it meant (§3)`);
 if (NAME.length) err(`REMINDER ${NAME.length} code(s) off the naming convention — ${NAME.slice(0, 8).join("; ")}${NAME.length > 8 ? "; …" : ""}: rename a new code, or say in the report the code is already on the stand — a stand code is never renamed (0.6a)`);
-const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$/;
+const MAP = /^(dynamicFields|nativeFields|fieldRefs|fieldMap|fieldTabs|fieldScripts|fieldAccessStructMap|tabAccessStructMap|boTabs|options|kanbanFields|kanbanCardTemplates|timelineTemplates|calendarCardTemplates|columns|signatures|buttons|iframes|captcha|currentDates|currentUser|groupingInfo|gantTableLocations|linkedCoSettings|questionnaires|progressSteps|blocks|expressions|args|argExprIds|branches|brackets|dynamicFilters|nativeFilters|fromFields|fromFieldCodes|fieldCodes|massFieldCodes|printFormCodes|massPrintFormCodes|figureStructs|arrows|processVersions|more|runWayMap|fieldValues|changeVariantSet|defaultValueMap)$/;
 const named = new Map(), invented = new Map(); // a key this document names as "key" or `key`; the others with where they sit
 const keyOk = (k) => named.get(k) ?? named.set(k, String(doc ?? "").includes(`"${k}"`) || String(doc ?? "").includes("`" + k + "`")).get(k);
 const walk = (o, at, p, up) => { // p = the key holding o, up = the key above it; the keys of a MAP (codes, ids) are data, so are those of a calendar card zone
@@ -3642,6 +3645,21 @@ field in `dynamicFields`; the field links are by CODE:
   a field of the REFERENCED BO. The import creates a new filter record with the codes resolved to the new BO's
   field ids, and the picker of the imported field shows only the matching records `[C]`. A filter with
   `boiIds` (a filter on a BO field by concrete records) is unverified `[U]` — record ids do not travel.
+- **«Из поля "X"» travels** `[C]` — a condition on a `BO` field of the REFERENCED BO whose records come from a field
+  of THIS BO: the picker offers only the referenced records whose condition field holds a record this record's
+  source field holds (a MULTIPLE / TABLE source: any of its records; a SINGLE: that one).
+  ```json
+  "dynamicFilters": {"ajW7xfc8": {"fieldCode": "<condition field of the REFERENCED BO>", "type": "BO", "value": "",
+    "businessObjectCode": "<BO the condition field references; Person for a user field>", "numberFrom": 0,
+    "numberTo": 0, "isCurrentUser": false, "isEmptyValue": false, "boiIds": {},
+    "fromFieldCodes": {"<source field code of THIS BO>": 1}}}
+  ```
+  The source is a `BO` field of this BO, or a `Person` field for a condition on a `Person` field. The value is read
+  from the record's open DRAFT, so a form hook «Открытие» that fills a hidden source field by role and status
+  narrows the choice for that user without saving the record (§5d «Generated bodies on every trigger» for the
+  hook). An empty source or a record not yet open → nothing to choose. Two source fields in one condition are a
+  union; their archive form is `[U]`. The filter is not enforced on save — a script acting on the
+  choice checks role and status itself.
 - **The field relation does NOT travel whole** `[C]`. The export writes only
   `boRefStruct.relMainInnerFieldCode` («Поле зависимого» — a `BO` field of the REFERENCED BO), and that one
   imports. «Зависимость от» (`relFieldId`, a field of THIS BO) and «Внутреннее поле» (`relInnerFieldId`) are not

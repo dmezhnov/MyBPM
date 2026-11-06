@@ -442,6 +442,25 @@ for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(
       if (got.join("\n") !== lines.join("\n") || (folded && !out.includes(folded))) { console.error(`${cmd[1]} ${args.join(" ")}: field type lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${folded ? `\nand «${folded}» left as exported` : ""}\n${out}${r.stderr}`); process.exit(1); }
     }
 }
+// the keys of a map keyed by data (`fromFieldCodes` of an «Из поля» condition holds field codes) are not invented keys,
+// while an invented key beside it still is — in both lints
+{
+  await $`rm -rf dist/lint-ff && bun tools/make-probe-archive.bun.ts --group-code Ff_group --group-name Ff --group-order 1 --code Lint_ff --name LintFf --salt lintff --bo-order 1 --out dist/lint-ff --field nazvanie:INPUT_TEXT!tableColToShow=true --field zadacha:BO@AAAAAAAAAAAAAAAA@Lint_ff_task!show=name --field ispolnitel:BO@AAAAAAAAAAAAAAAA@Lint_ff_task!show=name`.quiet();
+  const ffLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-ff/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  await Bun.write("dist/lint-ff/ff.jsonl", ffLines.map((l) => {
+    const o = JSON.parse(l);
+    if (o.dynamicFields?.zadacha) o.dynamicFields.zadacha.bracketFilter = { boCode: "Lint_ff_task", fieldCode: "zadacha", brackets: { vjFiE0eJ: {
+      parentTreeIds: {}, order: 0, connectionType: "AND", notType: "DEFAULT", nativeFilters: {}, dynamicFilters: { ajW7xfc8: { fieldCode: "ispolnitel", type: "BO",
+        value: "", businessObjectCode: "Lint_ff_task", numberFrom: 0, numberTo: 0, isCurrentUser: false, isEmptyValue: false, boiIds: {},
+        fromFieldCodes: { ispolnitel: 1, zadacha: 1 }, bogusKey: 1 } } } } };
+    return JSON.stringify(o);
+  }).join("\n") + "\n");
+  const want = `Lint_ff.ajW7xfc8: key "bogusKey" is not in this document — invented, the importer drops it silently or fails; find the setting by meaning or write no key and say so (0.4a)`;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
+    const r = await $`${cmd} dist/lint-ff/ff.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /is not in this document/.test(l));
+    if (got.join("\n") !== want) { console.error(`${cmd[1]} on dist/lint-ff/ff.jsonl: invented-key lines\n${got.join("\n") || "(none)"}\nwant\n${want}${r.stderr}`); process.exit(1); }
+  }
+}
 // the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
 // (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
 for (const name of ["mybpm-imports", "mybpm-stand"]) {
