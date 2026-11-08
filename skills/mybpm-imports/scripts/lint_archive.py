@@ -9,7 +9,7 @@
 # equal) and then set the marker below to the hash `mise test` prints. The helpers mimic the JavaScript the
 # lint is written in: object key order, truthiness, String(), JSON.stringify, ===, <, + and Math.max on
 # anything a broken archive may carry, so both lints print the same bytes.
-# lintArchive sha256: 35102acb4ee2
+# lintArchive sha256: 8feca98305e3
 import json
 import math
 import os
@@ -977,6 +977,14 @@ def lint_archive(jsonl, doc=None, meta=U, source=U):
                 err(f"{t}: TEXTAREA without params.buttonTypes (0.5)")
             if table and len([r for r in vals(g(f, "boRefStruct", "fieldRefs")) if tr(g(r, "toShow"))]) < 2:
                 err(f"{t}: TABLE shows fewer than 2 columns (0.5a)")
+            shown = [(c, r) for c, r in ents(g(f, "boRefStruct", "fieldRefs")) if g(r, "toShow") is True]
+            pct = lambda r: g(r, "tableWidth") if isnum(g(r, "tableWidth")) and g(r, "tableWidth") > 0 else 0
+            wsum = 0
+            for _, r in shown:
+                wsum = wsum + pct(r)
+            bare = [c for c, r in shown if not tr(pct(r))]
+            if table and wsum >= 100 and bare:
+                err(f"{t}: nested table column widths sum to {s(wsum)} % — {join(bare, ', ')} get no width and squeeze; keep the sum under 100 or set none (0.5a)")
             if tr(gp) and ty == "TAB_GROUP" and tr(g(f, "trackedFieldCode")) and not seq(g(gp, "rows"), 4):
                 err(f"{t}: rows {s(g(gp, 'rows'))}, a tracked-status wrapper takes 4 (§3)")
             if tr(gp) and ty == "TAB_GROUP" and tr(g(f, "trackedFieldCode")):  # a cell of its stack, full width

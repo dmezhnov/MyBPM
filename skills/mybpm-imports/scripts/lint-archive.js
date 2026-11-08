@@ -336,6 +336,9 @@ for (const bo of bos?.filter((b) => b?.category !== "BO_COMPOSITE")) {
     if (f?.archetype !== "DYNAMIC" || !f?.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
     if (text && f?.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f?.boRefStruct?.fieldRefs).filter((r) => r?.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
+    const shown = Object.entries(f?.boRefStruct?.fieldRefs ?? {}).filter(([, r]) => r?.toShow === true), pct = (r) => typeof r?.tableWidth === "number" && r?.tableWidth > 0 ? r?.tableWidth : 0;
+    const sum = shown.reduce((n, [, r]) => n + pct(r), 0), bare = shown.filter(([, r]) => !pct(r)).map(([c]) => c);
+    if (table && sum >= 100 && bare.length) err(`${t}: nested table column widths sum to ${sum} % — ${bare.join(", ")} get no width and squeeze; keep the sum under 100 or set none (0.5a)`);
     if (g && f?.type === "TAB_GROUP" && f?.trackedFieldCode && g?.rows !== 4) err(`${t}: rows ${g?.rows}, a tracked-status wrapper takes 4 (§3)`);
     if (g && f?.type === "TAB_GROUP" && f?.trackedFieldCode) { put(tab, { t, g, full: true }); continue; } // a cell of its stack, full width
     if (g && tracked(tab) && (g?.y !== 0 || g?.rows !== 3 || g?.x !== (f?.trackedFieldCode ? 9 : 0) || g?.cols !== (f?.trackedFieldCode ? 6 : 9)))

@@ -48,6 +48,9 @@ const boById = (id: string) => bos.get(id) ?? (id === PERSON.id ? PERSON : undef
 const live = () => [...bos.values()].filter((b) => !b.deleted);
 const byCode = (code: string) => live().find((b) => b.code === code);
 const parts = new Map<string, string>(); // portion-save accumulator id → the JSON so far
+// trap 108: for SETTLE ms after a portion save the fields and tabs it added are not seen by a structure write yet
+const SETTLE = Number(Bun.env.MOCK_SETTLE_MS ?? 0);
+const fresh = { until: 0, fields: new Set<string>(), tabs: new Set<string>() };
 const drafts = new Map<string, { coId: string } & Co>();
 const copyCo = (c: Co): Co => JSON.parse(JSON.stringify(c));
 const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null; conflicts?: Record<string, any>; removed?: boolean }>();
@@ -134,7 +137,8 @@ function commit(draftId: string) {
 }
 
 // ── xlsx of records: the template, the import act (rows counted, a row new when its key was absent before the act),
-// the apply (a dropdown by label, a block by the value of a sub-column, a TABLE only adds, a blank clears except DATE), the export
+// the apply (a dropdown by label, a block by the value of a sub-column, a TABLE only adds, a blank clears except DATE, a PERIOD
+// split only on an EN DASH — any other separator stores end = start, as the stand does), the export
 const ID_COLUMN = "Внутренний айди";
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const unxml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
@@ -182,7 +186,9 @@ function sheetOf(bytes: Uint8Array) {
   return { head, cols: Array.from({ length: width }, (_, i) => ({ caption: caps[i] ?? "", sub: subs[i] ?? "", sub2: subs2[i] ?? "" })),
     data: rows.slice(head).filter((r) => r.some((v) => v !== "")) };
 }
-const xshown = (f: any, v = "") => f.type === "DATE" && v ? JSON.parse(v).slice(0, 10).split("-").reverse().join(".") : shown(f, v);
+const dmy = (isoDate: string) => isoDate.slice(0, 10).split("-").reverse().join(".");
+const xshown = (f: any, v = "") => f.type === "DATE" && v ? dmy(JSON.parse(v))
+  : f.type === "PERIOD" && v ? `${dmy(JSON.parse(v).startDate)} – ${dmy(JSON.parse(v).endDate)}` : shown(f, v);
 type XRow = { key: { id?: string; unique?: [string, string] }; set: Record<string, string>; links: Record<string, string[]>; err?: string; isNew: boolean; line: string[] };
 const xacts = new Map<string, { boId: string; fileName: string; heads: string[]; rows: XRow[]; fileError?: string; applied?: boolean }>();
 const xexports = new Map<string, any>();
@@ -234,6 +240,11 @@ function xact(boId: string, bytes: Uint8Array, fileName: string) {
         s = o.id;
       } else if (f.type === "CHECKBOX") s = v === "Да" ? "true" : v ? "false" : "";
       else if (f.type === "DATE") { if (!v) return; s = JSON.stringify(`${v.split(".").reverse().join("-")}T00:00:00.000Z`); }
+      else if (f.type === "PERIOD") {
+        if (!v) return;
+        const [a, b] = v.split(/\s*–\s*/), at = (d: string) => `${d.slice(0, 10).split(".").reverse().join("-")}T00:00:00.000Z`;
+        s = JSON.stringify({ startDate: at(a), endDate: at(b ?? a) });
+      }
       row.set[f.fieldId] = s;
       if (f === unique && v) row.key.unique = [f.fieldId, s];
     });
@@ -325,6 +336,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       parts.delete(acc);
       const p = JSON.parse(json), bo = bos.get(p.businessObject?.id);
       if (!bo) return fail("UndeclaredThrowableException");
+      const stale = Date.now() < fresh.until, tabsBefore = new Set((bo.fields ?? []).flatMap((x: any) => (x.tabs ?? []).map((y: any) => y.id)));
       // the stand: a PROGRESS_BAR step without an id breaks the whole save
       if ([...(p.businessObject.formFields ?? []), ...(p.editedFields ?? [])].some((x: any) => x.progressSteps?.some((y: any) => !y.id)))
         return fail("NullPointerException: Cannot invoke \"String.hashCode()\" because \"progressStepId\" is null");
@@ -338,9 +350,12 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
         for (const e of p.editedFields ?? []) {
           const { options, ...rest } = e, f = bo.fields.find((x) => x.fieldId === e.fieldId) ?? ({} as any);
           if (add.has(e.fieldId)) { Object.assign(f, rest); continue; }
+          if (stale && fresh.fields.has(e.fieldId)) continue; // trap 108: lost, no error
           // the stand: options[] / progressSteps[] of an edit only add and update by id; an item is removed only by
           // its id in deletedFieldOptionIds / deletedFieldProgressStepIds — an item merely left out stays
           const { progressSteps, deletedFieldOptionIds, deletedFieldProgressStepIds, ...plain } = rest;
+          // the stand: an edit never moves a tab group's default — old tabs keep theirs, a tab added now gets false
+          if (plain.tabs) plain.tabs = plain.tabs.map((x: any) => ({ ...x, isDefault: !!f.tabs?.find((y: any) => y.id === x.id)?.isDefault }));
           Object.assign(f, plain);
           const merge = (old: any[] = [], upd: any[] | undefined, del: string[] = []) => {
             const out = old.map((x) => ({ ...x, ...(upd?.find((y) => y.id === x.id) ?? {}) }));
@@ -350,6 +365,8 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
           if (options || deletedFieldOptionIds) f.options = merge(f.options, options, deletedFieldOptionIds);
           if (progressSteps || deletedFieldProgressStepIds) f.progressSteps = merge(f.progressSteps, progressSteps, deletedFieldProgressStepIds);
         }
+        fresh.until = Date.now() + SETTLE; fresh.fields = add;
+        fresh.tabs = new Set(bo.fields.flatMap((x: any) => (x.tabs ?? []).map((y: any) => y.id)).filter((id: string) => !tabsBefore.has(id)));
       }
       return acc;
     }
@@ -504,7 +521,8 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/business-objects/load-field-tab-access-group": return accessOf(`t:${params.businessObjectId}:${params.fieldId}:${params.tabId}`);
     case "v2/business-objects/save-field-tab-access-group": return saveAccess(`t:${body.businessObjectId}:${body.fieldId}:${body.tabId}`, body.accessGroup);
     case "v2/business-objects/save-bo-field-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
-    case "v2/business-objects/save-bo-field-tab-chosen-access-right": { const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId)?.tabs?.find((y: any) => y.id === params.tabId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
+    case "v2/business-objects/save-bo-field-tab-chosen-access-right": {
+      if (Date.now() < fresh.until && fresh.tabs.has(params.tabId)) return { errorType: "RestError", message: `MRHAAJDwvK :: No tab with id ${params.tabId}` }; const x = bos.get(params.boId)?.fields?.find((y) => y.fieldId === params.fieldId)?.tabs?.find((y: any) => y.id === params.tabId); if (x) x.chosenAccessRight = params.chosenAccessRight; return ""; }
     case "v2/menu-item/load-nav-items": return NAV.filter((m) => (m.parentId ?? null) === (params.parentId ?? null));
     case "v2/menu-item/create-menu-item": NAV.push({ ...body, code: `menu_${++seq}`, bracketFilterId: null }); return "";
     case "v2/menu-item/delete-menu-item": { // a GROUP takes its items with it, as on the stand
