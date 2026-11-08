@@ -369,6 +369,15 @@ const reloginHow = (c: Cred) => isLocal(c.origin)
   ? "a local stand: stand_account_save logs in again (ask the user for the password if you do not have it), or stand_accounts"
   : "call stand_accounts and give the user its link to log in again («Изменить» on that account); the password goes to that page, not to the chat";
 
+// trap 108: for ~5.5 s after a portion save the stand checks the structure against the BO as it was — a tab just added
+// is unknown, the code of a tab just deleted is taken, an edit of a field just added is lost. So a portion save opens a
+// window per stand, every later structure write waits it out, and a tool returns only once it is over (settleAll).
+const SETTLE_MS = Number(process.env.MYBPM_SETTLE_MS ?? 6000);
+const settleUntil = new Map<string, number>();
+const STRUCTURE_WRITE = /^v2\/(?!business-object-instance\/|id-loader\/)[^/]+\/(save|update|delete|create|add|remove|rename|set|change|move)-/;
+const settle = async (origin: string) => { const ms = (settleUntil.get(origin) ?? 0) - Date.now(); if (ms > 0) await sleep(ms); };
+const settleAll = () => Promise.all([...settleUntil.keys()].map(settle));
+
 function standOf(c: Cred): Stand {
   const url = (p: string) => `${c.origin}/web/${p.replace(/^\/?(web\/)?/, "")}`;
   const envelope = (params: unknown, body: unknown) =>
@@ -391,8 +400,11 @@ function standOf(c: Cred): Stand {
     c,
     call: async (p, params, body) => {
       const cut = (v: unknown) => { const s = JSON.stringify(v) ?? ""; return s.length > 4000 ? s.slice(0, 4000) + "…" : s; };
+      const route = p.replace(/^\/?(web\/)?/, "");
+      if (STRUCTURE_WRITE.test(route)) await settle(c.origin);
       const r = text(await send((token) =>
         fetch(url(p), { method: "POST", headers: { "Content-Type": "application/json", token }, body: envelope(params, body) })));
+      if (route.endsWith("/save-business-object-portion")) await r.then(() => settleUntil.set(c.origin, Date.now() + SETTLE_MS), () => {});
       if (process.env.MYBPM_TRACE) await r.then((v) => ({ answer: cut(v) }), (e) => ({ error: String(e.message) }))
         .then((o) => appendFileSync(process.env.MYBPM_TRACE!, JSON.stringify({ p, params: cut(params), body: cut(body), ...o }) + "\n"));
       return r;
@@ -741,6 +753,42 @@ const FIELD_SPEC = { type: "object", required: ["type"], properties: {
   steps: { type: "array", items: {}, description: "PROGRESS_BAR: its steps in order, each a string or {label, code}; the step ids are minted (a step without one breaks the save, §5i)." },
   set: { type: "object", description: "Any other key of the field DTO, e.g. {\"params\":{\"viewType\":\"TILE\",\"contentType\":\"ALL\"}} for a FILE_UPLOAD (§5h, §5i)." },
 } };
+
+// keys an edit sends that read back in another form (HTML through the sanitizer, labelMap / options / steps / the registry
+// order filled or renumbered by the server, flags of the save itself) — not compared
+const UNCOMPARED = new Set(["fieldId", "labelMap", "staticValueMap", "options", "progressSteps", "tableColOrderIndex", "needFreezeWhenScroll",
+  "deletedFieldOptionIds", "deletedFieldProgressStepIds", "deletedFieldTabIds"]);
+/** Where a value sent in an edit is not what the field reads back ("" = kept): a tab list by its default tab (an edit
+ *  never moves it, UI-API §5b «Tabs»), an object key by key, other lists not compared, null / undefined / false alike. */
+function offBy(sent: unknown, got: any): string {
+  const norm = (v: unknown) => (v === undefined || v === null || v === false ? null : v);
+  if (Array.isArray(sent)) {
+    if (!sent.every((x) => x && typeof x === "object" && "isDefault" in x)) return "";
+    const want = sent.find((x: any) => x.isDefault)?.id, have = (got ?? []).find((x: any) => x.isDefault)?.id;
+    return want && want !== have ? `default tab ${have} kept, not ${want}` : "";
+  }
+  if (sent && typeof sent === "object")
+    return Object.entries(sent).map(([k, v]) => { const o = offBy(v, got?.[k]); return o && `${k} ${o}`; }).filter(Boolean).join(", ");
+  return norm(sent) === norm(got) ? "" : `= ${JSON.stringify(got ?? null)}, not ${JSON.stringify(sent)}`;
+}
+/** A nested table's column widths are PERCENTS (UI-API §5b «width»): shown columns without one share 100 − sum, so at a
+ *  sum ≥ 100 they get none and squeeze to their content. */
+function nestedWidths(fields: any[]): string[] {
+  return fields.filter((f) => f.type === "BO" && f.viewType === "TABLE").flatMap((f) => {
+    const shown = (f.boFieldRefs ?? []).filter((r: any) => r.toShow), sum = shown.reduce((n: number, r: any) => n + (r.tableWidth || 0), 0);
+    const bare = shown.filter((r: any) => !r.tableWidth);
+    return sum >= 100 && bare.length ? [`nested table «${nameOf(f)}»: column widths sum to ${sum} % — ${bare.map((r: any) => r.label).join(", ")} get no width and squeeze; keep the sum under 100`] : [];
+  });
+}
+/** The notes of an edit the stand did not keep — every key sent, read back (trap 108: an edit of a field added seconds before is lost). */
+function editsKept(sent: any[], fields: any[]): string[] {
+  return sent.flatMap((e) => {
+    const f = fields.find((x) => x.fieldId === e.fieldId);
+    if (!f) return [];
+    const off = Object.entries(e).filter(([k]) => !UNCOMPARED.has(k)).map(([k, v]) => { const o = offBy(v, f[k]); return o && `${k} ${o}`; }).filter(Boolean);
+    return off.length ? [`edit of «${nameOf(f)}» not kept: ${off.join("; ")} — bo_read shows the field; a tab group's default moves only by an archive import (UI-API §5b «Tabs»)`] : [];
+  });
+}
 
 /** save-business-object-portion: the JSON cut at 80 000 characters, each part carrying the previous part's id (R1 step 7). */
 async function savePortion(s: Stand, payload: object) {
@@ -1102,7 +1150,7 @@ function toStored(f: any, v: any): string | null {
   if (v === null || v === undefined) return DATES.includes(t) ? null : t === "BO" || t === "CO" || t === "FILE_UPLOAD" ? "[]" : "";
   if (DATES.includes(t)) return JSON.stringify(iso(v));
   if (t === "PERIOD" || t === "PERIOD_TIME") {
-    const start = v.startDate ?? v.start ?? v[0], end = v.endDate ?? v.end ?? v[1];
+    const [start, end] = periodEnds(v);
     return JSON.stringify({ startDate: iso(start), endDate: iso(end) });
   }
   if (t === "CHECKBOX") return String(v === true || /^(true|да|yes|1)$/i.test(String(v)));
@@ -1294,6 +1342,17 @@ function saveFile(out: string | undefined, sub: string, name: string, data: Uint
   return file;
 }
 
+/** A period's two ends from {start, end} / {startDate, endDate} / [start, end] or its cell text «01.10.2026 – 30.11.2026»
+ *  (any dash — what xlsx_export returns); a dd.mm.yyyy[ hh:mm] end becomes ISO, so a string is never read char by char. */
+function periodEnds(v: any): [unknown, unknown] {
+  if (typeof v !== "string") return [v?.startDate ?? v?.start ?? v?.[0], v?.endDate ?? v?.end ?? v?.[1]];
+  const D = String.raw`(\d{2}\.\d{2}\.\d{4}(?: \d{2}:\d{2})?|\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?)`;
+  const m = new RegExp(`^\\s*${D}\\s*[-–—]\\s*${D}\\s*$`).exec(v);
+  if (!m) throw new Error(`«${v}» is not a period — pass {start, end} or «01.10.2026 – 30.11.2026»`);
+  const isoOf = (x: string) => x.replace(/^(\d{2})\.(\d{2})\.(\d{4})(?: (\d{2}:\d{2}))?$/, (_, d, mo, y, hm) => `${y}-${mo}-${d}` + (hm ? `T${hm}` : ""));
+  return [isoOf(m[1]), isoOf(m[2])];
+}
+
 /** A date as the xlsx wants it — dd.mm.yyyy (+ « HH:MM») — taken literally from an ISO string, no time zone shift. */
 function xlsxDate(v: unknown, time: boolean): string {
   const s = String(v).trim();
@@ -1308,7 +1367,11 @@ function cellOf(f: any, v: any, warn: (w: string) => void): string {
   if (v === null || v === undefined || v === "") return "";
   if (t === "CHECKBOX") return v === true || /^(true|да|yes|1)$/i.test(String(v)) ? "Да" : "Нет";
   if (t === "DATE" || t === "FULL_DATE") return xlsxDate(v, t === "FULL_DATE");
-  if (t === "PERIOD" || t === "PERIOD_TIME") return `${xlsxDate(v.startDate ?? v.start ?? v[0], t === "PERIOD_TIME")} - ${xlsxDate(v.endDate ?? v.end ?? v[1], t === "PERIOD_TIME")}`;
+  // the export's separators: PERIOD an EN DASH, PERIOD_TIME a hyphen — the other one silently stores end = start (IMPORTS 19.1)
+  if (t === "PERIOD" || t === "PERIOD_TIME") {
+    const [start, end] = periodEnds(v);
+    return `${xlsxDate(start, t === "PERIOD_TIME")} ${t === "PERIOD" ? "–" : "-"} ${xlsxDate(end, t === "PERIOD_TIME")}`;
+  }
   if ((t === "DROPDOWN_SINGLE" || t === "RADIO_BUTTON_GROUP") && f.optionSource !== "FROM_BO") {
     const opts: any[] = f.options ?? [], s = String(v).trim().toLowerCase();
     const o = opts.find((x) => x.id === v) ?? opts.find((x) => x.code && x.code.toLowerCase() === s) ?? opts.find((x) => String(x.label).toLowerCase() === s);
@@ -1924,6 +1987,12 @@ function menuItem(tree: any[], key: string) {
   return hit[0];
 }
 
+/** A sidebar label wider than its box is cut with «…» (UI-API §4 «Menu in the UI»): about 18 characters on an item, 15 on a group. */
+function menuLabelNote(name: string, type: string): string[] {
+  const max = type === "GROUP" ? 15 : 18, n = [...name.trim()].length;
+  return n > max ? [`«${name}»: ${n} characters — the sidebar shows about ${max} before «…» (UI-API §4 «Menu in the UI»); a shorter name reads whole`] : [];
+}
+
 type RightsAt ={ what: string; boId?: string; fields: any[]; actions: string[]; load: () => Promise<any>;
   save: (group: any) => Promise<unknown>; flag?: (on: boolean) => unknown; flagNow?: () => Promise<boolean> };
 
@@ -2526,9 +2595,9 @@ const tools: Tool[] = [
     run: async (a) => {
       const s = stand(a), boId = await boById(s, a);
       if (!a.add?.length && !a.edit?.length && !a.delete?.length && !a.columns) throw new Error("pass `add`, `edit`, `delete` or `columns`");
-      const notes: string[] = [];
+      const notes: string[] = [], sent: any[] = [];
       if (a.edit?.length || a.delete?.length) {
-        const bo = await loadBo(s, boId), fields: any[] = bo.formFields ?? [], edits: any[] = [];
+        const bo = await loadBo(s, boId), fields: any[] = bo.formFields ?? [], edits: any[] = sent;
         const drop = new Set<string>(a.delete ?? []);
         for (const id of drop) if (!fields.some((f) => f.fieldId === id)) throw new Error(`no field ${id} on this BO (bo_read lists them)`);
         for (const [i, e] of (a.edit ?? []).entries()) {
@@ -2575,6 +2644,7 @@ const tools: Tool[] = [
       const added = a.add?.length ? await addFields(s, boId, a.add, a.window) : undefined;
       notes.push(...await registryColumns(s, boId, a.columns));
       const bo = await loadBo(s, boId);
+      notes.push(...editsKept(sent, bo.formFields ?? []), ...nestedWidths(bo.formFields ?? []));
       const lost = (a.delete ?? []).filter((id: string) => (bo.formFields ?? []).some((f: any) => f.fieldId === id));
       if (lost.length) notes.push(`still on the BO after the delete: ${lost.join(", ")}`);
       for (const e of (a.edit ?? []).filter((x: any) => x.steps)) {
@@ -2758,7 +2828,7 @@ const tools: Tool[] = [
       const r = await recordValues(s, bo, a.id);
       return { boId, id: a.id, state: r.state, values: r.values };
     } },
-  { name: "record_save", write: true, description: "Create a record (no `id`) or change one (`id`), values by field code / fieldId / label in PLAIN form — the tool converts each to what the type stores (§6b table): text and numbers as is, CHECKBOX true/false, DATE… an ISO date, PERIOD {start, end}, DROPDOWN / RADIO the option label or code (a dictionary dropdown: the dictionary record's CODE), BO a record id or an array of them, CO \"<source BO id>-<record id>\" items, *_LANG a string (→ RUS) or {RUS, KAZ, ENG}, CHECKLIST [{label, checked}], FILE_UPLOAD file ids; null clears. scripts:true (default) = the FORM cycle — the BO's hooks run as in the UI dialog, saved only when the answer carries CLOSE_DIALOG_SAVE, else nothing is kept and the field errors come back; scripts:false = the draft cycle (§6a): no hook, no field rules (textCase, maxLength), no counter number, no DROPDOWN_SINGLE. A kanban card move = a save of its status field. Ask the user first.",
+  { name: "record_save", write: true, description: "Create a record (no `id`) or change one (`id`), values by field code / fieldId / label in PLAIN form — the tool converts each to what the type stores (§6b table): text and numbers as is, CHECKBOX true/false, DATE… an ISO date, PERIOD {start, end} or its text «01.10.2026 – 30.11.2026», DROPDOWN / RADIO the option label or code (a dictionary dropdown: the dictionary record's CODE), BO a record id or an array of them, CO \"<source BO id>-<record id>\" items, *_LANG a string (→ RUS) or {RUS, KAZ, ENG}, CHECKLIST [{label, checked}], FILE_UPLOAD file ids; null clears. scripts:true (default) = the FORM cycle — the BO's hooks run as in the UI dialog, saved only when the answer carries CLOSE_DIALOG_SAVE, else nothing is kept and the field errors come back; scripts:false = the draft cycle (§6a): no hook, no field rules (textCase, maxLength), no counter number, no DROPDOWN_SINGLE. A kanban card move = a save of its status field. Ask the user first.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, id: { type: "string", description: "The record to change; omit = a new one" },
       values: { type: "object", description: "{fieldCodeOrLabel: plain value}" },
       scripts: { type: "boolean", description: "Default true: run the BO's hooks (form cycle). false: store without hooks or rules (draft cycle)" },
@@ -2841,7 +2911,7 @@ const tools: Tool[] = [
         columns: fieldColumns(bo, sheet.columns).map((c) => clean({ column: c.column, caption: c.caption, sub: c.sub || undefined, sub2: c.sub2 || undefined, field: c.field && nameOf(c.field), type: c.field?.type })),
         key: keysOf(bo).map(nameOf), ...(keysOf(bo).length ? {} : { warning: "no unique field (nor an own «ID»): every imported row CREATES a record" }) };
     } },
-  { name: "xlsx_import", write: true, description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), a dropdown's label or code, a BO field the target's key (its unique field, a user's Email) or {\"<sub-header or target field>\": value} (a key the template hides gets its sub-column), an array of them for a TABLE; a CO field the key of the one source whose attribute is bound to a unique field, or {\"Наименование БО\": source name, \"<attribute>\": value} — the block then holds only those attributes, every one must be bound in each source the rows use (else the stand rejects the whole file), and a row with no key attribute stores no link (MYBPM-IMPORTS.md 0X.4 rule 13). An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
+  { name: "xlsx_import", write: true, description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), PERIOD {start, end} or its text (any dash — the cell gets the separator of its type), a dropdown's label or code, a BO field the target's key (its unique field, a user's Email) or {\"<sub-header or target field>\": value} (a key the template hides gets its sub-column), an array of them for a TABLE; a CO field the key of the one source whose attribute is bound to a unique field, or {\"Наименование БО\": source name, \"<attribute>\": value} — the block then holds only those attributes, every one must be bound in each source the rows use (else the stand rejects the whole file), and a row with no key attribute stores no link (MYBPM-IMPORTS.md 0X.4 rule 13). An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       path: { type: "string", description: "An xlsx on this machine (a filled template or an export)" },
       rows: { type: "array", items: { type: "object" }, description: "Records as {fieldCodeOrLabel: plain value}; the file is built for you" },
@@ -3337,7 +3407,7 @@ const tools: Tool[] = [
       const items = a.under ? menuBranch(tree, menuItem(tree, a.under).id) : tree;
       return { items: await menuRows(s, items) };
     } },
-  { name: "menu_save", write: true, description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in roots, 30000–60000). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off), name?, code? (free — checked by verify-menu-item-code), parent? (a GROUP's id / code / name; null = the root; a GROUP is never put into a group, as in the UI), order?, count? (the unread counter, BO items), mobile? (false hides it in the mobile app), ungroup? (GROUP: its items go to the root, the group stays)}] — one stand call per property (UI-API §4). A kanban view needs the BO's card template for that dropdown (kanban_card_save) — a note says when it is missing. Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
+  { name: "menu_save", write: true, description: "Create sidebar menu items or change their icon / views (R6). create [{key?, type GROUP | BO (default BO when bo is given), name, parent (an existing item's id / code / name, or the key of an earlier item of this call; none = a root), bo (id or code, for BO), icon (REQUIRED, by meaning — UI-API §4 «Icons by meaning»; checked against the catalogue, menu_icons), views (BO: {list?, kanban?: DROPDOWN_SINGLE code, calendar?, timeline?: PERIOD code, map?}, default {list: true}), order?}] — order defaults to the last of its siblings + 10000, roots from 100000 (after the built-in roots, 30000–60000). change [{item (id / code / name), icon?, views? (merged over the current ones; false switches one off), name?, code? (free — checked by verify-menu-item-code), parent? (a GROUP's id / code / name; null = the root; a GROUP is never put into a group, as in the UI), order?, count? (the unread counter, BO items), mobile? (false hides it in the mobile app), ungroup? (GROUP: its items go to the root, the group stays)}] — one stand call per property (UI-API §4). A kanban view needs the BO's card template for that dropdown (kanban_card_save) — a note says when it is missing. A name longer than about 18 characters (15 on a GROUP) gets a note: the sidebar cuts it with «…». Rights: rights_save menu:<id>; a filter: filter_save. Ask the user first; dryRun:true = the bodies only.",
     props: { create: { type: "array", items: { type: "object" } }, change: { type: "array", items: { type: "object" } }, dryRun: { type: "boolean" } },
     run: async (a) => {
       const s = stand(a);
@@ -3369,7 +3439,7 @@ const tools: Tool[] = [
         const orderIndex = c.order ?? (parentId ? (sib.length ? Math.max(...sib) + 10000 : 10000) : Math.max(100000, sib.length ? Math.max(...sib) + 10000 : 0));
         const body = { id: ids[i], type, displayName: c.name, displayNameMap: { RUS: c.name }, boId, iconName, orderIndex, isPanel: false,
           boPages, chosenAccessRight: false, parentId };
-        bodies.push(body);
+        bodies.push(body); out.notes.push(...menuLabelNote(c.name, type));
         if (c.key) keys.set(c.key, body.id);
       }
       const changes: any[] = [];
@@ -3382,7 +3452,7 @@ const tools: Tool[] = [
           const p = await boPagesOf(s, await boOf(m.boId), c.views, m.boPages);
           ch.boPages = p.pages; out.notes.push(...p.notes.map((n) => `«${m.displayName}»: ${n}`));
         }
-        if (c.name !== undefined) { if (!String(c.name).trim()) throw new Error(`change[${i}]: name is empty`); ch.displayName = String(c.name); }
+        if (c.name !== undefined) { if (!String(c.name).trim()) throw new Error(`change[${i}]: name is empty`); ch.displayName = String(c.name); out.notes.push(...menuLabelNote(ch.displayName, m.type)); }
         if (c.code !== undefined) {
           if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(c.code)) throw new Error(`change[${i}]: code «${c.code}» — Latin letters, digits and _ only, a letter first (the stand checks only that it is free)`);
           if (c.code !== m.code) ch.code = c.code;
@@ -3733,6 +3803,7 @@ async function handle(msg: any): Promise<any> {
       try {
         await baseline(t, msg.params?.arguments ?? {});
         const out = await t.run(msg.params?.arguments ?? {});
+        await settleAll(); // the next tool sees what this one saved (trap 108)
         const note = await releaseNote(t);
         return { content: [{ type: "text", text: typeof out === "string" ? out : JSON.stringify(out, null, 1) }, ...(note ? [{ type: "text", text: note }] : [])] };
       } catch (e: any) {
@@ -3832,6 +3903,7 @@ async function cli(words: string[]): Promise<number> {
     const args = cliArgs(t, rest);
     await baseline(t, args);
     const out = await t.run(args);
+    await settleAll(); // a next command sees what this one saved (trap 108)
     console.log(typeof out === "string" ? out : JSON.stringify(out, null, 2));
     if (t.name === "stand_accounts") {
       console.error("The page works while this command runs — Ctrl+C when you are done; `mise run stand stand_list` shows the result.");

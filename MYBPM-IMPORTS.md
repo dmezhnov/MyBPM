@@ -838,6 +838,8 @@ The types that need extra keys — every shape `[C]`:
   `options` stays EMPTY here — the rows live in the dictionary and the form reads them at runtime.
 - `TAB_GROUP` — its own code is `tabs` (`tabs_*` when the BO has several, 0.6a); `"fieldTabs"` keyed by the tab code (`tab_*`):
   `{"tab_main": {"label":{"rus":"Общее"},"orderIndex":0,"chosenAccessRight":false,"isRight":false,"isDefault":true,"code":"tab_main","newId":"<16 chars>"}}`
+  `isDefault: true` on exactly one tab — the tab a record opens on (none → the first) `[C]`; an import moves it on a
+  group already on the stand too `[C]`, which the constructor cannot do (`MYBPM-UI-API.md` §5b «Tabs»).
   Fields on a tab carry `tabCodePath: {tabGroupCode, tabCode}` — both CODES. **A widget on a tab (an entry of
   any of the six maps of 0.13) carries the same object under the key `tabCode` instead** `[C]`: the import puts
   it on that tab and the export writes it back the same way, and its `gridPosition.y` counts from the top of
@@ -903,7 +905,8 @@ on Order_work, in dynamicFields:                       ← the line's SINGLE bac
   the reference renders empty.
 - **Columns by meaning, unasked.** A `TABLE` shows **2–5** columns, `orderIndex` 0, 1, 2 …: what the line
   is (работа, запчасть, автомобиль), then the values a user checks at a glance — количество, цена, сумма,
-  дата, статус. A table of one column is a defect. A `SINGLE` chip shows the name, plus one field that
+  дата, статус. A table of one column is a defect. A column's `tableWidth` is a PERCENT of the table: set
+  none, or keep the sum of the shown columns under 100 — at 100 the columns without one squeeze (§«Field flags»). A `SINGLE` chip shows the name, plus one field that
   tells two records apart (номер, дата, госномер) when the name alone does not.
 - **Line order**: for a pair that points both ways the order does not matter `[C]` — so mint ALL BO `oldId`s
   from their seeds (0.7) before building any field, and fill both ends from those ids. A builder that
@@ -1900,6 +1903,9 @@ for (const bo of bos?.filter((b) => b?.category !== "BO_COMPOSITE")) {
     if (f?.archetype !== "DYNAMIC" || !f?.kind) err(`${t}: no "archetype": "DYNAMIC" + "kind": "GENERAL" (0.5)`);
     if (text && f?.params?.buttonTypes === undefined) err(`${t}: TEXTAREA without params.buttonTypes (0.5)`);
     if (table && vals(f?.boRefStruct?.fieldRefs).filter((r) => r?.toShow).length < 2) err(`${t}: TABLE shows fewer than 2 columns (0.5a)`);
+    const shown = Object.entries(f?.boRefStruct?.fieldRefs ?? {}).filter(([, r]) => r?.toShow === true), pct = (r) => typeof r?.tableWidth === "number" && r?.tableWidth > 0 ? r?.tableWidth : 0;
+    const sum = shown.reduce((n, [, r]) => n + pct(r), 0), bare = shown.filter(([, r]) => !pct(r)).map(([c]) => c);
+    if (table && sum >= 100 && bare.length) err(`${t}: nested table column widths sum to ${sum} % — ${bare.join(", ")} get no width and squeeze; keep the sum under 100 or set none (0.5a)`);
     if (g && f?.type === "TAB_GROUP" && f?.trackedFieldCode && g?.rows !== 4) err(`${t}: rows ${g?.rows}, a tracked-status wrapper takes 4 (§3)`);
     if (g && f?.type === "TAB_GROUP" && f?.trackedFieldCode) { put(tab, { t, g, full: true }); continue; } // a cell of its stack, full width
     if (g && tracked(tab) && (g?.y !== 0 || g?.rows !== 3 || g?.x !== (f?.trackedFieldCode ? 9 : 0) || g?.cols !== (f?.trackedFieldCode ? 6 : 9)))
@@ -2700,6 +2706,8 @@ More rules `[C]`:
     "fieldCode":"status","type":"DROPDOWN_SINGLE","value":"in_work","numberFrom":0,"numberTo":0,
     "isCurrentUser":false,"isEmptyValue":false,"boiIds":{},"fromFieldCodes":{}}}}}}
   ```
+- **`menuItemName` length** `[C]`: the sidebar cuts a name past about 18 characters (15 on a `GROUP`) with «…»,
+  fewer in capitals, the same for every user — keep names within that.
 - **A menu-only archive is legal** `[C]`: one `MenuItemStructDto` line and nothing else (no group line,
   no BO line) imports fine when its `boCode` is already on the stand — the way to add or change a sidebar
   item for an existing BO. The `boCode` is then a stand code: ask for it (0.2a).
@@ -3535,8 +3543,10 @@ A widget DTO carries `widgetType` and a **null** `type`; a native one carries `n
 `isUnique`, `isRequired`, `isReadonly` (**never required + readonly together** — the record cannot be
 saved), `isSystem`, `tableColToShow` (shown as a registry column), `tableColOrderIndex` (**not** an
 export switch), `removeType`, `hideLabel`, `chosenAccessRight` (individual rights set),
-`isKindAddForSelect`, `isHeightDynamic` (tables), `tableWidth` (registry column width in px; the small
-numbers inside nested tables are in unverified units). **`tableWidth` travels** `[C]`: an export carries it only
+`isKindAddForSelect`, `isHeightDynamic` (tables), `tableWidth` (registry column width in px). **Inside a nested
+table `boRefStruct.fieldRefs.<code>.tableWidth` is a PERCENT of the table's width** `[C]`: the shown columns
+without one share what is left, (100 − sum) / their number; at a sum ≥ 100 they get no width and squeeze to their
+content — keep the sum under 100 or set none; a hidden column (`toShow: false`) counts nowhere. **`tableWidth` travels** `[C]`: an export carries it only
 on a field that has a width, an import writes the line's value onto a new BO and over the stand's width of an
 existing one, and a field line WITHOUT the key clears the stand's width to `null` — keep the key from the export
 when an amendment should not reset the column widths. A SCALAR field's default value (`defaultValue` / `defaultValueMap` on a text, number, date or
@@ -7284,7 +7294,9 @@ An `.xlsx` whose bytes come from the stand's own template or export, with data r
    column. Split a row-1 label on the FIRST dot — the prefix is the tab («Системные.Код»).
 3. **Fill the rows.** Values: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently —
    `31.02.2026` silently becomes 03.03.2026, 19.6 `[C]`); date-time `25.10.2025 10:33`; month `MM.YYYY`; year
-   `YYYY`; period `dd.mm.yyyy - dd.mm.yyyy`; a dropdown is matched by its LABEL; a reference by the target's unique field
+   `YYYY`; period `dd.mm.yyyy – dd.mm.yyyy` with the EN DASH «–» (U+2013), period with time
+   `dd.mm.yyyy hh:mm - dd.mm.yyyy hh:mm` with a HYPHEN — any other separator silently stores end = start (19.1
+   `[C]`); a dropdown is matched by its LABEL; a reference by the target's unique field
    or by an `ID` sub-column; a composite (`CO`) by the source BO's NAME in «Наименование БО» plus the sub-column of
    the attribute bound to that source's unique field (0X.4 rule 13). A TABLE nested object = the parent row REPEATED per child. A nested block
    only LINKS: its other sub-columns are never written into the child (19.6) — to change a child, import
@@ -7416,14 +7428,18 @@ needs.
 - **A TABLE nested object = the parent repeated on several rows**, one row per child. Writing the
   parent's scalars on EVERY row is safe. An export writes it the same way — scalars and SINGLE blocks on
   every row, no merges in the data rows; tell its records apart by «Внутренний айди» or the unique field.
-- Values: checkboxes `Да`/`Нет`; date-time `25.10.2025 10:33`; dates `dd.mm.yyyy`; periods
-  `dd.mm.yyyy - dd.mm.yyyy`; dictionary registry columns «Значение», «Код».
+- Values: checkboxes `Да`/`Нет`; date-time `25.10.2025 10:33`; dates `dd.mm.yyyy`; dictionary registry columns
+  «Значение», «Код».
+- **Periods** `[C]`: `PERIOD` is `01.10.2026 – 30.11.2026` with the EN DASH «–» (U+2013), `PERIOD_TIME` is
+  `01.10.2026 09:00 - 30.11.2026 18:30` with a HYPHEN (spaces around it optional) — what the export writes. Any
+  other separator (the other type's, «—») passes the act and is applied with NO error, but the record stores
+  end = start: the end is lost. Build the cell with the separator of its type; check one record after the import.
 - **Month and year** `[C]`: `YEAR_AND_MONTH` is the text `MM.YYYY` (`10.2026`), `YEAR` is `YYYY` — the export writes
   them so and the import takes nothing else: `2026-10`, `7.2026`, `15.10.2026`, `октябрь 2026` fail the row with
   «Неверный формат года и месяца - используйте формат MM.YYYY», a year other than four digits with «Неверный формат
   года - … год должен содержать четыре цифры». The import stores the 1st of the month / 1 January at 00:00 in the
   stand's time zone.
-- Not known yet `[U]` — §20: the cell format of `TIME`, `PERIOD_TIME`, `CHECKLIST`,
+- Not known yet `[U]` — §20: the cell format of `TIME`, `CHECKLIST`,
   `FILE_UPLOAD`, a `*_LANG` text, an HTML `TEXTAREA`, `QUESTIONNAIRE`, `GEO_POINT`, `PROGRESS_BAR`; whether a file
   can delete or archive records, create DEV (test) records or set a record's participants. Do not ship such
   columns until §20 answers them; set those values on the stand instead (the card, or the record API).
@@ -7645,7 +7661,7 @@ BO-ref cell neither creates the referenced record (`NoUniqueFieldValue`, 19.3) n
 
 Every record-import behaviour this part relies on is `[C]`; these are open and NOT relied on:
 
-- `[U]` Cell formats of `TIME`, `PERIOD_TIME`, `CHECKLIST`, `FILE_UPLOAD`, a
+- `[U]` Cell formats of `TIME`, `CHECKLIST`, `FILE_UPLOAD`, a
   `*_LANG` text, an HTML `TEXTAREA`, `QUESTIONNAIRE`, `GEO_POINT`, `PROGRESS_BAR` (19.1) — check: set each on one
   record on the stand, export with listed `boFieldIds`, re-import the edited export, read back.
 - `[U]` Whether a file can delete or archive records — check: look for a state column in the template and in

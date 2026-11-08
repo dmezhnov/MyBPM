@@ -793,7 +793,9 @@ format is exacting: step 2 below carries what a template fill needs (the full fo
      label on the FIRST dot — the prefix is the tab («Системные.Код»), the rest is the field label after strip.
    - **Values**: checkbox `Да`/`Нет`; date `dd.mm.yyyy` with a four-digit year (parsed leniently, §6);
      date-time `25.10.2025 10:33`; month `MM.YYYY` and year `YYYY`, nothing else (`2026-10` fails the row; stored
-     as the 1st / 1 January at 00:00 in the stand's zone); period `dd.mm.yyyy - dd.mm.yyyy`; numbers and codes as text; a dropdown by its
+     as the 1st / 1 January at 00:00 in the stand's zone); period `dd.mm.yyyy – dd.mm.yyyy` with the EN DASH «–»
+     (U+2013), period with time `dd.mm.yyyy hh:mm - dd.mm.yyyy hh:mm` with a HYPHEN — any other separator silently
+     stores end = start (IMPORTS 19.1); numbers and codes as text; a dropdown by its
      LABEL (`NotFoundDictByLabel` when the value is not on the stand); dictionary codes are case-sensitive
      (`MRP` ≠ `mrp`).
    - **A TABLE nested object = the parent row REPEATED**, one row per child (the parent's scalars on every row is
@@ -1847,6 +1849,11 @@ inside `app-bo-record`; a click on the row's `.container` opens the item.
   `take-out-all-of-menu-item-group`.
 - **«Удалить»** → «Удаление пункта меню / Вы уверены, что хотите удалить данный раздел из главного меню?» →
   ДА → `delete-menu-item`; on a group it deletes the items inside too.
+- **Label width** `[C]`: the expanded sidebar cuts a label wider than its box with «…» — 128 px on a root item,
+  112 px on a GROUP (its arrow), 131 px on an item inside a group; 13 px «PT Root UI» medium, ≈ 6.7 px a lowercase
+  Cyrillic letter, ≈ 7.8 px a capital. So about 18 characters read whole on an item, 15 on a group, fewer in
+  capitals. The same for an admin and a user (the admin's ⋮ does not narrow it). The collapsed sidebar shows icons
+  only.
 - **What a user sees**: a click on the item → `/business-objects/viewing-single/bo/<menuItemId>/list-view?…`;
   the views are a dropdown at the top right of the registry (Список / Канбан / Диаграмма Ганта / Календарь, in
   tab order). Popovers do not close on Escape — a click on an empty page area closes the top one.
@@ -2475,7 +2482,9 @@ settings).
     checkbox is greyed;
   - **reorder** — drag a header cell by its label: every column `{fieldId, tableColOrderIndex}` in the new order;
   - **width** — drag the border between two cells: every column with `tableWidth` in px on the resized one,
-    `null` on the others. **The width travels in an archive** `[C]`: the export carries `tableWidth` on each
+    `null` on the others (the registry; a nested table keeps `boFieldRefs[].tableWidth` as a PERCENT of its width —
+    the shown columns without one share (100 − sum) / their number, at a sum ≥ 100 they get none and squeeze `[C]`).
+    **The width travels in an archive** `[C]`: the export carries `tableWidth` on each
     field that has one (no key on a field with `null`), and an import writes the archive's value — onto a new
     BO and over the stand's width of an existing one; a field line without the key clears the stand's width to
     `null` (`MYBPM-IMPORTS.md` §3 «Field flags»).
@@ -4810,6 +4819,12 @@ element as `nativeFieldType ?? widgetType ?? fieldType`.
   `{id, label, labelMap, isActive, chosenAccessRight:false, orderIndex, isInvalid:false, isRight:false,
   isDefault}`. The ids come from `v2/id-loader/load-portion`, and the first tab is `isDefault` /
   `isActive`. Add it like any field (`addedFieldIds` + `editedFields` with its `gridPosition`).
+- **`isDefault` is set only when the group is created**: an edit of `tabs[]` never changes it — neither off an
+  old tab nor onto another one, and a tab added to an existing group gets `false` whatever it sends. A record
+  opens on the tab named in `tabGroupContexts` of its URL, else on the `isDefault` one, else on the `isActive`
+  one, else on the first `[C]`. To move the default on an existing group, import an archive whose `fieldTabs`
+  carry the new `isDefault` (IMPORTS 0.5 `TAB_GROUP`) — the import does change it; without that, keep the old
+  default tab as the tab the record should open on and rename it.
 - **A field on a tab carries `tabId`**, and its `gridPosition` is **relative to the tab** (y starts at 0
   on each tab). A NEW field takes `tabId` straight from its DTO in `formFields`.
 - **Moving an EXISTING field onto a tab needs `tabId` in BOTH places**: in the field's copy inside
@@ -7091,6 +7106,14 @@ The stand's own behaviour under automation `[C]`:
     its own with `endRuns: true` (a removed test record's run it cannot see); `stand_call` refuses
     `delete-business-object`. A run already stuck is reached by no UI or API call — only the stand's
     administrator can clear it (§5f, §5b «Delete a BO»).
+108. **For ~5.5 s after a portion save the stand checks the structure against the BO as it was** `[C]` —
+    `load-business-object-by-id` already reads the new BO, but a structure write in that window works on the old
+    one: `save-bo-field-tab-chosen-access-right` on a tab just added fails «MRHAAJDwvK :: No tab with id …»,
+    `update-tab-code` to the code of a tab just deleted fails «GNSmpX8vQ6 :: Вкладка с кодом … уже существует»,
+    a code setter does not see a field just added (`NoBoFieldWithId`), and a second portion save that edits a
+    field just added is LOST with no error (it reads back unchanged). After ~5.5 s each goes through. So wait
+    6 s after a portion save before the next structure write to that BO, and read back what a save was meant to
+    change. The MCP tools wait the window out themselves, before each structure write and before they return.
 
 ## 12. Open questions
 
