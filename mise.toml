@@ -591,8 +591,12 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["co_build", { group: "Бизнес-объект", name: "MCP probe composite", code: "mcp_probe_co", attrs: [
     { links: [{ bo: "MCP probe client", field: "Наименование" }] },
     { label: "Контакт", code: "contact", links: [{ bo: "@bo_create.id", field: "Мобильный" }, { bo: "@bo_create.id", field: "E-mail" }] }] },
-    (r) => r.code === "mcp_probe_co" && r.simple.length === 1 && r.simple[0].label === "Наименование" && r.composite.length === 1
+    (r) => r.code === "mcp_probe_co" && r.columns.length === 1 && r.simple.length === 1 && r.simple[0].label === "Наименование" && r.composite.length === 1
       && r.composite[0].label === "Контакт" && r.composite[0].code === "contact" && r.composite[0].links === 2 && r.sources.length === 1],
+  // the draft cycle sets no registry column (AccessDenied for all, trap 48): co_build puts the first attribute there, after the
+  // window its code save opened (trap 108) — a column saved inside that window is lost; `columns` sets the whole registry
+  ["records_find", { boId: "@co_build.coId" }, (r) => r.columns?.length === 1 && r.columns[0] === "Наименование"],
+  ["co_build", { coId: "@co_build.coId", columns: ["contact", "Наименование"] }, (r) => r.columns.join() === "contact,title" && /registry columns: contact, title/.test(r.notes.join())],
   ["co_build", { coId: "@co_build.coId", attrs: [{ links: [{ bo: "@bo_create.id", field: "Нет такого" }] }] }, (r) => /not a field.*draft was removed/.test(r)],
   ["co_build", { coId: "@co_build.coId", attrs: [{ links: [{ bo: "@bo_create.id", field: "Заметки" }, { bo: "@bo_create.id", field: "E-mail" }] }] },
     (r) => /IllegalFieldType.*draft was removed/.test(r)],
@@ -609,15 +613,16 @@ const steps: [string, unknown, (r: any) => boolean][] = [
     { label: "Статус", type: "DROPDOWN_SINGLE", code: "status", options: [{ label: "Новый", code: "new" }, { label: "В работе", code: "in_work" }, "Закрыт"] },
     { label: "Готово", type: "CHECKBOX", code: "done" }, { label: "Срок", type: "DATE", code: "due" },
     { label: "Клиент", type: "BO", code: "client", refBoId: "@bo_create.id" }, { label: "Описание", type: "TEXTAREA", code: "descr", tab: "Детали" },
-    { label: "Опрос", type: "QUESTIONNAIRE", code: "survey", tab: "Детали", questionnaire: { rows: [{ label: "Доволен?", code: "happy" }] } }] },
+    { label: "Опрос", type: "QUESTIONNAIRE", code: "survey", tab: "Детали", questionnaire: { rows: [{ label: "Доволен?", code: "happy" }] } },
+    { label: "Связь", type: "BO", code: "link", refBoId: "@bo_create.id", tab: "Детали" }] },
     (r) => r.code === "mcp_probe_records" && !r.notes?.some((n: string) => /option codes not kept/.test(n))],
   ["bo_read", { code: "mcp_probe_records", raw: true }, (r) => r.formFields[1].options.map((o: any) => o.code).join() === "new,in_work,Gen_2"
     && r.formFields.find((f: any) => f.type === "QUESTIONNAIRE")?.questionnaires.map((q: any) => `${q.isColumn ? "c" : "r"}:${q.label}:${q.code ?? ""}`).join() === "r:Доволен?:happy,c:Да:,c:Нет:"],
   ["bo_fields_save", { code: "mcp_probe_records", edit: [{ fieldId: "@bo_read.formFields.1.fieldId", optionCodes: { "В работе": "working", "Gen_2": "closed" } }] }, (r) => r.fields.length >= 7],
   ["bo_read", { code: "mcp_probe_records", raw: true }, (r) => r.formFields[1].options.map((o: any) => o.code).join() === "new,working,closed"],
-  ["record_save", { code: "mcp_probe_records", values: { title: "Первая", status: "В работе", done: true, due: "2026-10-17", client: "@record_save.id", "Описание": "Текст" } },
+  ["record_save", { code: "mcp_probe_records", values: { title: "Первая", status: "В работе", done: true, due: "2026-10-17", client: "@record_save.id", "Описание": "Текст", link: "@record_save.id" } },
     (r) => r.saved === true && r.record.status.display === "В работе" && r.record.done.value === "true" && r.record.due === "\"2026-10-17T00:00:00.000Z\""
-      && /^\["BOI\w+"\]$/.test(r.record.client) && r.record.descr === "Текст"],
+      && /^\["BOI\w+"\]$/.test(r.record.client) && r.record.descr === "Текст" && r.record.link === r.record.client],
   ["record_save", { code: "mcp_probe_records", values: { title: "Нет", status: "Новый" }, scripts: false }, (r) => /DROPDOWN_SINGLE/.test(r)],
   ["record_save", { code: "mcp_probe_records", values: { title: "Вторая", done: false }, scripts: false }, (r) => r.saved === true && /draft/.test(r.cycle) && r.record.title === "Вторая"],
   ["record_save", { code: "mcp_probe_records", values: { done: true } }, (r) => r.saved === false && r.errors[0].field === "title"],
@@ -625,7 +630,7 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["record_save", { code: "mcp_probe_records", id: "@records_find.records.0.id", values: { status: "working" } }, (r) => r.saved === true && !r.created && r.record.status.display === "В работе"],
   ["records_find", { code: "mcp_probe_records", where: { "Название": "первая" } }, (r) => r.records.length === 1 && r.records[0].values.title === "Первая"],
   ["records_find", { code: "mcp_probe_records", where: { descr: "Текст" } }, (r) => /not a registry column/.test(r)],
-  ["record_read", { code: "mcp_probe_records", id: "@records_find.records.0.id" }, (r) => r.state === "ALL" && r.values.title === "Первая" && r.values.descr === "Текст"],
+  ["record_read", { code: "mcp_probe_records", id: "@records_find.records.0.id" }, (r) => r.state === "ALL" && r.values.title === "Первая" && r.values.descr === "Текст" && /^\["BOI\w+"\]$/.test(r.values.link)],
   ["record_delete", { code: "mcp_probe_records", ids: ["@records_find.records.0.id"] }, (r) => r.records[0].values.title === "Первая" && !r.deleted],
   ["record_delete", { code: "mcp_probe_records", ids: ["@records_find.records.0.id"], confirm: true }, (r) => r.deleted[0].state === "REMOVED" && !r.warning],
   ["records_find", { code: "mcp_probe_records" }, (r) => r.total === 1],
@@ -658,6 +663,16 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["xlsx_import", { code: "mcp_probe_xlsx", path: "@xlsx_export.file" }, (r) => r.newRows === 0 && r.updatedRows === 2 && r.errorRows === 0],
   ["xlsx_import", { importId: "@xlsx_import.importId", cancel: true }, (r) => r.canceled === true],
   ["xlsx_export", { code: "mcp_probe_xlsx", search: "x-2", out: "dist/mcp-test/xlsx" }, (r) => r.total === 1 && r.records[0].values.status === "В работе"],
+  // a dropdown over a dictionary: the file matches the record's LABEL only, so a code in the rows is written as its label;
+  // an unknown value warns and fails its row (MYBPM-IMPORTS.md 19.1)
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe dict", code: "mcp_probe_dict", kind: "BO_DICTIONARY", window: false, fields: [
+    { label: "Код", type: "INPUT_TEXT", code: "code", unique: true }, { label: "Значение", type: "INPUT_TEXT", code: "label", column: true }] }, (r) => r.code === "mcp_probe_dict"],
+  ["record_save", { code: "mcp_probe_dict", values: { code: "hot", label: "Горячий" } }, (r) => r.saved === true],
+  ["bo_create", { group: "Бизнес-объект", name: "MCP probe xlsx kind", code: "mcp_probe_xkind", window: false, fields: [
+    { label: "Номер", type: "INPUT_TEXT", code: "num", unique: true }, { label: "Вид", type: "DROPDOWN_SINGLE", code: "kind", refBoId: "@bo_create.id" }] }, (r) => r.code === "mcp_probe_xkind"],
+  ["xlsx_import", { code: "mcp_probe_xkind", out: "dist/mcp-test/xlsx", rows: [{ num: "K-1", kind: "hot" }, { num: "K-2", kind: "Горячий" }, { num: "K-3", kind: "zzz" }] },
+    (r) => r.newRows === 2 && r.errorRows === 1 && /label = zzz/.test(r.failing[0].error) && r.warnings.some((w: string) => /zzz/.test(w)) && !r.warnings.some((w: string) => /hot/.test(w))],
+  ["xlsx_import", { importId: "@xlsx_import.importId", cancel: true }, (r) => r.canceled === true],
   // a composite in xlsx (MYBPM-IMPORTS.md 0X.4 rule 13): a source with a unique «Почта» and a second source; the template\'s
   // sample rows reject the file; a plain key, an object, a row with no key attribute (no link), an ambiguous source and an
   // unbound attribute refused before upload, an unknown key fails its row; the export gives the block back
@@ -990,6 +1005,8 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["bo_delete", { code: "mcp_probe_process", confirm: true, endRuns: true }, (r) => r.deleted === true && r.ended.length === 1],
   ["bo_delete", { code: "mcp_probe_scripts", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xlsx", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_xkind", confirm: true }, (r) => r.deleted === true],
+  ["bo_delete", { code: "mcp_probe_dict", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xpar", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xhold", confirm: true }, (r) => r.deleted === true],
   ["bo_delete", { code: "mcp_probe_xcu", confirm: true }, (r) => r.deleted === true],

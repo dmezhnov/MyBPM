@@ -37,7 +37,7 @@ function answer(path: string, params: any, body: any): any {
 
 // ── the MCP server's routes: a stateful import, export and bell ──────────────────────────────────────────
 type Bo = { id: string; code: string; name: string; boCategory: string; fields?: any[]; deleted?: boolean; co?: Co; window?: unknown; kanban?: Record<string, any> };
-type CoField = { coFieldId: string; label: string; code: string; type?: string; links: { boId: string; fieldId: string }[] };
+type CoField = { coFieldId: string; label: string; code: string; type?: string; links: { boId: string; fieldId: string }[]; tableColToShow?: boolean; tableColOrderIndex?: number };
 type Co = { sources: string[]; fields: CoField[] };
 const bos = new Map<string, Bo>(); // id → BO present on the stand
 // «Пользователи» (load-bo-id-by-kind PERSON): readable by id, kept out of the group listing
@@ -51,6 +51,9 @@ const parts = new Map<string, string>(); // portion-save accumulator id → the 
 // trap 108: for SETTLE ms after a portion save the fields and tabs it added are not seen by a structure write yet
 const SETTLE = Number(Bun.env.MOCK_SETTLE_MS ?? 0);
 const fresh = { until: 0, fields: new Set<string>(), tabs: new Set<string>() };
+// the same window after a BO code save: a portion save in it loses its edits of fields the BO did not have at the code save
+const recoded = { until: 0, boId: "", known: new Set<string>() };
+const fieldIdsOf = (bo: Bo) => new Set<string>([...(bo.fields ?? []).map((x) => x.fieldId), ...(bo.co?.fields ?? []).map((x) => x.coFieldId)]);
 const drafts = new Map<string, { coId: string } & Co>();
 const copyCo = (c: Co): Co => JSON.parse(JSON.stringify(c));
 const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null; conflicts?: Record<string, any>; removed?: boolean }>();
@@ -137,7 +140,7 @@ function commit(draftId: string) {
 }
 
 // ── xlsx of records: the template, the import act (rows counted, a row new when its key was absent before the act),
-// the apply (a dropdown by label, a block by the value of a sub-column, a TABLE only adds, a blank clears except DATE, a PERIOD
+// the apply (a dropdown by label — over a dictionary by its record's label, a block by the value of a sub-column, a TABLE only adds, a blank clears except DATE, a PERIOD
 // split only on an EN DASH — any other separator stores end = start, as the stand does), the export
 const ID_COLUMN = "Внутренний айди";
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -234,7 +237,12 @@ function xact(boId: string, bytes: Uint8Array, fileName: string) {
         return;
       }
       let s = v;
-      if (f.type === "DROPDOWN_SINGLE" && v) {
+      if (f.type === "DROPDOWN_SINGLE" && f.optionSource === "FROM_BO" && v) { // a dictionary: its record's LABEL only, a code fails the row
+        const lf = fieldsOf(f.refBoId).find((x) => x.code === "label");
+        const hit = lf && [...recs.values()].find((r) => r.boId === f.refBoId && r.state !== "REMOVED" && r.values[lf.fieldId] === v);
+        if (!hit) { row.err ??= `Не найден элемент справочника \`${bos.get(f.refBoId)?.name}\` label = ${v}`; return; }
+        s = hit.id;
+      } else if (f.type === "DROPDOWN_SINGLE" && v) {
         const o = f.options?.find((x: any) => x.label === v);
         if (!o) { row.err ??= `Не найдено значение \`${v}\` в поле \`${f.label}\`. Это поле должно содержать одно из следующих значений: ${f.options.map((x: any) => x.label).join(", ")}`; return; }
         s = o.id;
@@ -320,7 +328,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       const bo = boById(params.businessObjectId);
       if (!bo || bo.deleted) return fail("Cgf5V16VU4 :: данный бизнес-объект не существует");
       return { id: bo.id, code: bo.code, name: bo.name, boCategory: bo.boCategory, kind: "GENERAL", isDictionary: bo.boCategory === "BO_DICTIONARY",
-        formFields: bo.co ? bo.co.fields.map((x) => ({ fieldId: x.coFieldId, label: x.label, code: x.code, type: x.type, boFieldIds: x.links, tableColToShow: true }))
+        formFields: bo.co ? bo.co.fields.map((x) => ({ fieldId: x.coFieldId, label: x.label, code: x.code, type: x.type, boFieldIds: x.links, tableColToShow: x.tableColToShow ?? null, tableColOrderIndex: x.tableColOrderIndex ?? null }))
           : structuredClone(bo.fields ?? []) };
     }
     case "v2/business-objects/verify-business-object-code": return !!params.businessObjectCode && !byCode(params.businessObjectCode);
@@ -341,6 +349,16 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       if ([...(p.businessObject.formFields ?? []), ...(p.editedFields ?? [])].some((x: any) => x.progressSteps?.some((y: any) => !y.id)))
         return fail("NullPointerException: Cannot invoke \"String.hashCode()\" because \"progressStepId\" is null");
       if (p.businessObject.nameMap?.RUS) bo.name = p.businessObject.nameMap.RUS;
+      const lost = (id: string) => bo.id === recoded.boId && Date.now() < recoded.until && !recoded.known.has(id);
+      if (bo.co) { // a composite: an edit sets an attribute's registry column (the draft cycle sets none)
+        for (const e of p.editedFields ?? []) {
+          const x = bo.co.fields.find((y) => y.coFieldId === e.fieldId);
+          if (!x || lost(e.fieldId)) continue; // the code-save window: lost, no error
+          if (e.tableColToShow !== undefined) x.tableColToShow = e.tableColToShow;
+          if (e.tableColOrderIndex !== undefined) x.tableColOrderIndex = e.tableColOrderIndex;
+        }
+        return acc;
+      }
       if (p.businessObject.formFields) {
         const drop = new Set(p.deletedFieldIds ?? []), add = new Set(p.addedFieldIds ?? []);
         // an added list's option codes come generated from the labels, whatever was sent (an EDIT of `options` sets them)
@@ -350,7 +368,7 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
         for (const e of p.editedFields ?? []) {
           const { options, ...rest } = e, f = bo.fields.find((x) => x.fieldId === e.fieldId) ?? ({} as any);
           if (add.has(e.fieldId)) { Object.assign(f, rest); continue; }
-          if (stale && fresh.fields.has(e.fieldId)) continue; // trap 108: lost, no error
+          if ((stale && fresh.fields.has(e.fieldId)) || lost(e.fieldId)) continue; // trap 108: lost, no error
           // the stand: options[] / progressSteps[] of an edit only add and update by id; an item is removed only by
           // its id in deletedFieldOptionIds / deletedFieldProgressStepIds — an item merely left out stays
           const { progressSteps, deletedFieldOptionIds, deletedFieldProgressStepIds, ...plain } = rest;
@@ -385,7 +403,12 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       if (route.endsWith("-url")) f.url = params.url; else { recode(f.fieldId, f.code); f.code = params.businessFieldCode ?? params.code; lagging.add(params.businessObjectId ?? params.boId); }
       return "";
     }
-    case "v2/business-objects/save-business-object-code": recode(params.businessObjectId, bos.get(params.businessObjectId)!.code); bos.get(params.businessObjectId)!.code = params.businessObjectCode; lagging.add(params.businessObjectId); return "";
+    case "v2/business-objects/save-business-object-code": {
+      const bo = bos.get(params.businessObjectId)!;
+      recode(bo.id, bo.code); bo.code = params.businessObjectCode; lagging.add(bo.id);
+      Object.assign(recoded, { until: Date.now() + SETTLE, boId: bo.id, known: fieldIdsOf(bo) });
+      return "";
+    }
     case "v2/business-objects/save-business-object-grid-layout-position": bos.get(body.boId)!.window = body.gridLayoutPosition; return "";
     case "v2/delete-script-usage/analyze-bo": { const id = nextId("ANL"); analyses.set(id, params.boId); return { analyzeId: id }; }
     // a process figure script uses the BO when its def holds the BO id (the stand reads the expressions)
@@ -432,6 +455,12 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     }
     // records: the registry (columns only, CREATED_AT DESC), values per tab, the §6a draft cycle, the §6b form cycle, the delete
     case "v2/business-object-instance/load-bo-instance-bracket-table": {
+      const co = boById(body.boId)?.co;
+      if (co) { // a composite's registry: its attribute columns; rows of the sources are not emulated
+        const heads = co.fields.filter((x) => x.tableColToShow).sort((a, b) => (a.tableColOrderIndex ?? 0) - (b.tableColOrderIndex ?? 0));
+        if (!heads.length) return { errorType: "AccessDenied", message: "TPEbSDwk4v :: У Вас недостаточно прав на поля, которые выведены в реестр, обратитесь к администратору системы" };
+        return { heads: heads.map((x, i) => ({ fieldId: x.coFieldId, name: x.label, orderIndex: i, boFieldArchetype: "DYNAMIC" })), totalHits: 0, hasNext: false, records: [] };
+      }
       const cols = fieldsOf(body.boId).filter((x) => x.tableColToShow);
       const all = [...recs.values()].filter((r) => r.boId === body.boId && (body.state === "ALL" ? r.state === "ALL" || r.state === "DEV" : r.state === body.state) && (body.brackets ?? []).every((b: any) => inBracket(r, b)))
         .sort((a, b) => b.at - a.at), page = all.slice(body.paging.offset, body.paging.offset + body.paging.limit);
@@ -446,10 +475,11 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return { boInstanceId: r.id, state: r.state, fields: fieldsOf(r.boId).filter((x) => (x.tabId ?? null) === body.tabId).map((x) => cell(x, r.values[x.fieldId])) };
     }
     case "v2/business-object-instance/create-draft": { const id = nextId("RDR"); recDrafts.set(id, { values: {} }); return id; }
-    case "v2/instance-field-form/load-field-data": {
+    // the stand: load-field-data gives the fields above the tabs, load-field-data-tab those of one tab
+    case "v2/instance-field-form/load-field-data": case "v2/instance-field-form/load-field-data-tab": {
       const r = recs.get(params.boiId), d = recDrafts.get(params.draftId);
       if (!d) return fail("NoBoInstanceDraftWithId");
-      return fieldsOf(params.boId).map((x) => ({ fieldId: x.fieldId, storedValue: d.values[x.fieldId] ?? r?.values[x.fieldId] ?? (x.type === "BO" ? "[]" : "") }));
+      return fieldsOf(params.boId).filter((x) => (x.tabId ?? null) === (params.tabId ?? null)).map((x) => ({ fieldId: x.fieldId, storedValue: d.values[x.fieldId] ?? r?.values[x.fieldId] ?? (x.type === "BO" ? "[]" : "") }));
     }
     case "v2/business-object-instance/remove-draft": case "v2/instance-form/remove-draft": recDrafts.delete(params.draftId); return null;
     case "v2/business-object-instance/v2/create-boi": Object.assign(recDrafts.get(params.draftId)!, { boId: params.boId, boiId: nextId("BOI"), isNew: true }); return recDrafts.get(params.draftId)!.boiId;

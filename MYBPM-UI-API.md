@@ -492,6 +492,10 @@ Everything is written into a draft as you go; the bottom bar of the editor only 
 8. **Verify**: `generate-draft` → `load-co-fields-simple` / `load-co-fields-composite` → `remove-draft`.
    Reading a committed composite needs a draft of its own, because step 6 destroyed the one you had.
    Accelerator: `tools/create-co-constructor.bun.ts`.
+9. **Registry column** `[C]`: the draft cycle sets none, and a registry with none answers `AccessDenied` to everyone
+   (trap 48). Give at least one attribute `tableColToShow: true` + `tableColOrderIndex` by a portion save (§5b), 7 s
+   after a code save at the earliest (trap 108: inside that window the column is lost), and expect the registry to
+   show it ~5.5 s after the save.
 
 ##### R2b — Business process (`v2/bo-process-editor2`, `v2/bo-process-editor`)
 
@@ -1265,7 +1269,8 @@ do is plain HTTP by §0U.4.
   `optionCodes`) are set by a later EDIT of `options` and read back, because the stand regenerates them after
   the add (§5h «Единичный выбор»). `PROGRESS_BAR` `steps` get ids from `v2/id-loader` (§5i); an edit keeps the id
   of a step with the same code or label. `co_build` runs the R2a draft cycle and removes the draft on any failure, so
-  nothing half-built stays.
+  nothing half-built stays; it then sets the registry (step 9): `columns`, or the first attribute when the composite
+  has no column.
 - **The rights tools make R5 whole.** `rights_read` / `rights_save` take one target — a BO, a field, a tab, a
   menu item (by id, code or name) — and read every action as `"all"`, `"nobody"` or its subjects (groups,
   persons, author, participants, Person fields). `rights_save` sets the actions you pass to EXACTLY the subjects
@@ -1377,7 +1382,7 @@ do is plain HTTP by §0U.4.
 | `bo_fields_save` ✎ | add, edit, delete fields of an existing BO in one save; a key the tool does not name goes inside `set`, an unknown one is refused | R1 step 7, §5h |
 | `bo_code_set` ✎ | a BO's or a field's code (widgets by their own controller) | rule 4 + 12, §5j |
 | `bo_delete` ✎ | the preview (script usages, menu items, referencing BOs, alive runs: the process's own `runs.own`, of processes whose scripts read it `runs.readers`); with `confirm` the delete, refused while runs are alive unless `endRuns` (ends own runs) / `readersOk` | «Delete a BO» in §5b, trap 107 |
-| `co_build` ✎ | a composite: sources, simple and composite attributes, codes; or extends one by `coId` | R2a, §5e |
+| `co_build` ✎ | a composite: sources, simple and composite attributes, codes, registry columns; or extends one by `coId` | R2a, §5e |
 | `rights_read` | who may do what on a BO, a field, a tab or a menu item; `subjects` = groups, users, Person fields | R5; `load-access-group`, `load-field-access-group`, `load-field-tab-access-group`, `v2/menu-item/load-access-group` |
 | `rights_save` ✎ | the actions passed → exactly these subjects (or all / nobody), «выборочно» follows, read back | R5 steps 1–6, R6 rights |
 | `menu_read` | the sidebar tree: items, icons, BOs, views (kanban / timeline by field code), selective, filter | R6; `load-nav-items` per level |
@@ -2774,8 +2779,10 @@ Details and the failure mode in `MYBPM-IMPORTS.md` §5b.
   `QUESTIONNAIRE`, `PROGRESS_BAR`, `STATIC_TEXT`, `TAB_GROUP`; the type is kept. An attribute merging fields of
   DIFFERENT types is refused (`IllegalFieldType`, above) `[C]`. A co field DTO carries `optionSource` (`FROM_FIELD`/`FROM_BO`) and
   `refBoId` (reference and dictionary dropdown) but **no options**.
-- **The composite's registry lists the records of every source BO**; a row id is `"<source boId>-<boiId>"`. The
-  columns are all attributes except `STATIC_TEXT` and `TAB_GROUP`. **Each cell comes from the SOURCE record's own
+- **The composite's registry lists the records of every source BO**; a row id is `"<source boId>-<boiId>"`. **The
+  draft cycle sets no registry column** `[C]`: after it the registry answers `AccessDenied` to everyone, an admin
+  included (trap 48), until an attribute gets `tableColToShow` by a portion save, as on a plain BO (§5b); `STATIC_TEXT`
+  and `TAB_GROUP` are never shown. **Each cell comes from the SOURCE record's own
   field** (the value carries the source `fieldId`/`fieldCode`): a dropdown, radio or checklist shows the option of
   ITS source, also one the composite attribute's own option list lacks — so the attribute's copied settings
   (`MYBPM-IMPORTS.md` §5b) do not drive the display. A source not linked to an attribute leaves the cell empty.
@@ -4463,7 +4470,8 @@ appears when the referenced BO has a field pointing back).
   deleted source record was left out of `load-bo-instance-selector-records-by-ids` (called with the composite
   as `businessObjectId` and the same prefixed ids) `[C]`.
 - **Reading a reference value**: `v2/load-boi-values` answers `""` for every `BO` field; read it with
-  `instance-field-form/load-field-data` (a draft of the record) — `storedValue` = `"[\"<boiId>\", …]"` `[C]`.
+  `instance-field-form/load-field-data` (a draft of the record) — `storedValue` = `"[\"<boiId>\", …]"` `[C]`; a field on a
+  tab with `load-field-data-tab` and that tab's `tabId` (§6a) `[C]`.
 - **«Data too large» (`EsDataTooLargeException`) comes and goes** `[C]`: `validate-apply-remove-draft` and even
   `create-draft` may fail with it and go through a minute later, and a record whose save «failed» may
   already BE saved (with its back link) — a NEW record whose form save failed this way was stored, so
@@ -5997,8 +6005,10 @@ The value DTO (the client's class `M`, built by `M.of(draftId, boId, boiId, isDe
   removing from an M:N field** (two `TABLE` fields linked to each other): the removed record's whole back
   field is emptied, its other links included (§5h «Reference fields») `[C]`.
 - **Reading an existing record** without a hook `[C]`: a bare `create-draft` (step 1), then
-  `v2/instance-field-form/load-field-data` P `{boId, boiId, draftId}` → every field's `storedValue` of the
-  record, `BO` and `CO` ids included (`"[\"<boiId>\", …]"`), which `v2/load-boi-values` answers `""`;
+  `v2/instance-field-form/load-field-data` P `{boId, boiId, draftId}` → the `storedValue` of every field OUTSIDE the tabs,
+  `BO` and `CO` ids included (`"[\"<boiId>\", …]"`), which `v2/load-boi-values` answers `""`; the fields of a
+  `TAB_GROUP` tab come only from `v2/instance-field-form/load-field-data-tab` P `{boId, boiId, draftId, tabId}`, one
+  call per tab, same shape `[C]`;
   `remove-draft` P `{draftId}` → `null` drops it (a later read of it: `NoBoInstanceDraftWithId`). No script runs
   — unlike the form cycle's «open EXISTING», which fires «Открытие». A `DATE` read this way may differ by hours
   from the same record's `load-boi-values` value `[I]` — compare dates by `load-boi-values`.
@@ -6043,7 +6053,7 @@ the FORM controllers, which is what the UI's own dialog calls. Every hook runs s
 | change a field | `v2/instance-field-form/save-field-value` | B `{draftId, boId, boInstanceId, values:[{fieldId, value}]}` | «Изменение поля» of that field |
 | save | `v2/instance-form/validate-apply-remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_SAVE]`; **no `CLOSE_DIALOG_SAVE` = NOT saved** — e.g. an empty required field answered only `[CAN_ENABLE_CANCEL_BUTTON]`, no error command, record unchanged `[C]` | NEW: «Добавление новой записи» then «Сохранение»; EXISTING: «Сохранение» only |
 | close without saving | `v2/instance-form/remove-draft` | P `{draftId}` → `formCommands:[CLOSE_DIALOG_CANCEL]` | EXISTING: «Закрытие»; NEW: nothing is created. **A NEW record is cancelled with `v2/business-object-instance/v2/delete-boi` P `{draftId, boiId}` FIRST, then `remove-draft`** — what the UI sends `[C]`; a bare `remove-draft` of a new draft on a BO with a «Закрытие» script answers `RuntimeException … No boi with id` and the draft stays readable (the pair afterwards removes it). A «Закрытие» hook wired by an archive but with no body adds `SHOW_NOTIFICATION` ERROR «Скрипт на закрытие не отработал.» even on a NEW record `[C]` — harmless, the draft is gone |
-| read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` | — |
+| read the draft | `v2/instance-field-form/load-field-data` | P `{boId, boiId, draftId}` → `[{fieldId, storedValue, …}]` of the fields OUTSIDE tabs; a tab's fields: `load-field-data-tab` P `{boId, boiId, draftId, tabId}` `[C]` | — |
 | read the record | `v2/business-object-instance/v2/load-boi-values` | **B** `{businessObjectId, boInstanceId, draftId:null, tabId:null}` (in P it answers `NoBoWithId … boId = <NULL>`). **`tabId:null` returns only the fields OUTSIDE tabs**; the fields of a `TAB_GROUP` tab come back only with that tab's id in `tabId` `[C]` | — |
 
 Order on a new record: открытие → поле … → создание → сохранение. Field ids and codes:
@@ -6862,7 +6872,7 @@ The stand's own behaviour under automation `[C]`:
     недостаточно прав на поля, которые выведены в реестр» on a BO whose every field has
     `accessForAll: true`. Check `tableColToShow` before believing a rights problem. §7.
     **The fix is not instant** `[C]`: right after the `editedFields` patch that turns a column
-    on, the registry still answers `AccessDenied`. It lists the rows a few seconds later. Wait, then
+    on, the registry still answers `AccessDenied`; it lists the rows ~5.5 s later (trap 108). Wait, then
     re-read before you conclude the patch failed.
 47. **A field that is not a registry column cannot be read back from the registry** `[C]` —
     `load-bo-instance-bracket-table` puts only `tableColToShow` fields into a row's `values[]`, and the
@@ -7106,13 +7116,16 @@ The stand's own behaviour under automation `[C]`:
     its own with `endRuns: true` (a removed test record's run it cannot see); `stand_call` refuses
     `delete-business-object`. A run already stuck is reached by no UI or API call — only the stand's
     administrator can clear it (§5f, §5b «Delete a BO»).
-108. **For ~5.5 s after a portion save the stand checks the structure against the BO as it was** `[C]` —
+108. **For ~5.5 s after a portion save or a BO code save (`save-business-object-code`) the stand checks the structure against the BO as it was** `[C]` —
     `load-business-object-by-id` already reads the new BO, but a structure write in that window works on the old
     one: `save-bo-field-tab-chosen-access-right` on a tab just added fails «MRHAAJDwvK :: No tab with id …»,
     `update-tab-code` to the code of a tab just deleted fails «GNSmpX8vQ6 :: Вкладка с кодом … уже существует»,
     a code setter does not see a field just added (`NoBoFieldWithId`), and a second portion save that edits a
-    field just added is LOST with no error (it reads back unchanged). After ~5.5 s each goes through. So wait
-    6 s after a portion save before the next structure write to that BO, and read back what a save was meant to
+    field just added is LOST with no error (it reads back unchanged), a composite attribute added after a code save
+    loses the column a portion save gives it, the BO code falls back to the generated one
+    (`<transliterated name><16 chars>`), and the registry keeps its old columns (`AccessDenied` while it had none).
+    A field code save opens no window. After 5.4–5.75 s each goes through. So wait
+    7 s after a portion save or a BO code save before the next structure write to that BO, and read back what a save was meant to
     change. The MCP tools wait the window out themselves, before each structure write and before they return.
 
 ## 12. Open questions
