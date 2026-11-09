@@ -369,10 +369,13 @@ const reloginHow = (c: Cred) => isLocal(c.origin)
   ? "a local stand: stand_account_save logs in again (ask the user for the password if you do not have it), or stand_accounts"
   : "call stand_accounts and give the user its link to log in again («Изменить» on that account); the password goes to that page, not to the chat";
 
-// trap 108: for ~5.5 s after a portion save the stand checks the structure against the BO as it was — a tab just added
-// is unknown, the code of a tab just deleted is taken, an edit of a field just added is lost. So a portion save opens a
-// window per stand, every later structure write waits it out, and a tool returns only once it is over (settleAll).
-const SETTLE_MS = Number(process.env.MYBPM_SETTLE_MS ?? 6000);
+// trap 108: for ~5.5 s after a portion save or a BO code save the stand checks the structure against the BO as it was —
+// a tab just added is unknown, the code of a tab just deleted is taken, an edit of a field just added (also a composite
+// attribute added after a code save) is lost, the BO code can fall back to the generated one, the registry still has
+// its old columns. So each of those writes opens a window per stand (5362–5745 ms measured, hence 7 s), every later
+// structure write waits it out, and a tool returns only once it is over (settleAll).
+const SETTLE_MS = Number(process.env.MYBPM_SETTLE_MS ?? 7000);
+const OPENS_WINDOW = /\/(save-business-object-portion|save-business-object-code)$/;
 const settleUntil = new Map<string, number>();
 const STRUCTURE_WRITE = /^v2\/(?!business-object-instance\/|id-loader\/)[^/]+\/(save|update|delete|create|add|remove|rename|set|change|move)-/;
 const settle = async (origin: string) => { const ms = (settleUntil.get(origin) ?? 0) - Date.now(); if (ms > 0) await sleep(ms); };
@@ -404,7 +407,7 @@ function standOf(c: Cred): Stand {
       if (STRUCTURE_WRITE.test(route)) await settle(c.origin);
       const r = text(await send((token) =>
         fetch(url(p), { method: "POST", headers: { "Content-Type": "application/json", token }, body: envelope(params, body) })));
-      if (route.endsWith("/save-business-object-portion")) await r.then(() => settleUntil.set(c.origin, Date.now() + SETTLE_MS), () => {});
+      if (OPENS_WINDOW.test(route)) await r.then(() => settleUntil.set(c.origin, Date.now() + SETTLE_MS), () => {});
       if (process.env.MYBPM_TRACE) await r.then((v) => ({ answer: cut(v) }), (e) => ({ error: String(e.message) }))
         .then((o) => appendFileSync(process.env.MYBPM_TRACE!, JSON.stringify({ p, params: cut(params), body: cut(body), ...o }) + "\n"));
       return r;
@@ -1091,6 +1094,17 @@ async function registryColumns(s: Stand, boId: string, want?: string[]): Promise
     : [`registry columns read back as ${got.join(", ") || "none"}, not ${asked.join(", ")}`];
 }
 
+/** A composite's registry columns after its draft cycle, which sets none (trap 48: no column → AccessDenied for all):
+ *  `want` as given, else the first attribute when no attribute is a column yet (`first` = the one this call made). */
+async function coColumns(s: Stand, coId: string, want: string[] | undefined, first: string | undefined): Promise<string[]> {
+  if (want) return registryColumns(s, coId, want);
+  const fields: any[] = (await loadBo(s, coId)).formFields ?? [];
+  if (fields.some((f) => f.tableColToShow)) return [];
+  const pick = fields.find((f) => f.fieldId === first) ?? fields.find((f) => !["STATIC_TEXT", "TAB_GROUP"].includes(f.type));
+  if (!pick) return ["registry: the composite has no attribute yet, so no column — its registry answers AccessDenied until one is added (trap 48)"];
+  return registryColumns(s, coId, [pick.fieldId]);
+}
+
 // ── records (MYBPM-UI-API.md §6a, §6b, traps 46, 47) ─────────────────────────────────────────────────────
 
 const BOI_ = "v2/business-object-instance/";
@@ -1180,10 +1194,13 @@ async function recordValues(s: Stand, bo: any, boiId: string) {
   }
   const refs = valueFields(bo).filter((f: any) => f.type === "BO" || f.type === "CO");
   if (refs.length) {
-    // load-boi-values answers "" for BO / CO fields; a bare §6a draft runs no hook and load-field-data gives storedValue
+    // load-boi-values answers "" for BO / CO fields; a bare §6a draft runs no hook and load-field-data gives storedValue —
+    // of the fields above the tabs only: a tab's fields come from load-field-data-tab, one call per tab
     const draftId = await s.call(BOI_ + "create-draft", {}, {});
     try {
       const data: any[] = (await s.call("v2/instance-field-form/load-field-data", { boId: bo.id, boiId, draftId })) ?? [];
+      for (const tabId of new Set(refs.map((f: any) => f.tabId).filter(Boolean)))
+        data.push(...((await s.call("v2/instance-field-form/load-field-data-tab", { boId: bo.id, boiId, draftId, tabId })) ?? []));
       for (const f of refs) { const d = data.find((x) => x.fieldId === f.fieldId); if (d) got.set(f.fieldId, { ...got.get(f.fieldId), value: d.storedValue, displayValue: undefined }); }
     } finally { await s.call(BOI_ + "remove-draft", { draftId }, {}).catch(() => {}); }
   }
@@ -1378,8 +1395,32 @@ function cellOf(f: any, v: any, warn: (w: string) => void): string {
     if (!o) warn(`«${v}» is not an option of «${nameOf(f)}» (${opts.map((x) => x.label).join(", ")}) — its row will fail`);
     return o ? o.label : String(v);
   }
+  if ((t === "DROPDOWN_SINGLE" || t === "RADIO_BUTTON_GROUP") && f.dictLabels) {
+    const m: Map<string, string> = f.dictLabels, k = String(v).trim().toLowerCase(), label = m.get(k);
+    if (label === undefined) warn(`«${v}» is no record of the dictionary of «${nameOf(f)}» (by code, id or label) — its row will fail`);
+    return label ?? String(v);
+  }
   if (LANGS.includes(t) && typeof v === "object") return String(v.RUS ?? Object.values(v)[0] ?? "");
   return typeof v === "object" ? JSON.stringify(v) : String(v);
+}
+
+/** A dictionary's records as lower-case code / id / label → label, read from its registry (columns `code` and `label`,
+ *  MYBPM-IMPORTS.md 0.5b); null with a warning when the registry does not show both — the values then go in as given. */
+async function dictLabelsOf(s: Stand, dictId: string, field: string, warn: (w: string) => void): Promise<Map<string, string> | undefined> {
+  const m = new Map<string, string>();
+  for (let offset = 0; offset < 2000; offset += 200) {
+    const t = await s.call(BOI_ + "load-bo-instance-bracket-table", {}, { boId: dictId, dynamicFilters: [], nativeFilters: [], search: "",
+      paging: { offset, limit: 200 }, ordering: { archetype: "NATIVE", fieldId: "CREATED_AT", state: "ASC" }, state: "ALL", brackets: [] });
+    for (const r of t?.records ?? []) {
+      const cell = (code: string) => (r.values ?? []).find((v: any) => v.fieldCode === code);
+      const code = cell("code"), label = cell("label");
+      if (!code || !label) { warn(`the dictionary of «${field}» does not show «Код» and «Значение» in its registry — its values go into the file as given, and the import matches the LABEL only`); return undefined; }
+      const text = String(label.displayValue || label.value);
+      for (const k of [code.value, r.instanceId, text]) if (k) m.set(String(k).trim().toLowerCase(), text);
+    }
+    if (!t?.hasNext) break;
+  }
+  return m;
 }
 
 /** The act of an uploaded file: counts (ROWS, not records — a TABLE block repeats its record) and the failing rows.
@@ -1510,6 +1551,12 @@ async function buildRows(s: Stand, bo: any, rows: Record<string, any>[], warn: (
     const block = [SOURCE, ...attrs.map((a: any) => a.label)].map((sub) => ({ caption, sub, sub2: "", field: f }));
     cols.splice(at, cols.filter((c) => c.field === f).length, ...block);
   }
+
+  // a dropdown over a dictionary: the file matches the dictionary record's LABEL only (a code fails the row) — so a code
+  // or an id given in the rows is written as its label (MYBPM-IMPORTS.md 19.1)
+  const dicts = new Set(norm.flatMap((n) => Object.keys(n)).map((id) => fields.find((x: any) => x.fieldId === id))
+    .filter((f: any) => (f.type === "DROPDOWN_SINGLE" || f.type === "RADIO_BUTTON_GROUP") && f.optionSource === "FROM_BO"));
+  for (const f of dicts) (f as any).dictLabels = await dictLabelsOf(s, (f as any).refBoId, nameOf(f), warn);
 
   // pass 2: the lines
   const idx = (f: any, sub?: string) => cols.findIndex((c) => c.field === f && (sub === undefined || (c.sub === sub && !c.sub2)));
@@ -2704,7 +2751,7 @@ const tools: Tool[] = [
       try { await s.call(BO_ + "load-bo-id-by-code", { boCode: bo.code }); } catch (e: any) { gone = /No bo with code/.test(e.message); }
       return clean({ ...head, deleted: gone, ended: own.map((r) => r.boiId), ...(gone ? {} : { warning: "the code still resolves — read bo_find before going on" }) });
     } },
-  { name: "co_build", write: true, description: "Build a composite object (BO_COMPOSITE) in the constructor — its draft cycle of R2a / §5e: create-bo → rename → code → ONE draft: sources added, each attribute created with its first link and extended with the rest (2+ links = «составной атрибут»), renamed / recoded → apply-and-remove-draft; on any failure the draft is removed. Read back through a draft of its own, removed too. `coId` extends an existing composite instead of creating one. Ask the user first.",
+  { name: "co_build", write: true, description: "Build a composite object (BO_COMPOSITE) in the constructor — its draft cycle of R2a / §5e: create-bo → rename → code → ONE draft: sources added, each attribute created with its first link and extended with the rest (2+ links = «составной атрибут»), renamed / recoded → apply-and-remove-draft; on any failure the draft is removed. The draft cycle sets no registry column, and a registry with none answers AccessDenied to everyone (trap 48): `columns` sets them, otherwise a composite left with no column gets its first attribute as one. Read back through a draft of its own, removed too. `coId` extends an existing composite instead of creating one. Ask the user first.",
     props: { group: { type: "string", description: "The BO group by id or name (new composite)" }, name: { type: "string" }, description: { type: "string" },
       code: { type: "string", description: "The composite's code (0U.5 rule 12); its auto-name code stays otherwise — the code never follows the name here" },
       coId: { type: "string", description: "An existing composite to add sources / attributes to" },
@@ -2712,7 +2759,8 @@ const tools: Tool[] = [
       attrs: { type: "array", items: { type: "object", required: ["links"], properties: {
         label: { type: "string", description: "Default = the first source field's label" }, code: { type: "string", description: "Default = the first source field's code" },
         links: { type: "array", items: { type: "object", required: ["bo", "field"], properties: {
-          bo: { type: "string", description: "Source BO id or exact name" }, field: { type: "string", description: "Source field label or fieldId" } } } } } } } },
+          bo: { type: "string", description: "Source BO id or exact name" }, field: { type: "string", description: "Source field label or fieldId" } } } } } } },
+      columns: { type: "array", items: { type: "string" }, description: "The whole registry in order: attribute codes, labels or coFieldIds (as bo_fields_save columns). Default: unchanged, or the first attribute when the composite has no column" } },
     run: async (a) => {
       const s = stand(a);
       if (!a.coId && (!a.group || !a.name)) throw new Error("pass `group` + `name` for a new composite, or `coId`");
@@ -2774,13 +2822,16 @@ const tools: Tool[] = [
         await s.call("v2/co/remove-draft", { draftId }).catch(() => {});
         throw new Error(`${e.message} — the draft was removed, nothing of this call was committed${exists}`);
       }
+      const notes = await coColumns(s, coId, a.columns, attrsOut[0]?.coFieldId);
       const bo = await loadBo(s, coId), check = await s.call("v2/co/generate-draft", { coId });
       try {
         const row = (f: any) => ({ coFieldId: f.coFieldId, label: f.label, code: f.code, links: (f.links ?? []).length });
         return { coId, name: bo.name, code: bo.code, url: `${s.c.origin}/business-objects/editing/${coId}/composite-editing`,
           sources: ((await s.call("v2/co/load-bo-records-for-co", { coId, draftId: check })) ?? []).map((b: any) => b.name ?? b.id),
           simple: ((await s.call("v2/co/load-co-fields-simple", { coId, draftId: check })) ?? []).map(row),
-          composite: ((await s.call("v2/co/load-co-fields-composite", { coId, draftId: check })) ?? []).map(row), added: attrsOut };
+          composite: ((await s.call("v2/co/load-co-fields-composite", { coId, draftId: check })) ?? []).map(row), added: attrsOut,
+          columns: (bo.formFields ?? []).filter((f: any) => f.tableColToShow).sort((x: any, y: any) => (x.tableColOrderIndex ?? 0) - (y.tableColOrderIndex ?? 0)).map(nameOf),
+          ...(notes.length ? { notes } : {}) };
       } finally { await s.call("v2/co/remove-draft", { draftId: check }).catch(() => {}); }
     } },
 
@@ -2820,7 +2871,7 @@ const tools: Tool[] = [
       }
       return { columns, total, scanned, records: hits.slice(0, limit) };
     } },
-  { name: "record_read", description: "One record, every field: values keyed by field code (label when it has none) — the raw stored value, or {value, display} when the shown text differs (a dropdown's option code / label, a reference's id / name). Reads each tab of the form too. BO / CO fields come from a bare draft (§6a, no hook runs) dropped right after: their stored id arrays.",
+  { name: "record_read", description: "One record, every field: values keyed by field code (label when it has none) — the raw stored value, or {value, display} when the shown text differs (a dropdown's option code / label, a reference's id / name). Reads each tab of the form too. BO / CO fields, on a tab too, come from a bare draft (§6a, no hook runs) dropped right after: their stored id arrays.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" }, id: { type: "string", description: "The record id (records_find)" } },
     required: ["id"],
     run: async (a) => {
@@ -2911,7 +2962,7 @@ const tools: Tool[] = [
         columns: fieldColumns(bo, sheet.columns).map((c) => clean({ column: c.column, caption: c.caption, sub: c.sub || undefined, sub2: c.sub2 || undefined, field: c.field && nameOf(c.field), type: c.field?.type })),
         key: keysOf(bo).map(nameOf), ...(keysOf(bo).length ? {} : { warning: "no unique field (nor an own «ID»): every imported row CREATES a record" }) };
     } },
-  { name: "xlsx_import", write: true, description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), PERIOD {start, end} or its text (any dash — the cell gets the separator of its type), a dropdown's label or code, a BO field the target's key (its unique field, a user's Email) or {\"<sub-header or target field>\": value} (a key the template hides gets its sub-column), an array of them for a TABLE; a CO field the key of the one source whose attribute is bound to a unique field, or {\"Наименование БО\": source name, \"<attribute>\": value} — the block then holds only those attributes, every one must be bound in each source the rows use (else the stand rejects the whole file), and a row with no key attribute stores no link (MYBPM-IMPORTS.md 0X.4 rule 13). An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
+  { name: "xlsx_import", write: true, description: "Import records from an xlsx in two phases, as the registry's «Импорт из Excel» (R7 steps 3–5). Phase 1 — `path` (an xlsx on this machine) or `rows` ([{fieldCodeOrLabel: plain value}], the file is built on a fresh template and saved): upload → the stand's act: rows new / updated / failing with each failing row's reason (counts are ROWS — a TABLE block repeats its record), plus warnings (no key field → every row creates; blank cells clear fields; a TABLE block only adds links). NOTHING is written in phase 1. Phase 2 — `importId` + `confirm: true` after the user agreed: apply (failing rows are skipped); `importId` + `cancel: true` drops the act. `rows` values: text / numbers, CHECKBOX true/false, DATE an ISO date (written literally, dd.mm.yyyy), PERIOD {start, end} or its text (any dash — the cell gets the separator of its type), a dropdown's label or code (a dictionary dropdown: its record's code, id or label — the cell gets the label, the only thing the import matches), a BO field the target's key (its unique field, a user's Email) or {\"<sub-header or target field>\": value} (a key the template hides gets its sub-column), an array of them for a TABLE; a CO field the key of the one source whose attribute is bound to a unique field, or {\"Наименование БО\": source name, \"<attribute>\": value} — the block then holds only those attributes, every one must be bound in each source the rows use (else the stand rejects the whole file), and a row with no key attribute stores no link (MYBPM-IMPORTS.md 0X.4 rule 13). An xlsx import runs NONE of the BO's scripts (trap 51) — record_save does.",
     props: { boId: { type: "string" }, code: { type: "string", description: "The BO code instead of boId" },
       path: { type: "string", description: "An xlsx on this machine (a filled template or an export)" },
       rows: { type: "array", items: { type: "object" }, description: "Records as {fieldCodeOrLabel: plain value}; the file is built for you" },

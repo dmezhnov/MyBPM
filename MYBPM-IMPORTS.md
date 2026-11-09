@@ -3970,8 +3970,9 @@ holds exactly 3 objects — `CompanyMetadataStructDto`, one `BoGroupStructDto`, 
   when the attribute's option list lacks it. Different option sets per source are therefore harmless. **Keep one
   type per attribute**: the platform refuses to merge fields of DIFFERENT types into one attribute
   (`IllegalFieldType`, `MYBPM-UI-API.md` §5e) `[C]`; what an import does with such `boFieldCodes` is not known `[U]`.
-- **The registry columns are all attributes except `STATIC_TEXT` and `TAB_GROUP`** `[C]` — those two may be
-  attributes but are never shown. A source not linked to an attribute leaves its cell empty.
+- **A registry column is an attribute with `tableColToShow: true`** `[C]` — 0.9 rule 15 holds for a composite too:
+  with none its registry answers `AccessDenied` to everyone. `STATIC_TEXT` and `TAB_GROUP` may be attributes but are
+  never shown. A source not linked to an attribute leaves its cell empty.
 - **An export of a composite gives every attribute a fresh `newId`** `[C]` — the payload is otherwise the archive
   as imported (`boRefStruct.boInfo.name` becomes the target BO's name). Never match export ids against stand ids.
 - **A plain BO holds composite rows through a `CO` field** (`refBoId`/`oldRefBoId` = the composite) `[C]`; its
