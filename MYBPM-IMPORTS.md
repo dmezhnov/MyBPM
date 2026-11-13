@@ -408,7 +408,7 @@ your own.
 | E-mail / push notifications from a script | the script palette has the actions (§12a «Built-in objects», `alert`); their delivery was never checked `[U]` | build them only if asked and say they are `[U]` |
 | A time-driven automation («напомнить через 3 дня») | a `SCHEDULED` process start has never been seen to fire `[U]` (§5c) | not built — say so; a hook on save or a manually started process is the working route |
 | A guard: forbid a save or a status change until a condition («без согласования нельзя начать работы») | no hook that refuses a save or rolls a status back is known `[U]` (§5d) | a path someone RUNS step by step → a business process with an approval branch (0.18); a value that must be there → «Обязательное» (`isRequired`, 0.5); otherwise not built — say so |
-| Users, departments, groups, companies | they are RECORDS of the built-in BOs `Person` / `Department` / `PersonGroup` / `Company` (reserved codes, 0.2a; `Company` only for the `root` login), not structure; an archive carries an org unit only as an `ExportStructInstanceDto` next to the rights or settings that name it; it never CREATES a unit — an unknown one must be mapped onto an existing unit before the apply, and the import writes the archive's name onto that unit (§8) `[C]` | records: an xlsx of records (Part III; group membership from the group side) or the stand by hand; a new user e-mails an invitation (§3) |
+| Users, departments, groups, companies | they are RECORDS of the built-in BOs `Person` / `Department` / `PersonGroup` / `Company` (reserved codes, 0.2a; `Company` only for the `root` login), not structure; an archive carries an org unit only as an `ExportStructInstanceDto` next to the rights or settings that name it; it never CREATES a unit — an unknown one must be mapped onto an existing unit before the apply, and the unit is left as it is unless its record line is set to «Обновить поля» (§8) `[C]` | records: an xlsx of records (Part III; group membership from the group side) or the stand by hand; a new user e-mails an invitation (§3) |
 | Deleting a field, a tab or an option | an import never deletes (§8) | the constructor or the API (`MYBPM-UI-API.md` R1): an option or a progress step goes only through `deletedFieldOptionIds` / `deletedFieldProgressStepIds` and the records keep its id `[C]`; a tab's fields go into `deletedFieldIds` with it or stay orphaned — off the form, values still stored `[C]` (`MYBPM-UI-API.md` §5b) |
 
 ### 0.3 Line 1 — the BO group (copy verbatim, change `name`, `code`, `orderIndex` and the two ids)
@@ -529,7 +529,8 @@ Keys a stand export carries that no section here describes — copy them from an
 write them yourself: `accessGroupStruct`, `accessRightsInstanceSource`, `accessSetType`,
 `scriptInstanceSource`, `settingsInstanceSource`, `settingsKind`, `defaultValueEng`, `defaultValueKaz`,
 `defaultValueQaz`, `inSlotsCount`, `outSlotsCount`, `labelDeltaX`, `labelDeltaY`, `needDisableTabs`,
-`showAsStepper`, `columns`, `businessObjectCode`, `labelEng`, `labelKaz`, `labelQaz` (an option's label in that language).
+`showAsStepper`, `columns`, `businessObjectCode`, `labelEng`, `labelKaz`, `labelQaz` (an option's label in that language),
+`boCodeToId`, `fieldCodeToId` (in a script's `valueTypeStruct`, copies of its `boCode` / `fieldCode`).
 
 ### 0.4b Where each key sits
 
@@ -618,7 +619,7 @@ ScriptDefStructDto branches.*: blockId hasExpr order
 ScriptDefStructDto expressions.*: @class actId argExprIds args boCode canWriteValue constType enumBaseType enumValue exprValueType fieldCode funcName isTextMultiline latitude leftExprId longitude methodArgs more objectDescriptor opType optionCode optionInstanceId optionSource rightExprId useArgNames value valueTypeStruct varBlockId
 ScriptDefStructDto more.*: exprId opType order
 ScriptDefStructDto params.*: name order type
-ScriptDefStructDto returnType|type|valueTypeStruct: baseType boCode enumNativeName fieldCode isArray type
+ScriptDefStructDto returnType|type|valueTypeStruct: baseType boCode boCodeToId enumNativeName fieldCode fieldCodeToId isArray type
 ```
 
 > **Reading in chunks? You are NOT done.** The cookbook core runs on to «0.11 Building the zip»
@@ -1215,7 +1216,8 @@ Every `oldId` / `newId` is a **16-character** string over the alphabet
   - everything else is simply unique inside the archive.
 - Field ids use `newId` (not `oldId`); the BO and the group use `oldId` (the group also carries a
   `newId`, any unique value).
-- **A re-import matches the BO by `oldId` and its fields by `newId`, NOT by code** `[C]` — keep both fixed
+- **A re-import matches the BO by `oldId` and its fields by `newId`** `[C]`; an `oldId` the company does not
+  know with a `code` it has is merged into that BO by code (§8) — keep both fixed
   between builds of the same object (the same salt and code, or the ids of the given file, as above). What a
   re-import does to an existing BO, and to one that was rolled back or deleted: §8 «Re-import of the same ids».
 
@@ -3187,10 +3189,12 @@ from a spec reads §0 and nothing else of Part I.
   archive (`BoGroupStructDto` + `BoStructDto`, `objectCount-2`, no access DTO) analyses with an empty
   error list and applies. A `Person` reference does not need it either — it resolves by `boInfo.code`
   (§6 «Person reference»). `[C]`
-- **Group `oldId`/`newId` are generated at EXPORT time, not stable ids** `[C]`: the same group carries a different
-  `oldId` in every export. So `boGroupOldId` only ties the lines of ONE archive together, and the importer
-  does not match groups by it — see §8.
-- **The stand keeps the archive's `oldId` as the BO's real id** `[C]` — it appears verbatim in the
+- **An export mints fresh ids every time** `[C]`: a BO's `oldId`, its fields' `newId`s, its options' `newOptionId`s
+  and a group's `newId` differ in every export of the same object; only a group's `oldId` is its stand id. So
+  `boGroupOldId` only ties the lines of ONE archive together, and the importer matches groups by `code` and an
+  exported BO by its `code` (§8).
+- **The stand keeps the archive's `oldId` as the BO's real id** when no BO of the company has that `oldId` or that
+  `code` `[C]`; a BO whose code the company already has is merged into it and keeps the stand's id (§8) — it appears verbatim in the
   registry URL and comes back from `v2/business-objects/load-bo-id-by-code`. Deterministic ids therefore address the same BO on every
   re-import — one more reason to seed them, never randomise; the build salt of 0.7 keeps two builds from scratch apart.
 - **A generated archive may be STORED (zip method 0)** `[C]` — the importer accepts it; no compression
@@ -4546,7 +4550,9 @@ not the menu item's own, not the BO's, not the parent's.
   "numberTo": 0, "isCurrentUser": false, "isEmptyValue": false, "boiIds": {}, "fromFieldCodes": {}}}`); the
   BO may ship in the same archive, and `v2/menu-item/load-bracket-filter` returns the bracket ANDing its
   filters. A `DROPDOWN_SINGLE` entry on a dictionary field takes `value` = the dictionary row's `code` and the
-  item's registry shows only those records `[C]` (example in 0.15 «One BO, several items»). `fieldCode` is resolved to the field id of the (new) BO, and the map keys are free
+  item's registry shows only those records `[C]` (example in 0.15 «One BO, several items»). A dropdown with its own options
+  (`FROM_FIELD`) keeps `value` = the option id AS EXPORTED: imported into another company, where the options get
+  new ids, the filter matches nothing `[C]` (§8 «Moving a system to another company»). `fieldCode` is resolved to the field id of the (new) BO, and the map keys are free
   8-char ids that become the ids of the bracket and of each filter as they are.
 - **A menu line may reference a BO that is not in the archive**: an export of menu items carries no BO
   line for the items' BOs. Such a line relies on the BO already being on the stand, by `boCode`.
@@ -4729,10 +4735,28 @@ BO — is 0.9 rule 10.
   target does not know, and each must be mapped onto an existing group before the apply (below).
 - **An archive WITHOUT `AccessStructDto` leaves the stand's rights untouched** `[C]`. So a structure-only archive is the safe way to
   update a BO whose rights were set by hand; an archive WITH the DTO replaces them.
-- An export with rights also carries one `ExportStructInstanceDto` per group it mentions
-  (`boCode:"PersonGroup"`, `kind:"PERSON_GROUP"`, `fieldMap.name.storedValue` = the group name,
-  `sources[].accessRightsInstanceSource`) — the group RECORD, not only its id `[C]`: `compositeId` =
-  `<personGroupBoId>-<group record id>`, and the `G-<id>` of `orgUnitIds` is that same record id.
+- An export with rights also carries one `ExportStructInstanceDto` per unit it mentions — the unit's whole
+  RECORD, not only its id `[C]`: a group (`boCode:"PersonGroup"`, `kind:"PERSON_GROUP"`, `fieldMap` with `name`,
+  `header`, `users`), a user (`boCode:"Person"`, `kind:"PERSON"`, `fieldMap` with `surname`, `name`, `email` —
+  the login —, `phone`, `accessLevel`, `personGroup` …), each with `sources[].accessRightsInstanceSource`;
+  `compositeId` = `<unit BO id>-<record id>`, and the `G-<id>` / `P-<id>` of `orgUnitIds` is that same record id.
+  A dictionary in the export carries its rows the same way (`sources[].sourceType:"DEFAULT_VALUE"`), and a row
+  keeps its id on the target. So an export of BOs only still holds `Person` / `PersonGroup` / dictionary rows.
+- **Each record line has an apply mode, chosen before the apply** `[C]`: the analysis screen's tab «Инстанции»
+  lists the lines per BO with «Что произойдёт» and «Режим» — «Только создание» (`CREATE_ONLY`, the default) or
+  «Обновить поля» (`UPSERT`), per line or «Для всех инстанций этого объекта» (API: `MYBPM-UI-API.md` R3 step 4).
+  `CREATE_ONLY` never changes a record that exists on the target: a line matched by id or mapped by a conflict
+  leaves that user / group as it is, and the rights point at it. **`UPSERT` writes the archive's fields onto
+  that record** `[C]`: a user mapped by a conflict takes the SOURCE user's name, phone and **e-mail — the login, so
+  their own login stops working** — and a group takes the archive's name, head and members. A conflict-mapped line
+  shows «Будет создана» although it writes onto the mapped unit. Across companies keep every line on «Только
+  создание». The same holds for dictionary rows: a row the target already has keeps its values under «Только
+  создание» — a label changed on the source arrives only with «Обновить поля» on that row. `[I]` A rollback does not give an overwritten name back `[I]`.
+- **A unit named in the rights whose record line is NOT in the archive is dropped silently** `[C]`: the analysis
+  shows no conflict and no error, its per-BO diff lists the unit in «after» under the name `XXX` (a user
+  `XXX XXX`), and the apply removes it from the right — an action left with no one is «nobody». An id the target
+  knows (the same company) stays. So never cut `Person` / `PersonGroup` lines out of an archive whose rights name
+  them; keep them and leave their mode on «Только создание».
 - **The import never creates a group (or department) from such a line** `[C]`. A line whose id the target
   does not know makes the analysis report a `SELECT_INSTANCE` conflict (`exportedOrgUnitName`, `selectFromIds`
   = the candidates), and the apply is refused («Conflicts have to be resolved before applying») until the
@@ -4743,11 +4767,6 @@ BO — is 0.9 rule 10.
   `ACCESS_RIGHTS_ORG_UNIT_NOT_MAPPED` per unit, which does NOT block the apply — the unit is dropped from the
   right, and an action left with no one is «nobody». Read the analysis errors; on such a target create the units
   first and analyse again.
-- **Trap: the import writes the archive's group name onto the stand's group** `[C]` — onto the group the
-  line's id matches (no conflict), and onto the group a conflict was mapped to. An old export re-imported
-  reverts a group renamed since; an archive from another stand renames the groups it is mapped onto. Set
-  `fieldMap.name.storedValue` to the TARGET group's current name before importing — **a rollback of the import
-  does NOT give the old name back** `[C]`.
 - Getting group ids for an archive: set probe rights on one BO with a DIFFERENT group per action
   (view/edit/delete/archive/export), export the structure, map ids by action; or call
   `load-org-unit-record-list`. Archive ids are `G-<id>`, API ids have no prefix.
@@ -4764,7 +4783,14 @@ BO — is 0.9 rule 10.
 
 ### Re-import of the same ids — matched by `oldId` / `newId` `[C]`
 
-- **A re-import matches the BO by `oldId` and its fields by `newId`, NOT by code** `[C]`. What a re-import does
+- **A re-import matches the BO by `oldId` and its fields by `newId`** `[C]`.
+- **An `oldId` the company does not know, with a BO `code` it has, merges into that BO by code** `[C]`: the BO
+  keeps the stand's id, the fields are matched by code (the pre-apply diff lists them all as «changed», none as
+  «added»), the rights and scripts of the archive replace the stand's. This is what re-importing a stand export
+  does, since every export mints fresh ids (§1), and what an archive from another company does to a BO of the same
+  code on the target. A new code takes the archive's `oldId` as its id, and its options take the archive's
+  `newOptionId`s — so option ids differ between companies (§8 «Moving a system to another company»).
+- What a re-import does
   to an existing field's `type` or `code` (same `newId`, new value), or to a BO's `category` (same `oldId`), is
   not known yet `[U]` — §18; change those in the constructor.
   An archive whose BO `oldId` was already imported, but whose field `newId`s are all fresh, analyses with
@@ -4827,6 +4853,32 @@ What a group line of the archive does to the stand's groups:
   be code-less again. A group created now always gets a code `Gruppa__N`.
 - **An import never deletes a group** `[I]` (the import client has no delete path, above): an archive without
   a group's line leaves it in place; only a rollback removes a group, and only one that import CREATED.
+
+### Moving a system to another company or stand — what does not carry over by itself `[C]`
+
+An export of one company imported into another applies cleanly and still loses things silently. Check each:
+
+1. **Export everything the system uses**: the BOs with Структура + Права доступа + Скрипты, «Элементы меню»,
+   «Аналитика» if used, and «Настройки» — company settings (audit trail, global methods …) travel only in that
+   basket (§2 «The other company-settings kinds»); a BO-only export leaves them at the target's values.
+2. **Before the import, on the target**: create the groups, departments and users the rights name (records, §3);
+   give the options that script constants name the SAME codes as on the source — a constant travels as
+   `optionCode` (§5d, 0S.6), and the built-in options of a new company (`Person.accessLevel`, `status` …) have no
+   code until the BO is saved once in the constructor, which fills every missing option code from its label
+   (`MYBPM-UI-API.md` R1). Compare the codes of both sides.
+3. **At the analysis**: map every conflict onto the target's unit, keep every record line on «Только создание»
+   (§8 above), and read the per-BO diff — a unit named `XXX` will be dropped from the rights.
+4. **After the apply**:
+   - every `SingleSelectRefCode` constant of every script has an `optionId` — one whose option code the target
+     lacks comes without it, the script still translates and compares with an empty option at run time (an
+     «only admins may …» check then refuses the admin);
+   - every menu-item filter on a dropdown with its own options (`optionSource FROM_FIELD`) still holds the SOURCE
+     option id as `value` — the item lists nothing; set each value to the target option with the same label and
+     save the filter (`MYBPM-UI-API.md` §4 «Record filters»). A dictionary dropdown's value is the row code, and
+     dictionary rows keep their ids, so those filters survive;
+   - a BO whose code the target already had kept the target's id (§8 «Re-import»), a new one took the archive's
+     — anything outside the archive that names a BO by id (links, integrations) is re-pointed by hand;
+   - read the rights back and compare what each user sees on both sides.
 
 #### After the import — the stand-side calls `[C]`
 
@@ -5157,7 +5209,9 @@ A BO **type** (`BoRefCode` — the left operand of create-instance and of `findB
 (`ScriptDefStructDto`, §5d) it is **`optionCode` = the option's CODE**, and an `optionId` there is dropped
 silently — the script translates and then writes an EMPTY option; in the clipboard / on the stand
 (`load-script-def`, `apply-update-cmd`) it is `optionId` = the option's stand id (`v2/script/load-bo-field-options`)
-— whether a clipboard paste also takes the code is `[U]`.
+— whether a clipboard paste also takes the code is `[U]`. The import looks the code up among the TARGET field's options: an option
+without that code there (the built-in options of a new company have none) gives a constant with no `optionId`,
+silently (§8 «Moving a system to another company») `[C]`.
 
 ```json
 {"exprValueType":"VAR_REF","varBlockId":"<BlockNewVar | BlockForeach | parameter id>","type":"ExprValue"}

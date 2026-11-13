@@ -587,6 +587,12 @@ const steps: [string, unknown, (r: any) => boolean][] = [
       && r.fields[6].code === "comment" && r.fields[6].grid === "0/21/8/3"],
   ["bo_code_set", { code: "mcp_probe_client", newCode: "mcp_probe_customer" }, (r) => r.was === "mcp_probe_client" && r.code === "mcp_probe_customer"],
   ["bo_code_set", { code: "mcp_probe_customer", fieldId: "@bo_create.fields.0.fieldId", newCode: "title" }, (r) => r.was === "name" && r.code === "title"],
+  // CURRENT_USER: the BO DTO gives it type "BO" and no code — the code is its controller's, read back a few seconds late (UI-API §5i)
+  ["bo_fields_save", { code: "mcp_probe_customer", add: [{ label: "Текущий", type: "CURRENT_USER", code: "cur_user" }], window: false },
+    (r) => r.fields.length === 8 && r.fields[7].type === "CURRENT_USER" && r.fields[7].code === "cur_user" && !r.notes.some((n: string) => /widget code/.test(n))],
+  ["bo_code_set", { code: "mcp_probe_customer", fieldId: "@bo_fields_save.fields.7.fieldId", newCode: "cur_viewer" }, (r) => r.was === "cur_user" && r.code === "cur_viewer"],
+  ["bo_read", { code: "mcp_probe_customer" }, (r) => r.fields[7].type === "CURRENT_USER" && r.fields[7].code === "cur_viewer"],
+  ["bo_fields_save", { code: "mcp_probe_customer", delete: ["@bo_fields_save.fields.7.fieldId"], window: false }, (r) => r.fields.length === 7],
   ["bo_create", { group: "Пустая группа", name: "MCP probe dup", code: "mcp_probe_customer" }, (r) => /taken/.test(r)],
   ["co_build", { group: "Бизнес-объект", name: "MCP probe composite", code: "mcp_probe_co", attrs: [
     { links: [{ bo: "MCP probe client", field: "Наименование" }] },
@@ -737,6 +743,10 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["script_write", { code: "mcp_probe_scripts", hook: "afterSave", def: { blocks: { AAAAAAAAAAAAAAA3: { x: 40, y: 40, type: "BlockFixEntryPoint" } }, expressions: {} } },
     (r) => r.written === false && r.reverted === true && /did not translate/.test(r.why)],
   ["scripts_read", { code: "mcp_probe_scripts" }, (r) => r.scripts.find((x: any) => x.hook === "afterSave")?.translate.success === true],
+  // an option constant with no optionId in a comparison (an option code the target lacked at import) — flagged; an assigned one would be legal
+  ["script_write", { code: "mcp_probe_scripts", hook: "afterSave", keep: true, def: {"blocks":{"CCCCCCCCCCCCCCC1":{"x":40,"y":40,"downBlockId":"CCCCCCCCCCCCCCC2","type":"BlockFixEntryPoint"},"CCCCCCCCCCCCCCC2":{"ifExprId":"DDDDDDDDDDDDDDD3","branches":{},"downBlockId":"CCCCCCCCCCCCCCC3","type":"BlockIf"},"CCCCCCCCCCCCCCC3":{"exitType":"FROM_METHOD","type":"BlockExit"}},"expressions":{"DDDDDDDDDDDDDDD1":{"exprValueType":"CONST","constType":"SingleSelectRefCode","boCode":"Person","fieldCode":"accessLevel","valueType":{"baseType":"SingleSelectRefCode","type":"SingleSelect","boCode":"Person","fieldCode":"accessLevel"},"type":"ExprValue"},"DDDDDDDDDDDDDDD2":{"exprValueType":"CONST","constType":"SingleSelectRefCode","boCode":"Person","fieldCode":"accessLevel","optionId":"ADMIN","valueType":{"baseType":"SingleSelectRefCode","type":"SingleSelect","boCode":"Person","fieldCode":"accessLevel"},"type":"ExprValue"},"DDDDDDDDDDDDDDD3":{"opType":"Eq","leftExprId":"DDDDDDDDDDDDDDD2","rightExprId":"DDDDDDDDDDDDDDD1","type":"ExprOp"}}} }, (r) => r.written === true],
+  ["scripts_read", { code: "mcp_probe_scripts", check: false }, (r) => r.scripts.find((x: any) => x.hook === "afterSave")?.notes?.length === 1
+    && /option constant of Person.accessLevel that has no optionId/.test(r.scripts.find((x: any) => x.hook === "afterSave").notes[0]) && !r.scripts.find((x: any) => x.hook === "afterSave").def],
   ["script_write", { code: "mcp_probe_scripts", field: "amount", dryRun: true, def: { blocks: { BAD: { type: "BlockNope" } }, expressions: {} } },
     (r) => r.written === false && r.errors.some((e: string) => /16 characters/.test(e)) && r.errors.some((e: string) => /not a block type/.test(e)) && /refused/.test(r.why)],
   ["script_write", { code: "mcp_probe_scripts", method: "m1", def: { blocks: {
@@ -870,7 +880,11 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["filter_try", { code: "mcp_probe_records", filter: { field: "done", eq: false }, as: "nobody@mock" }, (r) => /nobody@mock/.test(r)],
   ["filter_try", { code: "mcp_probe_records", filter: { field: "status", eq: "Нет такого" } }, (r) => /not an option/.test(r)],
   ["filter_save", { item: "MCP записи", filter: { all: [{ field: "done", eq: false }, { field: "status", eq: "В работе" }] } }, (r) => r.saved && r.total === 1 && r.filterId],
-  ["menu_read", { under: "MCP группа" }, (r) => r.items[1].filter === true && r.items[1].selectiveRights === true],
+  ["menu_read", { under: "MCP группа" }, (r) => r.items[1].filter === true && r.items[1].selectiveRights === true && !r.notes],
+  // a dropdown value that is none of the options (an option id of the source company) is flagged
+  ["menu_save", { change: [{ item: "MCP записи", code: "stale_items" }] }, (r) => r.items[0].code === "stale_items"],
+  ["menu_read", { under: "MCP группа" }, (r) => r.notes?.length === 1 && /«MCP записи»: filter «.*» = STALEOPTION00001, none of its options.*lists nothing/.test(r.notes[0])],
+  ["menu_save", { change: [{ item: "stale_items", code: "mcp_items" }] }, (r) => r.items[0].code === "mcp_items"],
   // rename, code, counter, mobile flag, moves and ungroup — one call each (§4); a GROUP is deleted with its items
   ["menu_save", { change: [{ item: "MCP записи", name: "MCP заявки", code: "mcp_zayavki", count: true, mobile: false }] },
     (r) => !r.mismatch?.length && r.items[0].name === "MCP заявки" && r.items[0].code === "mcp_zayavki" && r.items[0].count === true && r.items[0].hiddenInMobApp === true],
@@ -912,6 +926,11 @@ const steps: [string, unknown, (r: any) => boolean][] = [
   ["archive_put", { name: "conflict", part: 1, last: true, lines: JSON.stringify({ "@class": "kz.greetgo.mybpm.reg.structure.model.dto.BoStructDto", code: "Conflict_probe", category: "BO", name: { rus: "Conflict" } }) },
     (r) => r.bos[0].code === "Conflict_probe"],
   ["import_analyze", { name: "conflict", skipLint: true }, (r) => r.conflicts[0].type === "GROUP" && r.conflicts[0].name === "Архивная группа" && r.conflicts[0].candidates[0].text === "Менеджеры" && /conflicts/.test(r.next)],
+  // the record lines and their mode (tab «Инстанции»); a user the rights name with no line in the archive → «XXX», dropped by the apply
+  ["import_report", { importId: "@import_analyze.importId" }, (r) => r.records.length === 1 && r.records[0].bo === "PersonGroup" && r.records[0].mode === "CREATE_ONLY"
+    && r.notes.length === 1 && /edit names PERSON PERSONLOST000001.*drops it silently/.test(r.notes[0])],
+  ["stand_call", { path: "import-structure/save-import-instance-mode", params: { importId: "@import_analyze.importId", compositeId: "GROUPBO000000001-GARCHIVE00000001", applyMode: "UPSERT" } }, (r) => r === null || r === "null"],
+  ["import_report", { importId: "@import_analyze.importId" }, (r) => r.records[0].mode === "UPSERT" && r.notes.some((n: string) => /«Обновить поля» \(UPSERT\).*e-mail is the login/.test(n))],
   ["import_apply", { importId: "@import_analyze.importId", description: "mcp conflict" }, (r) => /conflicts still open/.test(r)],
   ["import_apply", { importId: "@import_analyze.importId", description: "mcp conflict", resolve: { CONFLICT00000001: "Менеджеры" } }, (r) => r.status === "APPLIED"],
   ["import_rollback", { importId: "@import_analyze.importId", confirm: true }, (r) => r.log.status === "ROLLED_BACK"],
