@@ -772,6 +772,18 @@ function archivePath(args) {
     throw new Error(`${p}: no such file${args.name ? " — finish it with archive_put last:true" : ""}`);
   return p;
 }
+function emptyOptionCompares(def) {
+  const ex = def?.expressions ?? {}, out = [];
+  const bare = (id) => ex[id]?.constType === "SingleSelectRefCode" && ex[id]?.exprValueType === "CONST" && !ex[id]?.optionId;
+  for (const e of Object.values(ex)) {
+    if (e?.type !== "ExprOp")
+      continue;
+    for (const id of [e.leftExprId, e.rightExprId, ...Object.values(e.more ?? {}).map((m) => m?.exprId)])
+      if (id && bare(id))
+        out.push(`${ex[id].boCode}.${ex[id].fieldCode}`);
+  }
+  return out;
+}
 var cut = (s, n = 1500) => typeof s === "string" && s.length > n ? s.slice(0, n) + " …" : s;
 var clean = (o) => JSON.parse(JSON.stringify(o, (_, v) => v === null || Array.isArray(v) && !v.length ? undefined : v));
 async function importReport(s, importId) {
@@ -786,7 +798,43 @@ async function importReport(s, importId) {
     pageId = page.nextPageId;
   }
   const bos = await s.call("import-structure/load-import-bo-infos", {}, { importId });
-  return { importId, status: data?.status, error: cut(data?.error), conflicts: await conflictRows(s, importId, data?.conflicts), errors, bos };
+  const records = data?.status === "ANALYZED" ? await recordLines(s, importId) : [];
+  const notes = [
+    ...records.filter((r) => r.mode === "UPSERT" && r.existsOnTarget !== undefined).map((r) => `record line ${r.bo} «${r.name}» is «Обновить поля» (UPSERT): the apply overwrites the existing or conflict-mapped record with the archive's — a user's e-mail is the login (IMPORTS §8)`),
+    ...data?.status === "ANALYZED" ? await droppedUnits(s, importId, bos) : []
+  ];
+  return {
+    importId,
+    status: data?.status,
+    error: cut(data?.error),
+    conflicts: await conflictRows(s, importId, data?.conflicts),
+    errors,
+    bos,
+    ...records.length ? { records } : {},
+    ...notes.length ? { notes } : {}
+  };
+}
+async function recordLines(s, importId) {
+  const first = await s.call("import-structure/load-import-instances", { importId }).catch(() => null);
+  const rows = [];
+  for (const b of first?.businessObjects ?? []) {
+    const page = await s.call("import-structure/load-import-instances", { importId, boCode: b.boCode }).catch(() => null);
+    for (const i of page?.instances ?? [])
+      rows.push({ bo: i.boCode, name: i.name, compositeId: i.compositeId, existsOnTarget: i.existsOnTarget, mode: i.applyMode });
+  }
+  return rows;
+}
+async function droppedUnits(s, importId, bos) {
+  const notes = [];
+  for (const b of (bos ?? []).filter((x) => x?.structTypes?.includes("ACCESS_RIGHTS"))) {
+    const rec = await s.call("import-structure/load-import-bo-record", { importId, recordId: b.importRecordId }).catch(() => null);
+    const after = rec?.accessRightsInfo?.boAccessRightChange?.accessGroupChange?.after ?? {};
+    for (const [action, a] of Object.entries(after))
+      for (const u of a?.orgUnitRecordList ?? [])
+        if (/^XXX( XXX)?$/.test(u?.name ?? ""))
+          notes.push(`${b.name}: ${action} names ${u.type} ${u.id}, unknown to the target and without its record line in the archive — the apply drops it silently (an action left with no one = nobody); keep its Person / PersonGroup line in the archive or map it (IMPORTS §8)`);
+  }
+  return notes;
 }
 async function logRow(s, importId) {
   const rows = await s.call("import-structure/load-import-file-records", {}, { paging: { offset: 0, limit: 50 } });
@@ -841,7 +889,7 @@ async function resolveConflicts(s, importId, resolve = {}) {
     await s.call(CF_ + "resolve-conflicts", { importId }, body);
   const open = (await conflictRows(s, importId, (await s.call("import-structure/load-import-data", { importId }))?.conflicts)).filter((r) => !r.resolved);
   if (open.length)
-    throw new Error(`conflicts still open — the stand refuses the apply until each is mapped onto an existing unit; pass resolve {conflictId: unit id} (the apply WRITES the archive's name onto the chosen unit): ${JSON.stringify(open).slice(0, 1500)}`);
+    throw new Error(`conflicts still open — the stand refuses the apply until each is mapped onto an existing unit; pass resolve {conflictId: unit id} (the chosen unit stays as it is while its record line is «Только создание», the default): ${JSON.stringify(open).slice(0, 1500)}`);
 }
 async function applyImport(s, importId, description, resolve) {
   if (!String(description ?? "").trim())
@@ -933,6 +981,18 @@ var WIDGET_CODE = {
   CURRENT_USER: ["widget-current-user", "save-current-user-code", "currentUserId"],
   ...Object.fromEntries(["CURRENT_DATE", "CURRENT_DAY", "CURRENT_MONTH", "CURRENT_DAY_AND_MONTH", "CURRENT_YEAR"].map((t) => [t, ["current-date", "save-current-date-code", "currentDateId"]]))
 };
+var fieldType = (f) => f.widgetType ?? f.type ?? f.nativeFieldType;
+async function widgetCode(s, boId, f, want) {
+  const w = WIDGET_CODE[f.widgetType ?? f.type];
+  if (!w)
+    return f.code;
+  for (let i = 0;; i++) {
+    const got = await s.call(`v2/${w[0]}/${w[1].replace("save-", "load-")}`, { boId, [w[2]]: f.fieldId });
+    if (want === undefined || got === want || i >= 20)
+      return got;
+    await sleep(500);
+  }
+}
 var LOST_ON_ADD = ["useAsKeyInMigration", "needMarkNew", "needAddToParticipants"];
 function onlyKeys(what, o, known) {
   const bad = Object.keys(o).filter((k) => !known.includes(k));
@@ -1240,9 +1300,12 @@ async function addFields(s, boId, specs, window) {
   };
   for (const { spec, dto } of later) {
     const w = WIDGET_CODE[spec.type];
-    if (spec.code && w)
+    if (spec.code && w) {
       await settled(() => s.call(`v2/${w[0]}/${w[1]}`, { boId, [w[2]]: dto.fieldId, code: spec.code }));
-    else if (spec.code && !NATIVES.includes(spec.type))
+      const got = await widgetCode(s, boId, { fieldId: dto.fieldId, widgetType: spec.type }, spec.code);
+      if (got !== spec.code)
+        notes.push(`«${spec.label ?? spec.type}»: the widget code reads back «${got}», not «${spec.code}» after 10 s — bo_code_set it`);
+    } else if (spec.code && !NATIVES.includes(spec.type))
       await settled(() => s.call(BO_ + "save-business-field-code", { businessObjectId: boId, businessFieldId: dto.fieldId, businessFieldCode: spec.code }));
     else if (!NATIVES.includes(spec.type) && !(spec.type === "STATIC_TEXT"))
       uncoded.push(spec.label ?? spec.type);
@@ -1292,16 +1355,16 @@ async function addFields(s, boId, specs, window) {
   }
   return { added: later.map(({ spec, dto }) => ({ fieldId: dto.fieldId, label: spec.label ?? dto.label, type: spec.type })), window: win, notes };
 }
-var fieldRows = (bo) => (bo.formFields ?? []).map((f) => clean({
+var fieldRows = async (s, bo) => Promise.all((bo.formFields ?? []).map(async (f) => clean({
   fieldId: f.fieldId,
-  code: f.code,
+  code: f.widgetType && f.code == null ? await widgetCode(s, bo.id, f) : f.code,
   label: f.label,
-  type: f.type ?? f.widgetType ?? f.nativeFieldType,
+  type: fieldType(f),
   tabId: f.tabId,
   grid: f.gridPosition && [f.gridPosition.x, f.gridPosition.y, f.gridPosition.cols, f.gridPosition.rows].join("/"),
   required: f.isRequired || undefined,
   column: f.tableColToShow ? f.tableColOrderIndex ?? true : undefined
-}));
+})));
 async function registryColumns(s, boId, want) {
   const bo = await loadBo(s, boId), fields = bo.formFields ?? [];
   const pick = (k) => {
@@ -2826,6 +2889,19 @@ async function menuRows(s, items) {
       fields.set(m.boId, (await loadBo(s, m.boId).catch(() => ({}))).formFields ?? []);
   return items.map((m) => menuRow(m, fields.get(m.boId)));
 }
+async function staleFilterValues(s, m) {
+  const f = await s.call("v2/menu-item/load-bracket-filter", { menuItemId: m.id }).catch(() => null), out = [];
+  const walk = (bs) => {
+    for (const b of bs ?? []) {
+      for (const d of b?.dynamicFilters ?? [])
+        if (["DROPDOWN_SINGLE", "RADIO_BUTTON_GROUP"].includes(d?.type) && d?.value && d?.options?.length && !d.options.some((o) => o?.id === d.value))
+          out.push(`menu item «${m.displayName ?? m.name}»: filter «${d.label ?? d.fieldId}» = ${d.value}, none of its options (${d.options.map((o) => o?.label).join(", ")}) — it lists nothing; set it to the option with the source's label (filter_save)`);
+      walk(b?.brackets);
+    }
+  };
+  walk(f?.brackets);
+  return out;
+}
 var menuBranch = (tree, id) => [tree.find((m) => m.id === id), ...tree.filter((m) => m.parentId === id).flatMap((c) => menuBranch(tree, c.id))].filter(Boolean);
 var id8 = () => newId().slice(0, 8);
 var isGroup = (n) => Array.isArray(n?.all) || Array.isArray(n?.any);
@@ -3107,18 +3183,18 @@ var tools = [
         isDictionary: bo.isDictionary,
         hasScript: bo.hasScript,
         boTabs: bo.boTabs,
-        fields: (bo.formFields ?? []).map((f) => ({
+        fields: await Promise.all((bo.formFields ?? []).map(async (f) => ({
           fieldId: f.fieldId,
-          code: f.code,
+          code: f.widgetType && f.code == null ? await widgetCode(s, bo.id, f) : f.code,
           label: f.label,
-          type: f.type ?? f.widgetType ?? f.nativeFieldType,
+          type: fieldType(f),
           archetype: f.boFieldArchetype,
           tabId: f.tabId,
           grid: f.gridPosition && [f.gridPosition.x, f.gridPosition.y, f.gridPosition.cols, f.gridPosition.rows].join("/"),
           refBoId: f.refBoId,
           required: f.isRequired || undefined,
           column: f.tableColToShow ? f.tableColOrderIndex ?? true : undefined
-        }))
+        })))
       });
     }
   },
@@ -3182,7 +3258,7 @@ var tools = [
   },
   {
     name: "import_analyze",
-    description: "Upload an archive and run the stand's analysis (R3 steps 1-4) — the dry run: NOTHING is written, the import stays ANALYZED. Lints first and stops on a defect unless `skipLint`. Returns importId, status, analysis errors, conflicts and one row per BO. Next: import_apply (writes) or import_cancel. Several analysed imports may wait side by side; each one applies on its own.",
+    description: "Upload an archive and run the stand's analysis (R3 steps 1-4) — the dry run: NOTHING is written, the import stays ANALYZED. Lints first and stops on a defect unless `skipLint`. Returns importId, status, analysis errors, conflicts, one row per BO, the archive's record lines (Person / PersonGroup / dictionary rows) with their apply mode — «Только создание» CREATE_ONLY leaves an existing or conflict-mapped record as it is, «Обновить поля» UPSERT overwrites it (R3 step 4) — and notes: an UPSERT line, a unit the rights name that the apply will drop («XXX» in the diff). Next: import_apply (writes) or import_cancel. Several analysed imports may wait side by side; each one applies on its own.",
     props: {
       path: { type: "string", description: "A .mybpm.zip on this machine" },
       name: { type: "string", description: "An archive built with archive_put" },
@@ -3197,7 +3273,7 @@ var tools = [
           return { stopped: "the form lint flags defects — fix the archive (or pass skipLint)", lint: l.out };
       }
       const r = await analyzeFile(stand(a), file);
-      return { ...r, next: r.conflicts.some((c) => !c.resolved) ? "conflicts: show the user each unit and its candidates, ask which existing unit it maps onto (the apply renames that unit to the archive's name); then import_apply with resolve, or import_cancel" : "read errors + bos; then import_apply (asks the user) or import_cancel" };
+      return { ...r, next: r.conflicts.some((c) => !c.resolved) ? "conflicts: show the user each unit and its candidates, ask which existing unit it maps onto (the unit stays as it is; its record line must stay «Только создание»: «Обновить поля» overwrites it, a user's e-mail = login included); then import_apply with resolve, or import_cancel" : "read errors + bos; then import_apply (asks the user) or import_cancel" };
     }
   },
   {
@@ -3215,7 +3291,7 @@ var tools = [
   {
     name: "import_apply",
     write: true,
-    description: "APPLY an analysed import — the one call that writes the structure to the stand (R3 steps 5-7). Ask the user first and give them the description. Conflicts (§5 «Conflicts»: a group or user the archive names in its rights that the stand does not know) must each be mapped onto an EXISTING unit first — `resolve` {conflictId: unit id or its shown text} from the candidates import_analyze listed; the import never creates a unit and the apply WRITES the archive's name onto the chosen one (a rollback does not undo that rename), so ask the user which unit. Any conflict left open refuses. Waits for the apply process, then reads the import log back (status APPLIED, canRollback).",
+    description: "APPLY an analysed import — the one call that writes the structure to the stand (R3 steps 5-7). Ask the user first and give them the description. Conflicts (§5 «Conflicts»: a group or user the archive names in its rights that the stand does not know) must each be mapped onto an EXISTING unit first — `resolve` {conflictId: unit id or its shown text} from the candidates import_analyze listed; the import never creates a unit; the chosen unit is left as it is while its record line keeps the default mode «Только создание» (an «Обновить поля» line overwrites it with the source record — a user's e-mail, the login, included), so ask the user which unit. Any conflict left open refuses. Waits for the apply process, then reads the import log back (status APPLIED, canRollback).",
     props: {
       importId: { type: "string" },
       description: { type: "string", description: "What and why — required by the stand" },
@@ -3348,7 +3424,7 @@ var tools = [
           url: `${s.c.origin}/business-objects/editing/${id}/object-editing`,
           window: done.window,
           notes: done.notes,
-          fields: fieldRows(bo),
+          fields: await fieldRows(s, bo),
           next: "compare fields with what you asked; codes of tabs are not set by this tool (§5k); rights → rights_save"
         });
       } catch (e) {
@@ -3479,7 +3555,7 @@ var tools = [
       }
       if (a.add?.length || a.edit?.some((e) => ["x", "y", "cols", "rows"].some((k) => e[k] !== undefined) || e.set?.gridPosition || e.set?.tabId) || a.delete?.length)
         notes.push(...await layoutLint(s, boId, bo.code));
-      return clean({ boId, code: bo.code, added: added?.added, window: added?.window, notes: [...notes, ...added?.notes ?? []], fields: fieldRows(bo) });
+      return clean({ boId, code: bo.code, added: added?.added, window: added?.window, notes: [...notes, ...added?.notes ?? []], fields: await fieldRows(s, bo) });
     }
   },
   {
@@ -3514,10 +3590,12 @@ var tools = [
       if ((bo.formFields ?? []).some((x) => x !== f && x.code === newCode))
         throw new Error(`another field of this BO already has the code «${newCode}»`);
       const w = WIDGET_CODE[f.widgetType ?? f.type];
-      if (w)
+      if (w) {
+        const was = await widgetCode(s, boId, f);
         await s.call(`v2/${w[0]}/${w[1]}`, { boId, [w[2]]: f.fieldId, code: newCode });
-      else
-        await s.call(BO_ + "save-business-field-code", { businessObjectId: boId, businessFieldId: f.fieldId, businessFieldCode: newCode });
+        return { boId, fieldId: a.fieldId, was, code: await widgetCode(s, boId, f, newCode) };
+      }
+      await s.call(BO_ + "save-business-field-code", { businessObjectId: boId, businessFieldId: f.fieldId, businessFieldCode: newCode });
       const back = ((await loadBo(s, boId)).formFields ?? []).find((x) => x.fieldId === a.fieldId);
       return { boId, fieldId: a.fieldId, was: f.code, code: back?.code };
     }
@@ -4081,7 +4159,7 @@ var tools = [
   },
   {
     name: "scripts_read",
-    description: "A BO's Block IDE scripts (§5g «Reading a BO's scripts headlessly»): its script versions, the wiring of the chosen one — the four hooks (onOpen, afterSave, onClose, onCreate), the field scripts keyed by field CODE, the local methods — and per script {scriptModuleId, scriptId}, whether it translates (check, default true) and with defs:true its def {blocks, expressions}. A blind version (trap 68: empty load-bo-def-list) is flagged. global:true — the company-global methods instead (no BO needed). Process figures' scripts: process_read.",
+    description: "A BO's Block IDE scripts (§5g «Reading a BO's scripts headlessly»): its script versions, the wiring of the chosen one — the four hooks (onOpen, afterSave, onClose, onCreate), the field scripts keyed by field CODE, the local methods — and per script {scriptModuleId, scriptId}, whether it translates (check, default true) and with defs:true its def {blocks, expressions}. A blind version (trap 68: empty load-bo-def-list) is flagged. A script that compares with an option constant lacking its optionId (an option code the stand lacked at an import) gets a note. global:true — the company-global methods instead (no BO needed). Process figures' scripts: process_read.",
     props: {
       boId: { type: "string" },
       code: { type: "string", description: "The BO code instead of boId" },
@@ -4092,13 +4170,18 @@ var tools = [
     },
     run: async (a) => {
       const s = stand(a), check = a.check !== false;
-      const one = async (scriptModuleId, scriptId, extra) => clean({
-        ...extra,
-        scriptModuleId,
-        scriptId,
-        ...check ? { translate: await translate(s, scriptModuleId, scriptId) } : {},
-        ...a.defs ? { def: await s.call(SC_ + "load-script-def", { scriptModuleId, scriptId }) } : {}
-      });
+      const one = async (scriptModuleId, scriptId, extra) => {
+        const def = await s.call(SC_ + "load-script-def", { scriptModuleId, scriptId });
+        const empty = emptyOptionCompares(def);
+        return clean({
+          ...extra,
+          scriptModuleId,
+          scriptId,
+          ...check ? { translate: await translate(s, scriptModuleId, scriptId) } : {},
+          ...empty.length ? { notes: empty.map((c) => `compares with an option constant of ${c} that has no optionId — it translates, yet at run time compares with an empty option (an option code the stand lacks at import, IMPORTS §8 «Moving a system to another company»); set the option`) } : {},
+          ...a.defs ? { def } : {}
+        });
+      };
       if (a.global) {
         const g = await globalMethods(s);
         return { scriptModuleId: g.scriptModuleId, methods: await Promise.all(g.methods.map((m) => one(g.scriptModuleId, m.scriptId, { method: m.methodName }))) };
@@ -4734,12 +4817,13 @@ var tools = [
   },
   {
     name: "menu_read",
-    description: 'The sidebar menu (R6, §4) as a tree, every level (load-nav-items per GROUP): per item id, code, type (GROUP, BO, built-in kinds), name, icon, the BO it opens, parentId, order, depth, the views switched on ({list: true, kanban: "<dropdown code>", calendar, timeline, map}), selectiveRights (rights_read menu:<id> shows who sees it), filter (it carries a record filter). `under` = only the branch of one item (id, code or name).',
+    description: 'The sidebar menu (R6, §4) as a tree, every level (load-nav-items per GROUP): per item id, code, type (GROUP, BO, built-in kinds), name, icon, the BO it opens, parentId, order, depth, the views switched on ({list: true, kanban: "<dropdown code>", calendar, timeline, map}), selectiveRights (rights_read menu:<id> shows who sees it), filter (it carries a record filter). `under` = only the branch of one item (id, code or name). notes: a dropdown value of a filter that is none of its options (left by an import from another company — the item lists nothing).',
     props: { under: { type: "string" } },
     run: async (a) => {
       const s = stand(a), tree = await menuTree(s);
       const items = a.under ? menuBranch(tree, menuItem(tree, a.under).id) : tree;
-      return { items: await menuRows(s, items) };
+      const notes = (await Promise.all(items.filter((m) => m.bracketFilterId).map((m) => staleFilterValues(s, m)))).flat();
+      return { items: await menuRows(s, items), ...notes.length ? { notes } : {} };
     }
   },
   {

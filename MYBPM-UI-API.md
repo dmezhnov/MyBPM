@@ -552,7 +552,15 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. MCP
    - `load-import-bo-infos` — **`B {"importId":…}`** (body, not params!) →
      `[{importRecordId,name,boCategory,structTypes}]`, one row per object in the archive;
    - `load-import-bo-record` — `P {"importId":…,"recordId":…}` → the per-BO pre-apply diff (added fields,
-     changed fields, added tabs/widgets).
+     changed fields, added tabs/widgets; in `accessRightsInfo` «after» a unit named `XXX` / `XXX XXX` is one the
+     rights name but neither the target nor the archive has — the apply drops it, `MYBPM-IMPORTS.md` §8);
+   - the record lines (tab «Инстанции»): `load-import-instances` — `P {"importId":…,"boCode":…}` →
+     `{businessObjects:[{boCode, boName, instanceCount}], instances:[{compositeId, boCode, name, existsOnTarget,
+     applyMode}]}` (the `instances` of that BO); `save-import-instance-mode` — `P {importId, compositeId,
+     applyMode}` → `null`, `applyMode` `CREATE_ONLY` («Только создание», the default) or `UPSERT` («Обновить
+     поля»), only before the apply; `save-import-instance-mode-for-bo` takes `{importId, boCode, applyMode}` for all
+     lines of a BO `[I]`. `UPSERT` overwrites the existing or conflict-mapped user / group with the archive's
+     record — a user's e-mail is the login (`MYBPM-IMPORTS.md` §8) `[C]`.
    **Read this before applying — all three, an empty `errorRecords` alone is not a guarantee.** The analysis
    errors of the UI «Ошибки» tab come back in `load-import-errors` of the SAME `importId` `[C]` (another
    import's errors look empty); an analyzer crash is not an error
@@ -580,6 +588,14 @@ How to BUILD the archive → `MYBPM-IMPORTS.md` §0. This is how to ship it. MCP
    last — read §5 «Rollback trap» before undoing anything but a single import. A rolled-back BO is deleted
    SOFTLY: an archive with the same `oldId` revives it with all its old fields (§5 «A deleted BO comes back»).
 
+**Moving a system into another company** (checklist: `MYBPM-IMPORTS.md` §8 «Moving a system to another company»)
+`[C]`: export also the «Элементы меню» and «Настройки» baskets; on the target create the groups / users first and
+give the options that script constants name the source's codes (one constructor save of a BO fills its missing
+option codes from the labels — the built-in `Person` options of a new company have none); map the conflicts, keep
+every record line on «Только создание»; after the apply check that every `SingleSelectRefCode` constant has an
+`optionId` (`scripts_read defs`) and re-point each menu filter value of an own-options dropdown — it still holds
+the source option id, and the item lists nothing. A BO whose code the target has keeps the target's id.
+
 Traps: **`load-import-state` is not a reliable «is something open?» probe** — it answered
 `{"importExists":false}` while an analysed import was waiting (trap 35). Take the `importId` from
 `import-file` and keep it. Accelerator: `tools/api-import-structure.bun.ts`.
@@ -602,7 +618,8 @@ All of these but the last are `POST /web/v2/business-objects/<call>` (envelope �
 | the dictionary options of a field | `load-dictionary-bo-field-options` | `{"boId":…}` |
 | how many records match a filter | `v2/business-object-instance/load-bo-instance-bracket-table` | see R6 |
 
-**The archive's `oldId` becomes the BO's real id on the stand** `[C]`, and an
+**The archive's `oldId` becomes the BO's real id on the stand** `[C]` — unless the company already has a BO
+with that `code`: then the archive merges into it and the stand's id stays (`MYBPM-IMPORTS.md` §8) —, and an
 imported field/tab id equals the archive's `newId`. That is how a generated archive and later API calls
 are stitched together. A BO created in the constructor gets a platform id instead — ids are 16 characters
 over `A-Za-z0-9@~`, so **an id really can start with `~` or contain `@`**; do not "clean" them.
@@ -1299,8 +1316,8 @@ do is plain HTTP by §0U.4.
   of that «Пользователи» record: name the person and the address when asking. Conflicts (§5 «Conflicts»):
   `import_analyze` / `import_report` give one row per unknown org unit — `conflictId`, type, the archive's
   name and id, `candidates` `[{id, text, removed}]`; `import_apply {resolve: {<conflictId>: <unit id or its
-  name>}}` maps them and is refused while one is open. The apply writes the archive's name onto the chosen
-  unit, and a rollback keeps it (trap 84); `removed: true` = a deleted group the stand still offers — never map onto it.
+  name>}}` maps them and is refused while one is open. The apply leaves the chosen unit as it is while its record line keeps the default mode «Только создание»;
+  «Обновить поля» overwrites it with the source record — e-mail (the login) included (R3 step 4, trap 84); `removed: true` = a deleted group the stand still offers — never map onto it.
 - **The record tools make §6a / §6b whole.** `record_save` takes values by field code, fieldId or label in
   plain form (text, number, `true`/`false`, an ISO date, the option label or code, a record id or an array of
   them, `{RUS, KAZ, ENG}` …) and converts each by the §6b value table. `scripts: true` (the default) = the
@@ -1574,8 +1591,8 @@ Email field; the person opens it, sets a password and can log in from then on. A
 the §6b form cycle (`record_save` with scripts) sends it too `[C]` — the answer carries the notification
 `person_invitation_is_send`; the §6a draft cycle and an xlsx: `[U]` — §12. So never create a user with a real person's address as
 test data. **A structure archive never creates a group or department** `[C]`: one it names that the stand lacks
-stops the apply until mapped onto an existing unit, and the import renames that unit to the archive's name (§5
-«Conflicts»).
+stops the apply until mapped onto an existing unit, and the unit stays as it is unless its record line is set to «Обновить поля» (§5
+«Conflicts», R3 step 4).
 
 The built-in BOs are told apart by the BO `kind` (`PERSON`, `PERSON_GROUP`, `DEPARTMENT`, `COMPANY`), never by name:
 the name is the company's own («Подразделения» in one company, «Департамент» in another) `[C]`. Their built-in fields
@@ -2216,10 +2233,11 @@ standard JSON envelope (§1), except the upload which is multipart. Order, exact
   units are listed too, with `state:"REMOVED"` (do not map onto one; the UI shows such a row exactly like a live
   one, trap 83) `[C]`. The candidates are fixed at the analysis: a unit created later is not offered — analyse
   again. Resolve: `resolve-conflicts` P `{importId}` B `[{conflictId, selectInstance:{selectedBoiId}}]` →
-  `isResolved:true` `[C]`. There is NO «create» choice — the import never creates a group; and **the apply
-  writes the archive's name onto the chosen group** (also onto a group whose id matches) `[C]`
-  (`MYBPM-IMPORTS.md` §8) — **and a rollback of that import keeps the new name**: its preview lists only the
-  BO (trap 84); rename the unit back in its own record.
+  `isResolved:true` `[C]`. There is NO «create» choice — the import never creates a group; the chosen unit
+  is left as it is while its record line is «Только создание» (the default); a line set to «Обновить поля» writes
+  the source record onto it — a group's name, head and members, a user's name, phone and e-mail, which is the
+  login (`MYBPM-IMPORTS.md` §8, R3 step 4) `[C]` — and a rollback does not give the old values back `[I]`: its
+  preview lists only the BO (trap 84).
 - The BO-side `/web/v2/business-objects/import-structure` (`postFileJson`, param `startTestProcess:false`)
   is a DIFFERENT, single-call endpoint of the BO controller — not used here, untried `[U]`.
 - **The import log** (the «Импорт» tab's table): `/import-structure/load-import-file-records` with `B {paging:
@@ -7016,9 +7034,9 @@ The stand's own behaviour under automation `[C]`:
     closes both dialogs and sends no call (the import stays `ANALYZED`; cancel it with ПРЕКРАТИТЬ); a candidate with
     `state:"REMOVED"` has the same look and an enabled radio as a live one — check `load-select-instance-table`
     before picking. §5 «Conflicts».
-84. **A rollback does not undo a conflict's rename** `[C]` — the apply wrote the archive's name onto the chosen group;
-    the rollback deletes or restores the BOs but the group keeps the archive's name. Note the old name before
-    resolving. §5 «Conflicts», `MYBPM-IMPORTS.md` §8.
+84. **«Обновить поля» on a record line overwrites the mapped unit, and a rollback does not undo it** — a user mapped
+    by a conflict takes the source e-mail, so their login stops working `[C]`; the rollback deletes or restores the
+    BOs only `[I]`. Keep every record line on «Только создание» (the default) across companies. §5 «Conflicts», `MYBPM-IMPORTS.md` §8.
 85. **`struct/clear-export-records` empties every export basket** `[C]` — BOs, menu items, report groups and the
     ticked settings kinds; an export that starts with it loses the user's selection and exports without the menu,
     the reports and the settings. Use `remove-bo-export-records` with ids. §0U R4a.

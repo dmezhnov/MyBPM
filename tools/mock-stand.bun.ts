@@ -56,7 +56,8 @@ const recoded = { until: 0, boId: "", known: new Set<string>() };
 const fieldIdsOf = (bo: Bo) => new Set<string>([...(bo.fields ?? []).map((x) => x.fieldId), ...(bo.co?.fields ?? []).map((x) => x.coFieldId)]);
 const drafts = new Map<string, { coId: string } & Co>();
 const copyCo = (c: Co): Co => JSON.parse(JSON.stringify(c));
-const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null; conflicts?: Record<string, any>; removed?: boolean }>();
+const imports = new Map<string, { status: string; fileName: string; bos: Bo[]; description: string | null; conflicts?: Record<string, any>; removed?: boolean;
+  instances?: { compositeId: string; boCode: string; name: string; existsOnTarget: boolean; applyMode: string }[] }>();
 // the export baskets (UI-API R4a): BO records by boId, ticked settings kinds, the menu and report baskets as counts
 const boBasket = new Map<string, any>([["USERBO0000000001", { boId: "USERBO0000000001", boName: "Чужой выбор", isStructureExport: true }]]), settingsBasket = new Set<string>(["SCRIPT_SETTINGS"]);
 let menuBasket = 1, reportBasket = 1;
@@ -65,6 +66,9 @@ let bell: { id: string; header: string; body: string; happenedAt: number }[] = [
 let seq = 0;
 const nextId = (p: string) => `${p}${String(++seq).padStart(16 - p.length, "0")}`;
 const raced = new Set<string>();
+// a widget code set through its controller: the BO DTO never shows it for CURRENT_USER, the controller reads it ~1.5 s late (the stand: ~3 s)
+const widgetCodes = new Map<string, { code: string; was: string | null; at: number }>();
+const widgetCodeOf = (id: string) => { const w = widgetCodes.get(id); return w ? (Date.now() >= w.at ? w.code : w.was) : null; };
 // the stand: the first export after a code set still carries the codes before it (trap 24) — the BO or field code the export saw last
 const exported = new Map<string, string>(), lagging = new Set<string>();
 const recode = (id: string, old: string | null | undefined) => { if (old && !exported.has(id)) exported.set(id, old); }; // a code never exported yet: the one it had
@@ -392,7 +396,17 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       return { fieldId: nextId("FLD"), boFieldArchetype: "DYNAMIC", label: null, labelMap: null, code: null, type: params.fieldType, gridPosition: { x: 0, y: 0, cols: 15, rows: 4 },
         // the stand: a questionnaire comes with one row and one column, both unlabelled
         ...(params.fieldType === "QUESTIONNAIRE" ? { questionnaires: [false, true].map((isColumn) => ({ id: nextId("QST"), label: null, labelMap: null, orderIndex: 0, isColumn })) } : {}) };
-    case "v2/business-objects/generate-business-form-widget": return { fieldId: nextId("WGT"), label: null, code: null, widgetType: params.widgetType };
+    // the stand: CURRENT_USER comes as a «BO» field with widgetType CURRENT_USER
+    case "v2/business-objects/generate-business-form-widget": return { fieldId: nextId("WGT"), label: null, code: null, widgetType: params.widgetType, ...(params.widgetType === "CURRENT_USER" ? { type: "BO" } : {}) };
+    case "v2/widget-current-user/save-current-user-code": {
+      const f = bos.get(params.boId)?.fields?.find((x) => x.fieldId === params.currentUserId && x.widgetType === "CURRENT_USER");
+      if (!f) return fail("no such widget");
+      if (!raced.has(f.fieldId)) { raced.add(f.fieldId); return { errorType: "NoBoFieldWithId", message: "pYLrEBOVuV :: Данное поле не сохранено в бизнес-объекте" }; }
+      widgetCodes.set(f.fieldId, { code: params.code, was: widgetCodeOf(f.fieldId), at: Date.now() + 1500 });
+      return "";
+    }
+    case "v2/widget-current-user/load-current-user-code": return widgetCodeOf(params.currentUserId);
+    case "v2/button/load-button-code": return bos.get(params.boId)?.fields?.find((x) => x.fieldId === params.buttonId)?.code ?? null;
     case "v2/business-objects/generate-business-form-field-by-native": return { fieldId: nextId("NAT"), label: null, nativeFieldType: params.nativeType };
     case "v2/id-loader/load-portion": return Array.from({ length: 10 }, () => nextId("ID"));
     case "v2/business-objects/save-business-field-code": case "v2/button/save-button-code": case "v2/button/save-button-url": {
@@ -577,7 +591,15 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/menu-item/load-bracket-filter": {
       const m = NAV.find((x) => x.id === params.menuItemId)!;
       if (!m.bracketFilterId) { m.bracketFilterId = nextId("FLT"); filters.set(m.bracketFilterId, { id: m.bracketFilterId, boId: m.boId, brackets: [] }); }
-      return filters.get(m.bracketFilterId);
+      // the stand answers each dropdown condition with the field's options; an item coded stale_* stands for one imported from
+      // another company, whose value is still the source option id (IMPORTS §8 «Moving a system to another company»)
+      const f = structuredClone(filters.get(m.bracketFilterId)), fs = bos.get(f.boId)?.fields ?? [];
+      const walk = (bs: any[]) => { for (const b of bs ?? []) { for (const d of b.dynamicFilters ?? []) {
+        const opts = fs.find((x: any) => x.fieldId === d.fieldId)?.options;
+        if (d.type === "DROPDOWN_SINGLE" && opts) { d.options = opts; if (m.code?.startsWith("stale_")) d.value = "STALEOPTION00001"; }
+      } walk(b.brackets); } };
+      walk(f.brackets);
+      return f;
     }
     case "v2/bracket-filter/save": filters.set(body.id, structuredClone(body)); return "";
     case "v2/kanban/load-kanban-template": {
@@ -624,7 +646,9 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
       const got = bosOf(file!); // a BO code Conflict_* stands for an archive naming a group the stand lacks (§5 «Conflicts»)
       const conflicts = got.some((b) => b.code.startsWith("Conflict_")) ? { CONFLICT00000001: { isResolved: false, selectInstance: { boId: "GROUPBO000000001",
         exportedOrgUnitType: "GROUP", exportedOrgUnitName: "Архивная группа", exportedOrgUnitId: "GARCHIVE00000001", selectFromIds: [] } } } : {};
-      imports.set(id, { status: "UPLOADED", fileName: "upload.mybpm.zip", bos: got, description: null, conflicts });
+      // the same archive also carries the group's record line and names a user it has no line for (IMPORTS §8 «Инстанции», «XXX»)
+      const instances = Object.keys(conflicts).length ? [{ compositeId: "GROUPBO000000001-GARCHIVE00000001", boCode: "PersonGroup", name: "Архивная группа", existsOnTarget: false, applyMode: "CREATE_ONLY" }] : [];
+      imports.set(id, { status: "UPLOADED", fileName: "upload.mybpm.zip", bos: got, description: null, conflicts, instances });
       return id;
     }
     case "import-structure/insert-file-data": return nextId("PROC");
@@ -638,8 +662,22 @@ function mcp(path: string, params: any, body: any, token: string, file?: Uint8Ar
     case "v2/struct/conflict/resolve-conflicts": for (const r of body) imports.get(params.importId)!.conflicts![r.conflictId].isResolved = true; return null;
     case "import-structure/load-import-errors": return { errorRecords: [], nextPageId: null };
     case "import-structure/load-import-bo-infos":
-      return imports.get(body.importId)?.bos.map((b) => ({ importRecordId: `REC${b.id}`, name: b.name, boCategory: b.boCategory, structTypes: ["STRUCTURE"] }));
-    case "import-structure/load-import-bo-record": return { id: params.recordId, structureInfo: { addedField: [], changedField: [] } };
+      return imports.get(body.importId)?.bos.map((b) => ({ importRecordId: `REC${b.id}`, name: b.name, boCategory: b.boCategory,
+        structTypes: b.code.startsWith("Conflict_") ? ["ACCESS_RIGHTS", "STRUCTURE"] : ["STRUCTURE"] }));
+    case "import-structure/load-import-bo-record": {
+      const i = imports.get(params.importId), lost = i?.instances?.length ? [{ id: "PERSONLOST000001", type: "PERSON", name: "XXX XXX" }] : [];
+      return { id: params.recordId, structureInfo: { addedField: [], changedField: [] }, accessRightsInfo: { boAccessRightChange: { accessGroupChange: { after: { edit: { orgUnitRecordList: lost } } } } } };
+    }
+    case "import-structure/load-import-instances": {
+      const all = imports.get(params.importId)?.instances ?? [], codes = [...new Set(all.map((x) => x.boCode))];
+      const bo = params.boCode || codes[0];
+      return { businessObjects: codes.map((c) => ({ boCode: c, boName: c, instanceCount: all.filter((x) => x.boCode === c).length })), instances: all.filter((x) => x.boCode === bo) };
+    }
+    case "import-structure/save-import-instance-mode": {
+      const i = imports.get(params.importId)!;
+      if (i.status !== "ANALYZED") return fail("import instance mode can be changed only before apply");
+      i.instances!.find((x) => x.compositeId === params.compositeId)!.applyMode = params.applyMode; return null;
+    }
     case "import-structure/save-import-description": imports.get(params.importId)!.description = params.value; return null;
     case "import-structure/apply-import": {
       const i = imports.get(params.importId)!;
