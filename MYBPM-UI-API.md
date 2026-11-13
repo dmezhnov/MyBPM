@@ -1410,7 +1410,7 @@ do is plain HTTP by §0U.4.
 | `process_version` ✎ | a process's versions: list, work, test, copy, remove, comment | §5f «Versions» |
 | `process_run_ways` ✎ | WHEN the process starts: set / remove run ways in one draft | §5f «Run ways» |
 | `process_steps` | where a process record is: each step's figure and state; `over` counts a `STOPPED` Timer as alive; `removed` = the record is `REMOVED` | §5f run-time controller, trap 107 |
-| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step, stop a standing one (a stopped Timer still fires), terminate all and go on from an arrow (into an Exit = the run ends) | §5f run-time controller, traps 97, 107 |
+| `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step, stop a standing one (a stopped Timer still fires), terminate all and go on from an arrow (into an Exit = the run ends, into a Timer = re-armed) | §5f run-time controller, traps 97, 107 |
 | `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
@@ -3266,7 +3266,7 @@ The run-time controller, all `P`: `v2/boi-process/…`
 | `push-step-forcibly` | `{boProcessId, boiId, arrowId}` | «Продолжить принудительно»: on from a STAND step along its outgoing arrow `[C]` (500 when the target Script fails, the step moved anyway — point 4) |
 | `push-step-retry` | `{boProcessId, boiId, figureId}` | runs a `FAILED` Script / Switch / Form again (state `GO`, diagnostics cleared); any other state → «Нет активных шагов для повторного запуска» `[C]`. The UI item «Попробовать еще раз» is offered only on a STAND step, so it never succeeds (trap 97) |
 | `stop-step` | `{boProcessId, boiId, figureId}` | stops a `STAND` step → `STOPPED` `[C]`; any other state → 500 «Нет активных шагов для остановки». The UI item «Остановить текущий» is offered only on a FAILED step, so it never succeeds (trap 97) — API only. **A stopped Timer is not ended**: it stays due, and at the due time it goes `STOPPED` → `PASSED` and the run on (trap 107) |
-| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь»: ends what runs and goes on from that arrow's target, from any state of its source (a FAILED or STOPPED one stays so) `[C]`; the arrow INTO a failed figure = the UI's retry. 500 when the target Script fails, the step moved anyway. Along an arrow into an Exit it is the only call that ends a run for good: a due Timer is dropped at once (trap 107) |
+| `push-step-terminate-all` | `{boProcessId, boiId, arrowId}` | «Терминировать все и продолжить здесь»: ends what runs and goes on from that arrow's target, from any state of its source (a FAILED or STOPPED one stays so) `[C]`; the arrow INTO a failed figure = the UI's retry. 500 when the target Script fails, the step moved anyway. Along an arrow into an Exit it is the only call that ends a run for good: a due Timer is dropped at once (trap 107). Along the arrow INTO a Timer it re-arms it: the date field is read again, a past date fires at once |
 | `start-dev-process` / `stop-dev-process` | `{boProcessId}` | the editor's test run: start = a new DEV record running the version, stop = the run and its colours gone `[C]` |
 | `go` | `{boProcessId, boiId}` | no UI calls it `[C]`; what it does `[U]` |
 
