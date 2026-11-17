@@ -38,17 +38,40 @@ answers a code that may look nothing like its name. Do not take that code for a 
 
 **Status markers**: `[C]` confirmed on a stand, `[I]` inferred, `[U]` unverified.
 
-**The stand does something else than this document says → report it.** Only on the latest release (the
-plugin version — the SKILL.md beside this file names it, so does the MCP server — equals `version` of `.claude-plugin/plugin.json` on `main` of `dmezhnov/MyBPM`;
-an older copy → update and re-check first, the fact may be fixed). Search the open reports first
-(`https://github.com/dmezhnov/MyBPM/issues?q=is:issue+label:platform-discrepancy`) — a known one gets a comment,
-not a twin. One fact per issue, de-identified: placeholders (`<stand>`, `<company-a>`, `<user>`) for every host,
-company, login and person, no record data. Show the user the text and get their OK — the repository is public.
-The issue form takes its fields from the URL: `https://github.com/dmezhnov/MyBPM/issues/new?template=platform-discrepancy.yml`
-`&title=…&document=MYBPM-UI-API.md&heading=…&mark=[C]|[I]|[U]|none&doc_says=…&stand_did=…&repro=…&version=…`
-(URL-encoded, under ~7 500 characters); the user opens it and presses «Submit new issue» under their own GitHub
-account. The `mybpm-stand` MCP server's `platform_report` builds that URL and refuses a text that names the
-user's own stands or accounts.
+**Report to the repository: the stand did otherwise, the document is silent, a tool is missing or broken.**
+One issue per fact (per tool), in the same reply that met it — not at the end of the task, not when the user reminds you:
+
+- `discrepancy` — the stand did otherwise than this document says;
+- `doc-gap` — this document does not say how the platform behaves, and you had to find it out by a probe (a probe
+  BO, a browser run, a write rolled back); give what was measured, where in the document the fact belongs, and
+  `[C]` / `[I]` on each claim;
+- `missing-tool` — the task needed an action on the stand that no tool of the `mybpm-stand` MCP server does, and you
+  worked around it (a raw `stand_call`, your own HTTP script, a browser run, an archive built for one field); give the
+  action, the workaround's calls and answers, and the tool you propose (name, parameters, what it returns, whether
+  it writes);
+- `plugin-bug` — a tool, the lint or a script of the plugin broke its own contract: ignored a declared parameter,
+  returned other than its description promises, failed on a valid input, passed what the stand rejects.
+
+First check the CURRENT documents and tool list: a fact or a tool that is there is your miss, not a report. Only on the
+latest release (the plugin version — the SKILL.md beside this file names it, so does the MCP server — equals
+`version` of `.claude-plugin/plugin.json` on `main` of `dmezhnov/MyBPM`; an older copy → update and re-check
+first, it may be fixed). Search the open reports of the kind first
+(`https://github.com/dmezhnov/MyBPM/issues?q=is:issue+label:<label>`) — a known one gets a comment, not a twin.
+De-identified: placeholders (`<stand>`, `<company-a>`, `<user>`) for every host, company, login and person, no
+record data. Show the user the text and get their OK — the repository is public. The issue form takes its fields
+from the URL: `https://github.com/dmezhnov/MyBPM/issues/new?template=<form>&title=…&<field>=…&version=…`
+(URL-encoded, under ~7 500 characters; `document=MYBPM-UI-API.md` for this document); the user opens it and presses
+«Submit new issue» under their own GitHub account.
+
+| Kind | Form, label | Fields |
+|---|---|---|
+| `discrepancy` | `platform-discrepancy.yml`, `platform-discrepancy` | `document`, `heading`, `mark` (`[C]`, `[I]`, `[U]`, `none`), `doc_says`, `stand_did`, `repro` |
+| `doc-gap` | `doc-gap.yml`, `doc-gap` | `document`, `heading`, `question`, `measured`, `proposal` |
+| `missing-tool` | `missing-tool.yml`, `missing-tool` | `action`, `workaround`, `proposal` |
+| `plugin-bug` | `plugin-bug.yml`, `plugin-bug` | `tool`, `call`, `expected`, `actual`, `where` |
+
+The `mybpm-stand` MCP server's `platform_report` (`kind` = the first column) builds that URL and refuses a text
+that names the user's own stands or accounts.
 
 ---
 
@@ -1361,8 +1384,9 @@ do is plain HTTP by §0U.4.
   WAITING / FAILED / STOPPED per figure, diagnostics without the Java stack); `process_push` ✎ moves a stuck one on
   (forward along an outgoing arrow, retry a FAILED step, stop a STAND one, terminate all and go on from an arrow —
   the stop and the retry the UI cannot do, trap 97).
-- **The stand contradicts a document → `platform_report`** (the rule at the top of this document): it returns
-  the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
+- **The stand contradicts a document, the document is silent, a tool is missing or broken → `platform_report`**
+  (`kind` discrepancy / doc-gap / missing-tool / plugin-bug; the rule at the top of this document), in the same reply:
+  it returns the prefilled issue URL and a search URL, refuses on an outdated copy and on a text naming the user's own
   stands, logins, people or companies. Ask the user before giving them the link to submit.
 - **An archive built where the stand is unreachable goes in through `archive_put`.** In a claude.ai or Claude
   Desktop chat your code runs in a cloud sandbox: the server cannot read a file there. Do not zip it there —
@@ -1428,7 +1452,7 @@ do is plain HTTP by §0U.4.
 | `process_run_ways` ✎ | WHEN the process starts: set / remove run ways in one draft | §5f «Run ways» |
 | `process_steps` | where a process record is: each step's figure and state; `over` counts a `STOPPED` Timer as alive; `removed` = the record is `REMOVED` | §5f run-time controller, trap 107 |
 | `process_push` ✎ | a stuck record on: forward along an arrow, retry a failed step, stop a standing one (a stopped Timer still fires), terminate all and go on from an arrow (into an Exit = the run ends, into a Timer = re-armed) | §5f run-time controller, traps 97, 107 |
-| `platform_report` | a prefilled GitHub issue for a discrepancy with the documents (nothing is sent) | the rule at the top |
+| `platform_report` | a prefilled GitHub issue: a discrepancy, a documentation gap, a missing tool, a plugin bug (nothing is sent) | the rule at the top |
 | `notifications_read` / `notifications_clear` ✎ | the bell, by id | `v2/user-notification/*` |
 | `stand_read` | any read method (`load-` `count-` `verify-` `get-` `find-` `search-`) in the envelope of §0U.2 | §0U.3 |
 | `stand_call` ✎ | any method, writes included, for the recipes no tool covers (R2 panels, R10, company settings) | §0U.4 |

@@ -77,7 +77,7 @@ await $`mise run skills-gen`.quiet();
 const plugin = await Bun.file(".claude-plugin/plugin.json").json();
 const manifest = {
   manifest_version: "0.3", name: "mybpm-stand", display_name: "MyBPM stand", version: plugin.version,
-  description: "Drive a running MyBPM stand: accounts, BO structure, build BOs and composites in the constructor, import a .mybpm.zip (lint, analyze, apply, rollback), export structure, the bell, any API method; report a discrepancy with the docs as a GitHub issue.",
+  description: "Drive a running MyBPM stand: accounts, BO structure, build BOs and composites in the constructor, import a .mybpm.zip (lint, analyze, apply, rollback), export structure, the bell, any API method; report a discrepancy, a documentation gap, a missing tool or a plugin bug as a GitHub issue.",
   author: plugin.author, repository: { type: "git", url: plugin.repository },
   server: { type: "node", entry_point: "server/mybpm-stand.cjs", mcp_config: { command: "node", args: ["${__dirname}/server/mybpm-stand.cjs"] } },
   compatibility: { platforms: ["darwin", "win32", "linux"], runtimes: { node: ">=18" } },
@@ -132,395 +132,15 @@ for (const [name, doc] of skills) {
 }
 '''
 
-[tasks.test]
-description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.js and lint_archive.py), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun, the Python port carries the hash of the block it was ported from, runs clean too and prints what the JS lint prints on fuzzed archives (lint-parity); the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, a dead session renewed by the remembered password, rename, stand_account_save on a local stand only, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
+[tasks.test-mcp]
+description = "The MCP server part of mise test: mcp/mybpm-stand.cjs is built in sync and runs every tool cycle against the mock stand under node and bun (import/export/bell, constructor, rights, records, records xlsx, accounts, platform_report with each kind against its issue form), the same tools as a terminal command (mise run stand), the Desktop extension and the plugin zip servers"
 shell = "bun -e"
 run = '''
 import { $ } from "bun";
 import { unzip } from "./tools/zip.ts";
-await $`mise run skills-check`;
-// each SKILL.md names the plugin version it ships with (mise publish writes both) — its own release check compares that
-const pluginVersion = (await Bun.file(".claude-plugin/plugin.json").json()).version;
-for (const skill of ["skills/mybpm-imports/SKILL.md", "skills/mybpm-stand/SKILL.md"]) {
-  const v = (await Bun.file(skill).text()).match(/This copy of the skill is version \*\*([\d.]+)\*\*/)?.[1];
-  if (v !== pluginVersion) { console.error(`${skill}: version ${v} ≠ plugin.json ${pluginVersion}`); process.exit(1); }
-}
-for (const f of new Bun.Glob("tools/*.ts").scanSync()) await $`bun build --target=bun --no-bundle ${f}`.quiet();
-await $`mise run skills-zip`;
-for (const [name, doc] of [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]]) {
-  const list = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name);
-  for (const want of [`${name}/SKILL.md`, `${name}/${doc}`, ...(name === "mybpm-imports" ? [`${name}/scripts/lint-archive.js`, `${name}/scripts/lint_archive.py`] : [])]) {
-    if (!list.includes(want)) { console.error(`dist/skills/${name}.zip: no ${want}`); process.exit(1); }
-  }
-}
-// CI checks out what was committed: the generated lint must already match IMPORTS 0.10 there (mise publish commits it)
-if (Bun.env.CI && (await $`git status --porcelain -- skills/`.text()).trim()) {
-  console.error("skills/ is stale against MYBPM-IMPORTS.md — run mise run skills-gen and commit"); process.exit(1);
-}
-// the shipped lint (IMPORTS 0.10 lintArchive + wrapper) runs on a generated dictionary under every runtime at hand and stays silent (no false positives)
+// the dictionary archive the lint checks are run on (mise test builds the same one first)
 await $`rm -rf dist/lint-test && bun tools/make-probe-archive.bun.ts --group-code Lint_group --group-name Lint --group-order 1 --code Lint_dict --name Lint --category BO_DICTIONARY --salt lint --bo-order 1 --out dist/lint-test`.quiet();
 const zipFile = [...new Bun.Glob("dist/lint-test/*.zip").scanSync()][0];
-for (const rt of ["node", "bun"].filter((r) => Bun.which(r))) {
-  const r = await $`${rt} skills/mybpm-imports/scripts/lint-archive.js ${zipFile}`.nothrow().quiet();
-  const defects = r.stdout.toString().split("\n").filter((l) => l && l !== "form lint: OK" && !l.startsWith("REMINDER"));
-  if (r.exitCode || defects.length) { console.error(`lint-archive.js (${rt}) on a generated dictionary, exit ${r.exitCode}:\n${defects.join("\n")}${r.stderr}`); process.exit(1); }
-  // a .js under a package.json with "type": "module" runs as an ES module — the lint must not depend on CommonJS
-  await $`rm -rf dist/lint-esm && mkdir -p dist/lint-esm/scripts && cp skills/mybpm-imports/scripts/lint-archive.js dist/lint-esm/scripts/ && cp MYBPM-IMPORTS.md dist/lint-esm/`.quiet();
-  await Bun.write("dist/lint-esm/package.json", '{ "type": "module" }\n');
-  const esm = await $`${rt} dist/lint-esm/scripts/lint-archive.js ${zipFile}`.nothrow().quiet();
-  if (esm.exitCode || !String(esm.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint-archive.js (${rt}) as an ES module, exit ${esm.exitCode}:\n${esm.stdout}${esm.stderr}`); process.exit(1); }
-}
-// the Python port of the lint follows lintArchive by hand: its marker names the hash of the block it was ported from
-const lintBlock = (await Bun.file("MYBPM-IMPORTS.md").text()).match(/```js\n(function lintArchive[\s\S]*?\n)```/)![1];
-const lintHash = new Bun.CryptoHasher("sha256").update(lintBlock).digest("hex").slice(0, 12);
-const ported = (await Bun.file("skills/mybpm-imports/scripts/lint_archive.py").text()).match(/^# lintArchive sha256: (\w+)$/m)?.[1];
-if (ported !== lintHash) {
-  console.error(`lint_archive.py is ported from lintArchive ${ported}, MYBPM-IMPORTS.md 0.10 holds ${lintHash} — port the change, run mise run lint-parity, set the marker to ${lintHash}`);
-  process.exit(1);
-}
-// ... runs clean on the generated dictionary, finds the document from the claude.ai zip layout, and prints what the JS lint prints
-if (Bun.which("python3")) {
-  await $`cp skills/mybpm-imports/scripts/lint_archive.py dist/lint-esm/scripts/`.quiet();
-  const r = await $`python3 dist/lint-esm/scripts/lint_archive.py ${zipFile}`.nothrow().quiet();
-  if (r.exitCode || !String(r.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint_archive.py on a generated dictionary, exit ${r.exitCode}:\n${r.stdout}${r.stderr}`); process.exit(1); }
-  await $`mise run lint-parity`;
-} else if (Bun.env.CI) { console.error("no python3 — the Python port of the lint is untested"); process.exit(1); }
-else console.warn("WARNING: no python3 here — lint_archive.py and lint-parity skipped (CI runs them)");
-// the reject-check categories (0.10): one field per category gets exactly its ERROR, the near misses get none — in both lints
-await $`rm -rf dist/lint-xss && bun tools/make-probe-archive.bun.ts --group-code Xss_group --group-name Xss --group-order 1 --code Lint_xss --name Xss --salt xss --bo-order 1 --out dist/lint-xss --field ${"Мышь onmouseover:INPUT_TEXT"} --field ${"Жест onpointerdown:INPUT_TEXT"} --field ${"Ссылка javascript:x:INPUT_TEXT"} --field ${"Расчёт eval (1):INPUT_TEXT"} --field ${"<p>Platform: X</p>:INPUT_TEXT"} --field ${"Тег <object:INPUT_TEXT"} --field ${"Кнопка button_start:INPUT_TEXT"} --field ${"Medieval 1200:INPUT_TEXT"} --calendar --calendar-card "header=Medieval_1200;content=Knopka_button_start,Medieval_1200"`.quiet();
-const xssZip = [...new Bun.Glob("dist/lint-xss/*.zip").scanSync()][0];
-const xssWant = ["onmouseover", "onpointerdown", "javascript: or vbscript:", "eval( or expression(", "form:, object:, embed: or applet: after a <", "an <object>, <applet>, <embed> or <form> tag"];
-for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
-  const r = await $`${cmd} ${xssZip}`.nothrow().quiet();
-  const got = r.stdout.toString().split("\n").filter((l) => l.includes("a kind of string the stand refuses"));
-  const miss = xssWant.filter((w) => got.filter((l) => l.includes(w)).length !== 1);
-  // the calendar card zones are keyed by FIELD CODE — a code is data, never an invented key (0.4a)
-  const keyErr = r.stdout.toString().split("\n").filter((l) => l.includes("is not in this document"));
-  if (keyErr.length) { console.error(`${cmd[1]}: field codes in calendarCardTemplates taken for invented keys:\n${keyErr.join("\n")}`); process.exit(1); }
-  if (got.length !== xssWant.length || miss.length) { console.error(`${cmd[1]}: reject-check ERRORs ${got.length}, want ${xssWant.length}, wrong for ${JSON.stringify(miss)}:\n${got.join("\n")}${r.stderr}`); process.exit(1); }
-}
-// one grid per form (0.8): the generator never builds a staircase (5 + 10 under 5 + 5 + 5 and under a lone field, 4 + 4 + 7
-// and 8 + 7 under 4 + 4 + 4 + 3), and 8 + 7 over 5 + 5 + 5 is exactly one staircase ERROR — in both lints. A DATE keeps
-// its own width: the generator gives the wider cell of a pair to the input, DATE 10 + input 5 is exactly one ERROR, and a
-// form where no split of one grid gives every input the wider cell is refused, not built
-const gridGen = (name: string, fields: string[]) => $`rm -rf dist/lint-${name} && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_grid --name Grid --salt grid --bo-order 1 --out dist/lint-${name} ${fields.flatMap((f) => ["--field", f])}`.quiet();
-await gridGen("grid5", ["Исполнитель:INPUT_TEXT", "Подразделение:INPUT_TEXT!row", "Постановщик:INPUT_TEXT", "Срок:DATE!row", "Приоритет:INPUT_TEXT!row", "Источник:INPUT_TEXT!half", "Канал:INPUT_TEXT", "Кампания:INPUT_TEXT!row"]);
-await gridGen("grid4", ["A1:INPUT_TEXT", "A2:INPUT_TEXT!row", "A3:INPUT_TEXT!row", "A4:INPUT_TEXT!row", "B1:INPUT_TEXT", "B2:INPUT_TEXT!row", "B3:INPUT_TEXT!row", "C1:INPUT_TEXT", "C2:INPUT_TEXT!row"]);
-await gridGen("gridw", ["Срок:DATE", "Описание:INPUT_TEXT!row"]);
-const gridNo = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_grid --name Grid --salt grid --bo-order 1 --out dist/lint-gridno --field Срок:DATE --field Описание:INPUT_TEXT!row --field Канал:INPUT_TEXT --field Дата:DATE!row`.nothrow().quiet();
-if (!gridNo.exitCode || !/no grid of 15 columns suits/.test(gridNo.stderr.toString())) { console.error(`make-probe-archive built DATE + input over input + DATE (exit ${gridNo.exitCode}):\n${gridNo.stderr}`); process.exit(1); }
-const grid5 = [...new Bun.Glob("dist/lint-grid5/*.zip").scanSync()][0], grid4 = [...new Bun.Glob("dist/lint-grid4/*.zip").scanSync()][0], gridw = [...new Bun.Glob("dist/lint-gridw/*.zip").scanSync()][0];
-const wide = new TextDecoder().decode(unzip(await Bun.file(gridw).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
-  const o = JSON.parse(l), f = o.dynamicFields;
-  if (f?.Srok) { if (f.Srok.gridPosition.cols !== 5 || f.Opisanie.gridPosition.cols !== 10) { console.error(`make-probe-archive: DATE + input split ${f.Srok.gridPosition.cols} + ${f.Opisanie.gridPosition.cols}, not 5 + 10`); process.exit(1); }
-    f.Srok.gridPosition.cols = 10; Object.assign(f.Opisanie.gridPosition, { x: 10, cols: 5 }); }
-  return JSON.stringify(o);
-});
-await Bun.write("dist/lint-gridw/wide.jsonl", wide.join("\n") + "\n");
-const stair = new TextDecoder().decode(unzip(await Bun.file(grid5).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
-  const o = JSON.parse(l), f = o.dynamicFields;
-  if (f?.Ispolnitel) { if (f.Ispolnitel.gridPosition.cols !== 5) { console.error(`make-probe-archive: the pair over a row of three is ${JSON.stringify(f.Ispolnitel.gridPosition)}, not 5 + 10`); process.exit(1); }
-    f.Ispolnitel.gridPosition.cols = 8; Object.assign(f.Podrazdelenie.gridPosition, { x: 8, cols: 7 }); }
-  return JSON.stringify(o);
-});
-await Bun.write("dist/lint-grid5/stair.jsonl", stair.join("\n") + "\n");
-for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-  for (const [file, want] of [[grid5, []], [grid4, []], [gridw, []], ["dist/lint-grid5/stair.jsonl", ["Lint_grid.Postanovschik: row y 3 columns start at 0,5,10 — the row above starts at 0,8: staircase, one grid per form (0.8)"]],
-    ["dist/lint-gridw/wide.jsonl", ["Lint_grid.Srok: a DATE box keeps its own width — the wider cell of row y 0 goes to Lint_grid.Opisanie (0.8)"]]] as const) {
-    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /staircase|keeps its own width/.test(l));
-    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: staircase / own-width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-  }
-// width by the table (IMPORTS 0.8, issue #14): a narrow INPUT_NUMBER takes ≤ 5 columns and may leave its row short (5 + 5
-// beside a DATE, alone at cols 5), but not beside a stretching field; a kind with a min px gets cols ≥ ⌈(min px + 1) / colPx⌉
-// for its window — on a tab the column is narrower. Positions are set by hand: the good form gives no line, the bad one
-// exactly six (a cell in the columns a short row left empty floats up), in both lints
-await $`rm -rf dist/lint-narrow && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_narrow --name Narrow --salt narrow --bo-order 1 --out dist/lint-narrow ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER", "Per:PERIOD", "Data:DATE", "Kol2:INPUT_NUMBER", "Data2:DATE", "Tel:INPUT_PHONE", "T:TAB_GROUP#Shag|Vtoroy", "Tel2:INPUT_PHONE!tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag"].flatMap((f) => ["--field", f])}`.quiet();
-const narrowLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-narrow/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-const narrowAt = async (name: string, at: Record<string, [number, number, number]>) => { // code → [x, y, cols]
-  const lines = narrowLines.map((l) => {
-    const o = JSON.parse(l);
-    for (const f of Object.values<any>(o.dynamicFields ?? {})) {
-      if (!at[f.code]) { console.error(`lint-narrow ${name}: no position for ${f.code}`); process.exit(1); }
-      const [x, y, cols] = at[f.code]; Object.assign(f.gridPosition, { x, y, cols });
-    }
-    return JSON.stringify(o);
-  });
-  await Bun.write(`dist/lint-narrow/${name}.jsonl`, lines.join("\n") + "\n");
-  return `dist/lint-narrow/${name}.jsonl`;
-};
-const narrowGood = await narrowAt("good", { Opis: [0, 0, 10], Kol: [10, 0, 5], Per: [0, 3, 10], Data: [10, 3, 5], Kol2: [0, 6, 5], Data2: [5, 6, 5], Tel: [0, 9, 8], T: [0, 12, 15], Tel2: [0, 0, 7], Opis2: [7, 0, 8] });
-const narrowBad = await narrowAt("bad", { Kol: [0, 0, 10], Opis: [10, 0, 5], Per: [0, 3, 7], Data: [7, 3, 8], Kol2: [0, 6, 5], Tel: [5, 6, 5], Data2: [10, 9, 5], T: [0, 12, 15], Tel2: [0, 0, 6], Opis2: [6, 0, 9] });
-for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-  for (const [file, want] of [[narrowGood, []], [narrowBad, [
-    "Lint_narrow.Kol: cols 10 — a INPUT_NUMBER is narrow, at most 5 columns; the wider cell goes to its neighbour (0.8)",
-    "Lint_narrow.Per: cols 7 is 302 px in a window w 10 — a PERIOD box needs 325 px, cols ≥ 8 (0.8)",
-    "Lint_narrow.Tel: cols 5 is 216 px in a window w 10 — a INPUT_PHONE box needs 245 px, cols ≥ 6 (0.8)",
-    "Lint_narrow.Tel2: cols 6 is 243 px in a window w 10 on a tab — a INPUT_PHONE box needs 245 px, cols ≥ 7 (0.8)",
-    "Lint_narrow.Kol2: row y 6 spans 10 of 15 columns (0.8)",
-    "Lint_narrow.Data2: x 10 in the free columns 10–14 above — floats up (0.8)"]]] as const) {
-    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /is narrow|box needs|spans \d+ of 15|floats up/.test(l));
-    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: narrow / min-px lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-  }
-// the generator lays out by the same rules in a w 10 window: the number gets 5 beside text, PERIOD 10 beside a number, a phone
-// 10 beside an e-mail (6 is off the grid), two numbers on a tab 5 + 5 cut short, a phone + text on a tab 8 + 7 (7 = its min
-// there) — and both lints find no width line in it; a pair under a lone number would float up, so the generator refuses it
-await $`rm -rf dist/gen-narrow && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_narrow --name GenNarrow --salt gennarrow --bo-order 1 --out dist/gen-narrow ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER!row", "Per:PERIOD", "Kol2:INPUT_NUMBER!row", "Tel:INPUT_PHONE", "Mail:INPUT_EMAIL!row", "T:TAB_GROUP#Shag|Vtoroy", "Tel2:INPUT_PHONE!tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag,row", "Kol3:INPUT_NUMBER!tab=T/Vtoroy", "Kol4:INPUT_NUMBER!tab=T/Vtoroy,row"].flatMap((f) => ["--field", f])}`.quiet();
-{
-  const zipFile = [...new Bun.Glob("dist/gen-narrow/*.zip").scanSync()][0];
-  const bo = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((o) => o.dynamicFields);
-  const got = Object.values<any>(bo.dynamicFields).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}`).join(", ");
-  const want = "Opis 0/0/10, Kol 10/0/5, Per 0/3/10, Kol2 10/3/5, Tel 0/6/10, Mail 10/6/5, T 0/9/15, Tel2 0/0/8, Opis2 8/0/7, Kol3 0/0/5, Kol4 5/0/5";
-  if (got !== want || bo.gridLayoutPosition?.w !== 10) { console.error(`make-probe-archive in w ${bo.gridLayoutPosition?.w}: ${got}\nwant w 10: ${want}`); process.exit(1); }
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
-    const r = await $`${cmd} ${zipFile}`.nothrow().quiet(), bad = r.stdout.toString().split("\n").filter((l) => /is narrow|box needs|spans \d+ of 15|floats up|staircase|keeps its own width|alone at full width/.test(l));
-    if (bad.length || !/Gen_narrow/.test(r.stdout.toString())) { console.error(`${cmd[1]} on the generated ${zipFile}: ${bad.join("\n") || r.stdout.toString() + r.stderr}`); process.exit(1); }
-  }
-  const under = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_under --name GenUnder --salt genunder --bo-order 1 --out dist/gen-narrow/under --field Kol:INPUT_NUMBER --field Opis:INPUT_TEXT --field Mail:INPUT_EMAIL!row`.nothrow().quiet();
-  if (!under.exitCode || !/no grid of 15 columns suits the form rows \[\["Kol"\],\["Opis","Mail"\]\]/.test(under.stderr.toString())) { console.error(`make-probe-archive built a pair under a lone number (exit ${under.exitCode}):\n${under.stderr}`); process.exit(1); }
-}
-// a short field alone in its row: x 0, cols 8 with a 5 + 10 pair under it (not 15 over 8 + 7), and 15 only when the row below
-// would float up into columns 8–14 (5 + 5 + 5) — then the lint reports the lone row, as it should (0.8)
-for (const [name, fields, want] of [["lone8", ["Opis:INPUT_TEXT", "Prim:INPUT_TEXT", "Mail:INPUT_EMAIL!row"], "Opis 0/0/8, Prim 0/3/5, Mail 5/3/10"],
-  ["lone15", ["Opis:INPUT_TEXT", "A:INPUT_TEXT", "B:INPUT_TEXT!row", "C:INPUT_TEXT!row"], "Opis 0/0/15, A 0/3/5, B 5/3/5, C 10/3/5"]] as const) {
-  await $`rm -rf dist/gen-lone/${name} && bun tools/make-probe-archive.bun.ts --group-code Lone_group --group-name Lone --group-order 1 --code Gen_lone --name GenLone --salt genlone --bo-order 1 --out dist/gen-lone/${name} ${fields.flatMap((f) => ["--field", f])}`.quiet();
-  const zipFile = [...new Bun.Glob(`dist/gen-lone/${name}/*.zip`).scanSync()][0];
-  const bo = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((o) => o.dynamicFields);
-  const got = Object.values<any>(bo.dynamicFields).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}`).join(", ");
-  if (got !== want) { console.error(`make-probe-archive, ${name}: ${got}\nwant: ${want}`); process.exit(1); }
-}
-// «Отслеживать статус» (§3): the wrapper draws no tab bar, so it is 15 × 4 and takes the date's place in its stack (the form or
-// a tab), the date + «Статус» sit 9 + 6 inside it, a second status is «Статус2»; both lints find no layout line in what the
-// generator builds, and on hand-broken copies they report exactly the wrapper's rows, the field under it and the date's place
-await $`rm -rf dist/gen-track && bun tools/make-probe-archive.bun.ts --group-code Track_group --group-name Track --group-order 1 --code Gen_track --name GenTrack --salt gentrack --bo-order 1 --window 10,24 --out dist/gen-track ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER!row", "Srok:DATE!track", "Srok2:DATE!track", "Prim:INPUT_TEXT", "Kol2:INPUT_NUMBER!row", "T:TAB_GROUP#Shag|Vtoroy", "Srok3:DATE!track,tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag", "Kol3:INPUT_NUMBER!tab=T/Shag,row", "Opis3:INPUT_TEXT!tab=T/Vtoroy", "Kol4:INPUT_NUMBER!tab=T/Vtoroy,row"].flatMap((f) => ["--field", f])}`.quiet();
-{
-  const zipFile = [...new Bun.Glob("dist/gen-track/*.zip").scanSync()][0];
-  const lines = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-  const bo = lines.map((l) => JSON.parse(l)).find((o) => o.dynamicFields), df = bo.dynamicFields;
-  const got = Object.values<any>(df).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}/${f.gridPosition.rows}`).join(", ");
-  const want = "Opis 0/0/10/3, Kol 10/0/5/3, Srok 0/0/9/3, Srok_status 0/3/15/4, Status_Srok 9/0/6/3, Srok2 0/0/9/3, Srok2_status 0/7/15/4, Status_Srok2 9/0/6/3, Prim 0/11/10/3, Kol2 10/11/5/3, T 0/14/15/10, Srok3 0/0/9/3, Srok3_status 0/0/15/4, Status_Srok3 9/0/6/3, Opis2 0/4/10/3, Kol3 10/4/5/3, Opis3 0/0/10/3, Kol4 10/0/5/3";
-  if (got !== want || df.Status_Srok2.label.rus !== "Статус2" || df.Srok3_status.tabCodePath?.tabCode !== "Shag") { console.error(`make-probe-archive with !track: ${got}, «${df.Status_Srok2.label.rus}», wrapper on tab ${df.Srok3_status.tabCodePath?.tabCode}\nwant: ${want}, «Статус2», Shag`); process.exit(1); }
-  const broken = lines.map((l) => {
-    const o = JSON.parse(l), f = o.dynamicFields;
-    if (f) { f.Srok_status.gridPosition.rows = 6; f.Srok2_status.gridPosition.y = 9; f.Prim.gridPosition.y = 13; f.Kol2.gridPosition.y = 13; f.T.gridPosition.y = 16; Object.assign(f.Srok2.gridPosition, { cols: 15 }); }
-    return JSON.stringify(o);
-  });
-  await Bun.write("dist/gen-track/bad.jsonl", broken.join("\n") + "\n");
-  const layout = /takes 4|tallest tab|expected|spans \d+ of 15|floats up|overlaps|status inside tab|tracked-status wrapper|repeats|tableColOrderIndex/;
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-    for (const [file, want] of [[zipFile, []], ["dist/gen-track/bad.jsonl", ["Gen_track.Srok_status: rows 6, a tracked-status wrapper takes 4 (§3)", "Gen_track.Srok2: x 0 y 0 cols 15 rows 3 — in a tracked-status wrapper the date is x 0 y 0 cols 9 rows 3, «Статус» x 9 y 0 cols 6 rows 3 (§3)"]]] as const) {
-      const r = await $`${cmd} ${file}`.nothrow().quiet(), bad = r.stdout.toString().split("\n").filter((l) => layout.test(l));
-      if (bad.join("\n") !== want.join("\n") || !/Gen_track/.test(r.stdout.toString())) { console.error(`${cmd[1]} on ${file}: tracked-status lines\n${bad.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-    }
-  const joined = await $`bun tools/make-probe-archive.bun.ts --group-code Track_group --group-name Track --group-order 1 --code Gen_trackrow --name GenTrackRow --salt gentrackrow --bo-order 1 --out dist/gen-track/row --field Opis:INPUT_TEXT --field Srok:DATE!track,row`.nothrow().quiet();
-  if (!joined.exitCode || !/!track and !row/.test(joined.stderr.toString())) { console.error(`make-probe-archive put a tracked date into a row (exit ${joined.exitCode}):\n${joined.stderr}`); process.exit(1); }
-}
-// the table «Cell of each type» (IMPORTS 0.8) is the one source of rows, place and width: UI-API carries its byte copy, the
-// generator builds by it and both lints check by it — a lone LINK x 0 cols 8 rows 3 is clean, rows 6 or full width is not,
-// a CHECKLIST / RADIO takes its rows by its item count (issue #10)
-const cellRows = (doc: string) => doc.split("\n").filter((l) => /^\| `/.test(l) && /\| (pairs|alone|free) \|/.test(l)).join("\n");
-const cellsImports = cellRows((await Bun.file("MYBPM-IMPORTS.md").text()).split("\n### 0.8 ")[1].split("\n### ")[0]);
-if (!cellsImports || cellRows(await Bun.file("MYBPM-UI-API.md").text()) !== cellsImports) { console.error("MYBPM-UI-API.md: the table «Cell of each type» differs from MYBPM-IMPORTS.md 0.8 — copy it over byte for byte"); process.exit(1); }
-await $`rm -rf dist/lint-cell && bun tools/make-probe-archive.bun.ts --group-code Cell_group --group-name Cell --group-order 1 --code Lint_cell --name Cell --salt cell --bo-order 1 --out dist/lint-cell ${["Сайт:LINK!half", "Канал:INPUT_TEXT", "Кампания:INPUT_TEXT!row", "Чек:CHECKLIST#Пункт 1|+Пункт 2|Пункт 3", "Ответ:RADIO_BUTTON_GROUP#Да|*Нет|Может быть"].flatMap((f) => ["--field", f])}`.quiet();
-const cellZip = [...new Bun.Glob("dist/lint-cell/*.zip").scanSync()][0];
-const cellBad = new TextDecoder().decode(unzip(await Bun.file(cellZip).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
-  const o = JSON.parse(l), f = o.dynamicFields;
-  if (f?.Sayit) {
-    const got = ["Sayit", "Chek", "Otvet"].map((c) => `${c} ${f[c].gridPosition.cols}x${f[c].gridPosition.rows}`).join(", ");
-    if (got !== "Sayit 8x3, Chek 15x6, Otvet 15x4") { console.error(`make-probe-archive: LINK / CHECKLIST of 3 / RADIO of 3 built ${got}, not Sayit 8x3, Chek 15x6, Otvet 15x4 (0.8)`); process.exit(1); }
-    Object.assign(f.Sayit.gridPosition, { cols: 15, rows: 6 }); f.Chek.gridPosition.rows = 3; f.Otvet.gridPosition.rows = 6;
-  }
-  return JSON.stringify(o);
-});
-await Bun.write("dist/lint-cell/bad.jsonl", cellBad.join("\n") + "\n");
-for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-  for (const [file, want] of [[cellZip, []], ["dist/lint-cell/bad.jsonl", ["Lint_cell.Sayit: rows 6, a LINK takes 3 (0.8)", "Lint_cell.Chek: rows 3, a CHECKLIST takes 6 for 3 in defaultValue (0.8)",
-    "Lint_cell.Otvet: rows 6, a RADIO_BUTTON_GROUP takes 4 for 3 in fieldOptionsStruct.options (0.8)", "Lint_cell.Sayit: a short field alone at full width — pair it or x 0, cols 8 (0.8)"]]] as const) {
-    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /takes|alone at full width/.test(l));
-    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: rows / alone lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-  }
-// a widget on a tab (tabCode) is a cell of that tab like a field (0.8a steps 3 and 5): a CURRENT_USER under the fields makes
-// the tab 10 rows, so the group is 13 in a dialog and 16 on a page tab; a button counts as the lowest cell and as one of
-// the 2 cells a tab holds — in both lints (issue #11)
-await $`rm -rf dist/lint-tabw && bun tools/make-probe-archive.bun.ts --group-code Tabw_group --group-name Tabw --group-order 1 --code Lint_tabw --name Tabw --salt tabw --bo-order 1 --out dist/lint-tabw ${["Название:INPUT_TEXT", "Вкладки:TAB_GROUP#Первая|Вторая", "Альфа:INPUT_TEXT!tab=Vkladki/Pervaya", "Бета:INPUT_TEXT!tab=Vkladki/Pervaya", "Гамма:INPUT_TEXT!tab=Vkladki/Vtoraya"].flatMap((f) => ["--field", f])} ${["CURRENT_USER:Текущий пользователь:cur_user", "BUTTON:Кнопка:btn"].flatMap((w) => ["--widget", w])}`.quiet();
-const tabwLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-tabw/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-const tabw = async (name: string, change: (bo: any) => void) => Bun.write(`dist/lint-tabw/${name}.jsonl`, tabwLines.map((l) => {
-  const o = JSON.parse(l);
-  if (o.dynamicFields) {
-    const cu = o.currentUser.cur_user, btn = o.buttons.btn;
-    if (cu.gridPosition.rows !== 4 || btn.gridPosition.rows !== 3) { console.error(`make-probe-archive: CURRENT_USER rows ${cu.gridPosition.rows}, BUTTON rows ${btn.gridPosition.rows}, not 4 and 3 (0.8)`); process.exit(1); }
-    Object.assign(cu, { gridPosition: { x: 0, y: 6, cols: 15, rows: 4 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Pervaya" } });
-    Object.assign(btn, { gridPosition: { x: 0, y: 3, cols: 15, rows: 3 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Vtoraya" } });
-    o.dynamicFields.Vkladki.gridPosition.rows = 13;
-    change(o);
-  }
-  return JSON.stringify(o);
-}).join("\n") + "\n");
-await tabw("ok", () => {});
-await tabw("low", (o) => { o.dynamicFields.Vkladki.gridPosition.rows = 9; });
-await tabw("page", (o) => { o.instanceViewType = "TAB"; o.dynamicFields.Vkladki.gridPosition.rows = 16; });
-await tabw("pagelow", (o) => { o.instanceViewType = "TAB"; o.dynamicFields.Vkladki.gridPosition.rows = 12; });
-await tabw("button", (o) => { Object.assign(o.buttons.btn, { gridPosition: { x: 0, y: 10, cols: 15, rows: 3 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Pervaya" } }); });
-for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-  for (const [name, want] of [["ok", []], ["low", ["Lint_tabw.Vkladki: rows 9, tallest tab 10 + 3 = 13 (0.8a step 5)"]], ["page", []],
-    ["pagelow", ["Lint_tabw.Vkladki: rows 12, tallest tab 10 + 6 = 16 (0.8a step 5)"]],
-    ["button", ["Lint_tabw.Vkladki: rows 13, tallest tab 13 + 3 = 16 (0.8a step 5)", "Lint_tabw.Vkladki.Vtoraya: a tab with 1 cell(s) — at least 2 fields or widgets, else a heading (0.8a step 3)"]]] as const) {
-    const r = await $`${cmd} dist/lint-tabw/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /tallest tab|a tab with/.test(l));
-    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on dist/lint-tabw/${name}.jsonl: tab height / tab cell lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-  }
-// the item count of an items cell (0.8) is one rule: tools/cell-table.ts cellRowsOf on the fields as the stand stores them
-// (a CHECKLIST's defaultValue a JSON string of 1 / 3, RADIO options a dictionary or an array of 3, a broken string = 0),
-// and both lints count the same — at those rows no «takes» line, one row more a line for each (issue #12)
-{
-  const { cellTable, cellRowsOf } = await import("./tools/cell-table.ts");
-  const CELLS = cellTable(await Bun.file("MYBPM-IMPORTS.md").text());
-  await $`rm -rf dist/lint-items && bun tools/make-probe-archive.bun.ts --group-code Items_group --group-name Items --group-order 1 --code Lint_items --name Items --salt items --bo-order 1 --out dist/lint-items ${["Название:INPUT_TEXT", "Один:CHECKLIST#А", "Три:CHECKLIST#А|Б|В", "Словарь:RADIO_BUTTON_GROUP#Да|Нет|Может", "Массив:RADIO_BUTTON_GROUP#Да|Нет|Может", "Битый:CHECKLIST#А"].flatMap((f) => ["--field", f])}`.quiet();
-  const itemLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-items/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-  const want: Record<string, [number, number, string]> = { Odin: [4, 1, "defaultValue"], Tri: [6, 3, "defaultValue"],
-    Slovar: [4, 3, "fieldOptionsStruct.options"], Massiv: [4, 3, "fieldOptionsStruct.options"], Bityyi: [3, 0, "defaultValue"] };
-  const items = async (name: string, extra: number) => Bun.write(`dist/lint-items/${name}.jsonl`, itemLines.map((l) => {
-    const o = JSON.parse(l);
-    if (o.dynamicFields) {
-      const d = o.dynamicFields, opts = d.Massiv.fieldOptionsStruct.options;
-      if (typeof d.Odin.defaultValue !== "string" || Object.keys(opts).length !== 3) { console.error("make-probe-archive: CHECKLIST defaultValue not a JSON string or RADIO not 3 options"); process.exit(1); }
-      d.Massiv.fieldOptionsStruct.options = Object.values(opts);
-      d.Bityyi.defaultValue = '[{"label":"А",';
-      let y = 0;
-      for (const f of (Object.values(d) as any[]).sort((a, b) => a.gridPosition.y - b.gridPosition.y)) {
-        const rows = cellRowsOf(CELLS, f);
-        if (want[f.code] && rows !== want[f.code][0]) { console.error(`cellRowsOf ${f.code}: ${rows}, want ${want[f.code][0]}`); process.exit(1); }
-        if (want[f.code] && f.code !== "Bityyi" && f.gridPosition.rows !== rows) { console.error(`make-probe-archive ${f.code}: rows ${f.gridPosition.rows}, the table gives ${rows} (0.8)`); process.exit(1); }
-        f.gridPosition = { x: 0, y, cols: 15, rows: rows + (want[f.code] ? extra : 0) };
-        y += f.gridPosition.rows;
-      }
-    }
-    return JSON.stringify(o);
-  }).join("\n") + "\n");
-  await items("ok", 0);
-  await items("off", 1);
-  const kind = (c: string) => (/^(Slovar|Massiv)$/.test(c) ? "RADIO_BUTTON_GROUP" : "CHECKLIST");
-  const off = Object.entries(want).map(([c, [r, n, k]]) => `Lint_items.${c}: rows ${r + 1}, a ${kind(c)} takes ${r} for ${n} in ${k} (0.8)`);
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-    for (const [name, lines] of [["ok", []], ["off", off]] as const) {
-      const r = await $`${cmd} dist/lint-items/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => / takes /.test(l));
-      if (got.join("\n") !== lines.join("\n")) { console.error(`${cmd[1]} on dist/lint-items/${name}.jsonl: item rows lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-    }
-}
-// field type by meaning (IMPORTS 0.5, issue #14): a text field whose label or code holds a month, a quantity, a day, a moment,
-// a range's start or a time gets one REMINDER with the type, a label with a format hint another; a comment, a typed field, a
-// weekday, «account» (no «count» token), a number code, «delivery_time» (a time code needs a start or an end beside it) and
-// «Итог проверки» (only «итого» is a sum) get none — in both lints. A number is checked by its label (issue #15): «Год» and «Месяц»
-// get the date type, a quantity, «Срок» and «Время в пути» (durations) and a code naming the unit it counts per get none; a checkbox
-// «Срок соблюдён» is a choice and gets none; a unit after a comma («Стаж, лет») is a quantity. On an amendment a line on a field the
-// source carries unchanged folds into «left as exported»; a field changed since the source keeps its line
-{
-  const TYPED: [string, string, string][] = [["month_key", "INPUT_TEXT", "Месяц"], ["hours_spent", "INPUT_TEXT", "Потрачено"], ["deadline", "INPUT_TEXT", "Срок (ДД.ММ)"],
-    ["period_start", "INPUT_TEXT", "Начало"], ["created_at", "INPUT_TEXT", "Создано"], ["length_mm", "TEXTAREA", "Длина (мм)"], ["start_time", "INPUT_TEXT", "Начало приёма"],
-    ["month", "YEAR_AND_MONTH", "Месяц (ММ.ГГГГ)"], ["payDay", "INPUT_TEXT", "Оплата"], ["comment", "TEXTAREA", "Комментарий"], ["due_date", "DATE", "Срок"],
-    ["period_comment", "INPUT_TEXT", "Комментарий к периоду"], ["account", "INPUT_TEXT", "Счёт"], ["weekday", "INPUT_TEXT", "День недели"], ["contract_number", "INPUT_TEXT", "Номер договора"],
-    ["delivery_time", "INPUT_TEXT", "Сроки доставки"], ["result", "INPUT_TEXT", "Итог проверки"], ["strategy_year", "INPUT_NUMBER", "Год"], ["month_no", "INPUT_NUMBER", "Месяц"],
-    ["qty", "INPUT_NUMBER", "Количество"], ["term_days", "INPUT_NUMBER", "Срок"], ["travel_time", "INPUT_NUMBER", "Время в пути"], ["fiscal_year_budget", "INPUT_NUMBER", "Бюджет"],
-    ["on_time", "CHECKBOX", "Срок соблюдён"], ["experience", "INPUT_TEXT", "Стаж, лет"]];
-  await $`rm -rf dist/lint-type && bun tools/make-probe-archive.bun.ts --group-code Type_group --group-name Type --group-order 1 --code Lint_type --name LintType --salt linttype --bo-order 1 --out dist/lint-type ${TYPED.flatMap(([c, t]) => ["--field", `${c.toLowerCase()}:${t}`])}`.quiet();
-  const typeLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-type/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-  const typed = async (name: string, label: (code: string, label: string) => string) => {
-    await Bun.write(`dist/lint-type/${name}.jsonl`, typeLines.map((l) => {
-      const o = JSON.parse(l);
-      if (o.dynamicFields) o.dynamicFields = Object.fromEntries(Object.values<any>(o.dynamicFields).map((f) => {
-        const row = TYPED.find(([c]) => c.toLowerCase() === f.code);
-        if (!row) { console.error(`lint-type: make-probe-archive coded ${f.code}`); process.exit(1); }
-        return [row[0], { ...f, code: row[0], label: { ...f.label, rus: label(row[0], row[2]) } }];
-      }));
-      return JSON.stringify(o);
-    }).join("\n") + "\n");
-    return `dist/lint-type/${name}.jsonl`;
-  };
-  const built = await typed("built", (c, l) => l), source = await typed("source", (c, l) => (c === "month_key" ? "Отчётный месяц" : l));
-  const R = (c: string, l: string, what: string, t: string) => { const ty = TYPED.find(([x]) => x === c)![1]; return `REMINDER Lint_type.${c} «${l}»: ${ty} — by its name ${what}, so ${t}, or report «${ty === "INPUT_NUMBER" ? "числом" : "текстом"}, потому что …» (0.5 «Field type by meaning»)`; };
-  const H = (c: string, l: string) => `REMINDER Lint_type.${c} «${l}»: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`;
-  const want = [R("month_key", "Месяц", "a month", "YEAR_AND_MONTH"), R("hours_spent", "Потрачено", "a quantity", "INPUT_NUMBER"), R("deadline", "Срок (ДД.ММ)", "a day", "DATE"), H("deadline", "Срок (ДД.ММ)"),
-    R("period_start", "Начало", "a day", "DATE"), R("created_at", "Создано", "a moment, day and time", "FULL_DATE"), R("length_mm", "Длина (мм)", "a quantity", "INPUT_NUMBER"),
-    R("start_time", "Начало приёма", "a time of day", "TIME"), H("month", "Месяц (ММ.ГГГГ)"), R("payDay", "Оплата", "a day", "DATE"),
-    R("strategy_year", "Год", "a year", "YEAR"), R("month_no", "Месяц", "a month", "YEAR_AND_MONTH"), R("experience", "Стаж, лет", "a quantity", "INPUT_NUMBER")];
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
-    for (const [args, lines, folded] of [[[built], want, ""], [[built, "--source", built], [], "Lint_type.month_key, Lint_type.hours_spent"], [[built, "--source", source], [want[0]], "Lint_type.hours_spent"]] as const) {
-      const r = await $`${cmd} ${args}`.nothrow().quiet(), out = r.stdout.toString(), got = out.split("\n").filter((l) => /\(0\.5 «Field type by meaning»\)$/.test(l));
-      if (got.join("\n") !== lines.join("\n") || (folded && !out.includes(folded))) { console.error(`${cmd[1]} ${args.join(" ")}: field type lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${folded ? `\nand «${folded}» left as exported` : ""}\n${out}${r.stderr}`); process.exit(1); }
-    }
-}
-// the keys of a map keyed by data (`fromFieldCodes` of an «Из поля» condition holds field codes) are not invented keys,
-// while an invented key beside it still is — in both lints
-{
-  await $`rm -rf dist/lint-ff && bun tools/make-probe-archive.bun.ts --group-code Ff_group --group-name Ff --group-order 1 --code Lint_ff --name LintFf --salt lintff --bo-order 1 --out dist/lint-ff --field nazvanie:INPUT_TEXT!tableColToShow=true --field zadacha:BO@AAAAAAAAAAAAAAAA@Lint_ff_task!show=name --field ispolnitel:BO@AAAAAAAAAAAAAAAA@Lint_ff_task!show=name`.quiet();
-  const ffLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-ff/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-  await Bun.write("dist/lint-ff/ff.jsonl", ffLines.map((l) => {
-    const o = JSON.parse(l);
-    if (o.dynamicFields?.zadacha) o.dynamicFields.zadacha.bracketFilter = { boCode: "Lint_ff_task", fieldCode: "zadacha", brackets: { vjFiE0eJ: {
-      parentTreeIds: {}, order: 0, connectionType: "AND", notType: "DEFAULT", nativeFilters: {}, dynamicFilters: { ajW7xfc8: { fieldCode: "ispolnitel", type: "BO",
-        value: "", businessObjectCode: "Lint_ff_task", numberFrom: 0, numberTo: 0, isCurrentUser: false, isEmptyValue: false, boiIds: {},
-        fromFieldCodes: { ispolnitel: 1, zadacha: 1 }, bogusKey: 1 } } } } };
-    return JSON.stringify(o);
-  }).join("\n") + "\n");
-  const want = `Lint_ff.ajW7xfc8: key "bogusKey" is not in this document — invented, the importer drops it silently or fails; find the setting by meaning or write no key and say so (0.4a)`;
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
-    const r = await $`${cmd} dist/lint-ff/ff.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /is not in this document/.test(l));
-    if (got.join("\n") !== want) { console.error(`${cmd[1]} on dist/lint-ff/ff.jsonl: invented-key lines\n${got.join("\n") || "(none)"}\nwant\n${want}${r.stderr}`); process.exit(1); }
-  }
-}
-// a kanban card field some viewer does not see as asked (0.5c, issue #17): a CO draws another value of the chosen record;
-// a field of a tab with VIEW «никому» — also through a TAB_GROUP lying on that tab — is dropped for every non-admin (a line to
-// fix); with VIEW limited to a group it is a REMINDER; a field of an open tab gets none — in both lints
-{
-  const KB = ["title:INPUT_TEXT!tableColToShow=true", "status:DROPDOWN_SINGLE#new=Новый|done=Готово", "tabs:TAB_GROUP#Основное=tab_main|Системные=tab_system",
-    "note:INPUT_TEXT!tab=tabs/tab_main", "hidden:INPUT_TEXT!tab=tabs/tab_system", "inner:TAB_GROUP#Внутри=tab_in!tab=tabs/tab_system", "deep:INPUT_TEXT!tab=inner/tab_in",
-    "pick:CO@AAAAAAAAAAAAAAAA@Lint_kanban_co!show=name"];
-  await $`rm -rf dist/lint-kanban && bun tools/make-probe-archive.bun.ts --group-code Kb_group --group-name Kb --group-order 1 --code Lint_kanban --name LintKanban --salt lintkanban --bo-order 1 --out dist/lint-kanban ${KB.flatMap((f) => ["--field", f])} --hide-tab tabs/tab_system --kanban ${"status:HEADER=title;CONTENT=note,hidden,deep,pick"}`.quiet();
-  const kbLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-kanban/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-  const kb = async (name: string, limit: boolean) => {
-    await Bun.write(`dist/lint-kanban/${name}.jsonl`, kbLines.map((l) => {
-      const o = JSON.parse(l), v = o.fieldAccessStructMap?.tabs?.tabAccessStructMap?.tab_system?.view;
-      if (v && limit) v.orgUnitIds = ["G-AAAAAAAAAAAAAAAA"];
-      return JSON.stringify(o);
-    }).join("\n") + "\n");
-    return `dist/lint-kanban/${name}.jsonl`;
-  };
-  const N = (k: string) => `Lint_kanban: kanbanCardTemplates.status shows ${k} of tab tabs.tab_system, VIEW «никому» — the card drops it for everyone but admins; show a field of an open tab (0.5c)`;
-  const Lim = (k: string) => `REMINDER Lint_kanban: kanbanCardTemplates.status shows ${k} of tab tabs.tab_system, VIEW limited — only who sees the tab, and admins, see it on the card; say so in the report (0.5c)`;
-  const CO = `Lint_kanban: kanbanCardTemplates.status shows pick, a CO — the card draws another value of the chosen record, not its name; show a BO field or a text field instead (0.5c)`;
-  const cases = [[await kb("nobody", false), [N("hidden"), N("deep"), CO]], [await kb("limited", true), [Lim("hidden"), Lim("deep"), CO]]] as const;
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "skills/mybpm-imports/scripts/lint_archive.py"]] : [])])
-    for (const [file, want] of cases) {
-      const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /kanbanCardTemplates/.test(l));
-      if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: card lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n")}${r.stderr}`); process.exit(1); }
-    }
-}
-// a nested table's column tableWidth is a percent (issue #19): shown widths summing to ≥ 100 with a shown column lacking one
-// is a line to fix; under 100, every column set, or the width on a hidden column — none; in both lints
-{
-  await $`rm -rf dist/lint-width && bun tools/make-probe-archive.bun.ts --group-code Lw_group --group-name Lw --group-order 1 --code Lint_width --name LintWidth --salt lintwidth --bo-order 1 --out dist/lint-width --field nazvanie:INPUT_TEXT!tableColToShow=true --field ${"svyazi:BO@AAAAAAAAAAAAAAAA@Lint_width_ref!show=a|b|c|d"}`.quiet();
-  const lwLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-width/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
-  const lw = async (name: string, widths: Record<string, number>, hide: string[]) => {
-    await Bun.write(`dist/lint-width/${name}.jsonl`, lwLines.map((l) => {
-      const o = JSON.parse(l), refs = o.dynamicFields?.svyazi?.boRefStruct?.fieldRefs;
-      if (refs) for (const c of Object.keys(refs)) { if (widths[c] !== undefined) refs[c].tableWidth = widths[c]; if (hide.includes(c)) refs[c].toShow = false; }
-      return JSON.stringify(o);
-    }).join("\n") + "\n");
-    return `dist/lint-width/${name}.jsonl`;
-  };
-  const W = (sum: number, bare: string) => `Lint_width.svyazi: nested table column widths sum to ${sum} % — ${bare} get no width and squeeze; keep the sum under 100 or set none (0.5a)`;
-  const cases = [[await lw("over", { a: 70, b: 50 }, []), [W(120, "c, d")]], [await lw("exact", { a: 60, b: 40 }, []), [W(100, "c, d")]],
-    [await lw("under", { a: 60, b: 30 }, []), []], [await lw("all", { a: 50, b: 50, c: 20, d: 10 }, []), []], [await lw("hidden", { a: 90, d: 40 }, ["d"]), []]] as const;
-  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "skills/mybpm-imports/scripts/lint_archive.py"]] : [])])
-    for (const [file, want] of cases) {
-      const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /column widths sum/.test(l));
-      if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
-    }
-}
-// the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
-// (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
-for (const name of ["mybpm-imports", "mybpm-stand"]) {
-  const odd = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name).filter((n) => !/\.(md|js|py)$/.test(n));
-  if (odd.length) { console.error(`dist/skills/${name}.zip: ${odd.join(", ")} — only .md, .js and .py may ship in a skill`); process.exit(1); }
-}
 // the MCP server is built in sync with its source and runs the v1 cycle against the mock stand under every runtime at hand
 await $`mise run mcp-build`.quiet();
 if (Bun.env.CI && (await $`git status --porcelain -- mcp/`.text()).trim()) {
@@ -1092,6 +712,42 @@ try {
       || q.get("title") !== "Поле не сохраняется" || q.get("mark") !== "[C]" || !q.get("version") || issue.opened !== false || !/label%3Aplatform-discrepancy/.test(issue.search)) {
       bad++; console.error(`mcp (${rt}) platform_report: ${JSON.stringify(issue)?.slice(0, 400)}\n${rep.stderr}`);
     }
+    // every kind of report fills its own issue form: the form exists, the search goes by its label, every field of
+    // the url is a field of the form, every required field of the form is filled; and every form has a kind
+    const tools = JSON.parse((await $`bun tools/mcp-client.bun.ts list --json --runtime ${rt}`.env(env).nothrow().quiet()).stdout.toString() || "[]");
+    const props = tools.find((t: any) => t.name === "platform_report")?.inputSchema?.properties ?? {};
+    const kinds: string[] = props.kind?.enum ?? [], reached = new Set<string>();
+    if (kinds.length < 4) { bad++; console.error(`mcp (${rt}) platform_report: kinds ${kinds}`); }
+    for (const kind of kinds) {
+      const args: Record<string, string> = { kind, title: "t" };
+      for (const [k, p] of Object.entries<any>(props)) if (p.type === "string" && !["kind", "title", "stand", "login"].includes(k)) args[k] = p.enum?.[0] ?? `v-${k}`;
+      const call = (a: object) => $`bun tools/mcp-client.bun.ts call platform_report ${JSON.stringify(a)} --runtime ${rt} --json`.env({ ...env, MYBPM_LATEST_URL: "" }).nothrow().quiet();
+      const full = await call(args), bare = JSON.parse((await call({ kind, title: "t" })).stdout.toString() || "[]")[0];
+      const r = JSON.parse(full.stdout.toString() || "[]")[0]?.result;
+      const q = r?.url ? new URL(r.url).searchParams : new URLSearchParams();
+      const file = Bun.file(`.github/ISSUE_TEMPLATE/${q.get("template")}`);
+      const form: any = (await file.exists()) ? Bun.YAML.parse(await file.text()) : {};
+      reached.add(String(q.get("template")));
+      const ids = (form.body ?? []).filter((x: any) => x.id).map((x: any) => x.id);
+      const required = (form.body ?? []).filter((x: any) => x.validations?.required).map((x: any) => x.id);
+      const label = form.labels?.[0];
+      const errs = [
+        !label && "no form or no label",
+        label && new URL(r.search).searchParams.get("q")?.startsWith(`is:issue label:${label} `) !== true && `search not by label ${label}`,
+        ...[...q.keys()].filter((k) => !["template", "title"].includes(k) && !ids.includes(k)).map((k) => `url field ${k} not in the form`),
+        ...required.filter((k: string) => !q.get(k)).map((k: string) => `required ${k} empty`),
+        !(bare?.isError && /needs /.test(bare.result)) && "a bare title is not refused",
+        // the manual recipe (the rule at the top of both documents) names the same form and fields
+        ...await Promise.all(["MYBPM-IMPORTS.md", "MYBPM-UI-API.md"].map(async (doc) => {
+          const row = (await Bun.file(doc).text()).split("\n").find((l) => l.startsWith(`| \`${kind}\` |`)) ?? "";
+          const miss = [String(q.get("template")), ...ids.filter((k: string) => k !== "version")].filter((k) => !row.includes(`\`${k}\``));
+          return miss.length ? `${doc}: the kinds table row lacks ${miss.join(", ")}` : "";
+        })),
+      ].filter(Boolean);
+      if (errs.length) { bad++; console.error(`mcp (${rt}) platform_report ${kind}: ${errs.join("; ")}\n${full.stderr}`); }
+    }
+    for await (const t of new Bun.Glob("*.yml").scan(".github/ISSUE_TEMPLATE"))
+      if (!reached.has(t)) { bad++; console.error(`mcp (${rt}) platform_report: no kind fills .github/ISSUE_TEMPLATE/${t}`); }
   }
   // the same tools as a terminal command (mise run stand): flags coerced by the schema, a JSON word, help, errors with exit 1
   for (const [rt, server] of [["bun", "mcp/mybpm-stand.ts"], ["node", "mcp/mybpm-stand.cjs"]].filter(([r]) => Bun.which(r))) {
@@ -1130,6 +786,405 @@ if ((await $`which claude`.nothrow().quiet()).exitCode === 0) await $`claude plu
 const fromZip = await $`bun tools/mcp-client.bun.ts call archive_lint ${JSON.stringify({ path: zipFile })} --server dist/mcp-test/plugin/mybpm/mcp/mybpm-stand.cjs --json`.env(env).nothrow().quiet();
 const zipRow = JSON.parse(fromZip.stdout.toString() || "[]")[0];
 if (!zipRow?.result?.lint || !String(zipRow.result.lint).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`plugin zip server: archive_lint answered ${JSON.stringify(zipRow)}\n${fromZip.stderr}`); process.exit(1); }
+'''
+
+[tasks.test]
+description = "Everything CI runs before a release: skill anchors, every tool parses, the skill zips build and hold SKILL.md + the document (+ scripts/lint-archive.js and lint_archive.py), the generated lint is committed in sync with IMPORTS 0.10 and runs clean on a generated dictionary under node and bun, the Python port carries the hash of the block it was ported from, runs clean too and prints what the JS lint prints on fuzzed archives (lint-parity); the MCP server mcp/mybpm-stand.cjs is built in sync and runs the import/export/bell cycle, the constructor, the rights (BO, field, tab, menu item), the records (both save cycles, a veto, the ES breaker, find, read, delete), the records xlsx (template, import act, cancel, apply, export, update by path) and the accounts (page login, wrong password, no default with two, a dead session renewed by the remembered password, rename, stand_account_save on a local stand only, remove) against the mock stand under node and bun, plus the same tools as a terminal command (mise run stand)"
+shell = "bun -e"
+run = '''
+import { $ } from "bun";
+import { unzip } from "./tools/zip.ts";
+// test-size: a `bun -e` body is one argument, and Linux refuses one over 128 KiB («Argument list too long») — fail with
+// room to spare, so a growing task is split before it stops running
+for (const [name, t] of Object.entries<any>(Bun.TOML.parse(await Bun.file("mise.toml").text()).tasks)) {
+  const size = new TextEncoder().encode([t.run ?? ""].flat().join("\n")).length;
+  if (size > 112 * 1024) { console.error(`mise.toml task ${name}: body ${size} bytes, over 112 KiB of the 128 KiB argument limit — move a part into its own task`); process.exit(1); }
+}
+await $`mise run skills-check`;
+// each SKILL.md names the plugin version it ships with (mise publish writes both) — its own release check compares that
+const pluginVersion = (await Bun.file(".claude-plugin/plugin.json").json()).version;
+for (const skill of ["skills/mybpm-imports/SKILL.md", "skills/mybpm-stand/SKILL.md"]) {
+  const v = (await Bun.file(skill).text()).match(/This copy of the skill is version \*\*([\d.]+)\*\*/)?.[1];
+  if (v !== pluginVersion) { console.error(`${skill}: version ${v} ≠ plugin.json ${pluginVersion}`); process.exit(1); }
+}
+for (const f of new Bun.Glob("tools/*.ts").scanSync()) await $`bun build --target=bun --no-bundle ${f}`.quiet();
+await $`mise run skills-zip`;
+for (const [name, doc] of [["mybpm-imports", "MYBPM-IMPORTS.md"], ["mybpm-stand", "MYBPM-UI-API.md"]]) {
+  const list = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name);
+  for (const want of [`${name}/SKILL.md`, `${name}/${doc}`, ...(name === "mybpm-imports" ? [`${name}/scripts/lint-archive.js`, `${name}/scripts/lint_archive.py`] : [])]) {
+    if (!list.includes(want)) { console.error(`dist/skills/${name}.zip: no ${want}`); process.exit(1); }
+  }
+}
+// CI checks out what was committed: the generated lint must already match IMPORTS 0.10 there (mise publish commits it)
+if (Bun.env.CI && (await $`git status --porcelain -- skills/`.text()).trim()) {
+  console.error("skills/ is stale against MYBPM-IMPORTS.md — run mise run skills-gen and commit"); process.exit(1);
+}
+// the shipped lint (IMPORTS 0.10 lintArchive + wrapper) runs on a generated dictionary under every runtime at hand and stays silent (no false positives)
+await $`rm -rf dist/lint-test && bun tools/make-probe-archive.bun.ts --group-code Lint_group --group-name Lint --group-order 1 --code Lint_dict --name Lint --category BO_DICTIONARY --salt lint --bo-order 1 --out dist/lint-test`.quiet();
+const zipFile = [...new Bun.Glob("dist/lint-test/*.zip").scanSync()][0];
+for (const rt of ["node", "bun"].filter((r) => Bun.which(r))) {
+  const r = await $`${rt} skills/mybpm-imports/scripts/lint-archive.js ${zipFile}`.nothrow().quiet();
+  const defects = r.stdout.toString().split("\n").filter((l) => l && l !== "form lint: OK" && !l.startsWith("REMINDER"));
+  if (r.exitCode || defects.length) { console.error(`lint-archive.js (${rt}) on a generated dictionary, exit ${r.exitCode}:\n${defects.join("\n")}${r.stderr}`); process.exit(1); }
+  // a .js under a package.json with "type": "module" runs as an ES module — the lint must not depend on CommonJS
+  await $`rm -rf dist/lint-esm && mkdir -p dist/lint-esm/scripts && cp skills/mybpm-imports/scripts/lint-archive.js dist/lint-esm/scripts/ && cp MYBPM-IMPORTS.md dist/lint-esm/`.quiet();
+  await Bun.write("dist/lint-esm/package.json", '{ "type": "module" }\n');
+  const esm = await $`${rt} dist/lint-esm/scripts/lint-archive.js ${zipFile}`.nothrow().quiet();
+  if (esm.exitCode || !String(esm.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint-archive.js (${rt}) as an ES module, exit ${esm.exitCode}:\n${esm.stdout}${esm.stderr}`); process.exit(1); }
+}
+// the Python port of the lint follows lintArchive by hand: its marker names the hash of the block it was ported from
+const lintBlock = (await Bun.file("MYBPM-IMPORTS.md").text()).match(/```js\n(function lintArchive[\s\S]*?\n)```/)![1];
+const lintHash = new Bun.CryptoHasher("sha256").update(lintBlock).digest("hex").slice(0, 12);
+const ported = (await Bun.file("skills/mybpm-imports/scripts/lint_archive.py").text()).match(/^# lintArchive sha256: (\w+)$/m)?.[1];
+if (ported !== lintHash) {
+  console.error(`lint_archive.py is ported from lintArchive ${ported}, MYBPM-IMPORTS.md 0.10 holds ${lintHash} — port the change, run mise run lint-parity, set the marker to ${lintHash}`);
+  process.exit(1);
+}
+// ... runs clean on the generated dictionary, finds the document from the claude.ai zip layout, and prints what the JS lint prints
+if (Bun.which("python3")) {
+  await $`cp skills/mybpm-imports/scripts/lint_archive.py dist/lint-esm/scripts/`.quiet();
+  const r = await $`python3 dist/lint-esm/scripts/lint_archive.py ${zipFile}`.nothrow().quiet();
+  if (r.exitCode || !String(r.stdout).trim().split("\n").every((l) => l === "form lint: OK" || l.startsWith("REMINDER "))) { console.error(`lint_archive.py on a generated dictionary, exit ${r.exitCode}:\n${r.stdout}${r.stderr}`); process.exit(1); }
+  await $`mise run lint-parity`;
+} else if (Bun.env.CI) { console.error("no python3 — the Python port of the lint is untested"); process.exit(1); }
+else console.warn("WARNING: no python3 here — lint_archive.py and lint-parity skipped (CI runs them)");
+// the reject-check categories (0.10): one field per category gets exactly its ERROR, the near misses get none — in both lints
+await $`rm -rf dist/lint-xss && bun tools/make-probe-archive.bun.ts --group-code Xss_group --group-name Xss --group-order 1 --code Lint_xss --name Xss --salt xss --bo-order 1 --out dist/lint-xss --field ${"Мышь onmouseover:INPUT_TEXT"} --field ${"Жест onpointerdown:INPUT_TEXT"} --field ${"Ссылка javascript:x:INPUT_TEXT"} --field ${"Расчёт eval (1):INPUT_TEXT"} --field ${"<p>Platform: X</p>:INPUT_TEXT"} --field ${"Тег <object:INPUT_TEXT"} --field ${"Кнопка button_start:INPUT_TEXT"} --field ${"Medieval 1200:INPUT_TEXT"} --calendar --calendar-card "header=Medieval_1200;content=Knopka_button_start,Medieval_1200"`.quiet();
+const xssZip = [...new Bun.Glob("dist/lint-xss/*.zip").scanSync()][0];
+const xssWant = ["onmouseover", "onpointerdown", "javascript: or vbscript:", "eval( or expression(", "form:, object:, embed: or applet: after a <", "an <object>, <applet>, <embed> or <form> tag"];
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
+  const r = await $`${cmd} ${xssZip}`.nothrow().quiet();
+  const got = r.stdout.toString().split("\n").filter((l) => l.includes("a kind of string the stand refuses"));
+  const miss = xssWant.filter((w) => got.filter((l) => l.includes(w)).length !== 1);
+  // the calendar card zones are keyed by FIELD CODE — a code is data, never an invented key (0.4a)
+  const keyErr = r.stdout.toString().split("\n").filter((l) => l.includes("is not in this document"));
+  if (keyErr.length) { console.error(`${cmd[1]}: field codes in calendarCardTemplates taken for invented keys:\n${keyErr.join("\n")}`); process.exit(1); }
+  if (got.length !== xssWant.length || miss.length) { console.error(`${cmd[1]}: reject-check ERRORs ${got.length}, want ${xssWant.length}, wrong for ${JSON.stringify(miss)}:\n${got.join("\n")}${r.stderr}`); process.exit(1); }
+}
+// one grid per form (0.8): the generator never builds a staircase (5 + 10 under 5 + 5 + 5 and under a lone field, 4 + 4 + 7
+// and 8 + 7 under 4 + 4 + 4 + 3), and 8 + 7 over 5 + 5 + 5 is exactly one staircase ERROR — in both lints. A DATE keeps
+// its own width: the generator gives the wider cell of a pair to the input, DATE 10 + input 5 is exactly one ERROR, and a
+// form where no split of one grid gives every input the wider cell is refused, not built
+const gridGen = (name: string, fields: string[]) => $`rm -rf dist/lint-${name} && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_grid --name Grid --salt grid --bo-order 1 --out dist/lint-${name} ${fields.flatMap((f) => ["--field", f])}`.quiet();
+await gridGen("grid5", ["Исполнитель:INPUT_TEXT", "Подразделение:INPUT_TEXT!row", "Постановщик:INPUT_TEXT", "Срок:DATE!row", "Приоритет:INPUT_TEXT!row", "Источник:INPUT_TEXT!half", "Канал:INPUT_TEXT", "Кампания:INPUT_TEXT!row"]);
+await gridGen("grid4", ["A1:INPUT_TEXT", "A2:INPUT_TEXT!row", "A3:INPUT_TEXT!row", "A4:INPUT_TEXT!row", "B1:INPUT_TEXT", "B2:INPUT_TEXT!row", "B3:INPUT_TEXT!row", "C1:INPUT_TEXT", "C2:INPUT_TEXT!row"]);
+await gridGen("gridw", ["Срок:DATE", "Описание:INPUT_TEXT!row"]);
+const gridNo = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_grid --name Grid --salt grid --bo-order 1 --out dist/lint-gridno --field Срок:DATE --field Описание:INPUT_TEXT!row --field Канал:INPUT_TEXT --field Дата:DATE!row`.nothrow().quiet();
+if (!gridNo.exitCode || !/no grid of 15 columns suits/.test(gridNo.stderr.toString())) { console.error(`make-probe-archive built DATE + input over input + DATE (exit ${gridNo.exitCode}):\n${gridNo.stderr}`); process.exit(1); }
+const grid5 = [...new Bun.Glob("dist/lint-grid5/*.zip").scanSync()][0], grid4 = [...new Bun.Glob("dist/lint-grid4/*.zip").scanSync()][0], gridw = [...new Bun.Glob("dist/lint-gridw/*.zip").scanSync()][0];
+const wide = new TextDecoder().decode(unzip(await Bun.file(gridw).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Srok) { if (f.Srok.gridPosition.cols !== 5 || f.Opisanie.gridPosition.cols !== 10) { console.error(`make-probe-archive: DATE + input split ${f.Srok.gridPosition.cols} + ${f.Opisanie.gridPosition.cols}, not 5 + 10`); process.exit(1); }
+    f.Srok.gridPosition.cols = 10; Object.assign(f.Opisanie.gridPosition, { x: 10, cols: 5 }); }
+  return JSON.stringify(o);
+});
+await Bun.write("dist/lint-gridw/wide.jsonl", wide.join("\n") + "\n");
+const stair = new TextDecoder().decode(unzip(await Bun.file(grid5).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Ispolnitel) { if (f.Ispolnitel.gridPosition.cols !== 5) { console.error(`make-probe-archive: the pair over a row of three is ${JSON.stringify(f.Ispolnitel.gridPosition)}, not 5 + 10`); process.exit(1); }
+    f.Ispolnitel.gridPosition.cols = 8; Object.assign(f.Podrazdelenie.gridPosition, { x: 8, cols: 7 }); }
+  return JSON.stringify(o);
+});
+await Bun.write("dist/lint-grid5/stair.jsonl", stair.join("\n") + "\n");
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [file, want] of [[grid5, []], [grid4, []], [gridw, []], ["dist/lint-grid5/stair.jsonl", ["Lint_grid.Postanovschik: row y 3 columns start at 0,5,10 — the row above starts at 0,8: staircase, one grid per form (0.8)"]],
+    ["dist/lint-gridw/wide.jsonl", ["Lint_grid.Srok: a DATE box keeps its own width — the wider cell of row y 0 goes to Lint_grid.Opisanie (0.8)"]]] as const) {
+    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /staircase|keeps its own width/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: staircase / own-width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
+// width by the table (IMPORTS 0.8, issue #14): a narrow INPUT_NUMBER takes ≤ 5 columns and may leave its row short (5 + 5
+// beside a DATE, alone at cols 5), but not beside a stretching field; a kind with a min px gets cols ≥ ⌈(min px + 1) / colPx⌉
+// for its window — on a tab the column is narrower. Positions are set by hand: the good form gives no line, the bad one
+// exactly six (a cell in the columns a short row left empty floats up), in both lints
+await $`rm -rf dist/lint-narrow && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Lint_narrow --name Narrow --salt narrow --bo-order 1 --out dist/lint-narrow ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER", "Per:PERIOD", "Data:DATE", "Kol2:INPUT_NUMBER", "Data2:DATE", "Tel:INPUT_PHONE", "T:TAB_GROUP#Shag|Vtoroy", "Tel2:INPUT_PHONE!tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag"].flatMap((f) => ["--field", f])}`.quiet();
+const narrowLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-narrow/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+const narrowAt = async (name: string, at: Record<string, [number, number, number]>) => { // code → [x, y, cols]
+  const lines = narrowLines.map((l) => {
+    const o = JSON.parse(l);
+    for (const f of Object.values<any>(o.dynamicFields ?? {})) {
+      if (!at[f.code]) { console.error(`lint-narrow ${name}: no position for ${f.code}`); process.exit(1); }
+      const [x, y, cols] = at[f.code]; Object.assign(f.gridPosition, { x, y, cols });
+    }
+    return JSON.stringify(o);
+  });
+  await Bun.write(`dist/lint-narrow/${name}.jsonl`, lines.join("\n") + "\n");
+  return `dist/lint-narrow/${name}.jsonl`;
+};
+const narrowGood = await narrowAt("good", { Opis: [0, 0, 10], Kol: [10, 0, 5], Per: [0, 3, 10], Data: [10, 3, 5], Kol2: [0, 6, 5], Data2: [5, 6, 5], Tel: [0, 9, 8], T: [0, 12, 15], Tel2: [0, 0, 7], Opis2: [7, 0, 8] });
+const narrowBad = await narrowAt("bad", { Kol: [0, 0, 10], Opis: [10, 0, 5], Per: [0, 3, 7], Data: [7, 3, 8], Kol2: [0, 6, 5], Tel: [5, 6, 5], Data2: [10, 9, 5], T: [0, 12, 15], Tel2: [0, 0, 6], Opis2: [6, 0, 9] });
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [file, want] of [[narrowGood, []], [narrowBad, [
+    "Lint_narrow.Kol: cols 10 — a INPUT_NUMBER is narrow, at most 5 columns; the wider cell goes to its neighbour (0.8)",
+    "Lint_narrow.Per: cols 7 is 302 px in a window w 10 — a PERIOD box needs 325 px, cols ≥ 8 (0.8)",
+    "Lint_narrow.Tel: cols 5 is 216 px in a window w 10 — a INPUT_PHONE box needs 245 px, cols ≥ 6 (0.8)",
+    "Lint_narrow.Tel2: cols 6 is 243 px in a window w 10 on a tab — a INPUT_PHONE box needs 245 px, cols ≥ 7 (0.8)",
+    "Lint_narrow.Kol2: row y 6 spans 10 of 15 columns (0.8)",
+    "Lint_narrow.Data2: x 10 in the free columns 10–14 above — floats up (0.8)"]]] as const) {
+    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /is narrow|box needs|spans \d+ of 15|floats up/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: narrow / min-px lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
+// the generator lays out by the same rules in a w 10 window: the number gets 5 beside text, PERIOD 10 beside a number, a phone
+// 10 beside an e-mail (6 is off the grid), two numbers on a tab 5 + 5 cut short, a phone + text on a tab 8 + 7 (7 = its min
+// there) — and both lints find no width line in it; a pair under a lone number would float up, so the generator refuses it
+await $`rm -rf dist/gen-narrow && bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_narrow --name GenNarrow --salt gennarrow --bo-order 1 --out dist/gen-narrow ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER!row", "Per:PERIOD", "Kol2:INPUT_NUMBER!row", "Tel:INPUT_PHONE", "Mail:INPUT_EMAIL!row", "T:TAB_GROUP#Shag|Vtoroy", "Tel2:INPUT_PHONE!tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag,row", "Kol3:INPUT_NUMBER!tab=T/Vtoroy", "Kol4:INPUT_NUMBER!tab=T/Vtoroy,row"].flatMap((f) => ["--field", f])}`.quiet();
+{
+  const zipFile = [...new Bun.Glob("dist/gen-narrow/*.zip").scanSync()][0];
+  const bo = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((o) => o.dynamicFields);
+  const got = Object.values<any>(bo.dynamicFields).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}`).join(", ");
+  const want = "Opis 0/0/10, Kol 10/0/5, Per 0/3/10, Kol2 10/3/5, Tel 0/6/10, Mail 10/6/5, T 0/9/15, Tel2 0/0/8, Opis2 8/0/7, Kol3 0/0/5, Kol4 5/0/5";
+  if (got !== want || bo.gridLayoutPosition?.w !== 10) { console.error(`make-probe-archive in w ${bo.gridLayoutPosition?.w}: ${got}\nwant w 10: ${want}`); process.exit(1); }
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
+    const r = await $`${cmd} ${zipFile}`.nothrow().quiet(), bad = r.stdout.toString().split("\n").filter((l) => /is narrow|box needs|spans \d+ of 15|floats up|staircase|keeps its own width|alone at full width/.test(l));
+    if (bad.length || !/Gen_narrow/.test(r.stdout.toString())) { console.error(`${cmd[1]} on the generated ${zipFile}: ${bad.join("\n") || r.stdout.toString() + r.stderr}`); process.exit(1); }
+  }
+  const under = await $`bun tools/make-probe-archive.bun.ts --group-code Grid_group --group-name Grid --group-order 1 --code Gen_under --name GenUnder --salt genunder --bo-order 1 --out dist/gen-narrow/under --field Kol:INPUT_NUMBER --field Opis:INPUT_TEXT --field Mail:INPUT_EMAIL!row`.nothrow().quiet();
+  if (!under.exitCode || !/no grid of 15 columns suits the form rows \[\["Kol"\],\["Opis","Mail"\]\]/.test(under.stderr.toString())) { console.error(`make-probe-archive built a pair under a lone number (exit ${under.exitCode}):\n${under.stderr}`); process.exit(1); }
+}
+// a short field alone in its row: x 0, cols 8 with a 5 + 10 pair under it (not 15 over 8 + 7), and 15 only when the row below
+// would float up into columns 8–14 (5 + 5 + 5) — then the lint reports the lone row, as it should (0.8)
+for (const [name, fields, want] of [["lone8", ["Opis:INPUT_TEXT", "Prim:INPUT_TEXT", "Mail:INPUT_EMAIL!row"], "Opis 0/0/8, Prim 0/3/5, Mail 5/3/10"],
+  ["lone15", ["Opis:INPUT_TEXT", "A:INPUT_TEXT", "B:INPUT_TEXT!row", "C:INPUT_TEXT!row"], "Opis 0/0/15, A 0/3/5, B 5/3/5, C 10/3/5"]] as const) {
+  await $`rm -rf dist/gen-lone/${name} && bun tools/make-probe-archive.bun.ts --group-code Lone_group --group-name Lone --group-order 1 --code Gen_lone --name GenLone --salt genlone --bo-order 1 --out dist/gen-lone/${name} ${fields.flatMap((f) => ["--field", f])}`.quiet();
+  const zipFile = [...new Bun.Glob(`dist/gen-lone/${name}/*.zip`).scanSync()][0];
+  const bo = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((o) => o.dynamicFields);
+  const got = Object.values<any>(bo.dynamicFields).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}`).join(", ");
+  if (got !== want) { console.error(`make-probe-archive, ${name}: ${got}\nwant: ${want}`); process.exit(1); }
+}
+// «Отслеживать статус» (§3): the wrapper draws no tab bar, so it is 15 × 4 and takes the date's place in its stack (the form or
+// a tab), the date + «Статус» sit 9 + 6 inside it, a second status is «Статус2»; both lints find no layout line in what the
+// generator builds, and on hand-broken copies they report exactly the wrapper's rows, the field under it and the date's place
+await $`rm -rf dist/gen-track && bun tools/make-probe-archive.bun.ts --group-code Track_group --group-name Track --group-order 1 --code Gen_track --name GenTrack --salt gentrack --bo-order 1 --window 10,24 --out dist/gen-track ${["Opis:INPUT_TEXT", "Kol:INPUT_NUMBER!row", "Srok:DATE!track", "Srok2:DATE!track", "Prim:INPUT_TEXT", "Kol2:INPUT_NUMBER!row", "T:TAB_GROUP#Shag|Vtoroy", "Srok3:DATE!track,tab=T/Shag", "Opis2:INPUT_TEXT!tab=T/Shag", "Kol3:INPUT_NUMBER!tab=T/Shag,row", "Opis3:INPUT_TEXT!tab=T/Vtoroy", "Kol4:INPUT_NUMBER!tab=T/Vtoroy,row"].flatMap((f) => ["--field", f])}`.quiet();
+{
+  const zipFile = [...new Bun.Glob("dist/gen-track/*.zip").scanSync()][0];
+  const lines = new TextDecoder().decode(unzip(await Bun.file(zipFile).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const bo = lines.map((l) => JSON.parse(l)).find((o) => o.dynamicFields), df = bo.dynamicFields;
+  const got = Object.values<any>(df).map((f) => `${f.code} ${f.gridPosition.x}/${f.gridPosition.y}/${f.gridPosition.cols}/${f.gridPosition.rows}`).join(", ");
+  const want = "Opis 0/0/10/3, Kol 10/0/5/3, Srok 0/0/9/3, Srok_status 0/3/15/4, Status_Srok 9/0/6/3, Srok2 0/0/9/3, Srok2_status 0/7/15/4, Status_Srok2 9/0/6/3, Prim 0/11/10/3, Kol2 10/11/5/3, T 0/14/15/10, Srok3 0/0/9/3, Srok3_status 0/0/15/4, Status_Srok3 9/0/6/3, Opis2 0/4/10/3, Kol3 10/4/5/3, Opis3 0/0/10/3, Kol4 10/0/5/3";
+  if (got !== want || df.Status_Srok2.label.rus !== "Статус2" || df.Srok3_status.tabCodePath?.tabCode !== "Shag") { console.error(`make-probe-archive with !track: ${got}, «${df.Status_Srok2.label.rus}», wrapper on tab ${df.Srok3_status.tabCodePath?.tabCode}\nwant: ${want}, «Статус2», Shag`); process.exit(1); }
+  const broken = lines.map((l) => {
+    const o = JSON.parse(l), f = o.dynamicFields;
+    if (f) { f.Srok_status.gridPosition.rows = 6; f.Srok2_status.gridPosition.y = 9; f.Prim.gridPosition.y = 13; f.Kol2.gridPosition.y = 13; f.T.gridPosition.y = 16; Object.assign(f.Srok2.gridPosition, { cols: 15 }); }
+    return JSON.stringify(o);
+  });
+  await Bun.write("dist/gen-track/bad.jsonl", broken.join("\n") + "\n");
+  const layout = /takes 4|tallest tab|expected|spans \d+ of 15|floats up|overlaps|status inside tab|tracked-status wrapper|repeats|tableColOrderIndex/;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+    for (const [file, want] of [[zipFile, []], ["dist/gen-track/bad.jsonl", ["Gen_track.Srok_status: rows 6, a tracked-status wrapper takes 4 (§3)", "Gen_track.Srok2: x 0 y 0 cols 15 rows 3 — in a tracked-status wrapper the date is x 0 y 0 cols 9 rows 3, «Статус» x 9 y 0 cols 6 rows 3 (§3)"]]] as const) {
+      const r = await $`${cmd} ${file}`.nothrow().quiet(), bad = r.stdout.toString().split("\n").filter((l) => layout.test(l));
+      if (bad.join("\n") !== want.join("\n") || !/Gen_track/.test(r.stdout.toString())) { console.error(`${cmd[1]} on ${file}: tracked-status lines\n${bad.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+    }
+  const joined = await $`bun tools/make-probe-archive.bun.ts --group-code Track_group --group-name Track --group-order 1 --code Gen_trackrow --name GenTrackRow --salt gentrackrow --bo-order 1 --out dist/gen-track/row --field Opis:INPUT_TEXT --field Srok:DATE!track,row`.nothrow().quiet();
+  if (!joined.exitCode || !/!track and !row/.test(joined.stderr.toString())) { console.error(`make-probe-archive put a tracked date into a row (exit ${joined.exitCode}):\n${joined.stderr}`); process.exit(1); }
+}
+// the table «Cell of each type» (IMPORTS 0.8) is the one source of rows, place and width: UI-API carries its byte copy, the
+// generator builds by it and both lints check by it — a lone LINK x 0 cols 8 rows 3 is clean, rows 6 or full width is not,
+// a CHECKLIST / RADIO takes its rows by its item count (issue #10)
+const cellRows = (doc: string) => doc.split("\n").filter((l) => /^\| `/.test(l) && /\| (pairs|alone|free) \|/.test(l)).join("\n");
+const cellsImports = cellRows((await Bun.file("MYBPM-IMPORTS.md").text()).split("\n### 0.8 ")[1].split("\n### ")[0]);
+if (!cellsImports || cellRows(await Bun.file("MYBPM-UI-API.md").text()) !== cellsImports) { console.error("MYBPM-UI-API.md: the table «Cell of each type» differs from MYBPM-IMPORTS.md 0.8 — copy it over byte for byte"); process.exit(1); }
+await $`rm -rf dist/lint-cell && bun tools/make-probe-archive.bun.ts --group-code Cell_group --group-name Cell --group-order 1 --code Lint_cell --name Cell --salt cell --bo-order 1 --out dist/lint-cell ${["Сайт:LINK!half", "Канал:INPUT_TEXT", "Кампания:INPUT_TEXT!row", "Чек:CHECKLIST#Пункт 1|+Пункт 2|Пункт 3", "Ответ:RADIO_BUTTON_GROUP#Да|*Нет|Может быть"].flatMap((f) => ["--field", f])}`.quiet();
+const cellZip = [...new Bun.Glob("dist/lint-cell/*.zip").scanSync()][0];
+const cellBad = new TextDecoder().decode(unzip(await Bun.file(cellZip).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean).map((l) => {
+  const o = JSON.parse(l), f = o.dynamicFields;
+  if (f?.Sayit) {
+    const got = ["Sayit", "Chek", "Otvet"].map((c) => `${c} ${f[c].gridPosition.cols}x${f[c].gridPosition.rows}`).join(", ");
+    if (got !== "Sayit 8x3, Chek 15x6, Otvet 15x4") { console.error(`make-probe-archive: LINK / CHECKLIST of 3 / RADIO of 3 built ${got}, not Sayit 8x3, Chek 15x6, Otvet 15x4 (0.8)`); process.exit(1); }
+    Object.assign(f.Sayit.gridPosition, { cols: 15, rows: 6 }); f.Chek.gridPosition.rows = 3; f.Otvet.gridPosition.rows = 6;
+  }
+  return JSON.stringify(o);
+});
+await Bun.write("dist/lint-cell/bad.jsonl", cellBad.join("\n") + "\n");
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [file, want] of [[cellZip, []], ["dist/lint-cell/bad.jsonl", ["Lint_cell.Sayit: rows 6, a LINK takes 3 (0.8)", "Lint_cell.Chek: rows 3, a CHECKLIST takes 6 for 3 in defaultValue (0.8)",
+    "Lint_cell.Otvet: rows 6, a RADIO_BUTTON_GROUP takes 4 for 3 in fieldOptionsStruct.options (0.8)", "Lint_cell.Sayit: a short field alone at full width — pair it or x 0, cols 8 (0.8)"]]] as const) {
+    const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /takes|alone at full width/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: rows / alone lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
+// a widget on a tab (tabCode) is a cell of that tab like a field (0.8a steps 3 and 5): a CURRENT_USER under the fields makes
+// the tab 10 rows, so the group is 13 in a dialog and 16 on a page tab; a button counts as the lowest cell and as one of
+// the 2 cells a tab holds — in both lints (issue #11)
+await $`rm -rf dist/lint-tabw && bun tools/make-probe-archive.bun.ts --group-code Tabw_group --group-name Tabw --group-order 1 --code Lint_tabw --name Tabw --salt tabw --bo-order 1 --out dist/lint-tabw ${["Название:INPUT_TEXT", "Вкладки:TAB_GROUP#Первая|Вторая", "Альфа:INPUT_TEXT!tab=Vkladki/Pervaya", "Бета:INPUT_TEXT!tab=Vkladki/Pervaya", "Гамма:INPUT_TEXT!tab=Vkladki/Vtoraya"].flatMap((f) => ["--field", f])} ${["CURRENT_USER:Текущий пользователь:cur_user", "BUTTON:Кнопка:btn"].flatMap((w) => ["--widget", w])}`.quiet();
+const tabwLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-tabw/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+const tabw = async (name: string, change: (bo: any) => void) => Bun.write(`dist/lint-tabw/${name}.jsonl`, tabwLines.map((l) => {
+  const o = JSON.parse(l);
+  if (o.dynamicFields) {
+    const cu = o.currentUser.cur_user, btn = o.buttons.btn;
+    if (cu.gridPosition.rows !== 4 || btn.gridPosition.rows !== 3) { console.error(`make-probe-archive: CURRENT_USER rows ${cu.gridPosition.rows}, BUTTON rows ${btn.gridPosition.rows}, not 4 and 3 (0.8)`); process.exit(1); }
+    Object.assign(cu, { gridPosition: { x: 0, y: 6, cols: 15, rows: 4 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Pervaya" } });
+    Object.assign(btn, { gridPosition: { x: 0, y: 3, cols: 15, rows: 3 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Vtoraya" } });
+    o.dynamicFields.Vkladki.gridPosition.rows = 13;
+    change(o);
+  }
+  return JSON.stringify(o);
+}).join("\n") + "\n");
+await tabw("ok", () => {});
+await tabw("low", (o) => { o.dynamicFields.Vkladki.gridPosition.rows = 9; });
+await tabw("page", (o) => { o.instanceViewType = "TAB"; o.dynamicFields.Vkladki.gridPosition.rows = 16; });
+await tabw("pagelow", (o) => { o.instanceViewType = "TAB"; o.dynamicFields.Vkladki.gridPosition.rows = 12; });
+await tabw("button", (o) => { Object.assign(o.buttons.btn, { gridPosition: { x: 0, y: 10, cols: 15, rows: 3 }, tabCode: { tabGroupCode: "Vkladki", tabCode: "Pervaya" } }); });
+for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+  for (const [name, want] of [["ok", []], ["low", ["Lint_tabw.Vkladki: rows 9, tallest tab 10 + 3 = 13 (0.8a step 5)"]], ["page", []],
+    ["pagelow", ["Lint_tabw.Vkladki: rows 12, tallest tab 10 + 6 = 16 (0.8a step 5)"]],
+    ["button", ["Lint_tabw.Vkladki: rows 13, tallest tab 13 + 3 = 16 (0.8a step 5)", "Lint_tabw.Vkladki.Vtoraya: a tab with 1 cell(s) — at least 2 fields or widgets, else a heading (0.8a step 3)"]]] as const) {
+    const r = await $`${cmd} dist/lint-tabw/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /tallest tab|a tab with/.test(l));
+    if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on dist/lint-tabw/${name}.jsonl: tab height / tab cell lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+  }
+// the item count of an items cell (0.8) is one rule: tools/cell-table.ts cellRowsOf on the fields as the stand stores them
+// (a CHECKLIST's defaultValue a JSON string of 1 / 3, RADIO options a dictionary or an array of 3, a broken string = 0),
+// and both lints count the same — at those rows no «takes» line, one row more a line for each (issue #12)
+{
+  const { cellTable, cellRowsOf } = await import("./tools/cell-table.ts");
+  const CELLS = cellTable(await Bun.file("MYBPM-IMPORTS.md").text());
+  await $`rm -rf dist/lint-items && bun tools/make-probe-archive.bun.ts --group-code Items_group --group-name Items --group-order 1 --code Lint_items --name Items --salt items --bo-order 1 --out dist/lint-items ${["Название:INPUT_TEXT", "Один:CHECKLIST#А", "Три:CHECKLIST#А|Б|В", "Словарь:RADIO_BUTTON_GROUP#Да|Нет|Может", "Массив:RADIO_BUTTON_GROUP#Да|Нет|Может", "Битый:CHECKLIST#А"].flatMap((f) => ["--field", f])}`.quiet();
+  const itemLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-items/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const want: Record<string, [number, number, string]> = { Odin: [4, 1, "defaultValue"], Tri: [6, 3, "defaultValue"],
+    Slovar: [4, 3, "fieldOptionsStruct.options"], Massiv: [4, 3, "fieldOptionsStruct.options"], Bityyi: [3, 0, "defaultValue"] };
+  const items = async (name: string, extra: number) => Bun.write(`dist/lint-items/${name}.jsonl`, itemLines.map((l) => {
+    const o = JSON.parse(l);
+    if (o.dynamicFields) {
+      const d = o.dynamicFields, opts = d.Massiv.fieldOptionsStruct.options;
+      if (typeof d.Odin.defaultValue !== "string" || Object.keys(opts).length !== 3) { console.error("make-probe-archive: CHECKLIST defaultValue not a JSON string or RADIO not 3 options"); process.exit(1); }
+      d.Massiv.fieldOptionsStruct.options = Object.values(opts);
+      d.Bityyi.defaultValue = '[{"label":"А",';
+      let y = 0;
+      for (const f of (Object.values(d) as any[]).sort((a, b) => a.gridPosition.y - b.gridPosition.y)) {
+        const rows = cellRowsOf(CELLS, f);
+        if (want[f.code] && rows !== want[f.code][0]) { console.error(`cellRowsOf ${f.code}: ${rows}, want ${want[f.code][0]}`); process.exit(1); }
+        if (want[f.code] && f.code !== "Bityyi" && f.gridPosition.rows !== rows) { console.error(`make-probe-archive ${f.code}: rows ${f.gridPosition.rows}, the table gives ${rows} (0.8)`); process.exit(1); }
+        f.gridPosition = { x: 0, y, cols: 15, rows: rows + (want[f.code] ? extra : 0) };
+        y += f.gridPosition.rows;
+      }
+    }
+    return JSON.stringify(o);
+  }).join("\n") + "\n");
+  await items("ok", 0);
+  await items("off", 1);
+  const kind = (c: string) => (/^(Slovar|Massiv)$/.test(c) ? "RADIO_BUTTON_GROUP" : "CHECKLIST");
+  const off = Object.entries(want).map(([c, [r, n, k]]) => `Lint_items.${c}: rows ${r + 1}, a ${kind(c)} takes ${r} for ${n} in ${k} (0.8)`);
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+    for (const [name, lines] of [["ok", []], ["off", off]] as const) {
+      const r = await $`${cmd} dist/lint-items/${name}.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => / takes /.test(l));
+      if (got.join("\n") !== lines.join("\n")) { console.error(`${cmd[1]} on dist/lint-items/${name}.jsonl: item rows lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+    }
+}
+// field type by meaning (IMPORTS 0.5, issue #14): a text field whose label or code holds a month, a quantity, a day, a moment,
+// a range's start or a time gets one REMINDER with the type, a label with a format hint another; a comment, a typed field, a
+// weekday, «account» (no «count» token), a number code, «delivery_time» (a time code needs a start or an end beside it) and
+// «Итог проверки» (only «итого» is a sum) get none — in both lints. A number is checked by its label (issue #15): «Год» and «Месяц»
+// get the date type, a quantity, «Срок» and «Время в пути» (durations) and a code naming the unit it counts per get none; a checkbox
+// «Срок соблюдён» is a choice and gets none; a unit after a comma («Стаж, лет») is a quantity. On an amendment a line on a field the
+// source carries unchanged folds into «left as exported»; a field changed since the source keeps its line
+{
+  const TYPED: [string, string, string][] = [["month_key", "INPUT_TEXT", "Месяц"], ["hours_spent", "INPUT_TEXT", "Потрачено"], ["deadline", "INPUT_TEXT", "Срок (ДД.ММ)"],
+    ["period_start", "INPUT_TEXT", "Начало"], ["created_at", "INPUT_TEXT", "Создано"], ["length_mm", "TEXTAREA", "Длина (мм)"], ["start_time", "INPUT_TEXT", "Начало приёма"],
+    ["month", "YEAR_AND_MONTH", "Месяц (ММ.ГГГГ)"], ["payDay", "INPUT_TEXT", "Оплата"], ["comment", "TEXTAREA", "Комментарий"], ["due_date", "DATE", "Срок"],
+    ["period_comment", "INPUT_TEXT", "Комментарий к периоду"], ["account", "INPUT_TEXT", "Счёт"], ["weekday", "INPUT_TEXT", "День недели"], ["contract_number", "INPUT_TEXT", "Номер договора"],
+    ["delivery_time", "INPUT_TEXT", "Сроки доставки"], ["result", "INPUT_TEXT", "Итог проверки"], ["strategy_year", "INPUT_NUMBER", "Год"], ["month_no", "INPUT_NUMBER", "Месяц"],
+    ["qty", "INPUT_NUMBER", "Количество"], ["term_days", "INPUT_NUMBER", "Срок"], ["travel_time", "INPUT_NUMBER", "Время в пути"], ["fiscal_year_budget", "INPUT_NUMBER", "Бюджет"],
+    ["on_time", "CHECKBOX", "Срок соблюдён"], ["experience", "INPUT_TEXT", "Стаж, лет"]];
+  await $`rm -rf dist/lint-type && bun tools/make-probe-archive.bun.ts --group-code Type_group --group-name Type --group-order 1 --code Lint_type --name LintType --salt linttype --bo-order 1 --out dist/lint-type ${TYPED.flatMap(([c, t]) => ["--field", `${c.toLowerCase()}:${t}`])}`.quiet();
+  const typeLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-type/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const typed = async (name: string, label: (code: string, label: string) => string) => {
+    await Bun.write(`dist/lint-type/${name}.jsonl`, typeLines.map((l) => {
+      const o = JSON.parse(l);
+      if (o.dynamicFields) o.dynamicFields = Object.fromEntries(Object.values<any>(o.dynamicFields).map((f) => {
+        const row = TYPED.find(([c]) => c.toLowerCase() === f.code);
+        if (!row) { console.error(`lint-type: make-probe-archive coded ${f.code}`); process.exit(1); }
+        return [row[0], { ...f, code: row[0], label: { ...f.label, rus: label(row[0], row[2]) } }];
+      }));
+      return JSON.stringify(o);
+    }).join("\n") + "\n");
+    return `dist/lint-type/${name}.jsonl`;
+  };
+  const built = await typed("built", (c, l) => l), source = await typed("source", (c, l) => (c === "month_key" ? "Отчётный месяц" : l));
+  const R = (c: string, l: string, what: string, t: string) => { const ty = TYPED.find(([x]) => x === c)![1]; return `REMINDER Lint_type.${c} «${l}»: ${ty} — by its name ${what}, so ${t}, or report «${ty === "INPUT_NUMBER" ? "числом" : "текстом"}, потому что …» (0.5 «Field type by meaning»)`; };
+  const H = (c: string, l: string) => `REMINDER Lint_type.${c} «${l}»: a format hint in the label — the picker shows the format; drop it (0.5 «Field type by meaning»)`;
+  const want = [R("month_key", "Месяц", "a month", "YEAR_AND_MONTH"), R("hours_spent", "Потрачено", "a quantity", "INPUT_NUMBER"), R("deadline", "Срок (ДД.ММ)", "a day", "DATE"), H("deadline", "Срок (ДД.ММ)"),
+    R("period_start", "Начало", "a day", "DATE"), R("created_at", "Создано", "a moment, day and time", "FULL_DATE"), R("length_mm", "Длина (мм)", "a quantity", "INPUT_NUMBER"),
+    R("start_time", "Начало приёма", "a time of day", "TIME"), H("month", "Месяц (ММ.ГГГГ)"), R("payDay", "Оплата", "a day", "DATE"),
+    R("strategy_year", "Год", "a year", "YEAR"), R("month_no", "Месяц", "a month", "YEAR_AND_MONTH"), R("experience", "Стаж, лет", "a quantity", "INPUT_NUMBER")];
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])])
+    for (const [args, lines, folded] of [[[built], want, ""], [[built, "--source", built], [], "Lint_type.month_key, Lint_type.hours_spent"], [[built, "--source", source], [want[0]], "Lint_type.hours_spent"]] as const) {
+      const r = await $`${cmd} ${args}`.nothrow().quiet(), out = r.stdout.toString(), got = out.split("\n").filter((l) => /\(0\.5 «Field type by meaning»\)$/.test(l));
+      if (got.join("\n") !== lines.join("\n") || (folded && !out.includes(folded))) { console.error(`${cmd[1]} ${args.join(" ")}: field type lines\n${got.join("\n") || "(none)"}\nwant\n${lines.join("\n") || "(none)"}${folded ? `\nand «${folded}» left as exported` : ""}\n${out}${r.stderr}`); process.exit(1); }
+    }
+}
+// the keys of a map keyed by data (`fromFieldCodes` of an «Из поля» condition holds field codes) are not invented keys,
+// while an invented key beside it still is — in both lints
+{
+  await $`rm -rf dist/lint-ff && bun tools/make-probe-archive.bun.ts --group-code Ff_group --group-name Ff --group-order 1 --code Lint_ff --name LintFf --salt lintff --bo-order 1 --out dist/lint-ff --field nazvanie:INPUT_TEXT!tableColToShow=true --field zadacha:BO@AAAAAAAAAAAAAAAA@Lint_ff_task!show=name --field ispolnitel:BO@AAAAAAAAAAAAAAAA@Lint_ff_task!show=name`.quiet();
+  const ffLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-ff/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  await Bun.write("dist/lint-ff/ff.jsonl", ffLines.map((l) => {
+    const o = JSON.parse(l);
+    if (o.dynamicFields?.zadacha) o.dynamicFields.zadacha.bracketFilter = { boCode: "Lint_ff_task", fieldCode: "zadacha", brackets: { vjFiE0eJ: {
+      parentTreeIds: {}, order: 0, connectionType: "AND", notType: "DEFAULT", nativeFilters: {}, dynamicFilters: { ajW7xfc8: { fieldCode: "ispolnitel", type: "BO",
+        value: "", businessObjectCode: "Lint_ff_task", numberFrom: 0, numberTo: 0, isCurrentUser: false, isEmptyValue: false, boiIds: {},
+        fromFieldCodes: { ispolnitel: 1, zadacha: 1 }, bogusKey: 1 } } } } };
+    return JSON.stringify(o);
+  }).join("\n") + "\n");
+  const want = `Lint_ff.ajW7xfc8: key "bogusKey" is not in this document — invented, the importer drops it silently or fails; find the setting by meaning or write no key and say so (0.4a)`;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "dist/lint-esm/scripts/lint_archive.py"]] : [])]) {
+    const r = await $`${cmd} dist/lint-ff/ff.jsonl`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /is not in this document/.test(l));
+    if (got.join("\n") !== want) { console.error(`${cmd[1]} on dist/lint-ff/ff.jsonl: invented-key lines\n${got.join("\n") || "(none)"}\nwant\n${want}${r.stderr}`); process.exit(1); }
+  }
+}
+// a kanban card field some viewer does not see as asked (0.5c, issue #17): a CO draws another value of the chosen record;
+// a field of a tab with VIEW «никому» — also through a TAB_GROUP lying on that tab — is dropped for every non-admin (a line to
+// fix); with VIEW limited to a group it is a REMINDER; a field of an open tab gets none — in both lints
+{
+  const KB = ["title:INPUT_TEXT!tableColToShow=true", "status:DROPDOWN_SINGLE#new=Новый|done=Готово", "tabs:TAB_GROUP#Основное=tab_main|Системные=tab_system",
+    "note:INPUT_TEXT!tab=tabs/tab_main", "hidden:INPUT_TEXT!tab=tabs/tab_system", "inner:TAB_GROUP#Внутри=tab_in!tab=tabs/tab_system", "deep:INPUT_TEXT!tab=inner/tab_in",
+    "pick:CO@AAAAAAAAAAAAAAAA@Lint_kanban_co!show=name"];
+  await $`rm -rf dist/lint-kanban && bun tools/make-probe-archive.bun.ts --group-code Kb_group --group-name Kb --group-order 1 --code Lint_kanban --name LintKanban --salt lintkanban --bo-order 1 --out dist/lint-kanban ${KB.flatMap((f) => ["--field", f])} --hide-tab tabs/tab_system --kanban ${"status:HEADER=title;CONTENT=note,hidden,deep,pick"}`.quiet();
+  const kbLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-kanban/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const kb = async (name: string, limit: boolean) => {
+    await Bun.write(`dist/lint-kanban/${name}.jsonl`, kbLines.map((l) => {
+      const o = JSON.parse(l), v = o.fieldAccessStructMap?.tabs?.tabAccessStructMap?.tab_system?.view;
+      if (v && limit) v.orgUnitIds = ["G-AAAAAAAAAAAAAAAA"];
+      return JSON.stringify(o);
+    }).join("\n") + "\n");
+    return `dist/lint-kanban/${name}.jsonl`;
+  };
+  const N = (k: string) => `Lint_kanban: kanbanCardTemplates.status shows ${k} of tab tabs.tab_system, VIEW «никому» — the card drops it for everyone but admins; show a field of an open tab (0.5c)`;
+  const Lim = (k: string) => `REMINDER Lint_kanban: kanbanCardTemplates.status shows ${k} of tab tabs.tab_system, VIEW limited — only who sees the tab, and admins, see it on the card; say so in the report (0.5c)`;
+  const CO = `Lint_kanban: kanbanCardTemplates.status shows pick, a CO — the card draws another value of the chosen record, not its name; show a BO field or a text field instead (0.5c)`;
+  const cases = [[await kb("nobody", false), [N("hidden"), N("deep"), CO]], [await kb("limited", true), [Lim("hidden"), Lim("deep"), CO]]] as const;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "skills/mybpm-imports/scripts/lint_archive.py"]] : [])])
+    for (const [file, want] of cases) {
+      const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /kanbanCardTemplates/.test(l));
+      if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: card lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n")}${r.stderr}`); process.exit(1); }
+    }
+}
+// a nested table's column tableWidth is a percent (issue #19): shown widths summing to ≥ 100 with a shown column lacking one
+// is a line to fix; under 100, every column set, or the width on a hidden column — none; in both lints
+{
+  await $`rm -rf dist/lint-width && bun tools/make-probe-archive.bun.ts --group-code Lw_group --group-name Lw --group-order 1 --code Lint_width --name LintWidth --salt lintwidth --bo-order 1 --out dist/lint-width --field nazvanie:INPUT_TEXT!tableColToShow=true --field ${"svyazi:BO@AAAAAAAAAAAAAAAA@Lint_width_ref!show=a|b|c|d"}`.quiet();
+  const lwLines = new TextDecoder().decode(unzip(await Bun.file([...new Bun.Glob("dist/lint-width/*.zip").scanSync()][0]).bytes()).find((e) => e.name.endsWith("/0000001.mybpm"))!.data).split("\n").filter(Boolean);
+  const lw = async (name: string, widths: Record<string, number>, hide: string[]) => {
+    await Bun.write(`dist/lint-width/${name}.jsonl`, lwLines.map((l) => {
+      const o = JSON.parse(l), refs = o.dynamicFields?.svyazi?.boRefStruct?.fieldRefs;
+      if (refs) for (const c of Object.keys(refs)) { if (widths[c] !== undefined) refs[c].tableWidth = widths[c]; if (hide.includes(c)) refs[c].toShow = false; }
+      return JSON.stringify(o);
+    }).join("\n") + "\n");
+    return `dist/lint-width/${name}.jsonl`;
+  };
+  const W = (sum: number, bare: string) => `Lint_width.svyazi: nested table column widths sum to ${sum} % — ${bare} get no width and squeeze; keep the sum under 100 or set none (0.5a)`;
+  const cases = [[await lw("over", { a: 70, b: 50 }, []), [W(120, "c, d")]], [await lw("exact", { a: 60, b: 40 }, []), [W(100, "c, d")]],
+    [await lw("under", { a: 60, b: 30 }, []), []], [await lw("all", { a: 50, b: 50, c: 20, d: 10 }, []), []], [await lw("hidden", { a: 90, d: 40 }, ["d"]), []]] as const;
+  for (const cmd of [["bun", "skills/mybpm-imports/scripts/lint-archive.js"], ...(Bun.which("python3") ? [["python3", "skills/mybpm-imports/scripts/lint_archive.py"]] : [])])
+    for (const [file, want] of cases) {
+      const r = await $`${cmd} ${file}`.nothrow().quiet(), got = r.stdout.toString().split("\n").filter((l) => /column widths sum/.test(l));
+      if (got.join("\n") !== want.join("\n")) { console.error(`${cmd[1]} on ${file}: width lines\n${got.join("\n") || "(none)"}\nwant\n${want.join("\n") || "(none)"}${r.stderr}`); process.exit(1); }
+    }
+}
+// the Gemini skill upload refuses some extensions (.cjs) — every file in a skill zip must carry one it takes
+// (.py: the Python port of the lint; whether Gemini takes it is [U] until an upload is tried)
+for (const name of ["mybpm-imports", "mybpm-stand"]) {
+  const odd = unzip(await Bun.file(`dist/skills/${name}.zip`).bytes()).map((e) => e.name).filter((n) => !/\.(md|js|py)$/.test(n));
+  if (odd.length) { console.error(`dist/skills/${name}.zip: ${odd.join(", ")} — only .md, .js and .py may ship in a skill`); process.exit(1); }
+}
+// the MCP server: its own task, so neither body outgrows the OS limit on one argument (see test-size below)
+await $`mise run test-mcp`;
 // a process-record action step of tools/process-builder.ts (processAct) is a BlockAssign with only leftExprId = the void
 // action on the record — ЭТОТ_ПРОЦЕСС itself for [], the referenced record (#Значение) for a path — followed by the exit
 const { scriptBody } = await import("./tools/process-builder.ts");

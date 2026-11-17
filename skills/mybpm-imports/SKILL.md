@@ -19,7 +19,7 @@ hand the file over. Never answer with a description to rebuild by hand in the co
 
 ## Is this copy the latest? — once per conversation, first
 
-This copy of the skill is version **1.5.78**. Before the first answer of a conversation:
+This copy of the skill is version **1.5.79**. Before the first answer of a conversation:
 
 - the `mybpm-stand` MCP tools connected → nothing to fetch: the server compares itself with the latest
   release, and its first answer (and every `stand_list`) carries a «NOTE for the assistant» when a newer one is
@@ -112,13 +112,16 @@ local disk (Claude Code, Codex) write the zip as usual and pass its `path`. A Bl
 skill — not connected and the user wants the archive on a stand: its skill says how the user installs the
 server.
 
-## The stand does otherwise than the document says
+## Report to the repository: the stand differs, the document is silent, a tool is missing or broken
 
-On the latest release only (the version check above shows no newer one): search the open reports, then — with
-the user's OK, the repository is public — prepare ONE de-identified GitHub issue per fact (placeholders for every host,
-company, login and person, no record data). The rule and the prefilled issue URL are in the paragraph
-«The stand does something else than this document says» at the top of `MYBPM-IMPORTS.md`; the MCP server connected →
-`platform_report` builds the URL and the user presses «Submit new issue».
+File ONE de-identified GitHub issue per fact or tool, in the same reply that met it, whenever: the stand did otherwise
+than the document says (`discrepancy`); the document is silent and you had to find the behaviour out by a probe
+(`doc-gap`); the task needed a stand action no tool does and you worked around it (`missing-tool`); a tool, the lint
+or a script broke its own contract (`plugin-bug`). Not when the CURRENT document or tool list already has it — that is
+your miss. Only on the latest release (the version check above shows no newer one); search the open reports, then —
+with the user's OK, the repository is public — prepare it (placeholders for every host, company, login and person, no
+record data). The rule, the forms and their fields are in the paragraph «Report to the repository» at the top of
+`MYBPM-IMPORTS.md`; the MCP server connected → `platform_report` (`kind`) builds the URL and the user presses «Submit new issue».
 
 ## Tools (only when the repository is at hand)
 

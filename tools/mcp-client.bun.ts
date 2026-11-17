@@ -4,7 +4,7 @@
  * lists the tools or calls them one after another, prints each result. What `mise test` uses against the mock
  * stand, and the quick way to try a tool on a real stand without a chat.
  *
- *   bun tools/mcp-client.bun.ts list
+ *   bun tools/mcp-client.bun.ts list [--json]                       (--json: the tools with their schemas)
  *   bun tools/mcp-client.bun.ts call stand_list '{}' [bo_groups '{}' …]
  *   bun tools/mcp-client.bun.ts call … --runtime bun --quiet       (default runtime node; --quiet prints only errors)
  *   bun tools/mcp-client.bun.ts call … --server dist/x/server/mybpm-stand.cjs   (another copy of the server, e.g. unpacked .mcpb)
@@ -74,7 +74,8 @@ function resolveRefs(v: any): any {
 }
 if (mode === "list") {
   const { result } = await rpc("tools/list");
-  for (const t of result.tools) console.log(`${t.annotations?.destructiveHint ? "✎" : " "} ${t.name.padEnd(20)} ${t.description.slice(0, 110)}`);
+  if (asJson) console.log(JSON.stringify(result.tools));
+  else for (const t of result.tools) console.log(`${t.annotations?.destructiveHint ? "✎" : " "} ${t.name.padEnd(20)} ${t.description.slice(0, 110)}`);
 } else {
   for (let i = 0; i < pairs.length; i += 2) {
     let args: any;
@@ -103,6 +104,6 @@ if (mode === "list") {
     else if (!quiet || isError) console.log(`── ${pairs[i]}${isError ? " (ERROR)" : ""}\n${[text, ...notes].join("\n")}`);
   }
 }
-if (asJson) console.log(JSON.stringify(report, null, 1));
+if (asJson && mode === "call") console.log(JSON.stringify(report, null, 1));
 server.kill();
 process.exit(failed ? 1 : 0);

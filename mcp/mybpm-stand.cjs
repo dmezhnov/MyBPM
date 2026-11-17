@@ -2467,6 +2467,62 @@ async function scriptTarget(s, a) {
   return { scriptModuleId: v.id, scriptId, what: `${what}, version ${v.v.version}` };
 }
 var ISSUES = "https://github.com/dmezhnov/MyBPM/issues";
+var REPORT_KINDS = {
+  discrepancy: {
+    template: "platform-discrepancy.yml",
+    label: "platform-discrepancy",
+    when: "the stand did otherwise than a document says",
+    fields: [
+      ["document", "document", true, "MYBPM-IMPORTS.md or MYBPM-UI-API.md"],
+      ["heading", "heading", true, "The heading (§, item, trap number) the fact is under"],
+      ["mark", "mark", false, "The mark the document gives the fact: [C], [I], [U] or none"],
+      ["docSays", "doc_says", true, "What the document says — quote it"],
+      ["standDid", "stand_did", true, "What the stand did instead: the exact answer / error text, de-identified"],
+      ["repro", "repro", false, "The minimal API calls (path, params, body) or UI steps that show it, de-identified"]
+    ]
+  },
+  "doc-gap": {
+    template: "doc-gap.yml",
+    label: "doc-gap",
+    when: "the documents are silent: you had to find the platform behaviour out by a probe",
+    fields: [
+      ["document", "document", true, "The document the fact belongs in: MYBPM-IMPORTS.md or MYBPM-UI-API.md"],
+      ["heading", "heading", true, "The heading (§, item, trap number) the fact belongs under"],
+      ["question", "question", true, "What you needed to know and the documents do not say"],
+      ["measured", "measured", true, "What the probe showed: calls, answers, stand version, de-identified"],
+      ["proposal", "proposal", true, "The text to add, each claim marked [C] (measured) or [I] (inferred)"]
+    ]
+  },
+  "missing-tool": {
+    template: "missing-tool.yml",
+    label: "missing-tool",
+    when: "a task needed an action on the stand that no tool of the plugin does, and you worked around it",
+    fields: [
+      ["action", "action", true, "The action the task needed, and why"],
+      ["workaround", "workaround", true, "How you did it instead: raw stand_call / HTTP calls (path, body, answer), browser steps, stand version, de-identified"],
+      ["proposal", "proposal", true, "The tool: name, parameters, what it returns, whether it writes to the stand"]
+    ]
+  },
+  "plugin-bug": {
+    template: "plugin-bug.yml",
+    label: "plugin-bug",
+    when: "a tool of the plugin broke its own contract: ignored a declared parameter, returned other than its description promises, failed on a valid input, a lint passed what the stand rejects",
+    fields: [
+      ["tool", "tool", true, "The tool (or the lint / script) that misbehaved"],
+      ["call", "call", true, "The call: its arguments, de-identified"],
+      ["expected", "expected", true, "What its schema / description promises"],
+      ["actual", "actual", true, "What it did: the exact answer / error text, de-identified"],
+      ["where", "where", false, "Where in the plugin code the cause is, if found"]
+    ]
+  }
+};
+function reportProps() {
+  const said = {};
+  for (const [k, v] of Object.entries(REPORT_KINDS))
+    for (const [arg, , req, d] of v.fields)
+      (said[arg] ??= []).push(`${k}${req ? "" : " (optional)"}: ${d}`);
+  return Object.fromEntries(Object.entries(said).map(([arg, ds]) => [arg, { type: "string", description: ds.join(" | ") }]));
+}
 function leaks(text) {
   const words = new Set;
   for (const c of accounts()) {
@@ -4717,47 +4773,48 @@ var tools = [
   },
   {
     name: "platform_report",
-    description: "The stand behaved unlike MYBPM-IMPORTS.md / MYBPM-UI-API.md say, on the LATEST plugin → a prefilled GitHub issue for the user to submit under their own account (nothing is sent by this tool). Refuses on an outdated copy (update first — the fact may be fixed) and when the text names the user's stands, logins, people or companies: de-identify to placeholders (`<stand>`, `<company-a>`, …) and keep record data out. Search existing issues first (`search` url). One fact per issue. Show the user the text and give them the url; open:true only when they ask.",
+    description: `A prefilled GitHub issue of the plugin repository for the user to submit under their own account (nothing is sent by this tool). File one, in the same reply, whenever: ${Object.entries(REPORT_KINDS).map(([k, v]) => `${k} — ${v.when}`).join("; ")}. First check the CURRENT documents and tool list: a fact or tool that is there is your miss, not a report. Refuses on an outdated copy (update first — it may be fixed) and when the text names the user's stands, logins, people or companies: de-identify to placeholders (\`<stand>\`, \`<company-a>\`, …) and keep record data out. Search existing issues first (\`search\` url; a known one gets a comment). One fact / one tool per issue. Show the user the text and give them the url; open:true only when they ask.`,
     props: {
-      title: { type: "string", description: "One line: what differs" },
-      document: { type: "string", enum: ["MYBPM-IMPORTS.md", "MYBPM-UI-API.md"] },
-      heading: { type: "string", description: "The heading (§, item, trap number) the fact is under" },
-      mark: { type: "string", enum: ["[C]", "[I]", "[U]", "none"], description: "The mark the document gives the fact" },
-      docSays: { type: "string", description: "What the document says — quote it" },
-      standDid: { type: "string", description: "What the stand did instead: the exact answer / error text, de-identified" },
-      repro: { type: "string", description: "The minimal API calls (path, params, body) or UI steps that show it, de-identified" },
+      kind: { type: "string", enum: Object.keys(REPORT_KINDS), description: "What is reported (default discrepancy); each kind takes its own fields below" },
+      title: { type: "string", description: "One line: what is wrong or missing" },
+      ...reportProps(),
+      document: { type: "string", enum: ["MYBPM-IMPORTS.md", "MYBPM-UI-API.md"], description: "discrepancy, doc-gap: the document" },
+      mark: { type: "string", enum: ["[C]", "[I]", "[U]", "none"], description: "discrepancy: the mark the document gives the fact" },
       open: { type: "boolean", description: "Open the issue page in the user's browser — only when they asked" }
     },
-    required: ["title", "document", "heading", "docSays", "standDid"],
+    required: ["title"],
     run: async (a) => {
-      const text = [a.title, a.heading, a.docSays, a.standDid, a.repro].filter(Boolean).join(`
+      const kind = REPORT_KINDS[a.kind ?? "discrepancy"];
+      if (!kind)
+        throw new Error(`kind is one of ${Object.keys(REPORT_KINDS).join(", ")}`);
+      const missing = kind.fields.filter(([arg, , req]) => req && !a[arg]).map(([arg]) => arg);
+      if (missing.length)
+        throw new Error(`kind ${a.kind ?? "discrepancy"} needs ${missing.join(", ")}`);
+      const text = [a.title, ...kind.fields.map(([arg]) => a[arg])].filter(Boolean).join(`
 `);
       const hits = leaks(text);
       if (hits.length)
         throw new Error(`the report names the user's own stand / account / company: ${hits.join(", ")} — replace with placeholders (<stand>, <company-a>, <user>) and drop record data`);
       await latestCheck;
       if (latest && newer(latest, version))
-        throw new Error(`this copy is ${version}, ${latest} is out — update the plugin and re-check against the new documents before reporting (${updateHow()})`);
+        throw new Error(`this copy is ${version}, ${latest} is out — update the plugin and re-check against the new documents and tools before reporting (${updateHow()})`);
       const fields = {
-        template: "platform-discrepancy.yml",
+        template: kind.template,
         title: a.title,
-        document: a.document,
-        heading: a.heading,
-        mark: a.mark ?? "none",
-        doc_says: a.docSays,
-        stand_did: a.standDid,
-        repro: a.repro ?? "",
+        ...Object.fromEntries(kind.fields.map(([arg, id]) => [id, String(a[arg] ?? (arg === "mark" ? "none" : ""))])),
         version
       };
       let url = `${ISSUES}/new?${new URLSearchParams(fields)}`, cut = false;
-      for (const k of ["repro", "stand_did", "doc_says"]) {
+      for (const [, id] of [...kind.fields].reverse()) {
         if (url.length <= 7500)
           break;
-        fields[k] = fields[k].slice(0, Math.max(200, fields[k].length - (url.length - 7500))) + " …";
+        if (fields[id].length <= 200)
+          continue;
+        fields[id] = fields[id].slice(0, Math.max(200, fields[id].length - (url.length - 7500))) + " …";
         url = `${ISSUES}/new?${new URLSearchParams(fields)}`;
         cut = true;
       }
-      const search = `${ISSUES}?${new URLSearchParams({ q: `is:issue label:platform-discrepancy ${a.heading}` })}`;
+      const search = `${ISSUES}?${new URLSearchParams({ q: `is:issue label:${kind.label} ${a.heading ?? a.tool ?? a.title}` })}`;
       return {
         url,
         search,
@@ -5373,7 +5430,7 @@ async function releaseNote(t) {
 > ⚠️ **A new version of the MyBPM plugin is out: ${latest}** (you have ${version}).
 > To update: ${updateHow()}.`;
 }
-var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat); " + "an account of a LOCAL stand (localhost) may instead be added, changed or logged in again with stand_account_save, which takes the password. " + "An account saved with a remembered password logs in again by itself when its session expires. Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for the assistant» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, on the latest plugin → platform_report prepares a GitHub issue the user submits (ask them first).";
+var INSTRUCTIONS = "Drives a running MyBPM stand. Platform knowledge is in the mybpm-stand / mybpm-imports skills " + "(MYBPM-UI-API.md, MYBPM-IMPORTS.md) — read them; these tools only do the calls. Several stand accounts may be kept: " + "all accounts are equal: start with stand_list (each one asked live); one account → it is used by itself; several and the user " + "has not said which in this conversation → ask them, then pass `stand` (a name or a host) on every call. A new account or a " + "re-login goes through stand_accounts (a local page — give the user its link, open their browser only when they ask; never ask for a password in the chat); " + "an account of a LOCAL stand (localhost) may instead be added, changed or logged in again with stand_account_save, which takes the password. " + "An account saved with a remembered password logs in again by itself when its session expires. Before a write, name the account, stand and company in the question. " + "Write tools (import_apply, import_rollback, import_cancel, bo_create, bo_fields_save, bo_code_set, bo_delete, co_build, rights_save, menu_save, menu_delete, filter_save, kanban_card_save, record_save, record_delete, record_participants, person_invite, xlsx_import with confirm, script_write, scripts_wire, script_version, process_edit, process_version, process_run_ways, process_push, notifications_clear, stand_call) change the stand: get the user's OK first. " + "An archive you built where the stand is unreachable goes in with archive_put, then import_analyze → import_apply. " + "Finish a session by clearing the notifications your work raised (notifications_read → notifications_clear). " + "A result that ends with «NOTE for the assistant» about a newer release: open your reply with the warning block it gives, then go on. " + "The stand behaves unlike the documents say, the documents are silent and you had to probe, a task needed a tool the plugin lacks, or a tool broke its own contract → platform_report (kind discrepancy / doc-gap / missing-tool / plugin-bug) prepares a GitHub issue the user submits, in the same reply (ask them first).";
 function schema(t) {
   return { type: "object", properties: { ...STAND_ARGS, ...t.props ?? {} }, ...t.required ? { required: t.required } : {} };
 }
