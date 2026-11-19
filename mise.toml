@@ -1,5 +1,5 @@
 [tools]
-bun = "1.4.4"
+bun = "1.4.5"
 
 [tasks.skills-check]
 description = "Check that every heading a SKILL.md routes to still exists in its document, and that every cookbook (## 0….COOKBOOK) and every SKILL.md carries the last check «Does it do the user's job?»"
